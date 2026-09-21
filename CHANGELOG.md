@@ -161,6 +161,28 @@ KINO has no published release yet. Changes intended for the first release collec
   And the confirm dialogs (RESTART, DELETE, FORMAT) are centred on the
   screen like any other device's, not set on the shutter hand's side: there
   they read as a panel that had slid in rather than a question.
+  An eighth pass gives the detail screens one grammar, because four habits
+  had made them read as scaffolding. The full-width rust slab was doing every
+  job - a row that opens a screen, a value nobody can press, a fact, an
+  alert - and each list stepped down a warm ramp by position, so every
+  screen was the same heat map with its top row loudest. Now: a row you can
+  press is one flat tone (`W_ROW`) with a chevron, and the accent marks only
+  the row under a finger; a fact is a quiet caption, its value on the right
+  and a hairline to the next (`fact_row`), which is what ABOUT, CONNECTION
+  and the top of STORAGE are made of now, with no wells or group boxes round
+  them; an alert on STATUS carries its severity as a bar down its edge and
+  as the word, both in the severity's colour. The header's salmon plate is
+  gone: the screen's name sits on the ground in the menu card's colour, the
+  readings beside it in the quiet ink, one hairline under the band. STORAGE
+  puts the gauge under the three numbers it illustrates and the two actions
+  below that; the hit test moved with it (`ST_ACT_Y`). ABOUT lists the body's
+  name as the first fact and the cameras as four facts under one caption.
+  LOOK's card takes the target row's room when there is no target row, with
+  the name at its head and the capture line at its foot. ROLL's right column
+  is one stack from the name down. PHOTO's three buttons are one shape. The
+  toggles light in the accent like every other live state. Rows are 56 px on
+  a 64 px pitch. Every preview shot changed and the baseline was rebuilt from
+  the result; the safe-area audit is clean; the Twin walk passes.
 - **Firmware 0.4.57: the on-device UI measured, and the numbers fixed (#176).**
   An audit of `firmware/p4/main/ui.c` as it runs in the Twin's SCREEN VIEW,
   with WCAG contrast computed from the palette defines and every screen

@@ -142,8 +142,17 @@ static const char *TAG = "ui";
 #define W_GRAYTEXT RGB(0x7a, 0x8a, 0x80)
 #define W_SEL RGB(0xe8, 0x73, 0x4a)     /* selection - the accent */
 #define W_SELTEXT RGB(0x2a, 0x14, 0x0c)
-#define W_TITLE_L RGB(0xe8, 0xa1, 0x83) /* title plate - the menu card's own */
-#define W_TITLE_R RGB(0xe8, 0xa1, 0x83)
+/* A row you can press: one flat tone for every row of every list. The rows
+ * used to step down a warm ramp by position, which tied every screen to the
+ * same heat-map and made a screen's top row its loudest object whether or
+ * not it mattered; the accent now marks only the row that is pressed. */
+#define W_ROW RGB(0x1c, 0x24, 0x1f)
+/* The hairline between two facts in a table. */
+#define W_RULE RGB(0x27, 0x30, 0x2b)
+/* The screen's name, in the menu card's own colour, set straight on the
+ * ground. It sat on a plate of that colour before, and a full-width plate
+ * of the brightest tone on the panel was the first thing every screen said. */
+#define W_TITLE RGB(0xe8, 0xa1, 0x83)
 /* A transient message, on the one cool colour in the set. It is a plate and
  * not a bevel, because a tooltip is neither a window nor a control, and it is
  * mint rather than warm so that a remark is never mistaken for a selection. */
@@ -187,7 +196,7 @@ static const char *TAG = "ui";
 #define HEAD_H 62
 #define BACK_W 84
 #define ROW_H 64
-#define ROW_GAP 6   /* the rows are separate cards, not a list in a box */
+#define ROW_GAP 8   /* the rows are separate cards, not a list in a box */
 #define BODY_Y (HEAD_H + 1)
 
 /* The header bar's geometry.
@@ -925,6 +934,11 @@ static uint16_t dim_ink(uint16_t ink, uint16_t face) {
 /* A condition's severity, as the word the mark's colour stood for alone. */
 static const char *sev_word(cond_sev_t sev) {
   return sev == COND_FAULT ? "FAULT" : sev == COND_WARN ? "WARN" : "NOTE";
+}
+/* The severity's colour: the interface's red for a fault, its accent for a
+ * warning, the quiet ink for a note. Used with the word, never instead of it. */
+static uint16_t sev_ink(cond_sev_t sev) {
+  return sev == COND_FAULT ? C_RED_INK : sev == COND_WARN ? W_SEL : W_GRAYTEXT;
 }
 
 static void outline(int x, int y, int w, int h, uint16_t c) {
@@ -3030,8 +3044,8 @@ static int hd_plate_right(screen_t s) {
   return s_right_hand ? UI_W - PAGE_M - hd_cluster_w(s) : UI_W - PAGE_M;
 }
 
-/** Where chrome_state() ends on a header screen: at the plate's own inset. */
-static int head_state_right(screen_t s) { return hd_plate_right(s) - HD_CAP_PAD; }
+/** Where chrome_state() ends on a header screen: just short of the buttons. */
+static int head_state_right(screen_t s) { return hd_plate_right(s) - 4; }
 
 /* Where the header's state reading starts, for a screen with its own line of
  * text on the same plate. Set by every draw_header(); read by the gallery. */
@@ -3045,13 +3059,12 @@ static char s_head_last[32];
 static void draw_header(screen_t s) {
   fill(0, 0, UI_W, HEAD_H, W_FACE);
 
-  /* Flat, and a card like everything else. The plate is the brightest thing
-   * on the panel and it carries one word; on the gallery it was out-shouting
-   * the photographs underneath it, so it takes no more width than it needs
-   * and none of the contrast budget that belongs to the pictures. */
+  /* No plate. The screen's name sits on the ground in the menu card's
+   * colour, the readings beside it in the quiet ink, and one hairline under
+   * the whole band separates the header from the page. The plate was the
+   * brightest object on every screen and it carried one word. */
   const int cap_x = hd_plate_x(s);
-  const int plate_w = hd_plate_right(s) - cap_x;
-  round_rect(cap_x, HD_CAP_Y, plate_w, HD_CAP_H, UI_R, W_TITLE_L);
+  fill(PAGE_M, HEAD_H - 2, UI_W - 2 * PAGE_M, 1, W_RULE);
 
   /* Back, as a system button on the hand's side. The mark is back_glyph(),
    * which is the same chevron a row that opens a screen carries, at the scale
@@ -3070,12 +3083,11 @@ static void draw_header(screen_t s) {
 
   const char *name = SCREEN_NAME[s];
   if (name != NULL) {
-    text(&UI_FONT_L, cap_x + HD_CAP_PAD, HD_CAP_Y + (HD_CAP_H - UI_FONT_L.line_h) / 2, name,
-         W_SELTEXT);
+    text(&UI_FONT_L, cap_x + 2, HD_CAP_Y + (HD_CAP_H - UI_FONT_L.line_h) / 2, name, W_TITLE);
   }
   s_head_state_left = chrome_state(
-      cap_x + HD_CAP_PAD + (name != NULL ? text_w(&UI_FONT_L, name) : 0) + BAR_GROUP_GAP,
-      head_state_right(s), HD_CAP_Y + (HD_CAP_H - UI_FONT_T.line_h) / 2, W_SELTEXT,
+      cap_x + 2 + (name != NULL ? text_w(&UI_FONT_L, name) : 0) + BAR_GROUP_GAP,
+      head_state_right(s), HD_CAP_Y + (HD_CAP_H - UI_FONT_T.line_h) / 2, W_GRAYTEXT,
       s == SCR_GALLERY ? s_head_first : NULL, s == SCR_GALLERY ? s_head_last : NULL);
 }
 
@@ -3113,12 +3125,6 @@ static void group_box(int x, int y, int w, int h, const char *legend, uint16_t i
   if (note != NULL) text_right(&UI_FONT_S, x + w - 10, y - 2, note, W_GRAYTEXT);
 }
 
-/* The warm ramp a list steps down. Six, because no list on this product is
- * longer than six rows and a seventh would have nowhere darker to go. */
-static const uint16_t ROW_RAMP[6] = {
-    RGB(0x9c, 0x46, 0x2c), RGB(0x84, 0x3b, 0x25), RGB(0x6c, 0x30, 0x1e),
-    RGB(0x55, 0x26, 0x18), RGB(0x40, 0x1c, 0x12), RGB(0x2e, 0x14, 0x0d),
-};
 
 /**
  * A row of a list, and every list on the product is made of these.
@@ -3158,12 +3164,8 @@ static void draw_row_face(int x, int w, int y, int h, int idx, bool numbered, bo
    * merely where the keyboard is must not look like the row that is about to
    * happen, and on a destructive question that is not a style point.
    */
-  const uint16_t face =
-      pressed ? W_SEL : (override != 0 ? override : ROW_RAMP[idx > 0 ? (idx < 6 ? idx : 5) : 0]);
+  const uint16_t face = pressed ? W_SEL : (override != 0 ? override : W_ROW);
   const bool lit = pressed;
-  /* A row's tone comes from its position whether or not its position is
-   * printed: a read-only table still has a top, and six identical cards is a
-   * block rather than a list. */
   round_rect(x, y, w, h, UI_R, face);
 
   /* The second voice, measured against the row's OWN tone rather than set to
@@ -3252,6 +3254,31 @@ static void draw_row(int i, bool focused, bool pressed, bool enabled, const char
               enabled, title, value, arrow);
 }
 
+/**
+ * A fact: a name and its value, and no surface under them.
+ *
+ * ABOUT, CONNECTION and the top of STORAGE are tables of things the camera
+ * knows, and they were drawn as the same slabs a settings list is made of -
+ * so a value nobody can press looked exactly like a row that opens a screen.
+ * A fact is a quiet caption on the left, the value on the right in the
+ * reading face, and a hairline to the next one. Nothing about it says press.
+ */
+static void fact_row(int x, int w, int y, int h, const char *title, const char *value,
+                     bool enabled, bool last) {
+  char name[48];
+  snprintf(name, sizeof name, "%s", title);
+  upcase(name);
+  text(&UI_FONT_T, x + 4, y + (h - UI_FONT_T.line_h) / 2, name, W_GRAYTEXT);
+  if (value != NULL && value[0] != '\0') {
+    const int room = w - 8 - text_w(&UI_FONT_T, name) - 16;
+    char v[64];
+    text_fit(v, sizeof v, &UI_FONT_M, value, room > 24 ? room : 24);
+    text_right(&UI_FONT_M, x + w - 4, y + (h - UI_FONT_M.line_h) / 2, v,
+               enabled ? W_TEXT : W_GRAYTEXT);
+  }
+  if (!last) fill(x, y + h - 1, w, 1, W_RULE);
+}
+
 /* The window a list sits in: face ground, sunken white well. */
 /* The body behind a list. The rows are separate cards and carry their own
  * ground, so there is nothing to put them in any more. */
@@ -3274,12 +3301,12 @@ static void draw_list_frame(int rows) {
  */
 static void draw_toggle(int x, int y, bool on, bool focused, uint16_t ground) {
   const int w = 52, h = 28, r = h / 2;
-  round_rect(x, y, w, h, r, on ? MZ_MINT : W_PRESS);
+  round_rect(x, y, w, h, r, on ? W_SEL : W_PRESS);
   /* Off is a dark track on a dark row: 1.4:1 without an edge. The edge is
    * what makes it a control rather than a shadow, in whichever ink the row
    * it sits on can show. */
   if (!on) round_outline(x, y, w, h, r, edge_ink(ground));
-  disc(on ? x + w - r : x + r, y + r, (float)r - 4.0f, on ? W_INFOTEXT : W_TEXT);
+  disc(on ? x + w - r : x + r, y + r, (float)r - 4.0f, on ? W_SELTEXT : W_TEXT);
   if (focused) focus_ring(x - 3, y - 3, w + 6, h + 6, (h + 6) / 2, W_TEXT);
 }
 
@@ -4260,7 +4287,10 @@ static void look_set_mono(bool mono) {
  */
 #define LK_CAP_H (UI_FONT_T.line_h + 6) /* a caption line above a card */
 #define LK_CTL_H 56                     /* 6.6 mm: a segment a thumb can hit */
-#define LK_HERO_H 168
+/* The card's height with the target row under it; without that row the
+ * card takes the row's room, so the screen is full either way rather than
+ * a card over a third of empty ground. */
+#define LK_HERO_MIN 168
 #define LK_GAP 18
 #define LK_COL_GAP 12
 #define LK_W (UI_W - 2 * PAGE_M)
@@ -4306,13 +4336,16 @@ static int lk_seg_of_target(int target) {
 }
 
 /** Where the three blocks start, top to bottom. `quad` adds the target row. */
+static int lk_hero_h(bool quad) {
+  return quad ? LK_HERO_MIN : LK_HERO_MIN + LK_GAP + LK_CAP_H + LK_CTL_H;
+}
 static int lk_top(bool quad) {
-  const int h = LK_HERO_H + LK_GAP + LK_CAP_H + LK_CTL_H +
+  const int h = lk_hero_h(quad) + LK_GAP + LK_CAP_H + LK_CTL_H +
                 (quad ? LK_GAP + LK_CAP_H + LK_CTL_H : 0);
   return body_top(h);
 }
 static int lk_hero_y(bool quad) { return lk_top(quad); }
-static int lk_trio_y(bool quad) { return lk_hero_y(quad) + LK_HERO_H + LK_GAP; }
+static int lk_trio_y(bool quad) { return lk_hero_y(quad) + lk_hero_h(quad) + LK_GAP; }
 static int lk_tgt_y(bool quad) { return lk_trio_y(quad) + LK_CAP_H + LK_CTL_H + LK_GAP; }
 /** Column `i` of the three-up row. */
 static int lk_col_x(int i) { return PAGE_M + i * (LK_COL_W + LK_COL_GAP); }
@@ -4582,8 +4615,10 @@ static void draw_look(void) {
 
   /* ---- the look itself, as the screen's one large card ---- */
   const int hy = lk_hero_y(quad);
-  text(&UI_FONT_T, PAGE_M + 4, hy - LK_CAP_H + 2, "LOOK", W_GRAYTEXT);
-  round_rect(PAGE_M, hy, LK_W, LK_HERO_H, UI_R, W_WINDOW);
+  /* No caption over the card: the header says LOOK, and with the card
+   * hung from the header the caption sat on the header's rule. */
+  const int hh = lk_hero_h(quad);
+  round_rect(PAGE_M, hy, LK_W, hh, UI_R, W_WINDOW);
 
   char look[KDP_RECIPE_ID_MAX];
   look_display(look, sizeof look);
@@ -4599,7 +4634,7 @@ static void draw_look(void) {
   /* The two picker buttons at the card's foot on the hand's side, and the
    * name filling the rest of it - the name is the subject, so it takes the
    * room. */
-  const int by = hy + LK_HERO_H - 16 - LK_CTL_H;
+  const int by = hy + hh - 16 - LK_CTL_H;
   const int nx = lk_next_x();
   const int px2 = lk_prev_x();
   const bool pd = band_rel(p0, LK_IT_PREV, 2) == 0, nd = band_rel(p0, LK_IT_PREV, 2) == 1;
@@ -4612,17 +4647,21 @@ static void draw_look(void) {
    * the reference anchors a card's content to one corner and leaves the air
    * at the other, which is where the buttons are. */
   const int tx0 = lk_text_x0(), tw = lk_text_x1() - tx0;
-  if (pos[0] != '\0') text(&UI_FONT_T, tx0, hy + 18, pos, W_GRAYTEXT);
   {
+    /* The position and the name at the card's head, the capture line at its
+     * foot, whatever the card's height: the air is between the two facts,
+     * where it reads as room and not as a gap. */
+    const int ny = hy + 52;
+    if (pos[0] != '\0') text(&UI_FONT_T, tx0, ny - UI_FONT_T.line_h - 10, pos, W_GRAYTEXT);
     char fitted[KDP_RECIPE_ID_MAX + 4];
     const ui_font_t *nf = fit_face(look, tw);
     text_fit(fitted, sizeof fitted, nf, look, tw);
-    text_ink(nf, tx0, hy + 52, fitted, nink);
+    text_ink(nf, tx0, ny, fitted, nink);
   }
 
   /* And what the look actually sets, inside the card it belongs to. It was a
    * strip at the foot of the screen under nothing at all. */
-  lk_detail_row(tx0, hy + LK_HERO_H - 16 - UI_FONT_T.line_h - UI_FONT_S.line_h, tw);
+  lk_detail_row(tx0, hy + hh - 16 - UI_FONT_T.line_h - UI_FONT_S.line_h, tw);
 
   /* ---- the three that modify it ---- */
   const int ty = lk_trio_y(quad);
@@ -5594,7 +5633,8 @@ static void draw_photo(void) {
   const bool dd = s_pressed == P_IT_DELETE;
   /* Deleting a photograph is the one destructive thing a finger can reach on
    * this screen, and it is the only red on it. */
-  round_rect(bx, dy, bw, bh, UI_R, dd ? C_RED : W_WINDOW);
+  if (dd) round_rect(bx, dy, bw, bh, UI_R, C_RED);
+  else button(bx, dy, bw, bh, false);
   text_mid(&UI_FONT_T, bx + bw / 2, dy + (bh - UI_FONT_T.line_h) / 2, "DELETE",
            dd ? W_SELTEXT : C_RED_INK);
   /* Through foc(), not the raw array. P_IT_DELETE is 0 and s_focus[] starts
@@ -5610,7 +5650,8 @@ static void draw_photo(void) {
   const int fy = PH_BTN_Y(2);
   const bool fd = s_pressed == P_IT_FAV;
   const bool on = fd || s_photo_fav;
-  round_rect(bx, fy, bw, bh, UI_R, on ? W_SEL : W_WINDOW);
+  if (on) round_rect(bx, fy, bw, bh, UI_R, W_SEL);
+  else button(bx, fy, bw, bh, false);
   star(bx + 14, fy + (bh - STAR_H) / 2, on ? W_SELTEXT : W_GRAYTEXT);
   text_mid(&UI_FONT_T, bx + 14 + STAR_W + (bw - 14 - STAR_W) / 2, fy + (bh - UI_FONT_T.line_h) / 2,
            "FAVOURITE", on ? W_SELTEXT : W_TEXT);
@@ -5619,7 +5660,9 @@ static void draw_photo(void) {
   /* No radio on this body, so Roll cannot take it. Dimmed with the reason
    * rather than hidden - a control that vanishes teaches nothing. */
   const int ry = PH_BTN_Y(1);
-  round_rect(bx, ry, bw, bh, UI_R, W_FACE);
+  /* The same shape as its two neighbours, without the edge a live control
+   * carries: one column, three buttons of one size, one of them asleep. */
+  round_rect(bx, ry, bw, bh, UI_R, W_WINDOW);
   text_mid(&UI_FONT_T, bx + bw / 2, ry + (bh - UI_FONT_T.line_h) / 2, "SEND TO ROLL", W_GRAYTEXT);
 }
 
@@ -5968,37 +6011,11 @@ static void draw_roll(void) {
     if (!online) snprintf(l2, sizeof l2, "Uploads resume when Wi-Fi returns.");
   }
 
-  /*
-   * The status block sits on the page margin, not wherever the column above
-   * it happened to end.
-   *
-   * These four lines are the only part of this screen whose height depends on
-   * the state: one line when everything is uploaded, four when nothing can
-   * leave and the reason takes two. Run downward from the identity group and
-   * the foot of the column moves every time the camera's situation does - and
-   * in the worst state, with "Wi-Fi is up. They go when KINO answers." on two
-   * lines, it moved 16 px past the bottom of the panel.
-   *
-   * Measured, then placed against the margin, so the group that varies takes
-   * its slack out of the gap in the middle of the column - which is where
-   * there is slack to take, and where nobody can see it move.
-   */
-  {
-    const int h2 = l2[0] ? text_block_h(&UI_FONT_S, RL_RW, l2) : 0;
-    const int h3 = l3[0] ? text_block_h(&UI_FONT_S, RL_RW, l3) : 0;
-    int block = 0;
-    if (l1[0]) block += UI_FONT_M.line_h + 14;
-    if (bar) block += 14 + 14;
-    if (l2[0]) block += h2 + 10;
-    if (l3[0]) block += h3;
-    /* The trailing gap belongs between lines, not under the last one. */
-    if (h3 == 0 && l2[0]) block -= 10;
-    else if (h3 == 0 && h2 == 0 && bar) block -= 14;
-    else if (h3 == 0 && h2 == 0 && !bar && l1[0]) block -= 14;
-
-    const int foot = UI_H - PAGE_M - block;
-    if (foot > y) y = foot;
-  }
+  /* Straight on from the count: the column is one stack of the roll's facts,
+   * top to bottom, with one interval between them. The status block used to
+   * be pinned to the page's foot, which left a hole in the middle of the
+   * column the size of whatever the camera had to say. The longest state -
+   * four lines - still ends 60 px clear of the bottom. */
 
   if (l1[0]) { text(&UI_FONT_M, RL_RX, y, l1, W_TEXT); y += UI_FONT_M.line_h + 14; }
   if (bar) {
@@ -6160,14 +6177,13 @@ static void draw_status(void) {
     const cond_t *c = conditions_at(i);
     const int y = LIST_Y + i * ROW_H;
     const int h = ROW_H - ROW_GAP;
-    round_rect(LIST_X, y, LIST_W, h, UI_R, ROW_RAMP[i]);
+    round_rect(LIST_X, y, LIST_W, h, UI_R, W_ROW);
 
-    /* The severity, as the word, right-aligned in the title's ink where a
-     * row's chevron would be. It was a coloured dot: colour alone, and red on
-     * the top row's terracotta measured 1.2:1. The word carries it now, so
-     * the dot went - two marks for one fact is one too many, and the row
-     * starts on the same rule as every other list row. */
-    text_right(&UI_FONT_T, LIST_X + LIST_W - 18, y + 12, sev_word(c->sev), W_TEXT);
+    /* The severity twice, in one colour: a bar down the row's edge, which
+     * reads across the room, and the word at the right, which reads up
+     * close. An alert is not a destination, so no chevron. */
+    fill(LIST_X, y + 10, 4, h - 20, sev_ink(c->sev));
+    text_right(&UI_FONT_T, LIST_X + LIST_W - 18, y + 12, sev_word(c->sev), sev_ink(c->sev));
 
     char name[48];
     snprintf(name, sizeof name, "%s", c->title);
@@ -6178,7 +6194,7 @@ static void draw_status(void) {
      * all - a fault a person can do nothing about is a log line. */
     char det[64];
     text_fit(det, sizeof det, &UI_FONT_S, c->detail, LIST_W - 18 - 18 - 70);
-    text(&UI_FONT_S, tx, y + 6 + UI_FONT_R.line_h - 4, det, dim_ink(W_TEXT, ROW_RAMP[i]));
+    text(&UI_FONT_S, tx, y + 6 + UI_FONT_R.line_h - 4, det, dim_ink(W_TEXT, W_ROW));
   }
 }
 
@@ -6490,9 +6506,9 @@ static void draw_sound(void) {
   {
     const int by = sn_btn_y(), nx = sn_next_x(), px = sn_prev_x();
     const bool pd = s_pressed == SN_IT_PREV, nd = s_pressed == SN_IT_NEXT;
-    control(px, by, SN_BTN, SN_BTN, UI_R - 2, pd, ROW_RAMP[0]);
+    control(px, by, SN_BTN, SN_BTN, UI_R - 2, pd, W_ROW);
     picker_arrow(px + SN_BTN / 2, by + SN_BTN / 2, false, W_TEXT);
-    control(nx, by, SN_BTN, SN_BTN, UI_R - 2, nd, ROW_RAMP[0]);
+    control(nx, by, SN_BTN, SN_BTN, UI_R - 2, nd, W_ROW);
     picker_arrow(nx + SN_BTN / 2, by + SN_BTN / 2, true, W_TEXT);
     if (foc(SCR_SOUND, SN_IT_PREV)) focus_inset(px, by, SN_BTN, SN_BTN, W_TEXT);
     if (foc(SCR_SOUND, SN_IT_NEXT)) focus_inset(nx, by, SN_BTN, SN_BTN, W_TEXT);
@@ -6501,11 +6517,11 @@ static void draw_sound(void) {
   draw_row(1, foc(SCR_SOUND, SN_IT_SHUTTER), s_pressed == SN_IT_SHUTTER, true,
            "Play shutter sound", NULL, false);
   draw_toggle(LIST_X + LIST_W - 18 - 52, LIST_Y + ROW_H + (ROW_H - ROW_GAP - 28) / 2, shut, false,
-              s_pressed == SN_IT_SHUTTER ? W_SEL : ROW_RAMP[1]);
+              s_pressed == SN_IT_SHUTTER ? W_SEL : W_ROW);
   draw_row(2, foc(SCR_SOUND, SN_IT_BUTTON), s_pressed == SN_IT_BUTTON, true,
            "Play button sound", NULL, false);
   draw_toggle(LIST_X + LIST_W - 18 - 52, LIST_Y + 2 * ROW_H + (ROW_H - ROW_GAP - 28) / 2, ui, false,
-              s_pressed == SN_IT_BUTTON ? W_SEL : ROW_RAMP[2]);
+              s_pressed == SN_IT_BUTTON ? W_SEL : W_ROW);
 
   const int y = LIST_Y + 3 * ROW_H + 26;
   /* The one control on this screen that sat outside the list well, under a
@@ -6670,19 +6686,17 @@ static void draw_connection(void) {
   const int pitch = 46;
 
   fill(0, BODY_Y, UI_W, UI_H - BODY_Y, W_FACE);
-  const int lh = n * pitch + 4;
-  well(LIST_X - 2, LIST_Y - 2, LIST_W + 4, lh);
+  const int lh = n * pitch;
   for (int i = 0; i < n; i++) {
-    draw_row_at(LIST_X, LIST_W, LIST_Y + i * pitch, pitch - 6, i, true, false, false,
-                ROWS[i].enabled,
-                ROWS[i].title, ROWS[i].value, false);
+    fact_row(LIST_X, LIST_W, LIST_Y + i * pitch, pitch, ROWS[i].title, ROWS[i].value,
+             ROWS[i].enabled, i == n - 1);
   }
 
   /* One line, and it has to say which of the two things is wrong. There is no
    * on-screen keyboard on purpose: a passphrase entered on a 480x800 panel
    * with no physical keys is worse than the USB path, and building a bad one
    * to claim independence from Studio would be the wrong trade. */
-  const int y = LIST_Y + lh + 14;
+  const int y = LIST_Y + lh + 18;
   if (!net.radio_fitted) {
     text(&UI_FONT_S, PAGE_M, y, "No radio on this body. Photos leave over USB-C.", W_GRAYTEXT);
   } else if (!net.radio_routed) {
@@ -6705,9 +6719,19 @@ static void draw_connection(void) {
 #define ST_IT_FORMAT 1
 #define ST_IT_COUNT 2
 
-#define ST_LIST_GAP 14 /* list to gauge; 20 put the readings 3 px past the safe area once the list hung from the header */
+/*
+ * Three facts, the gauge with its two readings under them, then the two rows
+ * that act. The facts and the gauge are one group - what the card is and how
+ * full it is - and the actions are another; the gauge used to sit under the
+ * action rows, 150 px from the numbers it illustrated.
+ */
+#define ST_FACT_H 46
 #define ST_GAUGE_H 18  /* the capacity bar */
-#define ST_READ_GAP 10 /* gauge to its two readings */
+#define ST_READ_GAP 8  /* gauge to its two readings */
+#define ST_GAUGE_Y (LIST_Y + 3 * ST_FACT_H + 14)
+/* The action rows, from the readings' baseline down. Draw and hit test both
+ * read this. */
+#define ST_ACT_Y(i) (ST_GAUGE_Y + ST_GAUGE_H + ST_READ_GAP + UI_FONT_S.line_h + 20 + (i) * ROW_H)
 
 static void draw_storage(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
@@ -6773,27 +6797,28 @@ static void draw_storage(void) {
   const bool wiping = busy[0] != '\0';
 
   draw_list_frame(5);
-  draw_row(0, false, false, true, "Card", sd.mounted ? capb : "None", false);
+  fact_row(LIST_X, LIST_W, LIST_Y, ST_FACT_H, "Card", sd.mounted ? capb : "None", true, false);
   /* Low space is said where the number is, not discovered at a failed
    * shutter. 512 MB is about 650 four-camera captures at the bench median of
    * 0.77 MB per capture; below it the row appends LOW. */
   char freerow[40];
   const bool low = sd.mounted && sd.free_bytes < (512ull << 20);
   snprintf(freerow, sizeof freerow, "%s%s", sd.mounted ? freeb : "-", low ? "  LOW" : "");
-  draw_row(1, false, false, true, "Free space", freerow, false);
-  draw_row(2, false, false, true, "Photos", wiping ? busy : cnt, false);
+  fact_row(LIST_X, LIST_W, LIST_Y + ST_FACT_H, ST_FACT_H, "Free space", freerow, true, false);
+  fact_row(LIST_X, LIST_W, LIST_Y + 2 * ST_FACT_H, ST_FACT_H, "Photos", wiping ? busy : cnt, true,
+           true);
   /* Both destructive rows are live only with a card mounted, and neither is
    * live while the other is running: a FORMAT pressed into a running wipe
    * would be two things deleting the same directory. */
-  draw_row(3, foc(SCR_STORAGE, ST_IT_DELETE_ALL),
-           s_pressed == ST_IT_DELETE_ALL, sd.mounted && !wiping && media > 0,
-           "Delete all photos", NULL, true);
+  draw_row_at(LIST_X, LIST_W, ST_ACT_Y(0), ROW_H - ROW_GAP, 3, false,
+              foc(SCR_STORAGE, ST_IT_DELETE_ALL), s_pressed == ST_IT_DELETE_ALL,
+              sd.mounted && !wiping && media > 0, "Delete all photos", NULL, true);
   /* Drawn dimmed: there is no format entry point in storage.c, and a live
    * row that opens a confirm dialog and then says "not available" is a
    * control that lies twice. The row stays so the layout and the hit test
    * (row minus three) do not move. */
-  draw_row(4, foc(SCR_STORAGE, ST_IT_FORMAT), s_pressed == ST_IT_FORMAT, false,
-           "Format card", "Not available", false);
+  draw_row_at(LIST_X, LIST_W, ST_ACT_Y(1), ROW_H - ROW_GAP, 4, false, foc(SCR_STORAGE, ST_IT_FORMAT),
+              s_pressed == ST_IT_FORMAT, false, "Format card", "Not available", false);
 
   /*
    * The 145 px under the list.
@@ -6810,7 +6835,7 @@ static void draw_storage(void) {
    * aiming at DELETE ALL. Nothing here is a target and nothing here moved the
    * list.
    */
-  const int by = LIST_Y + 5 * ROW_H + ST_LIST_GAP;
+  const int by = ST_GAUGE_Y;
 
   if (!sd.mounted) {
     /* Why, not just that. mount_attempts separates "no card in the slot" from
@@ -6966,60 +6991,30 @@ static void draw_about(void) {
    * ui_start() - so a dash here would be a state nobody can reach. */
   const char *serial = kdp_device_serial();
 
-  /* ---- left column: the body ---- */
-  const struct {
+  /* ---- left column: the body ----
+   *
+   * The name first, when someone has set one: it is the row a person put
+   * there, and it goes where a person looks first. It was a box of its own
+   * under the table. */
+  typedef struct {
     const char *title;
     const char *value;
-  } ROWS[] = {
-      {"Model", "KINO D4"},
-      {"Hardware", KDP_HARDWARE_REV},
-      {"Firmware", KINO_FW_VERSION},
-      {"Serial", serial[0] != '\0' ? serial : "-"},
-      {"Protocol", proto},
-      {"Card", card},
-      {"Uptime", up},
-  };
-  const int n = (int)(sizeof ROWS / sizeof ROWS[0]);
+  } ab_row_t;
+  ab_row_t ROWS[8];
+  int n = 0;
+  if (named) ROWS[n++] = (ab_row_t){"Name", name};
+  ROWS[n++] = (ab_row_t){"Model", "KINO D4"};
+  ROWS[n++] = (ab_row_t){"Hardware", KDP_HARDWARE_REV};
+  ROWS[n++] = (ab_row_t){"Firmware", KINO_FW_VERSION};
+  ROWS[n++] = (ab_row_t){"Serial", serial[0] != '\0' ? serial : "-"};
+  ROWS[n++] = (ab_row_t){"Protocol", proto};
+  ROWS[n++] = (ab_row_t){"Card", card};
+  ROWS[n++] = (ab_row_t){"Uptime", up};
 
-  const int lh = n * AB_ROW + 4;
-
-  /*
-   * Both columns end on the page margin, and the left one is laid out from
-   * there back up rather than from the header down.
-   *
-   * It used to run downward from the default list top: seven rows, a 12 px
-   * gap, then the NAME box, and the sum landed the name's descenders 1 px
-   * past the bottom of the panel. Which is the arithmetic you get every time
-   * a column is accumulated forwards and the thing that has to fit is at the
-   * far end - and the maker's plate opposite it was already anchored to the
-   * margin, so the two columns were terminating on rules 9 px apart on a
-   * screen whose whole composition is that there are two of them.
-   *
-   * So NAME takes its rule from the plate's, and the list is centred in what
-   * is left above it. Nothing has to be kept in agreement by hand.
-   */
-  const int nh = 20 + UI_FONT_M.line_h + 8;
-  const int ny = UI_H - PAGE_M - nh;
-  /* From the header, like every list; only when the eight rows of a named
-   * body will not clear the footer does the list give up its top inset. */
-  s_list_top = (LIST_TOP_DEFAULT + lh <= (named ? ny - 14 : UI_H - PAGE_M)) ? LIST_TOP_DEFAULT
-                                                                              : BODY_Y;
-
-  well(AB_LX - 2, LIST_Y - 2, AB_LW + 4, lh);
+  s_list_top = LIST_TOP_DEFAULT;
   for (int i = 0; i < n; i++) {
-    draw_row_at(AB_LX, AB_LW, LIST_Y + i * AB_ROW, AB_ROW - 5, i, false, false, false, true,
-                ROWS[i].title,
-                ROWS[i].value, false);
-  }
-
-  /* The name under the list rather than in it: it is the only row here a
-   * person sets, so it is not the same kind of fact as the seven above. */
-  if (named) {
-    /* NAME as a group-box legend, on the same rule as CAMERAS across the
-     * gutter: it was the last bare word on this screen, and a caption over a
-     * value with nothing round either is what the whole rework is removing. */
-    group_box(AB_LX - 8, ny, AB_LW + 16, nh, "NAME", W_TEXT, NULL);
-    text(&UI_FONT_M, AB_LX, ny + 20, name, W_TEXT);
+    fact_row(AB_LX, AB_LW, LIST_Y + i * AB_ROW, AB_ROW, ROWS[i].title, ROWS[i].value, true,
+             i == n - 1);
   }
 
   /* ---- right column: the four cameras ----
@@ -7029,14 +7024,12 @@ static void draw_about(void) {
    * group box now, and the box encloses the well AND the two lines of note
    * under it - the note is about these four rows and nothing else, and there
    * was no mark on the screen that said so. */
-  const int cy0 = LIST_Y + 20;
-  const int ch = 4 * AB_CAM_ROW + 4;
+  text(&UI_FONT_T, AB_RX + 4, LIST_Y + (AB_ROW - UI_FONT_T.line_h) / 2, "CAMERAS", W_GRAYTEXT);
+  fill(AB_RX, LIST_Y + AB_ROW - 1, AB_RW, 1, W_RULE);
+  const int cy0 = LIST_Y + AB_ROW;
+  const int ch = 4 * AB_CAM_ROW;
   const char *NOTE = "Node firmware, then the sensor each node reports.";
-  const int note_y = cy0 + ch + 10;
-  const int note_h = text_block_h(&UI_FONT_S, AB_RW, NOTE);
-  group_box(AB_RX - 8, LIST_Y - 2, AB_RW + 16,
-            (note_y + note_h + 8) - (LIST_Y - 2), "CAMERAS", W_TEXT, NULL);
-  well(AB_RX - 2, cy0 - 2, AB_RW + 4, ch);
+  const int note_y = cy0 + ch + 12;
 
   const camlink_info_t *cams = about_cameras();
   for (int i = 0; i < 4; i++) {
@@ -7057,8 +7050,7 @@ static void draw_about(void) {
     } else {
       snprintf(val, sizeof val, "No answer");
     }
-    draw_row_at(AB_RX, AB_RW, cy0 + i * AB_CAM_ROW, AB_CAM_ROW - 5, i, false, false, false,
-                info->online, label, val, false);
+    fact_row(AB_RX, AB_RW, cy0 + i * AB_CAM_ROW, AB_CAM_ROW, label, val, info->online, i == 3);
   }
 
   /* Node firmware is per camera and the four can differ - a node reflashed on
@@ -7257,8 +7249,10 @@ static void draw_dialog(void) {
    */
   draw_row_face(DLG_ROW_X, DLG_ROW_W, DLG_ROW_Y(sub, 0), DLG_ROW_H, 1, false, s_dlg_focus == 1,
                 s_pressed == 1, true, d.go, NULL, true, d.destructive ? C_RED : W_SEL);
-  draw_row_at(DLG_ROW_X, DLG_ROW_W, DLG_ROW_Y(sub, 1), DLG_ROW_H, 0, false, s_dlg_focus == 0,
-              s_pressed == 0, true, "Cancel", NULL, false);
+  /* One step lighter than a list row: the dialog's own face is close to the
+   * row tone, and Cancel has to read as a row on it. */
+  draw_row_face(DLG_ROW_X, DLG_ROW_W, DLG_ROW_Y(sub, 1), DLG_ROW_H, 0, false, s_dlg_focus == 0,
+                s_pressed == 0, true, "Cancel", NULL, false, W_PRESS);
 }
 
 /* ------------------------------------------------------------------ */
@@ -7905,7 +7899,7 @@ static int hit_test(int x, int y) {
 
       /* The picker, at the hero card's foot on the hand's side. */
       const int hy = lk_hero_y(quad);
-      const int by = hy + LK_HERO_H - 16 - LK_CTL_H;
+      const int by = hy + lk_hero_h(quad) - 16 - LK_CTL_H;
       if (in(x, y, lk_prev_x(), by, LK_PICK_BTN, LK_CTL_H)) return LK_IT_PREV;
       if (in(x, y, lk_next_x(), by, LK_PICK_BTN, LK_CTL_H)) return LK_IT_NEXT;
 
@@ -7989,7 +7983,7 @@ static int hit_test(int x, int y) {
        * the draw and the hit test cannot disagree about which of two
        * destructive rows was pressed. */
       for (int i = 0; i < ST_IT_COUNT; i++)
-        if (in(x, y, LIST_X, LIST_Y + (3 + i) * ROW_H, LIST_W, ROW_H)) return i;
+        if (in(x, y, LIST_X, ST_ACT_Y(i), LIST_W, ROW_H)) return i;
       return -1;
 
     case SCR_POWER:
