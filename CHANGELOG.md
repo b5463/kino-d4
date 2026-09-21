@@ -1040,6 +1040,12 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Fixed
 
+- **Firmware: the first photograph now measures the cameras (#179).** `calib_measure`
+  handed the PPA a 160x120 tile from a plain `heap_caps_malloc`; the PPA is a DMA
+  engine and refused the 4-byte-aligned destination with INVALID_ARG on every
+  frame, so every body logged "calibration measured nothing" and STATUS kept
+  saying "Cameras not measured". The tile is 64-byte aligned now, as the
+  photograph screen's has been since the same fault was found there.
 - The firmware build daemon stamped every package `compatibleHardware: ["V1"]`, a string no device reports - the P4 firmware answers `kino-v1` and the Twin `D4-V1` - so a daemon build was BLOCKED at Studio's compatibility gate on any camera. It lists both.
 - `firmware/p4/host_preview/Makefile` began with a UTF-8 byte-order mark, which GNU make reads as a missing separator; `make -C firmware/p4/host_preview` failed before it parsed. The BOM is gone.
 

@@ -157,9 +157,13 @@ static int calib_measure(const char *dir, int ref, pure_cam_offset_t *out) {
   for (int i = 0; i < PURE_WIGGLE_FRAMES_MAX; i++) out[i] = (pure_cam_offset_t){0, 0, 0};
   if (dir == NULL || dir[0] == '\0') return 0;
 
-  uint16_t *tile = heap_caps_malloc((size_t)CAL_W * CAL_H * sizeof(uint16_t),
-                                    MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  if (tile == NULL) tile = malloc((size_t)CAL_W * CAL_H * sizeof(uint16_t));
+  /* 64-byte aligned, because thumb_load() hands this tile to the PPA as the
+   * scale destination and the PPA is a DMA engine: a plain heap_caps_malloc
+   * gave 4-byte alignment and every scale returned ESP_ERR_INVALID_ARG, so
+   * the first photograph measured nothing on every body (#179). photo_open()
+   * learned the same rule earlier; this is it applied where it was missed. */
+  uint16_t *tile = heap_caps_aligned_calloc(64, 1, THUMB_TILE_BYTES(CAL_W, CAL_H),
+                                            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   uint8_t *luma[4] = {0};
   bool have[4] = {0};
   int n = 0;
