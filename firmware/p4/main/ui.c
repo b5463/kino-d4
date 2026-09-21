@@ -7195,9 +7195,9 @@ static void dialog_spec(dlg_spec_t *d) {
  * full-width row.
  */
 #define DLG_W 460
-/* On the hand's side, not centred: a question the thumb has to answer sits
- * where the thumb is. */
-static int dlg_x(void) { return from_hand(PAGE_M, DLG_W); }
+/* Centred, like every other device's confirm. It sat on the hand's side for
+ * a while and read as a panel that had slid in, not a question. */
+static int dlg_x(void) { return (UI_W - DLG_W) / 2; }
 #define DLG_PAD 20
 #define DLG_ROW_H (ROW_H - ROW_GAP)
 #define DLG_ROW_GAP 8
@@ -7206,11 +7206,7 @@ static int dlg_x(void) { return from_hand(PAGE_M, DLG_W); }
 #define DLG_H(sub) (DLG_TOP + UI_FONT_T.line_h + 10 + UI_FONT_M.line_h + \
                     ((sub) ? UI_FONT_S.line_h + 6 : 0) + 18 + 2 * DLG_ROW_H + DLG_ROW_GAP + \
                     DLG_PAD)
-/* Hung from the foot of the panel, not centred. Centred, a 270 px dialog
- * floated over the middle of the list with 100 px of dead ground under it,
- * and its Cancel row sat where nothing else on this interface asks to be
- * pressed. The thumb rests at the foot; the row it meets first is Cancel. */
-#define DLG_Y(sub) (UI_H - PAGE_M - DLG_H(sub))
+#define DLG_Y(sub) ((UI_H - DLG_H(sub)) / 2)
 #define DLG_ROW_X (dlg_x() + DLG_PAD)
 #define DLG_ROW_W (DLG_W - 2 * DLG_PAD)
 /* Row POSITION `i`, top to bottom. The item at a position is dlg_item_at(). */

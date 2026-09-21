@@ -158,10 +158,9 @@ KINO has no published release yet. Changes intended for the first release collec
   20 -> 50 fps before the pixel work was touched. The host preview renders
   byte-identical except in the wash phase and the two ring icons, and now
   renders every scene through the recorder.
-  And the confirm dialogs (RESTART, DELETE, FORMAT) hang from the foot of
-  the panel on the shutter hand's side instead of floating centred: the
-  centred box sat over the middle of the list with 100 px of dead ground
-  under it, and its Cancel row was nowhere a thumb rests.
+  And the confirm dialogs (RESTART, DELETE, FORMAT) are centred on the
+  screen like any other device's, not set on the shutter hand's side: there
+  they read as a panel that had slid in rather than a question.
 - **Firmware 0.4.57: the on-device UI measured, and the numbers fixed (#176).**
   An audit of `firmware/p4/main/ui.c` as it runs in the Twin's SCREEN VIEW,
   with WCAG contrast computed from the palette defines and every screen
