@@ -111,7 +111,7 @@ Action rows at the foot of STATUS: **Restart the cameras** (always) and **Measur
 ## Dim and sleep
 
 At the dim time the screen darkens under a scrim on an eased ramp over 0.8 s and stays readable; a touch lifts it. 
-`GOING TO SLEEP.  TAP TO WAKE` under the mark, held half a second, then an eased fade to the dark over a second, then the backlight drops. DISPLAY says the same under BRIGHTNESS AND POWER: on or off, not dimmable; tap the screen to wake; hold the slide to switch off.
+At the sleep time the dimmed picture darkens to the ground over half a second, the mark and `GOING TO SLEEP.  TAP TO WAKE` fade in from the dark, hold half a second, fade out, and then the backlight drops: two seconds, no cut. DISPLAY says the same under BRIGHTNESS AND POWER: on or off, not dimmable; tap the screen to wake; hold the slide to switch off.
 
 ## After a shot
 
