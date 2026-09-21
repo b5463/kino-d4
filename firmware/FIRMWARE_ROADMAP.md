@@ -917,12 +917,18 @@ Every storage failure class has a defined, tested behaviour.
 
 ### M8 — Firmware updates and repartitioning
 
+**Status 2026-09-21:** the transfer path landed at firmware 0.4.58 (#184):
+`FW_BEGIN/CHUNK/END/ABORT/STATUS` for `p4` and `cam1..4` in
+`firmware/p4/main/fw_update.c`, node-side `NL_CMD_FW_*` in
+`camnode/main/node_server.c`, `firmware/camnode/partitions.csv` with two OTA
+slots, rollback armed on both images, `scripts/kino-fw-update.mjs` as the bench
+pusher. Pass criteria below are what the bench session checks off; a node needs
+one USB flash onto its OTA table before the link can update it.
+
 **Status 2026-08-30:** the repartition half landed at firmware 0.4.9 —
 `firmware/p4/partitions.csv` (two 3072 KB OTA slots, 256 KB NVS, otadata,
 coredump; issue #143), both variants build against it, and the flash sequence
-is in `firmware/README.md`. Not yet flashed to a unit: the table change erases
-NVS, so it waits for a bench session. The FW_* transfer path itself is still
-unimplemented (contract D17).
+is in `firmware/README.md`.
 
 **Goal.** The camera can be serviced without a cable and a local IDF.
 

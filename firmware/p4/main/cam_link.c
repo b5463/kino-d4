@@ -7,6 +7,7 @@
 #include "cJSON.h"
 #include "driver/uart.h"
 #include "esp_attr.h"
+#include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -34,6 +35,10 @@
  * the explanation.
  */
 #define LINK_RX_BUF (4 * (NL_CHUNK_MAX + 64))
+/* The largest request the P4 sends a node is a firmware chunk. In PSRAM:
+ * four of these in internal SRAM is 9 KB the recovery reserve cannot spare,
+ * and the UART driver copies from wherever the bytes are. */
+#define LINK_TX_BUF (KDP_HEADER_LEN + 4 + NL_FW_CHUNK_MAX + KDP_CRC_LEN + 64)
 
 /*
  * Decoder storage per channel.
@@ -115,7 +120,7 @@ struct channel_s {
   camlink_stats_t stats;
   uint8_t decode_storage[LINK_DECODE_BUF];
   kdp_decoder_t decoder;
-  uint8_t tx[512];
+  uint8_t *tx; /* LINK_TX_BUF, PSRAM */
   pending_t pending;
   /* Timeout log throttling. An absent node is a permanent condition, and the
    * viewfinder asks each camera for a frame several times a second - so an
@@ -206,8 +211,21 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
 
 /* Serialized request/response. Returns ESP_OK on a positive response,
  * ESP_ERR_INVALID_RESPONSE on a NACK, ESP_ERR_TIMEOUT on silence. */
+static esp_err_t request_raw(int cam, uint8_t cmd, uint8_t flags, const uint8_t *payload,
+                             size_t payload_len, uint8_t *resp, size_t resp_cap,
+                             size_t *resp_len, uint32_t timeout_ms);
+
+/* A JSON request: the shape every command but a firmware chunk has. */
 static esp_err_t request(int cam, uint8_t cmd, const char *json, uint8_t *resp,
                          size_t resp_cap, size_t *resp_len, uint32_t timeout_ms) {
+  const char *payload = json != NULL ? json : "{}";
+  return request_raw(cam, cmd, KDP_FLAG_NONE, (const uint8_t *)payload, strlen(payload), resp,
+                     resp_cap, resp_len, timeout_ms);
+}
+
+static esp_err_t request_raw(int cam, uint8_t cmd, uint8_t flags, const uint8_t *payload,
+                             size_t payload_len, uint8_t *resp, size_t resp_cap,
+                             size_t *resp_len, uint32_t timeout_ms) {
   /* Before any early return. camlink_read_ch passes the caller's `got`
    * straight through and does not check the channel itself, so on an invalid
    * cam or an encode failure the caller would read an uninitialised size_t and
@@ -226,10 +244,8 @@ static esp_err_t request(int cam, uint8_t cmd, const char *json, uint8_t *resp,
   ch->pending.dst_cap = resp_cap;
   ch->stats.last_sequence = ch->seq;
 
-  const char *payload = json != NULL ? json : "{}";
-  size_t total = kdp_encode_frame(ch->tx, sizeof ch->tx, NL_PROTOCOL_VERSION, cmd,
-                                  KDP_FLAG_NONE, ch->pending.seq,
-                                  (const uint8_t *)payload, strlen(payload));
+  size_t total = kdp_encode_frame(ch->tx, LINK_TX_BUF, NL_PROTOCOL_VERSION, cmd, flags,
+                                  ch->pending.seq, payload, payload_len);
   if (total == 0) {
     xSemaphoreGive(ch->lock);
     return ESP_ERR_INVALID_ARG;
@@ -404,6 +420,10 @@ esp_err_t camlink_init(void) {
     ch->info.heap_kb = -1;
     ch->info.psram_kb = -1;
     ch->info.temp_c = CAMLINK_TEMP_UNKNOWN;
+    if (ch->tx == NULL) {
+      ch->tx = heap_caps_malloc(LINK_TX_BUF, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+      if (ch->tx == NULL) return ESP_ERR_NO_MEM;
+    }
 
     /* A port that will not install is a channel that stays absent, not a
      * boot failure: three unwired nodes must never stop the one that is
@@ -879,6 +899,88 @@ esp_err_t camlink_release_ch(int cam, uint32_t frame_id) {
 }
 
 esp_err_t camlink_release(uint32_t frame_id) { return camlink_release_ch(0, frame_id); }
+
+/* Copy the node's NACK reason out for the caller, when there was one. */
+static void take_code(int cam, esp_err_t err, char *code, size_t cap) {
+  if (code == NULL || cap == 0) return;
+  code[0] = '\0';
+  if (err == ESP_ERR_INVALID_RESPONSE) strlcpy(code, s_ch[cam].pending.err_code, cap);
+}
+
+esp_err_t camlink_fw_begin_ch(int cam, uint32_t size, const char *sha256_hex,
+                              const char *version, uint32_t *chunk_max, char *code,
+                              size_t code_cap) {
+  if (!valid_cam(cam) || sha256_hex == NULL) return ESP_ERR_INVALID_ARG;
+  char req_json[160];
+  snprintf(req_json, sizeof req_json, "{\"size\":%lu,\"sha256\":\"%s\",\"version\":\"%s\"}",
+           (unsigned long)size, sha256_hex, version != NULL ? version : "");
+  uint8_t resp[192];
+  size_t len = 0;
+  /* Erasing a 3 MB slot takes the node a few seconds. */
+  const esp_err_t err = request(cam, NL_CMD_FW_BEGIN, req_json, resp, sizeof resp - 1, &len, 10000);
+  take_code(cam, err, code, code_cap);
+  if (err != ESP_OK) return err;
+  resp[len] = '\0';
+  cJSON *json = cJSON_Parse((const char *)resp);
+  if (json == NULL) return ESP_ERR_INVALID_RESPONSE;
+  const cJSON *cs = cJSON_GetObjectItem(json, "chunkSize");
+  if (chunk_max != NULL) *chunk_max = cJSON_IsNumber(cs) ? (uint32_t)cs->valueint : NL_FW_CHUNK_MAX;
+  const bool ok = cJSON_IsTrue(cJSON_GetObjectItem(json, "ok"));
+  cJSON_Delete(json);
+  return ok ? ESP_OK : ESP_ERR_INVALID_RESPONSE;
+}
+
+esp_err_t camlink_fw_chunk_ch(int cam, uint32_t offset, const uint8_t *data, size_t len,
+                              char *code, size_t code_cap) {
+  if (!valid_cam(cam) || data == NULL || len == 0 || len > NL_FW_CHUNK_MAX) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  /* Built in the channel's own PSRAM transmit buffer's shadow: 4 bytes of
+   * offset, then the data. The frame itself is encoded from this by
+   * request_raw. */
+  static uint8_t *s_chunk;
+  if (s_chunk == NULL) {
+    s_chunk = heap_caps_malloc(4 + NL_FW_CHUNK_MAX, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (s_chunk == NULL) return ESP_ERR_NO_MEM;
+  }
+  s_chunk[0] = (uint8_t)offset;
+  s_chunk[1] = (uint8_t)(offset >> 8);
+  s_chunk[2] = (uint8_t)(offset >> 16);
+  s_chunk[3] = (uint8_t)(offset >> 24);
+  memcpy(s_chunk + 4, data, len);
+  uint8_t resp[128];
+  const esp_err_t err = request_raw(cam, NL_CMD_FW_CHUNK, KDP_FLAG_BINARY, s_chunk, 4 + len, resp,
+                                    sizeof resp - 1, NULL, 4000);
+  take_code(cam, err, code, code_cap);
+  return err;
+}
+
+esp_err_t camlink_fw_end_ch(int cam, bool *verified, char *code, size_t code_cap) {
+  if (verified != NULL) *verified = false;
+  if (!valid_cam(cam)) return ESP_ERR_INVALID_ARG;
+  uint8_t resp[128];
+  size_t len = 0;
+  const esp_err_t err = request(cam, NL_CMD_FW_END, "{}", resp, sizeof resp - 1, &len, 15000);
+  take_code(cam, err, code, code_cap);
+  if (err != ESP_OK) return err;
+  resp[len] = '\0';
+  cJSON *json = cJSON_Parse((const char *)resp);
+  if (json == NULL) return ESP_ERR_INVALID_RESPONSE;
+  if (verified != NULL) *verified = cJSON_IsTrue(cJSON_GetObjectItem(json, "verified"));
+  cJSON_Delete(json);
+  /* The node restarts as soon as this reply has left it; what the channel
+   * knew about it is stale from here. */
+  xSemaphoreTake(s_ch[cam].lock, portMAX_DELAY);
+  s_ch[cam].info.online = false;
+  xSemaphoreGive(s_ch[cam].lock);
+  return ESP_OK;
+}
+
+esp_err_t camlink_fw_abort_ch(int cam) {
+  if (!valid_cam(cam)) return ESP_ERR_INVALID_ARG;
+  uint8_t resp[128];
+  return request(cam, NL_CMD_FW_ABORT, "{}", resp, sizeof resp - 1, NULL, DEFAULT_TIMEOUT_MS);
+}
 
 esp_err_t camlink_release_held_ch(int cam, uint32_t timeout_ms) {
   /* An empty object, so handle_release() takes its unconditional branch. The

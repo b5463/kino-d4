@@ -150,6 +150,14 @@ static void cam_bank(bool on) {
   klog("P4", "cam bank %s", on ? "on" : "off");
 }
 
+void power_cam_bank_cycle(void) {
+  klog("P4", "cam bank power cycle");
+  cam_bank(false);
+  vTaskDelay(pdMS_TO_TICKS(400));
+  cam_bank(true);
+  power_activity();
+}
+
 static void power_task(void *arg) {
   (void)arg;
   for (;;) {
