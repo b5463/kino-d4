@@ -133,6 +133,11 @@ void gfx_slide(int duration_ms, bool from_right);
  */
 void gfx_stash(void);
 void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h);
+/** Draw a frame straight into the stash, and read it back: for a move whose
+ *  card is a screen too costly to draw every frame (the finder's four live
+ *  panes, a page of thumbnails), drawn once here and blitted from here. */
+void gfx_render_stash(gfx_draw_fn draw, void *ctx);
+const uint16_t *gfx_stash_px(void);
 
 /**
  * A second retained layer, for the parts of a move that only translate.

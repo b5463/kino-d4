@@ -6,6 +6,17 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Changed
 
+- **Firmware: three quality-of-life fixes on the P4 and one on the node.** A move
+  into or out of SHOOT or GALLERY now draws that screen once into the stash and
+  blits the card from it, so the finder's four panes and a page of thumbnails
+  no longer cost 18 and 11 ms a frame; both moves run with the others. STATUS
+  gains one row, "Measure cameras again", while a calibration is stored: it
+  clears the result so the next photograph measures, as the first did. And a
+  core dump left by an older firmware image is reported once, named as such,
+  and erased, so the "last panic" line in the ring is always about the running
+  build. On the node, a preview request that comes back with a photograph-sized
+  frame - the buffer the DMA was filling when the mode changed - takes the next
+  frame instead of handing the P4 a 100 KB preview it must refuse.
 - **Firmware 0.4.58: the on-device UI laid out for the hand that holds the shutter (#177).**
   The shutter is at X 115 on the body's top wall, so the right hand wraps the
   +X end, the index finger is on the button and the right thumb is the only
@@ -1046,6 +1057,12 @@ KINO has no published release yet. Changes intended for the first release collec
   frame, so every body logged "calibration measured nothing" and STATUS kept
   saying "Cameras not measured". The tile is 64-byte aligned now, as the
   photograph screen's has been since the same fault was found there.
+- **Firmware: the finder no longer blinks after every photograph.** The first
+  preview frame after a shot arrives at the photograph's size and the P4 refuses
+  it; that refusal flipped the pane to an error, put it into the absent-camera
+  backoff and announced "viewfinder live" again a frame later, on four panes,
+  after every shot. An oversize frame is a skipped frame now: the pane keeps its
+  last picture and the next pump brings the next one.
 - The firmware build daemon stamped every package `compatibleHardware: ["V1"]`, a string no device reports - the P4 firmware answers `kino-v1` and the Twin `D4-V1` - so a daemon build was BLOCKED at Studio's compatibility gate on any camera. It lists both.
 - `firmware/p4/host_preview/Makefile` began with a UTF-8 byte-order mark, which GNU make reads as a missing separator; `make -C firmware/p4/host_preview` failed before it parsed. The BOM is gone.
 
