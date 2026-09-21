@@ -123,11 +123,6 @@ void gfx_dissolve(int duration_ms);
  *  dissolve does. */
 void gfx_slide(int duration_ms, bool from_right);
 
-/** A rectangle the compositor can move on its own. */
-typedef struct {
-  int16_t x, y, w, h;
-} gfx_band_t;
-
 /**
  * Keep the frame just drawn, and hand pieces of it back.
  *
@@ -154,15 +149,6 @@ void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h);
  */
 void gfx_layer_keep(void);
 void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h);
-
-/**
- * A list arriving, one row at a time, over the frame already drawn.
- *
- * The bands come in from the right in order, staggered. `ground` is what is
- * behind them - the page's own background, because the row is not there yet.
- * Does not need a snapshot: everything it composites is the new frame.
- */
-void gfx_cascade(int duration_ms, const gfx_band_t *bands, int n, uint16_t ground);
 
 /** Frames presented and the time they took, for bandwidth checks. */
 void gfx_stats(uint32_t *frames, uint32_t *last_ms);

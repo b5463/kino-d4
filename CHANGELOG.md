@@ -183,6 +183,20 @@ KINO has no published release yet. Changes intended for the first release collec
   toggles light in the accent like every other live state. Rows are 56 px on
   a 64 px pitch. Every preview shot changed and the baseline was rebuilt from
   the result; the safe-area audit is clean; the Twin walk passes.
+  Last, the boot cascade left the compositor: it was the one transition
+  still composited from the canvas (`gfx_cascade`, 40 fps), and it is now an
+  animation like a move - `ANIM_CASCADE`, each row the menu drawn through a
+  moved view - at 60 fps on the panel, so every frame the P4 shows goes
+  through the display list. `gfx_cascade` and `gfx_band_t` are gone. Boot
+  also logs the internal heap (free and minimum since boot) next to the
+  recovery reserve, because the reserve flipped once this cycle on 120 bytes
+  and a number is easier to watch than a 1/2. The right-hand walk that
+  found the header regression is a Playwright spec now
+  (`e2e/twin-hand-walk.spec.ts`): fifteen taps at the coordinates the layout
+  constants place, each screen recognised by pixels the layout guarantees.
+  Measured on the panel after all of it: LOOK, ROLL, SETTINGS and POWER open
+  and close at 51-55 fps; GALLERY at 25 in and 38 back, which is the
+  thumbnails' PSRAM reads and is left as it is.
 - **Firmware 0.4.57: the on-device UI measured, and the numbers fixed (#176).**
   An audit of `firmware/p4/main/ui.c` as it runs in the Twin's SCREEN VIEW,
   with WCAG contrast computed from the palette defines and every screen

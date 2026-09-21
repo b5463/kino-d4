@@ -343,40 +343,6 @@ void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h) {
   }
 }
 
-/* The cascade. Same stagger as the device's gfx_cascade(). */
-void gfx_cascade(int duration_ms, const gfx_band_t *bands, int n, uint16_t ground) {
-  if (duration_ms <= 0 || bands == NULL || n <= 0) {
-    gfx_present();
-    return;
-  }
-  const float travel = 0.5f;
-  const float step = n > 1 ? (1.0f - travel) / (float)(n - 1) : 0.0f;
-  const int steps = tw_steps(duration_ms);
-
-  for (int k = 0; k < steps; k++) {
-    const float t = (float)k / (float)steps;
-    memcpy(g_blend, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t));
-    for (int i = 0; i < n; i++) {
-      float local = (t - step * (float)i) / travel;
-      if (local >= 1.0f) continue;
-      if (local < 0.0f) local = 0.0f;
-      const int x = bands[i].x, w = bands[i].w;
-      int o = (int)((1.0f - tw_settle(local)) * (float)(UI_W - x));
-      if (o < 0) o = 0;
-      if (o > w) o = w;
-      for (int y = bands[i].y; y < bands[i].y + bands[i].h && y < UI_H; y++) {
-        uint16_t *dst = g_blend + (size_t)y * UI_W + x;
-        const uint16_t *src = g_canvas + (size_t)y * UI_W + x;
-        for (int j = 0; j < o; j++) dst[j] = ground;
-        memcpy(dst + o, src, (size_t)(w - o) * sizeof(uint16_t));
-      }
-    }
-    push_frame(g_blend);
-    s_frames_presented++;
-    kui_now_us += (int64_t)duration_ms * 1000 / steps;
-  }
-  gfx_present();
-}
 
 void gfx_stats(uint32_t *f, uint32_t *ms) {
   if (f) *f = s_frames_presented;

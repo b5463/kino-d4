@@ -146,9 +146,6 @@ void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h) {
            (size_t)w * sizeof(uint16_t));
   }
 }
-void gfx_cascade(int ms, const gfx_band_t *b, int n, uint16_t g) {
-  (void)ms; (void)b; (void)n; (void)g;
-}
 void gfx_stats(uint32_t *f, uint32_t *ms) {
   if (f) *f = 0;
   if (ms) *ms = 0;

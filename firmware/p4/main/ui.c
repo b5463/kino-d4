@@ -2473,6 +2473,8 @@ static void boot_field(float reach, int32_t ms, int pal, float warm);
  * the marks.
  */
 static void ui_render(gfx_draw_fn draw, void *ctx);
+static void render_cascade(void *ctx);
+static void boot_bench(void);
 
 static void render_screen(void *ctx) {
   (void)ctx;
@@ -2545,6 +2547,7 @@ typedef enum {
   ANIM_NONE = 0,
   ANIM_SPLASH,
   ANIM_OPEN,
+  ANIM_CASCADE, /* the menu's rows arriving, after the splash */
 } anim_kind_t;
 
 /*
@@ -2667,6 +2670,18 @@ static void anim_start_open(int row, bool opening, screen_t card, int ms) {
   s_anim.row = row;
   s_anim.opening = opening;
   s_anim.card = card;
+  s_anim.start_us = esp_timer_get_time();
+  gfx_stats(&s_anim.f0, NULL);
+  gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
+  anim_phase(0, ms);
+}
+
+/* The menu arriving after the splash, on the same clock and the same report
+ * as a move. It was a compositor loop of its own (gfx_cascade) at 40 fps; it
+ * is drawn from the menu now like everything else, and it is the last thing
+ * that went to the panel any other way. */
+static void anim_start_cascade(int ms) {
+  s_anim.kind = ANIM_CASCADE;
   s_anim.start_us = esp_timer_get_time();
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
@@ -2813,6 +2828,18 @@ static uint32_t anim_tick(void) {
         ui_render(render_screen, NULL);
         anim_report(s_anim.opening ? "open move" : "back move");
         s_anim.kind = ANIM_NONE;
+      }
+      return 0;
+    }
+
+    case ANIM_CASCADE: {
+      float p = t;
+      ui_render(render_cascade, &p);
+      if (done) {
+        ui_render(render_screen, NULL);
+        anim_report("menu cascade");
+        s_anim.kind = ANIM_NONE;
+        boot_bench();
       }
       return 0;
     }
@@ -3459,22 +3486,6 @@ static void menu_rect(int i, int *x, int *y, int *w, int *h) {
  * Coming back from a screen it folds into the row you left from instead, and
  * two answers to the same question would be one too many.
  */
-static void menu_bands(gfx_band_t *band) {
-  for (int i = 0; i < 6; i++) {
-    int x, y, w, h;
-    menu_rect(i, &x, &y, &w, &h);
-    band[i].x = (int16_t)x;
-    band[i].y = (int16_t)y;
-    band[i].w = (int16_t)w;
-    band[i].h = (int16_t)h;
-  }
-}
-
-static void menu_cascade(int ms) {
-  gfx_band_t band[6];
-  menu_bands(band);
-  gfx_cascade(ms, band, 6, MZ_GROUND);
-}
 
 
 
@@ -7585,6 +7596,33 @@ static void draw_card_screen(void) {
  * view (draw_placed), straight into the tile being rendered. Nothing is read
  * back, nothing is prepared, and a frame costs what its pixels cost to draw.
  */
+/*
+ * The menu's rows arriving, each from its right, staggered.
+ *
+ * Every row travels the same distance at the same speed and they start at
+ * different moments, which is what makes a list that cascades read as a set
+ * of objects rather than as a picture of a list fading in. Each row is the
+ * menu drawn through a view moved by how far the row still has to come, and
+ * clipped to where the row will sit - the same mechanism as a move.
+ */
+static void render_cascade(void *ctx) {
+  const float t = *(const float *)ctx;
+  fill(0, 0, UI_W, UI_H, MZ_GROUND);
+  const float travel = 0.5f;
+  const float step = (1.0f - travel) / 5.0f;
+  for (int i = 0; i < 6; i++) {
+    float local = (t - step * (float)i) / travel;
+    if (local < 0.0f) continue; /* not started: still ground */
+    if (local > 1.0f) local = 1.0f;
+    int x, y, w, h;
+    menu_rect(i, &x, &y, &w, &h);
+    int o = (int)((1.0f - ease_ui(local)) * (float)(UI_W - x));
+    if (o < 0) o = 0;
+    if (o >= w) continue; /* wholly off the panel still */
+    draw_placed(draw_menu, o, 0, x + o, y, w - o, h);
+  }
+}
+
 static void open_frame(int row, float t) {
   int rx, ry, rw, rh;
   menu_rect(row, &rx, &ry, &rw, &rh);
@@ -8369,23 +8407,27 @@ static void ui_boot(void) { splash(); }
 
 /* The first screen, arriving out of the boot sequence. */
 static void boot_handoff(void) {
-  gfx_snapshot();
-  /* Into the canvas: the cascade composites the menu out of it. */
-  gfx_render_canvas(render_screen, NULL);
-  uint32_t f0 = 0, f1 = 0, ms = 0;
-  gfx_stats(&f0, NULL);
-  /* The menu is a list and this is the one time it arrives out of nothing. */
+  /* The menu is a list and this is the one time it arrives out of nothing:
+   * the cascade runs on the animation clock and reports like a move, and
+   * boot_bench() follows it. Any other first screen dissolves in. */
   if (s_screen == SCR_MENU) {
-    menu_cascade(NAV_CASCADE_MS);
-  } else {
-    gfx_dissolve(420);
+    anim_start_cascade(NAV_CASCADE_MS);
+    return;
   }
-  gfx_stats(&f1, &ms);
-  ESP_LOGI(TAG, "boot transition: %lu frames in %lu ms (%lu fps)", (unsigned long)(f1 - f0),
-           (unsigned long)ms, (unsigned long)(ms ? (f1 - f0) * 1000 / ms : 0));
-  /* Into the ring as well: the console figure never reaches a host. */
-  klog("P4", "menu cascade: %lu frames in %lu ms (%lu fps)", (unsigned long)(f1 - f0),
-       (unsigned long)ms, (unsigned long)(ms ? (f1 - f0) * 1000 / ms : 0));
+  gfx_snapshot();
+  gfx_render_canvas(render_screen, NULL);
+  gfx_dissolve(420);
+  boot_bench();
+}
+
+/* The figures a boot leaves in the ring for the bench: what internal SRAM is
+ * left, and what each screen costs to draw. */
+static void boot_bench(void) {
+  /* Internal SRAM is the pool this board runs out of first (#162). The
+   * recovery reserve's 2/2 says whether it fitted; this says by how much. */
+  klog("P4", "internal heap: %lu KB free, %lu KB minimum since boot",
+       (unsigned long)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+       (unsigned long)(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024));
 
   /* What each screen costs to draw through the tile pass, for the ring. The
    * moves are drawn from these, so a slow one here is a slow move. Nothing
