@@ -759,6 +759,7 @@ static bool s_toast_long;        /* the undo toast: thirty seconds, not two */
  * when the DIM stage began, for the three-step arrival. 150 of 255 leaves
  * the screen readable and unmistakably dimmed. */
 #define DIM_SCRIM_K 150
+#define DIM_RAMP_US 800000
 static int s_dim_k;
 static int64_t s_dim_since_us;
 static char s_undo_id[40];       /* a capture in the trash, restorable until s_undo_until_us */
@@ -7625,15 +7626,15 @@ static void timer_cancel(const char *why) {
  * stage, 0..2.
  */
 static void render_sleep(void *ctx) {
-  const int stage = ctx != NULL ? *(const int *)ctx : 0;
+  const int k = ctx != NULL ? *(const int *)ctx : 0; /* 0 = the mark and the line; 255 = dark */
   fill(0, 0, UI_W, UI_H, MZ_GROUND);
   boot_mark();
-  if (stage == 0) {
-    text_mid(&UI_FONT_T, UI_W / 2, UI_H - PAGE_M - UI_FONT_T.line_h, "GOING TO SLEEP.  TAP TO WAKE",
-             W_GRAYTEXT);
-  } else {
-    scrim(0, 0, UI_W, UI_H, MZ_GROUND, stage == 1 ? 120 : 200);
-  }
+  /* The line fades first, twice as fast as the mark, so the last thing on
+   * the screen is the mark alone going out. */
+  const int tk = k * 2 > 255 ? 255 : k * 2;
+  text_mid(&UI_FONT_T, UI_W / 2, UI_H - PAGE_M - UI_FONT_T.line_h, "GOING TO SLEEP.  TAP TO WAKE",
+           mix(W_GRAYTEXT, MZ_GROUND, tk));
+  if (k > 0) scrim(0, 0, UI_W, UI_H, MZ_GROUND, k);
 }
 
 static void draw_working_banner(const char *line) {
@@ -9189,8 +9190,10 @@ static int s_down_x, s_down_y;
  * Touches are swallowed while it is, and the screen is redrawn when the sleep
  * is called off or over. */
 static bool s_sleep_mark = false;
-static int s_sleep_stage;
+static int s_sleep_stage; /* the fade's k, 0..235 */
 static int64_t s_sleep_mark_us;
+#define SLEEP_HOLD_US 500000 /* the mark and the line, still */
+#define SLEEP_FADE_US 950000 /* then the fade; power.c cuts the light at 1.5 s */
 
 /** One pass of the UI loop. Returns how long the task sleeps before the next. */
 static uint32_t ui_pass(void) {
@@ -9323,8 +9326,12 @@ static uint32_t ui_pass(void) {
       if (!dim_now) s_dim_since_us = 0;
       int k = 0;
       if (dim_now) {
+        /* Eased over DIM_RAMP_US on the frame clock, so the room goes quiet
+         * rather than stepping down. */
         const int64_t up = esp_timer_get_time() - s_dim_since_us;
-        k = up < 200000 ? 50 : up < 400000 ? 100 : DIM_SCRIM_K;
+        float t = (float)up / (float)DIM_RAMP_US;
+        if (t > 1.0f) t = 1.0f;
+        k = (int)(ease_ui(t) * (float)DIM_SCRIM_K + 0.5f);
       }
       if (k != s_dim_k) {
         s_dim_k = k;
@@ -9350,11 +9357,17 @@ static uint32_t ui_pass(void) {
       klog("P4", "sleep: mark up on screen %d", (int)s_screen);
     } else if (s_sleep_mark && power_sleep_pending() && !asleep_now) {
       /* The wind-down: power.c holds the light for a second and a half
-       * after the mark; the mark dims twice on the way. */
+       * after the mark. The mark holds for the first SLEEP_HOLD_US, then
+       * fades to the dark on an ease over the rest, one frame a pass. */
       const int64_t up = esp_timer_get_time() - s_sleep_mark_us;
-      const int stage = up < 600000 ? 0 : up < 1100000 ? 1 : 2;
-      if (stage != s_sleep_stage) {
-        s_sleep_stage = stage;
+      int k = 0;
+      if (up > SLEEP_HOLD_US) {
+        float t = (float)(up - SLEEP_HOLD_US) / (float)SLEEP_FADE_US;
+        if (t > 1.0f) t = 1.0f;
+        k = (int)(ease_ui(t) * 235.0f + 0.5f);
+      }
+      if (k != s_sleep_stage) {
+        s_sleep_stage = k;
         ui_render(render_sleep, &s_sleep_stage);
       }
     } else if (s_sleep_mark && !power_sleep_pending() && !asleep_now) {
