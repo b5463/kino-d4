@@ -37,6 +37,7 @@
 #include "kdp_server.h"
 #include "kdp_sounds.h"
 #include "klog.h"
+#include "lid.h"
 #include "taskmon.h"
 #include "logo_kino_d4.h"
 #include "logo_odd_jobs.h"
@@ -49,6 +50,7 @@
 #include "roll_state.h"
 #include "storage.h"
 #include "storage_watch.h"
+#include <time.h>
 #include "upload_queue.h"
 #include "wifi_creds.h"
 #include "thumb.h"
@@ -599,6 +601,27 @@ static void card_words(char *out, size_t cap, const storage_status_t *sd) {
   else snprintf(out, cap, "%d SHOTS", shots);
 }
 
+/* "TODAY 18:01" or "21 SEP 18:01", in the zone the clock prints with. The
+ * capture id stays where it is; this is what a person reads first. */
+static void date_words(char *out, size_t cap, int64_t ms) {
+  if (ms <= 0) {
+    out[0] = '\0';
+    return;
+  }
+  const time_t local = (time_t)(ms / 1000 + (int64_t)clock_offset_min() * 60);
+  const time_t now_local = (time_t)(clock_now_ms() / 1000 + (int64_t)clock_offset_min() * 60);
+  struct tm t, n;
+  gmtime_r(&local, &t);
+  gmtime_r(&now_local, &n);
+  if (t.tm_year == n.tm_year && t.tm_yday == n.tm_yday) {
+    snprintf(out, cap, "TODAY %02d:%02d", t.tm_hour, t.tm_min);
+  } else {
+    static const char *const MON[12] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                                        "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+    snprintf(out, cap, "%d %s %02d:%02d", t.tm_mday, MON[t.tm_mon % 12], t.tm_hour, t.tm_min);
+  }
+}
+
 #ifndef UI_DRAW_PROFILE
 #define UI_DRAW_PROFILE 0
 #endif
@@ -732,6 +755,12 @@ static int64_t s_shot_seen_us;
 static bool s_shot_hold;
 static char s_toast[48];
 static int64_t s_toast_us;
+static bool s_toast_long;        /* the undo toast: thirty seconds, not two */
+static char s_undo_id[40];       /* a capture in the trash, restorable until s_undo_until_us */
+static int64_t s_undo_ms;
+static int64_t s_undo_until_us;
+#define UNDO_MS 30000
+#define IT_UNDO 201
 static uint16_t *s_photo;        /* PH_W * PH_H, decoded on entering SCR_PHOTO */
 static bool s_photo_ok;
 static char s_photo_id[40];
@@ -742,6 +771,8 @@ static int s_photo_frames;
  * opens and kept here, not re-read on every draw: a draw runs many times a
  * second and this would be an SD read and a JSON parse in each of them. */
 static bool s_photo_fav;
+static int64_t s_photo_ms;
+static bool s_photo_sent;
 
 /*
  * The wigglegram player (#160).
@@ -1952,6 +1983,7 @@ static bool usb_attached(void) {
 
 static void toast(const char *s) {
   snprintf(s_toast, sizeof s_toast, "%s", s);
+  s_toast_long = false;
   s_toast_us = esp_timer_get_time();
 }
 
@@ -5002,6 +5034,13 @@ static void draw_gallery(void) {
     const int d = down ? 1 : 0;
     if (slots[i].state == TILE_READY && slots[i].pixels) {
       gal_blit(slots[i].pixels, x, y);
+      if (slots[i].sent) {
+        /* The Roll has it: safe to delete, which is the one question a
+         * person asks a full card. */
+        const int bw = text_w(&UI_FONT_T, "SENT") + 14;
+        round_rect(x + 8, y + 8, bw, 20, 6, MZ_MINT);
+        text(&UI_FONT_T, x + 15, y + 11, "SENT", MZ_GROUND);
+      }
     } else if (slots[i].state == TILE_PENDING) {
       /* Not yet decoded is not the same state as will not decode, and they
        * used to be drawn identically: the same grey word on the same dark
@@ -5194,6 +5233,8 @@ static bool photo_open(const gallery_item_t *it) {
    * its own copy from here on because the toggle below changes it and the
    * gallery's slot is only refreshed on the next scan. */
   s_photo_fav = it->favorite;
+  s_photo_ms = it->captured_ms;
+  s_photo_sent = it->sent;
 
   /* 64-byte aligned, because this is a PPA destination and the PPA is a DMA
    * engine: a plain heap_caps_malloc gave 4-byte alignment and every scale
@@ -5693,11 +5734,17 @@ static void draw_photo(void) {
 
     /* Sized for both inputs whole. The compiler cannot see that a capture id
      * is ten characters and is right to insist. */
+    /* The mode, and whether the Roll has it. The "CAP" prefix said nothing a
+     * person needed; the date that replaced it on the next line does. */
     char sub[64];
-    if (tail != NULL && mode[0] != '\0') snprintf(sub, sizeof sub, "%s  %s", raw, mode);
-    else if (tail != NULL) snprintf(sub, sizeof sub, "%s", raw);
-    else snprintf(sub, sizeof sub, "%s", mode);
-    text(&UI_FONT_T, fx, cy, sub, D_DIM);
+    snprintf(sub, sizeof sub, "%s%s", mode[0] != '\0' ? mode : raw, s_photo_sent ? "  SENT" : "");
+    text(&UI_FONT_T, fx, cy, sub, s_photo_sent ? MZ_MINT : D_DIM);
+    if (s_photo_ms > 0) {
+      cy += UI_FONT_T.line_h;
+      char when[24];
+      date_words(when, sizeof when, s_photo_ms);
+      text(&UI_FONT_T, fx, cy, when, D_DIM);
+    }
     cy += UI_FONT_T.line_h;
   }
 
@@ -6800,6 +6847,13 @@ static void draw_sound(void) {
  * Every value comes from net_link, so this screen becomes correct on its own
  * once the transport lands. Nothing here is hard-coded to the V1 state.
  */
+#define CN_IT_TZ_MINUS 0
+#define CN_IT_TZ_PLUS 1
+#define CN_IT_COUNT 2
+#define CN_PITCH 42
+#define CN_TZ_Y (LIST_TOP_DEFAULT + 7 * CN_PITCH + 12) /* under the seven facts */
+#define CN_TZ_H 40
+#define CN_TZ_BTN 64
 static void draw_connection(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_CONNECTION);
@@ -6890,7 +6944,7 @@ static void draw_connection(void) {
       {"USB", usb_attached() ? "Connected" : "Not connected", true},
   };
   const int n = (int)(sizeof ROWS / sizeof ROWS[0]);
-  const int pitch = 46;
+  const int pitch = CN_PITCH;
 
   fill(0, BODY_Y, UI_W, UI_H - BODY_Y, W_FACE);
   const int lh = n * pitch;
@@ -6903,16 +6957,38 @@ static void draw_connection(void) {
    * on-screen keyboard on purpose: a passphrase entered on a 480x800 panel
    * with no physical keys is worse than the USB path, and building a bad one
    * to claim independence from Studio would be the wrong trade. */
-  const int y = LIST_Y + lh + 18;
+  /* One line under the zone band, so the seven facts, the band and the note
+   * share the height that six facts and a two-line note had. */
+  const int y = CN_TZ_Y + CN_TZ_H + 8;
+  (void)lh;
   if (!net.radio_fitted) {
     text(&UI_FONT_S, PAGE_M, y, "No radio on this body. Photos leave over USB-C.", W_GRAYTEXT);
   } else if (!net.radio_routed) {
-    text(&UI_FONT_S, PAGE_M, y, "The C6 radio is fitted, but this firmware has no", W_GRAYTEXT);
-    text(&UI_FONT_S, PAGE_M, y + 20, "route to it. Photos leave over USB-C.", W_GRAYTEXT);
+    text(&UI_FONT_S, PAGE_M, y, "Radio fitted, no route to it yet. Photos leave over USB-C.", W_GRAYTEXT);
   } else if (net.state != NET_IP_READY) {
     text(&UI_FONT_S, PAGE_M, y, "Set up Wi-Fi in Studio over USB-C.", W_GRAYTEXT);
   } else {
     text(&UI_FONT_S, PAGE_M, y, "Captures upload to the active roll.", W_GRAYTEXT);
+  }
+
+  /* The zone the clock prints with. SNTP gives UTC and nothing else, and a
+   * body that never met Studio dated every photograph an ocean away; two
+   * buttons in half-hour steps is the whole of what a person needs. */
+  {
+    const int off = clock_offset_min();
+    char zone[32];
+    snprintf(zone, sizeof zone, "TIME ZONE   UTC%c%02d:%02d", off < 0 ? '-' : '+', abs(off) / 60,
+             abs(off) % 60);
+    round_rect(LIST_X, CN_TZ_Y, CN_TZ_BTN, CN_TZ_H, UI_R,
+               s_pressed == CN_IT_TZ_MINUS ? W_PRESS : W_ROW);
+    text_mid(&UI_FONT_M, LIST_X + CN_TZ_BTN / 2, CN_TZ_Y + (CN_TZ_H - UI_FONT_M.line_h) / 2, "-",
+             W_TEXT);
+    round_rect(LIST_X + LIST_W - CN_TZ_BTN, CN_TZ_Y, CN_TZ_BTN, CN_TZ_H, UI_R,
+               s_pressed == CN_IT_TZ_PLUS ? W_PRESS : W_ROW);
+    text_mid(&UI_FONT_M, LIST_X + LIST_W - CN_TZ_BTN / 2, CN_TZ_Y + (CN_TZ_H - UI_FONT_M.line_h) / 2,
+             "+", W_TEXT);
+    text_mid(&UI_FONT_T, UI_W / 2, CN_TZ_Y + (CN_TZ_H - UI_FONT_T.line_h) / 2, zone,
+             clock_offset_known() ? W_TEXT : W_GRAYTEXT);
   }
 }
 
@@ -7048,10 +7124,13 @@ static void draw_storage(void) {
     /* Why, not just that. mount_attempts separates "no card in the slot" from
      * "a card the driver has tried and failed to mount", which are different
      * problems and the screen used to show the same "None" for both. */
-    text(&UI_FONT_M, PAGE_M, by, sd.present ? "Card present, not mounted" : "No card in the slot",
+    text(&UI_FONT_M, PAGE_M, by, sd.present ? "The card cannot be read" : "No card in the slot",
          W_TEXT);
     char detail[80];
-    if (sd.last_error != NULL && sd.last_error[0] != '\0') {
+    if (sd.present && sd.last_error != NULL && strcmp(sd.last_error, "NO_FILESYSTEM") == 0) {
+      snprintf(detail, sizeof detail,
+               "Cards over 32 GB come in a format KINO does not read. FORMAT CARD fixes it.");
+    } else if (sd.last_error != NULL && sd.last_error[0] != '\0') {
       snprintf(detail, sizeof detail, "%s, after %u mount attempt%s", sd.last_error,
                (unsigned)sd.mount_attempts, sd.mount_attempts == 1 ? "" : "s");
     } else {
@@ -7235,7 +7314,6 @@ static void draw_about(void) {
   fill(AB_RX, LIST_Y + AB_ROW - 1, AB_RW, 1, W_RULE);
   const int cy0 = LIST_Y + AB_ROW;
   const int ch = 4 * AB_CAM_ROW;
-  const char *NOTE = "Node firmware, then the sensor each node reports.";
   const int note_y = cy0 + ch + 12;
 
   const camlink_info_t *cams = about_cameras();
@@ -7263,7 +7341,27 @@ static void draw_about(void) {
   /* Node firmware is per camera and the four can differ - a node reflashed on
    * its own is the normal way that happens - which is the whole reason this is
    * four rows and not one summary line. */
-  text_block(&UI_FONT_S, AB_RX, note_y, AB_RW, NOTE, W_GRAYTEXT);
+  /* Help in one scan: the serial and the firmware, prefilled into a new
+   * issue, so support never asks "which version". Encoded once; the struct is
+   * 4 KB and lives in PSRAM, not in the .bss the C6 reserve is paid from. */
+  {
+    static qr_t *qr;
+    static bool encoded;
+    if (qr == NULL) qr = heap_caps_calloc(1, sizeof *qr, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (qr != NULL && !encoded) {
+      char url[160];
+      snprintf(url, sizeof url, "https://github.com/b5463/kino-d4/issues/new?title=%s+%s",
+               serial[0] != '\0' ? serial : "KD4", KINO_FW_VERSION);
+      encoded = qr_encode(url, qr);
+    }
+    const int plate_top = UI_H - PAGE_M - (4 + UI_FONT_T.line_h + UI_FONT_S.line_h);
+    const int room = plate_top - note_y - 8 - UI_FONT_T.line_h - 6;
+    const int box = room < AB_RW ? room : AB_RW;
+    if (encoded && qr != NULL && box >= 64) {
+      draw_qr_centred(qr, AB_RX + AB_RW / 2, note_y, box);
+      text_mid(&UI_FONT_T, AB_RX + AB_RW / 2, note_y + box + 4, "SCAN FOR HELP", W_GRAYTEXT);
+    }
+  }
 
   /*
    * Who made it.
@@ -7545,6 +7643,74 @@ static void draw_strip(const fm_cell_t *st, const char *line, uint16_t accent) {
 
 /** The camera at work on something that is not a capture. All four cells
  *  lit, because this is about the four and not about one of them. */
+/*
+ * What the lenses see, as a word on the finder.
+ *
+ * lid.c already reads a mean off every finder pane to know where the cover
+ * is; the settled "closed" is the first hint. The second is one pane far
+ * darker than the other three with the cover open: a finger, a cap on one
+ * lens, a smudge - a black frame from one camera that nobody notices until
+ * the wiggle jumps. Polled every half second, held for two polls before it is
+ * said, and only on SHOOT, where there is a picture to check against.
+ */
+static char s_lens_hint[40];
+static void lens_hint_poll(void) {
+  static int64_t last_us;
+  static int dark_cand = -1, dark_n;
+  const int64_t now = esp_timer_get_time();
+  if (now - last_us < 500000) return;
+  last_us = now;
+  char next[40] = "";
+  if (s_screen == SCR_SHOOT && !anim_active()) {
+    lid_state_t l;
+    lid_get(&l);
+    if (l.state == PURE_LID_CLOSED) {
+      snprintf(next, sizeof next, "TAKE THE LENS COVER OFF");
+      dark_cand = -1;
+    } else if (l.answered >= 3) {
+      int hi = 0, dark = -1, ndark = 0;
+      for (int i = 0; i < 4; i++)
+        if (l.mean[i] > hi) hi = l.mean[i];
+      for (int i = 0; i < 4; i++) {
+        if (l.mean[i] < 0) continue;
+        if (hi >= 60 && l.mean[i] * 3 < hi) {
+          dark = i;
+          ndark++;
+        }
+      }
+      if (ndark == 1 && dark == dark_cand) dark_n++;
+      else dark_n = 0;
+      dark_cand = ndark == 1 ? dark : -1;
+      if (ndark == 1 && dark_n >= 2) {
+        static const char *const POS[4] = {"FIRST", "SECOND", "THIRD", "FOURTH"};
+        snprintf(next, sizeof next, "CHECK THE %s LENS", POS[dark]);
+      }
+    }
+  }
+  if (strcmp(next, s_lens_hint) != 0) {
+    snprintf(s_lens_hint, sizeof s_lens_hint, "%s", next);
+    ui_render(render_screen, NULL);
+  }
+}
+
+/*
+ * The self-timer: a long press on the shutter starts ten seconds, counted
+ * down on the finder with a tick a second; any press during it cancels. The
+ * camera is for groups, and the person holding it wants to be in the
+ * picture.
+ */
+#define TIMER_S 10
+static int64_t s_timer_end_us;
+static int s_timer_last_s;
+static bool s_shot_queued; /* a second press while saving: fired when the report lands */
+
+static void timer_cancel(const char *why) {
+  if (s_timer_end_us == 0) return;
+  s_timer_end_us = 0;
+  if (why != NULL) toast(why);
+  ui_render(render_screen, NULL);
+}
+
 /* The mark, and one line under it, so a screen going dark reads as sleep and
  * not as a crash. The wake is the one thing worth saying at that moment. */
 static void render_sleep(void *ctx) {
@@ -7581,7 +7747,7 @@ static void draw_capture_banner(void) {
       break;
     case CAPTURE_WRITING:
       st[0] = st[1] = st[2] = FM_ON;
-      snprintf(line, sizeof line, "SAVING");
+      snprintf(line, sizeof line, "SAVING%s", s_shot_queued ? " - NEXT SHOT QUEUED" : "");
       break;
     default:
       if (!r.ok) {
@@ -7614,7 +7780,20 @@ static void draw_capture_banner(void) {
  * expired between two tiles would be half on the screen. */
 #define TOAST_MS 2200
 static bool toast_expired(void) {
-  return s_toast[0] != '\0' && esp_timer_get_time() - s_toast_us > (int64_t)TOAST_MS * 1000;
+  return s_toast[0] != '\0' && esp_timer_get_time() - s_toast_us > (int64_t)(s_toast_long ? (int64_t)UNDO_MS : TOAST_MS) * 1000;
+}
+
+static void toast_rect(int *ox, int *oy, int *ow, int *oh) {
+  const int w = text_w(&UI_FONT_T, s_toast) + 40, h = 36;
+  int y = UI_H - 14 - h;
+  if (s_screen == SCR_SHOOT) y = SH_BAR_Y - h - 10;
+  int x = (UI_W - w) / 2;
+  if (s_screen == SCR_MENU) {
+    y = MZ_M + MZ_CARD_H / 2 + 50;
+    x = mz_card_x() + (MZ_CARD_W - w) / 2;
+  }
+  if (s_screen == SCR_PHOTO) x = ph_well_x() + (PH_W - w) / 2;
+  *ox = x; *oy = y; *ow = w; *oh = h;
 }
 
 static void draw_toast(void) {
@@ -7635,18 +7814,8 @@ static void draw_toast(void) {
    * photograph's own well rather than the panel, because every message there
    * is about the picture and the panel's centre straddles the button column.
    */
-  const int w = text_w(&UI_FONT_T, s_toast) + 40, h = 36;
-  int y = UI_H - 14 - h;
-  if (s_screen == SCR_SHOOT) y = SH_BAR_Y - h - 10;
-  int x = (UI_W - w) / 2;
-  /* The menu's rows run to the bottom of the panel, so the bottom band is a
-   * control. The card's own air - between the mark and the word - is the
-   * empty place on that screen, and the card is on the hand's side. */
-  if (s_screen == SCR_MENU) {
-    y = MZ_M + MZ_CARD_H / 2 + 50;
-    x = mz_card_x() + (MZ_CARD_W - w) / 2;
-  }
-  if (s_screen == SCR_PHOTO) x = ph_well_x() + (PH_W - w) / 2;
+  int x, y, w, h;
+  toast_rect(&x, &y, &w, &h);
   round_rect(x, y, w, h, UI_R, MZ_MINT);
   text_mid(&UI_FONT_T, x + w / 2, y + (h - UI_FONT_T.line_h) / 2, s_toast, W_INFOTEXT);
 }
@@ -7786,6 +7955,20 @@ static void draw_screen(void) {
     default: break;
   }
   draw_capture_banner();
+  if (s_screen == SCR_SHOOT && s_timer_end_us != 0) {
+    /* The countdown, large, over the finder: the one number that matters
+     * for the next ten seconds. */
+    char n[8];
+    snprintf(n, sizeof n, "%d", s_timer_last_s);
+    const int w = text_w(&UI_FONT_L, n) + 60, h = UI_FONT_L.line_h + 30;
+    scrim((UI_W - w) / 2, UI_H / 2 - h / 2 - 20, w, h, MZ_GROUND, 160);
+    text_mid(&UI_FONT_L, UI_W / 2, UI_H / 2 - UI_FONT_L.line_h / 2 - 20, n, W_TEXT);
+    text_mid(&UI_FONT_T, UI_W / 2, UI_H / 2 + h / 2 - 12, "SELF-TIMER.  PRESS TO CANCEL", W_TEXT);
+  } else if (s_screen == SCR_SHOOT && s_lens_hint[0] != '\0') {
+    const int w = text_w(&UI_FONT_T, s_lens_hint) + 32, h = 30;
+    round_rect((UI_W - w) / 2, 12, w, h, UI_R, C_RED);
+    text_mid(&UI_FONT_T, UI_W / 2, 12 + (h - UI_FONT_T.line_h) / 2, s_lens_hint, W_TEXT);
+  }
   if (s_formatting) draw_working_banner("FORMATTING THE CARD");
   else if (s_cams_restart_us != 0 && esp_timer_get_time() - s_cams_restart_us < CAMS_RESTART_BANNER_US)
     draw_working_banner("RESTARTING THE CAMERAS");
@@ -8130,6 +8313,7 @@ static int item_count(screen_t s) {
     case SCR_PHOTO: return 3;
     case SCR_SETTINGS: return settings_rows();
     case SCR_DISPLAY: return DSP_IT_COUNT;
+    case SCR_CONNECTION: return CN_IT_COUNT;
     case SCR_SOUND: return SN_IT_COUNT;
     case SCR_STORAGE: return ST_IT_COUNT;
     case SCR_POWER: return PW_IT_COUNT;
@@ -8346,6 +8530,11 @@ static int hit_test(int x, int y) {
       return -1;
     }
 
+    case SCR_CONNECTION:
+      if (in(x, y, LIST_X, CN_TZ_Y, CN_TZ_BTN, CN_TZ_H)) return CN_IT_TZ_MINUS;
+      if (in(x, y, LIST_X + LIST_W - CN_TZ_BTN, CN_TZ_Y, CN_TZ_BTN, CN_TZ_H)) return CN_IT_TZ_PLUS;
+      return -1;
+
     case SCR_POWER:
       for (int i = 0; i < PW_IT_COUNT; i++)
         if (in(x, y, LIST_X, LIST_Y + i * ROW_H, LIST_W, ROW_H)) return i;
@@ -8389,8 +8578,17 @@ static void dialog_commit(void) {
       /* Queue first, files second, as Delete All does: a job left behind
        * re-reads a missing asset to the retry cap and parks FAILED. */
       upload_queue_forget(s_photo_id);
-      storage_capture_delete(dir);
+      /* Into the trash, not gone: thirty seconds of UNDO on the toast. A
+       * rename that fails (a card with no room for a folder entry) falls
+       * back to the delete it always was. */
+      const bool trashed = storage_capture_trash(s_photo_id) == ESP_OK;
+      if (!trashed) storage_capture_delete(dir);
       storage_release(STORAGE_USER_UI);
+      if (trashed) {
+        snprintf(s_undo_id, sizeof s_undo_id, "%s", s_photo_id);
+        s_undo_ms = s_photo_ms;
+        s_undo_until_us = esp_timer_get_time() + (int64_t)UNDO_MS * 1000;
+      }
       photo_release();
       /* Told, not discovered, and before the refresh: the gallery's order
        * index still names this capture, and the only other way it would find
@@ -8398,7 +8596,8 @@ static void dialog_commit(void) {
        * of the card. Non-blocking; the gallery task does the work. */
       gallery_note_removed(s_photo_id);
       gallery_refresh();
-      toast("Deleted");
+      toast(trashed ? "Deleted.  TAP TO UNDO" : "Deleted");
+      s_toast_long = trashed;
       go(SCR_GALLERY, NAV_BACK_MS);
       return;
     }
@@ -8599,6 +8798,12 @@ static void activate(int item) {
       }
       break;
 
+    case SCR_CONNECTION:
+      if (item == CN_IT_TZ_MINUS || item == CN_IT_TZ_PLUS) {
+        clock_set_offset(clock_offset_min() + (item == CN_IT_TZ_PLUS ? 30 : -30));
+      }
+      break;
+
     case SCR_STATUS:
       if (item == STS_IT_REMEASURE) {
         /* Clear the result; the next photograph measures, exactly as the first
@@ -8640,9 +8845,49 @@ static void activate(int item) {
  * screen does not change underneath you.
  */
 static void fire_shutter(bool long_press) {
+  if (s_timer_end_us != 0) {
+    /* Any press while the timer runs is "no". */
+    timer_cancel("Timer cancelled");
+    return;
+  }
+  if (long_press) {
+    s_timer_end_us = esp_timer_get_time() + (int64_t)TIMER_S * 1000000;
+    s_timer_last_s = TIMER_S;
+    audio_tick();
+    ui_render(render_screen, NULL);
+    return;
+  }
   if (config_bool("body.sounds.save", true)) audio_shutter();
-  if (!capture_request(long_press ? "shutter-hold" : "shutter")) {
-    klog("P4", "shutter ignored - a capture is already running");
+  if (!capture_request("shutter")) {
+    if (capture_stage() != CAPTURE_IDLE && !s_shot_queued) {
+      /* A second press while saving is not a mistake to swallow: it fires
+       * the moment the report lands, and the banner says so meanwhile. */
+      s_shot_queued = true;
+      klog("P4", "shutter while saving - next shot queued");
+      ui_render(render_screen, NULL);
+    } else {
+      klog("P4", "shutter ignored - a capture is already running");
+    }
+  }
+}
+
+static void timer_poll(void) {
+  if (s_timer_end_us == 0) return;
+  if (s_screen != SCR_SHOOT) {
+    timer_cancel(NULL);
+    return;
+  }
+  const int64_t left = s_timer_end_us - esp_timer_get_time();
+  if (left <= 0) {
+    s_timer_end_us = 0;
+    fire_shutter(false);
+    return;
+  }
+  const int secs = (int)((left + 999999) / 1000000);
+  if (secs != s_timer_last_s) {
+    s_timer_last_s = secs;
+    audio_tick();
+    ui_render(render_screen, NULL);
   }
 }
 
@@ -8822,13 +9067,14 @@ static void first_start_note(void) {
 }
 
 /*
- * The first photograph ever taken on this body plays back once, as the
- * wiggle it is. The review hold after a shot shows a still, and a still of a
- * four-lens photograph shows nothing of what was bought; one loop of the
- * motion does. Then back to SHOOT on its own, unless a finger got there
- * first.
+ * Every photograph plays back as the wiggle it is, for the AFTER SHOT time.
+ * The review hold used to show a still, and a still of a four-lens
+ * photograph shows nothing of what was bought; one loop of the motion does.
+ * Then back to SHOOT on its own (HOLD stays until a finger moves it), unless
+ * a finger got there first.
  */
-static int64_t s_first_review_us;
+static int64_t s_first_review_us; /* when the review opened; 0 when none is up */
+static int64_t s_review_span_us;  /* how long it stays; 0 for HOLD */
 static void first_review_open(const capture_report_t *r) {
   gallery_item_t it;
   memset(&it, 0, sizeof it);
@@ -8836,6 +9082,7 @@ static void first_review_open(const capture_report_t *r) {
   snprintf(it.label, sizeof it.label, "%s", r->id);
   snprintf(it.mode, sizeof it.mode, "%s", r->mode);
   it.frames = r->stored;
+  it.captured_ms = r->captured_at_ms;
   if (!photo_open(&it)) return; /* the card is still busy with it; a still it is */
   s_focus[SCR_PHOTO] = P_IT_DELETE;
   s_first_review_us = esp_timer_get_time();
@@ -8847,9 +9094,47 @@ static void first_review_poll(void) {
     s_first_review_us = 0;
     return;
   }
-  if (esp_timer_get_time() - s_first_review_us < 4500000) return;
+  if (s_review_span_us == 0) return; /* HOLD: a finger ends it */
+  if (esp_timer_get_time() - s_first_review_us < s_review_span_us) return;
   s_first_review_us = 0;
   go(SCR_SHOOT, NAV_BACK_MS);
+}
+
+/* The undo: the folder back where it was, the gallery told, the toast
+ * answered. Thirty seconds after the delete, or at the next boot, the trash
+ * is emptied for good. */
+static void undo_delete(void) {
+  if (s_undo_id[0] == '\0' || esp_timer_get_time() > s_undo_until_us) return;
+  if (!storage_acquire(STORAGE_USER_UI, 2000)) {
+    toast("Card busy. Try again");
+    return;
+  }
+  const esp_err_t err = storage_capture_untrash(s_undo_id);
+  storage_release(STORAGE_USER_UI);
+  if (err == ESP_OK) {
+    gallery_note_added(s_undo_id, s_undo_ms > 0 ? (uint64_t)s_undo_ms : 0);
+    gallery_refresh();
+    toast("Restored");
+    audio_done();
+  } else {
+    toast("Could not restore it");
+    audio_warning();
+  }
+  s_undo_id[0] = '\0';
+  ui_render(render_screen, NULL);
+}
+static void undo_poll(void) {
+  if (s_undo_id[0] == '\0' || esp_timer_get_time() <= s_undo_until_us) return;
+  if (!storage_acquire(STORAGE_USER_UI, 0)) return; /* next pass */
+  storage_trash_purge();
+  storage_release(STORAGE_USER_UI);
+  s_undo_id[0] = '\0';
+}
+static bool undo_hit(int x, int y) {
+  if (s_undo_id[0] == '\0' || s_toast[0] == '\0' || toast_expired()) return false;
+  int tx, ty, tw, th;
+  toast_rect(&tx, &ty, &tw, &th);
+  return in(x, y, tx - 8, ty - 8, tw + 16, th + 16);
 }
 
 /* What the card watcher saw, said on the screen it happened under. */
@@ -9067,6 +9352,9 @@ static uint32_t ui_pass(void) {
     calib_poll();
     first_review_poll();
     storage_events_poll();
+    lens_hint_poll();
+    timer_poll();
+    undo_poll();
     if (s_cams_restart_us != 0 && esp_timer_get_time() - s_cams_restart_us >= CAMS_RESTART_BANNER_US) {
       s_cams_restart_us = 0;
       ui_render(render_screen, NULL);
@@ -9199,7 +9487,7 @@ static uint32_t ui_pass(void) {
         s_down_x = lx;
         s_down_y = ly;
       }
-      region = hit_test(lx, ly);
+      region = undo_hit(lx, ly) ? IT_UNDO : hit_test(lx, ly);
     }
 
     if (down && region != s_pressed) {
@@ -9213,7 +9501,9 @@ static uint32_t ui_pass(void) {
       const int fired = (s_pressed == held) ? held : -1;
       s_pressed = -1;
       held = -1;
-      if (fired != -1) {
+      if (fired == IT_UNDO) {
+        undo_delete();
+      } else if (fired != -1) {
         /* Touch sets focus as well as acting, so the two input models never
          * disagree about what is selected. */
         if (s_dialog != DLG_NONE) s_dlg_focus = fired;
@@ -9309,9 +9599,20 @@ static uint32_t ui_pass(void) {
         if (r.ok && r.stored >= 2 && !config_bool("body.calibration.done", false)) {
           calib_start(r.dir, r.id);
         }
-        if (r.ok && r.stored >= 2 && !config_bool("body.firstShotSeen", false)) {
-          cfg_set_bool("body.firstShotSeen", true);
-          first_review_open(&r);
+        if (s_shot_queued) {
+          /* The press taken while saving: the report is acknowledged and
+           * the next photograph starts now, review or none. */
+          s_shot_queued = false;
+          capture_ack();
+          fire_shutter(false);
+        } else if (r.ok && r.stored >= 2 && s_screen == SCR_SHOOT) {
+          const int hold_s = config_int("shoot.displayAfterShotS", 2);
+          if (hold_s != 0) {
+            /* One loop of the wiggle is about three seconds with the load;
+             * a shorter AFTER SHOT still gets the loop, HOLD gets no clock. */
+            s_review_span_us = hold_s < 0 ? 0 : (int64_t)(hold_s < 3 ? 3 : hold_s) * 1000000 + 800000;
+            first_review_open(&r);
+          }
         }
       }
       /*

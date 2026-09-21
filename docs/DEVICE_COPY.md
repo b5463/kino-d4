@@ -26,6 +26,7 @@ Severity words: PROBLEM stops photographs, CHECK does not yet, NOTE is informati
 |---|---|---|
 | No card | Put a card in. Photos cannot be saved. | PROBLEM |
 | The card was taken out | Put it back. Photos cannot be saved. | PROBLEM |
+| The card cannot be read | Not a format KINO reads. Use a card up to 32 GB, or format it. | PROBLEM |
 | This card failed a write | Copy your photos off it and change the card. | PROBLEM |
 | This card is slow | Photos take longer to save. A faster card helps. | CHECK |
 | The card is full | Delete photos or change the card. | PROBLEM |
@@ -38,6 +39,7 @@ Severity words: PROBLEM stops photographs, CHECK does not yet, NOTE is informati
 | The camera lost power while running | Charge or replace the cells. | CHECK |
 | Running without Wi-Fi | It crashed 3 times in a row. Restart to try again. | PROBLEM |
 | The camera is warm | 78 C inside. The finder slows until it cools. | CHECK |
+| The clock is on UTC | Set the time zone in CONNECTION. | NOTE |
 
 Action rows at the foot of STATUS: **Restart the cameras** (always) and **Measure cameras again** (once measured).
 
@@ -46,6 +48,10 @@ Action rows at the foot of STATUS: **Restart the cameras** (always) and **Measur
 | Text | When |
 |---|---|
 | `SHOOTING` / `READING` / `SAVING` | The capture's stages. |
+| `SAVING - NEXT SHOT QUEUED` | A second shutter press landed while saving; it fires when the report does. |
+| `TAKE THE LENS COVER OFF` | The cover watcher settled on closed while on SHOOT. |
+| `CHECK THE SECOND LENS` | One pane a third as bright as the rest for a second. |
+| `10` .. `1`, `SELF-TIMER.  PRESS TO CANCEL` | A long shutter press started the timer. |
 | `SAVED` | Every lens that answered is on the card. |
 | `SAVED, 1 CAMERA MISSED` | A partial photograph; the cells show which. |
 | `No card. Put one in.` | Shutter with no card. |
@@ -71,7 +77,10 @@ Action rows at the foot of STATUS: **Restart the cameras** (always) and **Measur
 | Card busy. Try again | The card lock was held for two seconds by a capture or an upload. |
 | Card formatted | FORMAT finished. |
 | The card could not be formatted | FORMAT failed; the log has the reason. |
-| Deleted | One photograph deleted. |
+| Deleted.  TAP TO UNDO | One photograph moved to the trash; the toast stays thirty seconds and a tap restores it. |
+| Restored | UNDO tapped in time. |
+| Could not restore it | The folder would not move back. |
+| Timer cancelled | A press during the self-timer. |
 | Deleting photos | DELETE ALL started on the gallery task. |
 | No photos on the card | DELETE ALL with nothing to delete. |
 | No card in the slot | FORMAT with nothing in the slot. |
@@ -103,9 +112,13 @@ Action rows at the foot of STATUS: **Restart the cameras** (always) and **Measur
 
 `GOING TO SLEEP.  TAP TO WAKE` under the mark, then the backlight drops. DISPLAY says the same under BRIGHTNESS AND POWER: on or off, not dimmable; tap the screen to wake; hold the slide to switch off.
 
-## The first photograph
+## After a shot
 
-The first photograph ever taken on a body opens as the wiggle and plays one loop, about four seconds, then the screen returns to SHOOT on its own.
+Every photograph opens as the wiggle for the AFTER SHOT time (at least one loop, about three seconds; HOLD stays until a finger moves it), then the screen returns to SHOOT on its own. PHOTO shows the date as `TODAY 18:01` or `21 SEP 18:01` and `SENT` once the Roll holds every frame; gallery tiles carry the same `SENT` badge.
+
+## Help
+
+ABOUT carries a QR under SCAN FOR HELP that opens a new issue with the serial and firmware version filled in. CONNECTION has the TIME ZONE band; the clock is on UTC until it is set there or by Studio.
 
 ## Field log
 

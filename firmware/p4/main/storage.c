@@ -36,6 +36,7 @@ static char s_last_error[48];
 static const char *s_write_test = "none";
 static uint32_t s_selftest_ms;  /* how long the last write test took */
 static bool s_removed;          /* the card was pulled while running */
+static bool s_card_seen;        /* a card answered but its filesystem would not mount */
 static bool s_quiet_mount;      /* a retry from the watcher: no log line per failure */
 
 static void set_error(const char *code) {
@@ -285,10 +286,15 @@ static esp_err_t card_mount(bool format_if_mount_failed) {
     // Missing/unreadable card is a reported state, not a boot failure. The
     // registry is NOT marked failed here — an empty slot and a wrong pin
     // look identical from software; that diagnosis is bench work.
+    /* ESP_FAIL is the card answering and the filesystem refusing: a 64 GB
+     * card straight from the shop is exFAT, which this build does not read.
+     * Anything else is the slot not answering, which is no card. */
+    s_card_seen = err == ESP_FAIL;
     if (!s_quiet_mount) {
       ESP_LOGW(TAG, "SD_MOUNT failed: %s", esp_err_to_name(err));
       klog("SD", "mount failed: %s", esp_err_to_name(err));
-      set_error(err == ESP_ERR_TIMEOUT ? "MOUNT_TIMEOUT" : "MOUNT_FAILED");
+      set_error(err == ESP_ERR_TIMEOUT ? "MOUNT_TIMEOUT"
+                                       : (err == ESP_FAIL ? "NO_FILESYSTEM" : "MOUNT_FAILED"));
     }
     s_card = NULL;
     return err;
@@ -358,6 +364,52 @@ esp_err_t storage_format(void) {
 
 bool storage_present(void) { return s_card != NULL; }
 
+/* The trash: a deleted capture's folder moved aside for thirty seconds so
+ * DELETE has an UNDO. One rename each way; the purge is the ordinary delete
+ * on whatever is left, on the UI's clock and at every boot. */
+#define TRASH_DIR MOUNT "/KINO/TRASH"
+
+esp_err_t storage_capture_trash(const char *id) {
+  if (s_card == NULL || id == NULL || id[0] == '\0') return ESP_ERR_INVALID_STATE;
+  char from[96], to[96];
+  snprintf(from, sizeof from, MOUNT "/KINO/CAPTURES/%s", id);
+  snprintf(to, sizeof to, TRASH_DIR "/%s", id);
+  mkdir(TRASH_DIR, 0775);
+  storage_capture_delete(to); /* a stale one of the same name would block the rename */
+  return rename(from, to) == 0 ? ESP_OK : ESP_FAIL;
+}
+
+esp_err_t storage_capture_untrash(const char *id) {
+  if (s_card == NULL || id == NULL || id[0] == '\0') return ESP_ERR_INVALID_STATE;
+  char from[96], to[96];
+  snprintf(from, sizeof from, TRASH_DIR "/%s", id);
+  snprintf(to, sizeof to, MOUNT "/KINO/CAPTURES/%s", id);
+  return rename(from, to) == 0 ? ESP_OK : ESP_FAIL;
+}
+
+void storage_trash_purge(void) {
+  if (s_card == NULL) return;
+  /* One entry per pass of the directory, reopened each time: deleting the
+   * entry a DIR is standing on is the one thing FatFs does not promise. */
+  for (int round = 0; round < 64; round++) {
+    DIR *d = opendir(TRASH_DIR);
+    if (d == NULL) return;
+    char name[48] = "";
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL) {
+      if (e->d_name[0] == '.') continue;
+      strlcpy(name, e->d_name, sizeof name);
+      break;
+    }
+    closedir(d);
+    if (name[0] == '\0') return;
+    char path[96];
+    snprintf(path, sizeof path, TRASH_DIR "/%s", name);
+    storage_capture_delete(path);
+    rmdir(path); /* a folder with files this firmware never wrote stays; not ours to take */
+  }
+}
+
 esp_err_t storage_remount(void) {
   if (s_card != NULL) return ESP_OK;
   if (s_card_lock == NULL) return ESP_ERR_INVALID_STATE;
@@ -397,7 +449,7 @@ bool storage_card_alive(void) {
 
 void storage_get_status(storage_status_t *out) {
   memset(out, 0, sizeof *out);
-  out->present = s_card != NULL;
+  out->present = s_card != NULL || (s_card_seen && !s_removed);
   out->mounted = s_card != NULL;
   out->filesystem = s_card != NULL ? "FAT" : NULL;
   out->mount_attempts = s_mount_attempts;

@@ -57,6 +57,10 @@ typedef struct {
    * tile can be marked without a second read of the same file - read_meta()
    * already has the parsed document in front of it. */
   bool favorite;
+  /* META.JSON's capturedAtMs, for a caption a person can read; 0 when absent. */
+  int64_t captured_ms;
+  /* The Roll holds every frame we hold (UPLOAD.JSON says RQ_COMPLETE). */
+  bool sent;
   /* The capture's own alignment calibration, cam1..cam4, read from META.JSON by
    * the same parse that fills the fields above. `cal_present` is false on every
    * capture today (the firmware records none), and then playback aligns nothing.

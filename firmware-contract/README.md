@@ -927,7 +927,7 @@ does not declare it, and `kino.device-config` (`packages/schemas/src/config.ts`)
 passes unknown keys through, so it travels in `GET_CONFIG` / `SET_CONFIG`
 untyped. Value `"right"` (default) or `"left"`: which hand holds the body, which
 is the side the on-device UI puts its chrome on (`firmware/p4/main/ui.c`,
-`from_hand()`). Studio shows no control for it. `body.firstRunSeen` (0.4.58) is the same kind of key: `false` until the `body.lastVersion` and `body.firstShotSeen` (0.4.58, #190) are the same kind: the firmware version the body last booted, so the first boot after an update shows one UPDATED note, and whether the first photograph has been taken, so it plays back once as the wiggle. Neither is a setting; Studio shows no control for them.
+`from_hand()`). Studio shows no control for it. `body.firstRunSeen` (0.4.58) is the same kind of key: `false` until the `body.lastVersion` (0.4.58, #190) is the same kind: the firmware version the body last booted, so the first boot after an update shows one UPDATED note. Not a setting; Studio shows no control for it.
 first boot's note has been shown once, then `true`; the UI writes it, nothing reads it but the UI. The key is written into
 `default_config()` so a fresh camera reports it; an older stored envelope reads
 as `right` through the accessor's fallback. Promote it into `BodyConfig` when a

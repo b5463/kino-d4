@@ -46,6 +46,7 @@ typedef enum {
   COND_CARD_FAILED,      /* the card failed its write test */
   COND_CARD_SLOW,        /* the card passed, slowly */
   COND_BROWNOUT,         /* this boot follows a brownout reset */
+  COND_ZONE_UNSET,       /* the clock is on UTC: nobody has said where the camera is */
   COND_COUNT,
 } cond_id_t;
 
@@ -112,10 +113,18 @@ static void conditions_scan(const camlink_info_t *cams) {
     cond_t *c = &found[n++];
     c->id = COND_CARD_MISSING;
     c->sev = COND_FAULT;
-    c->title = sd.removed ? "The card was taken out" : "No card";
-    snprintf(c->detail, sizeof c->detail, "%s",
-             sd.removed ? "Put it back. Photos cannot be saved."
-                        : "Put a card in. Photos cannot be saved.");
+    if (sd.removed) {
+      c->title = "The card was taken out";
+      snprintf(c->detail, sizeof c->detail, "Put it back. Photos cannot be saved.");
+    } else if (sd.present) {
+      /* A card answered and the filesystem would not: exFAT, which is what
+       * every card over 32 GB is sold as. */
+      c->title = "The card cannot be read";
+      snprintf(c->detail, sizeof c->detail, "Not a format KINO reads. Use a card up to 32 GB, or format it.");
+    } else {
+      c->title = "No card";
+      snprintf(c->detail, sizeof c->detail, "Put a card in. Photos cannot be saved.");
+    }
   } else {
     if (sd.write_test != NULL && strcmp(sd.write_test, "fail") == 0) {
       cond_t *c = &found[n++];
@@ -191,6 +200,14 @@ static void conditions_scan(const camlink_info_t *cams) {
       c->title = "The cameras need an update";
       snprintf(c->detail, sizeof c->detail, "Connect to Studio to update them.");
     }
+  }
+
+  if (clock_source() != CLOCK_UNSET && !clock_offset_known()) {
+    cond_t *c = &found[n++];
+    c->id = COND_ZONE_UNSET;
+    c->sev = COND_NOTE;
+    c->title = "The clock is on UTC";
+    snprintf(c->detail, sizeof c->detail, "Set the time zone in CONNECTION.");
   }
 
   if (clock_source() == CLOCK_UNSET) {

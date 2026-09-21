@@ -135,11 +135,13 @@ static void watch_task(void *arg) {
       }
       if (!tested) {
         /* Once per card: the write test, so a card that cannot hold a
-         * photograph is named before one is lost to it. */
+         * photograph is named before one is lost to it - and the trash from
+         * a previous session, whose thirty seconds ran out with the power. */
         tested = true;
         if (storage_acquire(STORAGE_USER_UI, 3000)) {
           storage_selftest_result_t st;
           storage_self_test(&st);
+          storage_trash_purge();
           storage_release(STORAGE_USER_UI);
         }
       }
