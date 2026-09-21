@@ -759,7 +759,7 @@ static bool s_toast_long;        /* the undo toast: thirty seconds, not two */
  * when the DIM stage began, for the three-step arrival. 150 of 255 leaves
  * the screen readable and unmistakably dimmed. */
 #define DIM_SCRIM_K 150
-#define DIM_RAMP_US 800000
+#define DIM_RAMP_US 1600000 /* long enough that no frame's step is seen on a dark ground */
 static int s_dim_k;
 static int64_t s_dim_since_us;
 static char s_undo_id[40];       /* a capture in the trash, restorable until s_undo_until_us */
