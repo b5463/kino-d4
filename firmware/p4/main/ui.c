@@ -2592,6 +2592,7 @@ static struct {
   int pal;          /* which look's colours the boot field is wearing */
   bool opening;
   screen_t card;    /* the screen drawn inside the card: arriving when opening, leaving when not */
+  bool snap;        /* the card is blitted from the stash, drawn there once at the start */
 } s_anim;
 
 static bool anim_active(void) { return s_anim.kind != ANIM_NONE; }
@@ -2670,6 +2671,22 @@ static void anim_start_open(int row, bool opening, screen_t card, int ms) {
   s_anim.row = row;
   s_anim.opening = opening;
   s_anim.card = card;
+  /*
+   * Two screens are too costly to draw on every frame of a move: SHOOT, whose
+   * four panes are remapped pixel by pixel from the finder's tiles (18 ms a
+   * frame, the one move still at 30 fps), and GALLERY, whose thumbnails are
+   * half a megabyte of PSRAM reads (25 fps). Each is drawn once, here, into
+   * the stash, and the move blits the card from that - a frozen finder for
+   * 400 ms, which is what the review hold already shows after a shot, and a
+   * page of pictures that travels as a picture.
+   */
+  s_anim.snap = card == SCR_SHOOT || card == SCR_GALLERY;
+  if (s_anim.snap) {
+    const screen_t keep = s_screen;
+    s_screen = card;
+    gfx_render_stash(render_screen, NULL);
+    s_screen = keep;
+  }
   s_anim.start_us = esp_timer_get_time();
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
@@ -6159,6 +6176,28 @@ static void settings_summary(int i, char *out, size_t cap) {
  * its mark rather than of the whole row: a screen of red cards reads as a
  * camera on fire, and three of these six are notes.
  */
+/*
+ * The one thing a person can DO on STATUS: ask for the cameras to be measured
+ * again. Calibration runs once, on the first photograph, and nothing on the
+ * camera could ask for it a second time - a lens knocked, a body reassembled,
+ * and the offsets stayed. This clears the stored result; the next photograph
+ * measures, as the first one did. Drawn at the foot, and only while there is
+ * a result to clear and room under the list for the row.
+ */
+#define STS_IT_REMEASURE 0
+static int sts_action_y(int rows) {
+  const int y = UI_H - PAGE_M - (ROW_H - ROW_GAP);
+  return LIST_TOP_DEFAULT + rows * ROW_H <= y - 8 ? y : -1;
+}
+static bool sts_has_action(void) { return config_bool("body.calibration.done", false); }
+static void draw_status_action(int rows) {
+  const int y = sts_action_y(rows);
+  if (!sts_has_action() || y < 0) return;
+  draw_row_at(LIST_X, LIST_W, y, ROW_H - ROW_GAP, 0, false, foc(SCR_STATUS, STS_IT_REMEASURE),
+              s_pressed == STS_IT_REMEASURE, true, "Measure cameras again",
+              "The next photograph measures them", true);
+}
+
 static void draw_status(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_STATUS);
@@ -6170,6 +6209,7 @@ static void draw_status(void) {
     s_list_top = LIST_TOP_DEFAULT;
     text_mid(&UI_FONT_L, UI_W / 2, UI_H / 2 - UI_FONT_L.line_h, "NOTHING TO REPORT", W_TEXT);
     text_mid(&UI_FONT_S, UI_W / 2, UI_H / 2 + 8, "The camera has no complaints.", W_GRAYTEXT);
+    draw_status_action(0);
     return;
   }
 
@@ -6207,6 +6247,7 @@ static void draw_status(void) {
     text_fit(det, sizeof det, &UI_FONT_S, c->detail, LIST_W - 18 - 18 - 70);
     text(&UI_FONT_S, tx, y + 6 + UI_FONT_R.line_h - 4, det, dim_ink(W_TEXT, W_ROW));
   }
+  draw_status_action(rows);
 }
 
 static void draw_settings(void) {
@@ -7583,6 +7624,8 @@ static void draw_card_screen(void) {
   draw_screen();
   s_screen = keep;
 }
+/* The card as the picture of its screen taken at the start of the move. */
+static void draw_stash_copy(void) { blit_rows(gfx_stash_px(), UI_W, 0, 0, UI_W, UI_H); }
 
 /*
  * One frame of a row becoming a screen, or a screen becoming a row again.
@@ -7705,7 +7748,7 @@ static void open_frame(int row, float t) {
 
   /* The screen, drawn into the card and hung from its top edge: its row 0 at
    * the card's row oy, its columns where they are, cut to the card. */
-  draw_placed(draw_card_screen, 0, oy, ox, oy, ow, oh);
+  draw_placed(s_anim.snap ? draw_stash_copy : draw_card_screen, 0, oy, ox, oy, ow, oh);
 
   /*
    * The row's colour, washing off - and the row's own words with it.
@@ -7826,6 +7869,10 @@ static int item_count(screen_t s) {
     case SCR_SOUND: return SN_IT_COUNT;
     case SCR_STORAGE: return ST_IT_COUNT;
     case SCR_POWER: return PW_IT_COUNT;
+    case SCR_STATUS: {
+      const int n = conditions_count();
+      return sts_has_action() && sts_action_y(n < 6 ? n : 6) >= 0 ? 1 : 0;
+    }
     default: return 0;
   }
 }
@@ -8023,6 +8070,13 @@ static int hit_test(int x, int y) {
       for (int i = 0; i < ST_IT_COUNT; i++)
         if (in(x, y, LIST_X, ST_ACT_Y(i), LIST_W, ROW_H)) return i;
       return -1;
+
+    case SCR_STATUS: {
+      if (item_count(SCR_STATUS) == 0) return -1;
+      const int n = conditions_count();
+      const int ay = sts_action_y(n < 6 ? n : 6);
+      return in(x, y, LIST_X, ay, LIST_W, ROW_H - ROW_GAP) ? STS_IT_REMEASURE : -1;
+    }
 
     case SCR_POWER:
       for (int i = 0; i < PW_IT_COUNT; i++)
@@ -8237,6 +8291,16 @@ static void activate(int item) {
         /* Dimmed row; a press still lands here from the hit test. Say so
          * without a confirm dialog for a thing that cannot happen. */
         toast("Format is not available");
+      }
+      break;
+
+    case SCR_STATUS:
+      if (item == STS_IT_REMEASURE) {
+        /* Clear the result; the next photograph measures, exactly as the first
+         * did. The condition comes back on the next scan, which is the
+         * screen's own way of saying it took. */
+        cfg_set_bool("body.calibration.done", false);
+        toast("The next photo measures the cameras");
       }
       break;
 

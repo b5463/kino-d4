@@ -16,6 +16,7 @@
 #include "ui.h"
 #include "viewfinder.h"
 #include "esp_log.h"
+#include "esp_app_desc.h"
 #include "esp_core_dump.h"
 #include "esp_heap_caps.h"
 #include "esp_mac.h"
@@ -199,10 +200,21 @@ static void log_last_panic(void) {
   esp_core_dump_summary_t *s = heap_caps_calloc(1, sizeof *s, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   if (s == NULL) return;
   if (esp_core_dump_get_summary(s) == ESP_OK) {
-    klog("P4", "last panic: task %s pc 0x%08lx mcause 0x%lx mtval 0x%08lx ra 0x%08lx sp 0x%08lx",
-         s->exc_task, (unsigned long)s->exc_pc, (unsigned long)s->ex_info.mcause,
-         (unsigned long)s->ex_info.mtval, (unsigned long)s->ex_info.ra,
-         (unsigned long)s->ex_info.sp);
+    /*
+     * Whose dump this is. A dump from a different image cannot be decoded
+     * against this build's ELF, and the bench read "last panic: task vf_cam3"
+     * for weeks from an image long since replaced. It is reported once, named
+     * as the older firmware's, and erased, so the line that stays in the ring
+     * is always about the firmware that is running.
+     */
+    char running[APP_ELF_SHA256_SZ + 1] = "";
+    esp_app_get_elf_sha256(running, sizeof running);
+    const bool ours = strncmp((const char *)s->app_elf_sha256, running, APP_ELF_SHA256_SZ - 1) == 0;
+    klog("P4", "last panic%s: task %s pc 0x%08lx mcause 0x%lx mtval 0x%08lx ra 0x%08lx sp 0x%08lx",
+         ours ? "" : " (older firmware, dump erased)", s->exc_task, (unsigned long)s->exc_pc,
+         (unsigned long)s->ex_info.mcause, (unsigned long)s->ex_info.mtval,
+         (unsigned long)s->ex_info.ra, (unsigned long)s->ex_info.sp);
+    if (!ours) esp_core_dump_image_erase();
   }
   free(s);
 }

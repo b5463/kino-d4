@@ -105,6 +105,9 @@ static kdp_decoder_t s_decoder;
 
 // Reply frames: header + chunk + CRC is the largest we ever send.
 static uint8_t s_tx_buf[KDP_HEADER_LEN + NL_CHUNK_MAX + KDP_CRC_LEN];
+/* Larger than any preview-sized JPEG this sensor makes (a 320x240 frame at the
+ * finder's quality is 2-8 KB), smaller than any photograph (90 KB up). */
+#define NL_PREVIEW_STALE_BYTES (32 * 1024)
 
 void node_server_set_state(const char *state) { s_state = state; }
 
@@ -493,6 +496,18 @@ static void handle_capture(uint32_t seq, cJSON *req) {
   sync_snapshot(&sync_seq, &sync_edge_us, NULL, NULL);
   const int64_t cmd_us = esp_timer_get_time();
   camera_fb_t *fb = camsensor_capture(&duration_ms, &timing);
+  /*
+   * A preview that comes back photograph-sized is the frame the sensor was
+   * exposing when the mode changed: camsensor_set_resolution drains the
+   * queue, but the buffer the DMA was filling at that moment lands after the
+   * drain, at the old size. The P4 refused it by size and blinked the pane.
+   * Take the next one instead, once - it is the first frame at the new size.
+   */
+  if (preview && fb != NULL && fb->len > NL_PREVIEW_STALE_BYTES) {
+    ESP_LOGI(TAG, "preview frame is %u B, the photograph's size; taking the next", (unsigned)fb->len);
+    camsensor_release(fb);
+    fb = camsensor_capture(&duration_ms, &timing);
+  }
   /*
    * A photograph must be armed AFTER the command that asked for it, and encoded
    * wholly under the settings that were just applied. One predicate, two

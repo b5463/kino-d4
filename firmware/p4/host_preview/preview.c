@@ -91,14 +91,28 @@ void gfx_snapshot(void) {}
 void gfx_dissolve(int ms) { (void)ms; }
 /* The renderer writes stills, so a transition is its end state. */
 void gfx_slide(int ms, bool from_right) { (void)ms; (void)from_right; }
+/* Drawing passes begun; see gfx_pass_id(). Declared here because the stash
+ * render below is the first pass-counting stub in the file. */
+static uint32_t s_pass;
 static uint16_t *g_stash;
 void gfx_stash(void) {
   if (g_stash == NULL) g_stash = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
   if (g_stash != NULL) memcpy(g_stash, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t));
 }
+void gfx_render_stash(gfx_draw_fn draw, void *ctx) {
+  if (g_stash == NULL) g_stash = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
+  if (g_stash == NULL) return;
+  s_pass++;
+  /* Through a view: gfx_target() snaps g_target back to the canvas whenever
+   * it points anywhere else, so the stash has to be a view for the draw. */
+  const gfx_target_t v = {g_stash, 0, 0, UI_W, UI_H, UI_W};
+  g_view = &v;
+  draw(ctx);
+  g_view = NULL;
+}
+const uint16_t *gfx_stash_px(void) { return g_stash; }
 /* A frame is one call of its drawing on the whole canvas, then the frame
  * goes out as every other frame does. */
-static uint32_t s_pass;
 uint32_t gfx_pass_id(void) { return s_pass; }
 uint32_t gfx_measure_draw_us(gfx_draw_fn draw, void *ctx) { s_pass++; draw(ctx); return 0; }
 void gfx_render_canvas(gfx_draw_fn draw, void *ctx) { s_pass++; draw(ctx); }

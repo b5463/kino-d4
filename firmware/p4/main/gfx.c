@@ -679,6 +679,15 @@ void gfx_stash(void) {
   memcpy(s_mix, s_canvas, CANVAS_BYTES);
 }
 
+void gfx_render_stash(gfx_draw_fn draw, void *ctx) {
+  if (!s_ready || s_mix == NULL || draw == NULL) return;
+  s_pass++;
+  s_target = (gfx_target_t){s_mix, 0, 0, UI_W, UI_H, UI_W};
+  draw(ctx);
+  s_target = (gfx_target_t){s_canvas, 0, 0, UI_W, UI_H, UI_W};
+}
+const uint16_t *gfx_stash_px(void) { return s_mix; }
+
 
 /* One blit, from whichever retained buffer into the current target, with
  * both ends clipped: the source to the canvas, the destination to the

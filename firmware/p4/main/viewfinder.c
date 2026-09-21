@@ -336,15 +336,27 @@ static bool pump_camera(int cam) {
     s_status[cam].state = VF_NO_LINK;
     return false;
   }
-  if (res.size == 0 || res.size > VF_MAX_JPEG) {
+  if (res.size == 0) {
     camlink_release_ch(cam, res.frame_id);
-    /* Two different faults behind one test, and they were both silent. Empty
-     * is a node that answered without exposing; oversize is a scene detailed
-     * enough to beat VF_MAX_JPEG, which is a picture we could have had with a
-     * lower preview quality and is worth knowing about rather than guessing at. */
-    vf_drop(cam, res.size == 0 ? VF_DROP_EMPTY : VF_DROP_OVERSIZE, res.size);
+    /* Empty is a node that answered without exposing. */
+    vf_drop(cam, VF_DROP_EMPTY, res.size);
     s_status[cam].state = VF_ERROR;
     return false;
+  }
+  if (res.size > VF_MAX_JPEG) {
+    /*
+     * Oversize is nearly always the frame the node exposed at the PHOTOGRAPH's
+     * size before the mode change back to preview took: 70-130 KB, once per
+     * camera after every shot. It never crosses the link - only its header
+     * did - so it costs nothing to skip. It used to flip the pane to VF_ERROR
+     * and return false, which put the pane into the absent-camera backoff and
+     * announced "viewfinder live" again a frame later: a blink of a dead pane
+     * after every photograph, on four panes. The pane keeps its last frame and
+     * the next pump gets the next frame, which is the picture.
+     */
+    camlink_release_ch(cam, res.frame_id);
+    vf_drop(cam, VF_DROP_OVERSIZE, res.size);
+    return true;
   }
 
   const int64_t cap_us = esp_timer_get_time() - cap_start_us;
