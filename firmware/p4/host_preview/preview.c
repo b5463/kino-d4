@@ -530,6 +530,13 @@ esp_err_t gallery_init(void) { return ESP_OK; }
 void gallery_refresh(void) {}
 int gallery_total(void) { return g_fake_total; }
 int gallery_media_count(void) { return g_fake_total; }
+int gallery_capture_files(const char *id, bool *has_thumb, uint8_t *slots, int cap) {
+  (void)id;
+  if (has_thumb != NULL) *has_thumb = true;
+  int n = 0;
+  for (int i = 0; i < 4 && n < cap; i++) slots[n++] = (uint8_t)(i + 1);
+  return n;
+}
 int gallery_page(void) { return 1; }
 int gallery_pages(void) { return 3; }
 void gallery_turn(int delta) { (void)delta; }
@@ -852,6 +859,11 @@ esp_err_t upload_queue_start(void) { return ESP_OK; }
 esp_err_t upload_queue_enqueue(const char *uuid, bool thumb) {
   (void)uuid; (void)thumb; return ESP_OK;
 }
+esp_err_t upload_queue_enqueue_slots(const char *uuid, const char *roll_id, const uint8_t *slots,
+                                     int count, bool thumb) {
+  (void)uuid; (void)roll_id; (void)slots; (void)count; (void)thumb;
+  return ESP_OK;
+}
 void upload_queue_forget(const char *capture_uuid) { (void)capture_uuid; }
 void upload_queue_status(upload_queue_report_t *out) {
   if (out != NULL) *out = g_queue;
@@ -1115,6 +1127,9 @@ int main(int argc, char **argv) {
     prev_vclock_step_us = 16000;
     prev_vclock_us = 0;
     g_anim = NULL;
+    /* The first-start note the cascade raises stays up until dismissed; the
+     * scenes after this one are of a body that has seen it. */
+    s_dialog = DLG_NONE;
   }
 
   /* The menu's two moves, frame by frame. */
@@ -1391,7 +1406,7 @@ int main(int argc, char **argv) {
    * before the confirmation appears. Also the only shot in which the capacity
    * gauge and a lit row are on screen together. */
   s_focus_shown = true;
-  s_focus[SCR_STORAGE] = ST_IT_FORMAT;
+  s_focus[SCR_STORAGE] = ST_IT_DELETE_ALL;
   s_pressed = ST_IT_DELETE_ALL;
   SHOT(SCR_STORAGE, "settings_storage_pressed");
   s_pressed = -1;

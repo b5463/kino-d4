@@ -14,6 +14,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "klog.h"
+#include "power.h"
 
 static const char *TAG = "viewfinder";
 
@@ -466,9 +467,22 @@ static bool pump_camera(int cam) {
  * transfers on the wire at once and the slowest node sets the pace instead of
  * the sum of all four.
  */
+/*
+ * A camera that was live and has gone silent for this long gets the bank
+ * cycled: the one reset the P4 has over a node, and what brings back a node
+ * whose firmware has wedged or whose sensor has stopped answering. Once per
+ * ten minutes at most, for the whole bank, because the other three cameras
+ * pay for it with two seconds of restart.
+ */
+#define VF_LOST_CYCLE_MS 90000
+#define VF_CYCLE_HOLDOFF_MS 600000
+static int64_t s_last_bank_cycle_us;
+
 static void camera_task(void *arg) {
   const int cam = (int)(intptr_t)arg;
   bool announced = false;
+  bool was_live = false;      /* this camera has answered at least once */
+  int64_t lost_since_us = 0;  /* when the current run of failures began */
   int miss = 0; /* consecutive failures, for the backoff below */
   for (;;) {
     /*
@@ -497,6 +511,21 @@ static void camera_task(void *arg) {
     if (ok && !announced) {
       announced = true;
       klog("P4", "cam%d viewfinder live", cam + 1);
+    }
+    if (ok) {
+      was_live = true;
+      lost_since_us = 0;
+    } else if (was_live) {
+      const int64_t now = esp_timer_get_time();
+      if (lost_since_us == 0) lost_since_us = now;
+      if (now - lost_since_us > (int64_t)VF_LOST_CYCLE_MS * 1000 &&
+          now - s_last_bank_cycle_us > (int64_t)VF_CYCLE_HOLDOFF_MS * 1000) {
+        s_last_bank_cycle_us = now;
+        lost_since_us = now;
+        klog("P4", "cam%d silent %d s after being live; cycling the camera bank", cam + 1,
+             VF_LOST_CYCLE_MS / 1000);
+        power_cam_bank_cycle();
+      }
     }
     if (!ok) {
       announced = false;
