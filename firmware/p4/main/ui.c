@@ -2558,6 +2558,7 @@ typedef enum {
   ANIM_SPLASH,
   ANIM_OPEN,
   ANIM_CASCADE, /* the menu's rows arriving, after the splash */
+  ANIM_SLIDE,   /* a detail screen pushing its parent aside, both from stashes */
 } anim_kind_t;
 
 /*
@@ -2603,6 +2604,7 @@ static struct {
   bool opening;
   screen_t card;    /* the screen drawn inside the card: arriving when opening, leaving when not */
   bool snap;        /* the card is blitted from the stash, drawn there once at the start */
+  bool from_right;  /* ANIM_SLIDE: the new screen arrives from the right (deeper) */
 } s_anim;
 
 static bool anim_active(void) { return s_anim.kind != ANIM_NONE; }
@@ -2638,7 +2640,8 @@ static void anim_report(const char *what) {
   const uint32_t draw_ms = (uint32_t)((d1 - s_anim.draw0_us) / 1000);
   const uint32_t xpose_ms = (uint32_t)((x1 - s_anim.xpose0_us) / 1000);
   const uint32_t vsync_ms = (uint32_t)((v1 - s_anim.vsync0_us) / 1000);
-  const char *const card = s_anim.kind == ANIM_OPEN ? SCREEN_NAME[s_anim.card] : NULL;
+  const char *const card =
+      s_anim.kind == ANIM_OPEN || s_anim.kind == ANIM_SLIDE ? SCREEN_NAME[s_anim.card] : NULL;
   klog("P4",
        "%s%s%s: %lu frames in %lu ms (%lu fps); per frame %lu ms drawing, %lu ms writing out, %lu ms "
        "waiting for the panel",
@@ -2697,6 +2700,36 @@ static void anim_start_open(int row, bool opening, screen_t card, int ms) {
     gfx_render_stash(render_screen, NULL);
     s_screen = keep;
   }
+  s_anim.start_us = esp_timer_get_time();
+  gfx_stats(&s_anim.f0, NULL);
+  gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
+  anim_phase(0, ms);
+}
+
+/*
+ * A detail screen arriving beside its parent - SETTINGS to STORAGE, GALLERY
+ * to PHOTO, and every way back.
+ *
+ * This was gfx_slide(): the compositor memcpy'd a whole 800x480 frame out of
+ * two PSRAM canvases and rotated it through the PPA in one piece, every
+ * frame, in a loop of its own with no UI pass - the last move still going to
+ * the panel that way after the open moves and the cascade left it, at 28 fps
+ * with the shutter and the touch dead for the duration. The frame drops on
+ * the settings screens were this loop. It runs on the animation clock now:
+ * the screen leaving is what gfx_snapshot() kept, the one arriving is drawn
+ * once into the stash and rotated once (gfx_slide_prepare), and each frame is
+ * gfx_slide_show() - two copies in the panel's own orientation. Drawing the
+ * same frames through the tiles measured 41 fps; this is the panel's rate.
+ * The caller has drawn the leaving screen and snapshotted it; s_screen
+ * already names the arriving one.
+ */
+static void anim_start_slide(screen_t to, bool from_right, int ms) {
+  s_anim.kind = ANIM_SLIDE;
+  s_anim.card = to;
+  s_anim.from_right = from_right;
+  s_anim.snap = true;
+  gfx_render_stash(render_screen, NULL);
+  gfx_slide_prepare();
   s_anim.start_us = esp_timer_get_time();
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
@@ -2854,6 +2887,21 @@ static uint32_t anim_tick(void) {
          * pixel - and going back the destination has never been drawn at all. */
         ui_render(render_screen, NULL);
         anim_report(s_anim.opening ? "open move" : "back move");
+        s_anim.kind = ANIM_NONE;
+      }
+      return 0;
+    }
+
+    case ANIM_SLIDE: {
+      /* The arriving screen covers o columns from its edge; the leaving one
+       * moves 3/8 as far the other way, the parallax the compositor had. */
+      int o = (int)(ease_ui(t) * (float)UI_W);
+      if (o < 0) o = 0;
+      if (o > UI_W) o = UI_W;
+      gfx_slide_show(o, (o * 3) / 8, s_anim.from_right);
+      if (done) {
+        ui_render(render_screen, NULL);
+        anim_report(s_anim.from_right ? "slide in" : "slide back");
         s_anim.kind = ANIM_NONE;
       }
       return 0;
@@ -3019,8 +3067,9 @@ static int hd_cluster_w(screen_t s) {
  */
 static int chrome_state(int left, int right, int y, uint16_t ink, const char *first,
                         const char *last) {
-  storage_status_t sd;
-  storage_get_status(&sd);
+  /* From the pass cache: this bar is on two screens during a move, and each
+   * storage_get_status() is a FatFs free-space query behind its mutex. */
+  const storage_status_t sd = *sd_status();
   char card[24];
   if (!sd.mounted) snprintf(card, sizeof card, "NO CARD");
   else snprintf(card, sizeof card, "%d SHOTS", (int)(sd.free_bytes / (6ull * 1024 * 1024)));
@@ -3564,8 +3613,7 @@ static uint16_t menu_face(int i, bool down) {
 
 /* What the camera has, in the place the reference puts its status. */
 static void menu_card_line(char *out, size_t cap) {
-  storage_status_t sd;
-  storage_get_status(&sd);
+  const storage_status_t sd = *sd_status();
   const cond_t *worst = conditions_at(0);
   if (worst != NULL) snprintf(out, cap, "%s", worst->title);
   else if (!sd.mounted) snprintf(out, cap, "NO CARD");
@@ -6199,7 +6247,7 @@ static void settings_summary(int i, char *out, size_t cap) {
     case 3: { /* Storage: what is left, in the unit a photographer counts in */
       const storage_status_t sd = *sd_status();
       if (!sd.mounted) snprintf(out, cap, "No card");
-      else snprintf(out, cap, "%d left", (int)(sd.free_bytes / (6ull * 1024 * 1024)));
+      else snprintf(out, cap, "%d shots", (int)(sd.free_bytes / (6ull * 1024 * 1024)));
       break;
     }
     default: snprintf(out, cap, "%s", KINO_FW_VERSION); break;
@@ -7991,8 +8039,9 @@ static void go(screen_t s, int ms) {
      * left when it closes. */
     open_anim(row, opening, opening ? s : from, ms);
   } else {
-    gfx_render_canvas(render_screen, NULL);
-    gfx_slide(ms, !back);
+    /* Beside the parent, not out of a row: the drawn slide (anim_start_slide).
+     * The leaving screen is on the canvas and in the snapshot from above. */
+    anim_start_slide(s, !back, ms);
   }
 }
 
@@ -8750,6 +8799,18 @@ static void boot_bench(void) {
     float t15 = 0.15f;
     dl_profile("open t=0.15", render_open, &t15);
 #endif
+    /* SETTINGS -> STORAGE, the slide, reported like a move. On 2026-09-21 the
+     * compositor loop it replaced measured 28 fps here and the same frames
+     * drawn through the tiles 41. */
+    {
+      s_screen = SCR_SETTINGS;
+      gfx_render_canvas(render_screen, NULL);
+      gfx_snapshot();
+      s_screen = SCR_STORAGE;
+      anim_start_slide(SCR_STORAGE, true, 400);
+      while (anim_active()) anim_tick();
+      s_screen = keep;
+    }
   }
 #endif
 }

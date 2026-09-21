@@ -118,10 +118,17 @@ void gfx_snapshot(void);
  */
 void gfx_dissolve(int duration_ms);
 
-/** One screen pushing the other off. `from_right` is where the NEW frame
- *  comes from; deeper is rightward. Needs gfx_snapshot() first, as the
- *  dissolve does. */
-void gfx_slide(int duration_ms, bool from_right);
+/**
+ * One screen pushing the other off, one frame at a time, composed in the
+ * panel's own orientation. gfx_snapshot() first (the screen leaving), then
+ * draw the screen arriving into the stash (gfx_render_stash) and call
+ * gfx_slide_prepare() once; each frame gfx_slide_show() shows `o` columns of
+ * the arriving screen from its edge with the leaving one moved `b` columns
+ * the other way. `from_right` is where the NEW screen comes from; deeper is
+ * rightward. Counts as a frame and waits for the panel like one.
+ */
+void gfx_slide_prepare(void);
+void gfx_slide_show(int o, int b, bool from_right);
 
 /**
  * Keep the frame just drawn, and hand pieces of it back.

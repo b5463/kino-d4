@@ -90,7 +90,8 @@ void gfx_present(void) {
 void gfx_snapshot(void) {}
 void gfx_dissolve(int ms) { (void)ms; }
 /* The renderer writes stills, so a transition is its end state. */
-void gfx_slide(int ms, bool from_right) { (void)ms; (void)from_right; }
+void gfx_slide_prepare(void) {}
+void gfx_slide_show(int o, int b, bool from_right) { (void)o; (void)b; (void)from_right; }
 /* Drawing passes begun; see gfx_pass_id(). Declared here because the stash
  * render below is the first pass-counting stub in the file. */
 static uint32_t s_pass;
