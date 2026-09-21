@@ -7646,38 +7646,59 @@ static void draw_strip(const fm_cell_t *st, const char *line, uint16_t accent) {
 /*
  * What the lenses see, as a word on the finder.
  *
- * lid.c already reads a mean off every finder pane to know where the cover
- * is; the settled "closed" is the first hint. The second is one pane far
- * darker than the other three with the cover open: a finger, a cap on one
- * lens, a smudge - a black frame from one camera that nobody notices until
- * the wiggle jumps. Polled every half second, held for two polls before it is
- * said, and only on SHOOT, where there is a picture to check against.
+ * lid.c reads a mean off every finder pane to know where the cover is. Its
+ * thresholds are unmeasured (lid.h says so, and gates the sleep on
+ * lid_acting() for that reason), and on the bench a body facing the desk
+ * read "closed" with the cover off - so nothing here trusts an absolute
+ * level. Both hints are transitions seen while on SHOOT: the panes were lit
+ * and then all went dark (the cover went on), or one pane was lit and went
+ * dark while the others stayed lit (a finger, a cap on one lens). A body
+ * switched on in a dim room, or a lens that is dark from the start, says
+ * nothing; those are STATUS matters, not a word over the picture. Polled
+ * every half second, two polls before it is said, cleared the moment the
+ * panes disagree with it.
  */
 static char s_lens_hint[40];
 static void lens_hint_poll(void) {
   static int64_t last_us;
-  static int dark_cand = -1, dark_n;
+  static bool seen_lit;      /* every pane lit at some point this SHOOT session */
+  static bool was_lit[4];    /* this pane lit at some point this SHOOT session */
+  static int dark_cand = -1, dark_n, cover_n;
   const int64_t now = esp_timer_get_time();
   if (now - last_us < 500000) return;
   last_us = now;
   char next[40] = "";
-  if (s_screen == SCR_SHOOT && !anim_active()) {
+  if (s_screen != SCR_SHOOT) {
+    seen_lit = false;
+    memset(was_lit, 0, sizeof was_lit);
+    dark_cand = -1;
+    dark_n = cover_n = 0;
+  } else if (!anim_active()) {
     lid_state_t l;
     lid_get(&l);
-    if (l.state == PURE_LID_CLOSED) {
-      snprintf(next, sizeof next, "TAKE THE LENS COVER OFF");
-      dark_cand = -1;
-    } else if (l.answered >= 3) {
-      int hi = 0, dark = -1, ndark = 0;
-      for (int i = 0; i < 4; i++)
-        if (l.mean[i] > hi) hi = l.mean[i];
-      for (int i = 0; i < 4; i++) {
-        if (l.mean[i] < 0) continue;
-        if (hi >= 60 && l.mean[i] * 3 < hi) {
-          dark = i;
-          ndark++;
-        }
+    int hi = 0, answered = 0, lit = 0, dark = -1, ndark = 0;
+    for (int i = 0; i < 4; i++) {
+      if (l.mean[i] < 0) continue;
+      answered++;
+      if (l.mean[i] > hi) hi = l.mean[i];
+      if (l.mean[i] >= 40) {
+        lit++;
+        was_lit[i] = true;
       }
+    }
+    if (answered >= 3 && lit == answered) seen_lit = true;
+    for (int i = 0; i < 4; i++) {
+      if (l.mean[i] < 0 || !was_lit[i]) continue;
+      if (hi >= 60 && l.mean[i] * 3 < hi) {
+        dark = i;
+        ndark++;
+      }
+    }
+    if (seen_lit && l.state == PURE_LID_CLOSED) {
+      cover_n++;
+      if (cover_n >= 2) snprintf(next, sizeof next, "TAKE THE LENS COVER OFF");
+    } else {
+      cover_n = 0;
       if (ndark == 1 && dark == dark_cand) dark_n++;
       else dark_n = 0;
       dark_cand = ndark == 1 ? dark : -1;
