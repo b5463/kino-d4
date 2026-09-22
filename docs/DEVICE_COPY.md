@@ -1,6 +1,6 @@
 # Device copy
 
-Every line the KINO D4 body says on its own screen, and when. Source of truth is `firmware/p4/main/ui.c`, `conditions.h` and `capture.c`; this table is checked against them when a line changes.
+Every line the KINO D4 body says on its own screen, and when. Source of truth is `firmware/p4/main/ui.c`, `conditions.h` and `capture.c`. `npm run copy:check` walks those three files and fails when a line they can draw is not in this table, so the sentence above is a check rather than a promise.
 
 ## The rule
 
@@ -96,6 +96,8 @@ Action rows at the foot of STATUS: **Restart the cameras** (always) and **Measur
 | Still reading the card | A tile tapped before the gallery had its id. |
 | No looks on this camera | LOOK with no recipes. |
 | Hold the power slide to switch off | SHUT DOWN row, which has no soft power-off. |
+| Favourite / Not favourite | FAVOURITE pressed on PHOTO; the mark went on or came off. |
+| First photo / Last photo | PREV on the first photograph, or NEXT on the last. |
 
 ## Dialogs
 
@@ -108,6 +110,115 @@ Action rows at the foot of STATUS: **Restart the cameras** (always) and **Measur
 | DELETE | Delete this photo? N frames. This cannot be undone. | DELETE / CANCEL | PHOTO > DELETE |
 | DELETE ALL | Delete all photos? N photos. This cannot be undone. | DELETE / CANCEL | STORAGE > DELETE ALL PHOTOS |
 | FORMAT CARD | Erase the card? Every photo on it is deleted. | FORMAT / CANCEL | STORAGE > FORMAT CARD |
+
+## Screen rows and labels
+
+What each screen puts on itself, beyond the chip, the banner and the toasts
+above. Every one of these is drawn by `ui.c`; the check script walks the same
+calls and fails when one of them is not in this table.
+
+### SHOOT
+
+| Text | When |
+|---|---|
+| `MENU` | The way out, on the back button beside the picture. |
+| `WIGGLE` / `QUAD` | The mode, on the decisions bar. Tapping the bar opens LOOK. |
+
+### LOOK
+
+| Text | When |
+|---|---|
+| `TARGET` | The band that picks which lens the next look lands on. QUAD only. |
+| `B&W` / `COLOUR` | The colour control. |
+| `Four cameras, four looks. Pick one to see it.` | QUAD, under the card: what the mode does. |
+| `AT CAPTURE` | The look is applied when the photograph is taken, not to the finder. |
+| `Sets nothing on the sensor.` | A look that carries no sensor settings of its own. |
+| `+1.5 EV` / `-0.5 EV` | The exposure bias a look carries, when it has one. |
+
+### GALLERY
+
+| Text | When |
+|---|---|
+| `NO IMAGE` | A tile whose frames could not be decoded. |
+| `Press the shutter to take one.` | The card holds no photographs. |
+
+### PHOTO
+
+| Text | When |
+|---|---|
+| `FAVOURITE` | The button; the star fills when it is on. |
+
+### ROLL
+
+| Text | When |
+|---|---|
+| `SCAN TO JOIN` | Over the QR, when a Roll is active. |
+| `Code` / `Enter this code to join` | The short code under the QR, for someone who cannot scan. |
+| `Status` | The row naming what the Roll is doing. |
+| `Uploaded` | The count of frames the Roll already holds. |
+| `NO ACTIVE ROLL` | No Roll joined. |
+| `Make a roll in Studio over USB-C.` | With it: how to get one. |
+| `It appears here with a code guests scan.` | What will be on this screen once there is one. |
+| `NO PHOTOS ON THE CARD` | A Roll is joined and there is nothing to send. |
+| `They import over USB-C, and upload if a roll is assigned later.` | Under it: the photographs are not stranded. |
+| `The join link is too long to encode.` | The Roll's URL will not fit a QR; the code above it still works. |
+
+### SETTINGS > SOUND
+
+| Text | When |
+|---|---|
+| `Shutter sound` | The picker row naming the chosen sound. |
+| `Play shutter sound` / `Play button sound` | The two toggles. |
+| `VOLUME` | The three-segment band. |
+| `No audio output on this body` | The amplifier did not start; the controls above do nothing until it does. |
+| `The settings above are stored, and nothing plays until the amplifier starts.` | With it: the settings are not lost. |
+| `Upload your own in Studio over USB-C.` | Where the sounds beyond the built-in five come from. |
+
+### SETTINGS > DISPLAY
+
+| Text | When |
+|---|---|
+| `On or off, not dimmable. Tap the screen to wake. Hold the slide to switch off.` | Under BRIGHTNESS AND POWER: the backlight is a switch, not a dimmer. |
+
+### SETTINGS > CONNECTION
+
+| Text | When |
+|---|---|
+| `Set up Wi-Fi in Studio over USB-C.` | No network saved. |
+| `Captures upload to the active roll.` | A network is saved and a Roll is joined. |
+| `No radio on this body. Photos leave over USB-C.` | The no-radio build. |
+| `Radio fitted, no route to it yet. Photos leave over USB-C.` | The radio build on a body whose coprocessor is not reachable. |
+| `+` / `-` | The TIME ZONE band's two buttons, half an hour a press. |
+
+### SETTINGS > STORAGE
+
+| Text | When |
+|---|---|
+| `Free space` | The reading row, in whole units. |
+
+### SETTINGS > STATUS
+
+| Text | When |
+|---|---|
+| `NOTHING TO REPORT` | No open condition. |
+| `The camera has no complaints.` | With it, in a sentence rather than a state. |
+
+### POWER
+
+| Text | When |
+|---|---|
+| `RUNNING ON` | The heading over where the power comes from. |
+| `Powered from the cable.` | USB-C attached. |
+| `On the cells. This body has no battery gauge.` | On battery. There is no percentage because there is no sense pin. |
+| `Shut down` | The row; it toasts, because the slide is the only way off. |
+| `Factory reset` | The row that opens the confirm. |
+| `Settings, networks, roll` | Under it: what a reset erases. Photographs are not on the list. |
+
+### Main menu
+
+| Text | When |
+|---|---|
+| `TAP TO OPEN` | On the menu's large card. |
 
 ## Dim and sleep
 
@@ -124,4 +235,4 @@ ABOUT carries a QR under SCAN FOR HELP that opens a new issue with the serial an
 
 ## Field log
 
-Every 30 s the log ring is appended to `/KINO/LOGS/BOOT-nnnnn.TXT` on the card; the twenty newest boots are kept. A person can copy the file from a card reader and send it.
+Every 30 s the log ring is appended to `/KINO/LOGS/BOOT-nnnnn.TXT` on the card; the twenty newest boots are kept. A person can copy the file from a card reader and send it. The ring holds 600 entries and carries evidence only: per-frame and per-poll numbers are telemetry and are dropped unless `body.log.telemetry` is set, which is a bench setting Studio can turn on. Clearing the logs from Studio hides what came before and does not stop the file.

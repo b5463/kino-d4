@@ -6,6 +6,25 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Changed
 
+- **Firmware 0.4.59: the log ring keeps evidence instead of telemetry (#202, #207).**
+  Measured on a bench body: 158 entries over 148 s, of which 121 were per-camera
+  preview timings and 37 were cover brightness means. Not one line was anything
+  else. At 1.07 lines a second the 200-entry ring held 3.1 minutes, so any fault
+  older than that was gone before anyone could ask about it, and
+  `/KINO/LOGS/BOOT-nnnnn.TXT` - the file an owner is asked to send - was the
+  same content at length. klog now has two channels: `klog()` for what a person
+  needs when a camera misbehaved, and `klog_tel()` for a number that is worth
+  having on a bench and is noise in a fault report. Telemetry is off unless
+  `body.log.telemetry` is set, which Studio can do without a reflash. The
+  viewfinder's timing report, the cover watcher's calibration line, the gallery's
+  once-per-photograph index line and the per-press touch line all moved to it.
+  Two recovery lines stopped repeating: "viewfinder live" was cleared by any
+  failed pump, so a camera dropping one frame in six logged it on every
+  recovery, and the link's recovery line fired for a run of one timeout while
+  its failure side was throttled to 30 s. The ring is 600 entries now, 72 KB of
+  PSRAM. And CLEAR_LOGS no longer stops the field log: it used to reset the
+  count while the card writer kept its own cursor, so one press in Studio left
+  that cursor permanently past the end and the file never gained another line.
 - **Firmware 0.4.59: a warning fails the build, and three NUL bytes are gone (#201).**
   `firmware/p4/host_preview/preview.c`, `firmware/p4/twin_ui/twin_ui.c` and
   `firmware/p4/main/gallery.c` each held a raw zero byte inside a character
@@ -28,6 +47,19 @@ KINO has no published release yet. Changes intended for the first release collec
   instead of computing them once in the draw and again in the hit test, which
   is the convention every other screen already kept; all 206 rendered screens
   are byte-identical before and after.
+- **The device copy table is checked, not promised (#204).** `docs/DEVICE_COPY.md`
+  opens by saying it holds every line the body says on its own screen, and said
+  it was checked against the source when a line changed. Nothing enforced that,
+  and it had drifted to 43 of the 93 lines the camera can actually draw. Missing
+  were things a person reads and quotes back on a support call: "The camera has
+  no complaints.", "Press the shutter to take one.", "No radio on this body.
+  Photos leave over USB-C.", the whole of the ROLL screen's empty state, and
+  every row of SOUND and POWER. `npm run copy:check` now walks the drawing and
+  toast calls in `ui.c`, `conditions.h` and `capture.c` with comments stripped,
+  and fails when a line they can draw is not in the table. It runs in CI beside
+  `version:check` and `license:check`. The table gained a section per screen; a
+  string that is genuinely not copy goes in the script's short NOT_COPY list
+  with the reason, so the exceptions are visible rather than assumed.
 - **Both rehearsal surfaces compile the build that ships (#203).** The image
   customers get is the radio build, and neither the host preview nor the Twin
   defined `KINO_RADIO`. The only UI-visible thing behind that flag is the STATUS

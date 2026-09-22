@@ -114,7 +114,9 @@ static void touch_task(void *arg) {
         ESP_LOGI(TAG, "touch #%lu at x=%u y=%u (native %dx%d), strength %u",
                  (unsigned long)s_count, pt[0].x, pt[0].y, DISPLAY_H_RES, DISPLAY_V_RES,
                  pt[0].strength);
-        klog("P4", "touch %u,%u", pt[0].x, pt[0].y);
+        /* Telemetry: one line per press edge, and navigating the menus is
+         * several a second. The count is already reported over KDP. */
+        klog_tel("P4", "touch %u,%u", pt[0].x, pt[0].y);
         was_down = true;
       }
     } else if (was_down && ++empty < RELEASE_POLLS) {
