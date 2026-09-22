@@ -26,6 +26,10 @@ const opt = (name, dflt) => {
 const portPath = opt('--port', 'COM8');
 const settleMs = Number(opt('--settle', '14000'));
 const rates = opt('--rates', '921600,1500000,2000000,3000000').split(',').map(Number);
+// One capture proves a rate can work; it does not prove it keeps working.
+// --captures repeats at each rate and reports the worst, which is what a
+// shipping decision needs.
+const captures = Number(opt('--captures', '1'));
 const DEFAULT_BAUD = 921600;
 
 let seq = 0;
@@ -114,28 +118,38 @@ try {
     console.log(`  all four channels at ${baud}`);
 
     const before = linkCounters((await request(Cmd.GET_RUNTIME_STATS, {}, 6000)).body);
-    const cap = await request(Cmd.CAMERA_CAPTURE, {}, 40000);
+    let failedAt = null;
+    let worstTotal = 0, worstSlowest = 0, sumRate = 0, nOk = 0, kbLast = 0, framesLast = 0;
+    for (let i = 1; i <= captures && failedAt === null; i++) {
+      const cap = await request(Cmd.CAMERA_CAPTURE, {}, 40000);
+      if (!cap.ok) { failedAt = `${i}: ${cap.body?.code ?? 'failed'}`; break; }
+      const frames = cap.body?.frames ?? [];
+      if (frames.length < 4) { failedAt = `${i}: ${frames.length} of 4 frames`; break; }
+      const bytes = frames.reduce((a, f) => a + (f.bytes ?? 0), 0);
+      const slowest = Math.max(...frames.map((f) => f.transferMs ?? 0));
+      const rate = frames.reduce((a, f) => a + (f.bytes / 1024) / (f.transferMs / 1000), 0) / frames.length;
+      worstTotal = Math.max(worstTotal, cap.body?.timing?.totalMs ?? 0);
+      worstSlowest = Math.max(worstSlowest, slowest);
+      sumRate += rate; nOk++; kbLast = Math.round(bytes / 1024); framesLast = frames.length;
+      if (captures > 1) process.stdout.write(`  ${i}/${captures} ${cap.body?.timing?.totalMs} ms, slowest link ${slowest} ms, ${rate.toFixed(1)} KB/s
+`);
+    }
     const after = linkCounters((await request(Cmd.GET_RUNTIME_STATS, {}, 6000)).body);
+    const d = deltaCounters(before, after);
 
-    if (!cap.ok) {
-      console.log(`  capture FAILED: ${cap.body?.code} ${cap.body?.message}`);
-      results.push({ baud, applied: true, captureOk: false, note: `${cap.body?.code}` });
+    if (failedAt !== null) {
+      console.log(`  capture FAILED at ${failedAt}; crc ${d.crc} resync ${d.resync} timeouts ${d.timeouts}`);
+      results.push({ baud, applied: true, captureOk: false, note: failedAt, ...d });
       continue;
     }
-    const frames = cap.body?.frames ?? [];
-    const bytes = frames.reduce((a, f) => a + (f.bytes ?? 0), 0);
-    const slowest = Math.max(...frames.map((f) => f.transferMs ?? 0));
-    const rate = frames.length
-      ? frames.reduce((a, f) => a + (f.bytes / 1024) / (f.transferMs / 1000), 0) / frames.length
-      : 0;
-    const d = deltaCounters(before, after);
+    const rate = sumRate / nOk;
     results.push({
       baud, applied: true, captureOk: true,
-      frames: frames.length, kb: Math.round(bytes / 1024),
-      totalMs: cap.body?.timing?.totalMs, slowestMs: slowest,
+      frames: framesLast, kb: kbLast,
+      totalMs: worstTotal, slowestMs: worstSlowest,
       kbs: Number(rate.toFixed(1)), ...d,
     });
-    console.log(`  ${frames.length} frames, ${Math.round(bytes / 1024)} KB, total ${cap.body?.timing?.totalMs} ms, slowest link ${slowest} ms`);
+    console.log(`  ${nOk} capture(s); worst total ${worstTotal} ms, worst link ${worstSlowest} ms`);
     console.log(`  mean per link ${rate.toFixed(1)} KB/s; crc ${d.crc} resync ${d.resync} timeouts ${d.timeouts} retries ${d.retries}`);
   }
 } finally {

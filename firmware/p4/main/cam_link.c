@@ -956,13 +956,25 @@ esp_err_t camlink_set_baud_ch(int cam, uint32_t baud) {
   ch->baud = baud;
 
   /*
-   * One HELLO decides it, inside the node's own deadline.
+   * A HELLO decides it, inside the node's own deadline - and it gets more
+   * than one go at it.
    *
    * Any frame that decodes at the new rate clears the node's revert, so a
-   * successful HELLO both proves the link and confirms the switch. If it does
-   * not get through, the node goes home on its own and so do we.
+   * successful HELLO both proves the link and confirms the switch. A single
+   * attempt is not enough: both ends have just reprogrammed a divider and
+   * flushed, and the first frame after that can be lost to the settling
+   * rather than to the rate being wrong. Measured on the bench, the switch
+   * back down from 3 Mbaud dropped one channel's first HELLO while the link
+   * was in fact healthy - the node answered everything afterwards.
+   *
+   * Two attempts inside the node's deadline, which is what the halved
+   * timeout leaves room for. If neither gets through, the node goes home on
+   * its own and so do we.
    */
-  const esp_err_t hello = camlink_hello_ch_timeout(cam, NL_BAUD_PROBE_MS / 2);
+  esp_err_t hello = ESP_FAIL;
+  for (int attempt = 0; attempt < 2 && hello != ESP_OK; attempt++) {
+    hello = camlink_hello_ch_timeout(cam, NL_BAUD_PROBE_MS / 4);
+  }
   if (hello == ESP_OK) {
     klog(ch->tag, "link at %lu baud", (unsigned long)baud);
     return ESP_OK;
@@ -971,7 +983,10 @@ esp_err_t camlink_set_baud_ch(int cam, uint32_t baud) {
   /* Longer than the node's deadline, so we are not talking while it reverts. */
   vTaskDelay(pdMS_TO_TICKS(NL_BAUD_PROBE_MS + 200));
   baud_home(ch, "the node did not answer at the new rate");
-  const esp_err_t back = camlink_hello_ch_timeout(cam, DEFAULT_TIMEOUT_MS);
+  esp_err_t back = ESP_FAIL;
+  for (int attempt = 0; attempt < 2 && back != ESP_OK; attempt++) {
+    back = camlink_hello_ch_timeout(cam, DEFAULT_TIMEOUT_MS);
+  }
   if (back != ESP_OK) {
     klog(ch->tag, "the node is not answering at %d baud either: %s", NL_DEFAULT_BAUD,
          esp_err_to_name(back));
