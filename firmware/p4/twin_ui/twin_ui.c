@@ -708,6 +708,9 @@ KUI_EXPORT("kui_set_capture_frames") void kui_set_capture_frames(unsigned asked,
 capture_stage_t capture_stage(void) { return g_stage; }
 void capture_ack(void) { g_stage = CAPTURE_IDLE; }
 bool capture_busy(void) { return g_stage != CAPTURE_IDLE && g_stage != CAPTURE_DONE; }
+/* The simulator's pipeline always comes up; the refusal path is reached by
+ * driving the stage from the page, not by breaking init. */
+bool capture_ready(void) { return true; }
 void capture_last(capture_report_t *out) {
   if (out) *out = g_report;
 }
