@@ -89,6 +89,13 @@ int64_t clock_now_ms(void);
  * for a timestamp, which is clock_iso8601().
  */
 int clock_local_hour(void);
+/** The offset local time is printed with, minutes east of UTC. */
+int clock_offset_min(void);
+/** False until a host or the CONNECTION screen has set the zone: SNTP gives
+ *  UTC and nothing else, and a body that never met Studio prints UTC. */
+bool clock_offset_known(void);
+/** The CONNECTION screen's zone control. Persists the offset on its own. */
+void clock_set_offset(int utc_offset_min);
 
 clock_source_t clock_source(void);
 const char *clock_source_str(void);

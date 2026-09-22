@@ -135,7 +135,17 @@ function initialState(): StageState {
   };
 }
 
-export const useStageStore = create<StageState>(() => initialState());
+/**
+ * The Twin starts on the party scene, not on an empty stage.
+ *
+ * It started empty - no subjects, no room - and every camera on the body
+ * photographed a void: the SHOOT screen showed four panes of pure black
+ * under a lit 4/4, every capture was a black JPEG, and the only way out was
+ * a button on the STAGE tab that a person reading the device screen never
+ * sees. The brief's own words (§9) ask for one useful default. This is it;
+ * CLEAR STAGE still empties the stage for anyone who wants the void.
+ */
+export const useStageStore = create<StageState>(() => ({ ...initialState(), ...partySceneState() }));
 
 export function addSubject(kind: SubjectKind): string {
   const subject = freshSubject(kind);
@@ -189,16 +199,20 @@ export function setLensFovDeg(deg: LensFovDeg): void {
 
 /** Brief §9: one useful default — person at 1.5 m, table with objects,
  * background depth, dim party light, room shell for bounce and backdrop. */
-export function loadPartyScene(): void {
+function partySceneState(): Pick<StageState, 'subjects' | 'selectedId' | 'room' | 'lighting'> {
   const person = freshSubject('person');
   const table = { ...freshSubject('party-table'), xMm: -700, zMm: 1200 };
   const backGroup = { ...freshSubject('two-people'), xMm: 600, zMm: 2600 };
-  useStageStore.setState({
+  return {
     subjects: [person, table, backGroup],
     selectedId: person.id,
     room: true,
     lighting: { preset: 'dim-party', ...LIGHTING_PRESETS['dim-party'] },
-  });
+  };
+}
+
+export function loadPartyScene(): void {
+  useStageStore.setState(partySceneState());
 }
 
 export function resetStage(): void {

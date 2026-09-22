@@ -15,6 +15,8 @@
 #include "esp_chip_info.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_ota_ops.h"
+#include "esp_partition.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -23,6 +25,7 @@
 #include "kdp/decoder.h"
 #include "kdp/packet.h"
 #include "kdp/protocol.h"
+#include "mbedtls/sha256.h"
 #include "node_link/node_link.h"
 
 static const char *TAG = "node_server";
@@ -99,12 +102,20 @@ static uint32_t s_frame_id;
  * size exceeds cap is resynced past like a corrupt length", and a resync shows
  * up in the STATUS counters rather than running off the end of this array.
  */
-#define LINK_DECODE_PAYLOAD_MAX 256
+/* Plus a firmware chunk: NL_CMD_FW_CHUNK is the one request that carries
+ * data, 4 bytes of offset and up to NL_FW_CHUNK_MAX of image. */
+#define LINK_DECODE_PAYLOAD_MAX (NL_FW_CHUNK_MAX + 4 + 256)
 static uint8_t s_decode_buf[KDP_HEADER_LEN + LINK_DECODE_PAYLOAD_MAX + KDP_CRC_LEN];
 static kdp_decoder_t s_decoder;
 
 // Reply frames: header + chunk + CRC is the largest we ever send.
 static uint8_t s_tx_buf[KDP_HEADER_LEN + NL_CHUNK_MAX + KDP_CRC_LEN];
+/* Larger than any preview-sized JPEG this sensor makes (a 320x240 frame at the
+ * finder's quality is 2-8 KB), smaller than any photograph (90 KB up). */
+/* The body refuses anything larger, so a frame above this is one neither end
+ * can use: take the next one. One definition, in the header both ends read
+ * (#208). */
+#define NL_PREVIEW_STALE_BYTES NL_PREVIEW_MAX_BYTES
 
 void node_server_set_state(const char *state) { s_state = state; }
 
@@ -305,11 +316,19 @@ static void add_sync_seq(cJSON *json) {
   cJSON_AddBoolToObject(json, "syncInput", s_sync_input_ready);
 }
 
+static void fw_confirm_running(void);
+
 static void handle_hello(uint32_t seq) {
+  fw_confirm_running();
   cJSON *json = cJSON_CreateObject();
   cJSON_AddStringToObject(json, "product", "KINO-CAMNODE");
   cJSON_AddNumberToObject(json, "protocol", NL_PROTOCOL_VERSION);
   cJSON_AddStringToObject(json, "firmware", KINO_FW_VERSION);
+  /* Which OTA slot is running, for the P4's FW_QUERY and the bench. */
+  {
+    const esp_partition_t *run = esp_ota_get_running_partition();
+    cJSON_AddStringToObject(json, "slot", run != NULL ? run->label : "");
+  }
   cJSON_AddStringToObject(json, "sessionId", s_session_id);
   cJSON_AddStringToObject(json, "resetReason", reset_reason_str());
   esp_chip_info_t chip;
@@ -448,6 +467,29 @@ static void handle_capture(uint32_t seq, cJSON *req) {
     send_nack(NL_CMD_CAPTURE, seq, "HARDWARE_ERROR", "No sensor detected");
     return;
   }
+  /*
+   * Everything this CAPTURE may spend, measured from here.
+   *
+   * From the top of the handler, not from just before the first fetch: the
+   * resolution change and its drain are part of what a CAPTURE costs, and
+   * leaving them outside the budget is what let one run past the P4's
+   * NODE_CAPTURE_TIMEOUT_MS (#205).
+   */
+  const int64_t budget_end_us = esp_timer_get_time() + (int64_t)CAPTURE_BUDGET_MS * 1000;
+
+  /*
+   * The previous held frame goes first, before the resolution changes.
+   *
+   * With fb_count = 2 a held frame leaves exactly one buffer for the DMA, so
+   * the drain inside camsensor_set_resolution() could not return until the
+   * in-flight frame finished - a frame period added to every alternation
+   * between a preview and a photograph, inside the budget above.
+   */
+  if (s_fb != NULL) {
+    camsensor_release(s_fb);
+    s_fb = NULL;
+  }
+
   const cJSON *res = cJSON_GetObjectItem(req, "resolution");
   if (cJSON_IsString(res) && camsensor_set_resolution(res->valuestring) != ESP_OK) {
     send_nack(NL_CMD_CAPTURE, seq, "INVALID_ARGUMENT", "Unsupported resolution");
@@ -457,12 +499,6 @@ static void handle_capture(uint32_t seq, cJSON *req) {
   if (cJSON_IsNumber(quality) && camsensor_set_quality(quality->valueint) != ESP_OK) {
     send_nack(NL_CMD_CAPTURE, seq, "INVALID_ARGUMENT", "Quality not accepted");
     return;
-  }
-
-  // A new capture implicitly releases the previous held frame.
-  if (s_fb != NULL) {
-    camsensor_release(s_fb);
-    s_fb = NULL;
   }
 
   s_state = NL_STATE_EXPOSING;
@@ -492,7 +528,19 @@ static void handle_capture(uint32_t seq, cJSON *req) {
   int64_t sync_edge_us;
   sync_snapshot(&sync_seq, &sync_edge_us, NULL, NULL);
   const int64_t cmd_us = esp_timer_get_time();
-  camera_fb_t *fb = camsensor_capture(&duration_ms, &timing);
+  camera_fb_t *fb = camsensor_capture_by(budget_end_us, &duration_ms, &timing);
+  /*
+   * A preview that comes back photograph-sized is the frame the sensor was
+   * exposing when the mode changed: camsensor_set_resolution drains the
+   * queue, but the buffer the DMA was filling at that moment lands after the
+   * drain, at the old size. The P4 refused it by size and blinked the pane.
+   * Take the next one instead, once - it is the first frame at the new size.
+   */
+  if (preview && fb != NULL && fb->len > NL_PREVIEW_STALE_BYTES) {
+    ESP_LOGI(TAG, "preview frame is %u B, the photograph's size; taking the next", (unsigned)fb->len);
+    camsensor_release(fb);
+    fb = camsensor_capture_by(budget_end_us, &duration_ms, &timing);
+  }
   /*
    * A photograph must be armed AFTER the command that asked for it, and encoded
    * wholly under the settings that were just applied. One predicate, two
@@ -543,23 +591,27 @@ static void handle_capture(uint32_t seq, cJSON *req) {
      * which is the state that made a camera read offline on the NEXT capture.
      *
      * A retry count cannot bound this because it does not know what a fetch
-     * costs. A deadline can. CAPTURE_BUDGET_MS is the whole freshness
-     * sequence; the P4's 4000 ms has to cover that plus the CRC over the JPEG
-     * and the cJSON print, measured at a few hundred milliseconds for 240 KB
-     * at -O2, so 3000 leaves ~1000 ms of the product path's budget for the
-     * reply and the wire. The retry cap stays as a second bound for the case
-     * where fetches are fast and the sensor simply never produces a fresh
+     * costs. A deadline can - and it has to be one deadline for the whole
+     * handler, not one for this loop. It was the latter until #205: the first
+     * fetch and the mode-change drain both sat outside it and both could block
+     * for the driver's 4000 ms, so the worst case was two to three times the
+     * figure this comment claimed. budget_end_us is taken at the top of
+     * handle_capture() and every fetch is bounded by it.
+     *
+     * The P4's 4000 ms has to cover that plus the CRC over the JPEG and the
+     * cJSON print, so 3000 leaves ~1000 ms of the product path's budget for
+     * the reply and the wire. The retry cap stays as a second bound for the
+     * case where fetches are fast and the sensor simply never produces a fresh
      * frame.
      *
      * Do not raise the P4 side to make room here: the audit that found this
      * requires a node-side p99 before that number moves.
      */
-    const int64_t deadline_us = cmd_us + (int64_t)CAPTURE_BUDGET_MS * 1000;
     while (fb != NULL && timing.frame_start_us <= must_start_after) {
       if (freshness_retries >= FRESHNESS_RETRIES_MAX) break;
-      if (esp_timer_get_time() >= deadline_us) break;
+      if (esp_timer_get_time() >= budget_end_us) break;
       camsensor_release(fb);
-      fb = camsensor_capture(&duration_ms, &timing);
+      fb = camsensor_capture_by(budget_end_us, &duration_ms, &timing);
       freshness_retries++;
     }
     /*
@@ -754,6 +806,199 @@ static void handle_release(uint32_t seq, cJSON *req) {
   send_json(NL_CMD_RELEASE, seq, json);
 }
 
+/* ------------------------------------------------------------------ */
+/* Firmware update over the link                                       */
+/* ------------------------------------------------------------------ */
+
+static struct {
+  bool open;
+  esp_ota_handle_t handle;
+  const esp_partition_t *part;
+  uint32_t size;
+  uint32_t received;
+  uint8_t want[32];
+  mbedtls_sha256_context sha;
+} s_fw;
+
+static bool fw_hex32(const char *hex, uint8_t out[32]) {
+  if (hex == NULL || strlen(hex) != 64) return false;
+  for (int i = 0; i < 32; i++) {
+    unsigned v = 0;
+    for (int k = 0; k < 2; k++) {
+      const char c = hex[i * 2 + k];
+      v <<= 4;
+      if (c >= '0' && c <= '9') v |= (unsigned)(c - '0');
+      else if (c >= 'a' && c <= 'f') v |= (unsigned)(c - 'a' + 10);
+      else if (c >= 'A' && c <= 'F') v |= (unsigned)(c - 'A' + 10);
+      else return false;
+    }
+    out[i] = (uint8_t)v;
+  }
+  return true;
+}
+
+static void fw_drop(void) {
+  if (!s_fw.open) return;
+  esp_ota_abort(s_fw.handle);
+  mbedtls_sha256_free(&s_fw.sha);
+  s_fw.open = false;
+}
+
+/*
+ * The running image is good once the P4 has spoken to it. With rollback on,
+ * a new image boots in PENDING_VERIFY and is rolled back on the next reset
+ * unless something confirms it; the first HELLO answered is that something,
+ * because a node the P4 can talk to is a node that works.
+ */
+static void fw_confirm_running(void) {
+  static bool done;
+  if (done) return;
+  done = true;
+  const esp_partition_t *run = esp_ota_get_running_partition();
+  esp_ota_img_states_t st;
+  if (run != NULL && esp_ota_get_state_partition(run, &st) == ESP_OK &&
+      st == ESP_OTA_IMG_PENDING_VERIFY) {
+    esp_ota_mark_app_valid_cancel_rollback();
+    ESP_LOGI(TAG, "new image in %s confirmed on first HELLO", run->label);
+  }
+}
+
+static void handle_fw_begin(uint32_t seq, cJSON *req) {
+  const cJSON *size = cJSON_GetObjectItem(req, "size");
+  const cJSON *sha = cJSON_GetObjectItem(req, "sha256");
+  uint8_t want[32];
+  if (!cJSON_IsNumber(size) || size->valuedouble < 1 || size->valuedouble > 4.0 * 1024 * 1024) {
+    send_nack(NL_CMD_FW_BEGIN, seq, "BAD_SIZE", "Image size must be 1 byte to 4 MB");
+    return;
+  }
+  if (!cJSON_IsString(sha) || !fw_hex32(sha->valuestring, want)) {
+    send_nack(NL_CMD_FW_BEGIN, seq, "INVALID_ARGUMENT", "sha256 must be 64 hex characters");
+    return;
+  }
+  if (s_fb != NULL) {
+    send_nack(NL_CMD_FW_BEGIN, seq, "BUSY", "A frame is held; release it first");
+    return;
+  }
+  fw_drop(); /* a new BEGIN supersedes a stale session */
+  const esp_partition_t *next = esp_ota_get_next_update_partition(NULL);
+  if (next == NULL) {
+    send_nack(NL_CMD_FW_BEGIN, seq, "HARDWARE_ERROR",
+              "No OTA slot: this node is on the single-app partition table");
+    return;
+  }
+  const uint32_t bytes = (uint32_t)size->valuedouble;
+  if (bytes > next->size) {
+    send_nack(NL_CMD_FW_BEGIN, seq, "BAD_SIZE", "Image is larger than the OTA slot");
+    return;
+  }
+  const esp_err_t err = esp_ota_begin(next, bytes, &s_fw.handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "esp_ota_begin: %s", esp_err_to_name(err));
+    send_nack(NL_CMD_FW_BEGIN, seq, "FLASH_WRITE", "Could not open the OTA slot");
+    return;
+  }
+  s_fw.open = true;
+  s_fw.part = next;
+  s_fw.size = bytes;
+  s_fw.received = 0;
+  memcpy(s_fw.want, want, sizeof want);
+  mbedtls_sha256_init(&s_fw.sha);
+  mbedtls_sha256_starts(&s_fw.sha, 0);
+  ESP_LOGI(TAG, "firmware update: %lu B into %s", (unsigned long)bytes, next->label);
+
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "ok", true);
+  cJSON_AddNumberToObject(json, "chunkSize", NL_FW_CHUNK_MAX);
+  cJSON_AddStringToObject(json, "slot", next->label);
+  send_json(NL_CMD_FW_BEGIN, seq, json);
+}
+
+static void handle_fw_chunk(uint32_t seq, const uint8_t *payload, size_t len) {
+  if (!s_fw.open) {
+    send_nack(NL_CMD_FW_CHUNK, seq, "NO_SESSION", "No update session is open");
+    return;
+  }
+  if (len < 5) {
+    send_nack(NL_CMD_FW_CHUNK, seq, "INVALID_ARGUMENT", "A chunk is 4 bytes of offset and data");
+    return;
+  }
+  const uint32_t offset = (uint32_t)payload[0] | ((uint32_t)payload[1] << 8) |
+                          ((uint32_t)payload[2] << 16) | ((uint32_t)payload[3] << 24);
+  const uint8_t *data = payload + 4;
+  const size_t n = len - 4;
+  if (offset != s_fw.received) {
+    send_nack(NL_CMD_FW_CHUNK, seq, "BAD_OFFSET", "Chunks must arrive in order");
+    return;
+  }
+  if (s_fw.received + n > s_fw.size) {
+    send_nack(NL_CMD_FW_CHUNK, seq, "BAD_SIZE", "Chunk runs past the image size");
+    return;
+  }
+  const esp_err_t err = esp_ota_write(s_fw.handle, data, n);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "esp_ota_write at %lu: %s", (unsigned long)offset, esp_err_to_name(err));
+    fw_drop();
+    send_nack(NL_CMD_FW_CHUNK, seq, "FLASH_WRITE", "Flash write failed");
+    return;
+  }
+  mbedtls_sha256_update(&s_fw.sha, data, n);
+  s_fw.received += (uint32_t)n;
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "ok", true);
+  cJSON_AddNumberToObject(json, "received", (double)n);
+  send_json(NL_CMD_FW_CHUNK, seq, json);
+}
+
+static void handle_fw_end(uint32_t seq) {
+  if (!s_fw.open) {
+    send_nack(NL_CMD_FW_END, seq, "NO_SESSION", "No update session is open");
+    return;
+  }
+  if (s_fw.received < s_fw.size) {
+    fw_drop();
+    send_nack(NL_CMD_FW_END, seq, "SHORT_IMAGE", "Not every byte of the image arrived");
+    return;
+  }
+  uint8_t got[32];
+  mbedtls_sha256_finish(&s_fw.sha, got);
+  if (memcmp(got, s_fw.want, sizeof got) != 0) {
+    fw_drop();
+    send_nack(NL_CMD_FW_END, seq, "CHECKSUM_FAILED", "SHA-256 of the received image does not match");
+    return;
+  }
+  mbedtls_sha256_free(&s_fw.sha);
+  s_fw.open = false;
+  esp_err_t err = esp_ota_end(s_fw.handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "esp_ota_end: %s", esp_err_to_name(err));
+    send_nack(NL_CMD_FW_END, seq,
+              err == ESP_ERR_OTA_VALIDATE_FAILED ? "CHECKSUM_FAILED" : "FLASH_WRITE",
+              err == ESP_ERR_OTA_VALIDATE_FAILED ? "Image failed validation"
+                                                 : "Could not finish the OTA write");
+    return;
+  }
+  err = esp_ota_set_boot_partition(s_fw.part);
+  if (err != ESP_OK) {
+    send_nack(NL_CMD_FW_END, seq, "FLASH_WRITE", "Could not select the new slot");
+    return;
+  }
+  ESP_LOGI(TAG, "firmware verified into %s; restarting", s_fw.part->label);
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "ok", true);
+  cJSON_AddBoolToObject(json, "verified", true);
+  send_json(NL_CMD_FW_END, seq, json);
+  uart_wait_tx_done(BOARD_LINK_UART_NUM, pdMS_TO_TICKS(500));
+  vTaskDelay(pdMS_TO_TICKS(50));
+  esp_restart();
+}
+
+static void handle_fw_abort(uint32_t seq) {
+  fw_drop();
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "ok", true);
+  send_json(NL_CMD_FW_ABORT, seq, json);
+}
+
 static void on_frame(const kdp_frame_t *frame, void *ctx) {
   (void)ctx;
   if (frame->version != NL_PROTOCOL_VERSION) {
@@ -783,6 +1028,10 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
 
   switch (frame->type) {
     case NL_CMD_HELLO: handle_hello(frame->seq); break;
+    case NL_CMD_FW_BEGIN: handle_fw_begin(frame->seq, req); break;
+    case NL_CMD_FW_CHUNK: handle_fw_chunk(frame->seq, frame->payload, frame->payload_len); break;
+    case NL_CMD_FW_END: handle_fw_end(frame->seq); break;
+    case NL_CMD_FW_ABORT: handle_fw_abort(frame->seq); break;
     case NL_CMD_STATUS: handle_status(frame->seq); break;
     case NL_CMD_CAPTURE: handle_capture(frame->seq, req); break;
     case NL_CMD_READ: handle_read(frame->seq, req); break;

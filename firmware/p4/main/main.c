@@ -16,6 +16,8 @@
 #include "ui.h"
 #include "viewfinder.h"
 #include "esp_log.h"
+#include "esp_app_desc.h"
+#include "fw_update.h"
 #include "esp_core_dump.h"
 #include "esp_heap_caps.h"
 #include "esp_mac.h"
@@ -32,7 +34,9 @@
 #include "nvs_flash.h"
 #include "power.h"
 #include "roll_state.h"
+#include "safe_mode.h"
 #include "storage.h"
+#include "storage_watch.h"
 #include "taskmon.h"
 #include "upload_queue.h"
 #include "wifi_creds.h"
@@ -199,10 +203,21 @@ static void log_last_panic(void) {
   esp_core_dump_summary_t *s = heap_caps_calloc(1, sizeof *s, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   if (s == NULL) return;
   if (esp_core_dump_get_summary(s) == ESP_OK) {
-    klog("P4", "last panic: task %s pc 0x%08lx mcause 0x%lx mtval 0x%08lx ra 0x%08lx sp 0x%08lx",
-         s->exc_task, (unsigned long)s->exc_pc, (unsigned long)s->ex_info.mcause,
-         (unsigned long)s->ex_info.mtval, (unsigned long)s->ex_info.ra,
-         (unsigned long)s->ex_info.sp);
+    /*
+     * Whose dump this is. A dump from a different image cannot be decoded
+     * against this build's ELF, and the bench read "last panic: task vf_cam3"
+     * for weeks from an image long since replaced. It is reported once, named
+     * as the older firmware's, and erased, so the line that stays in the ring
+     * is always about the firmware that is running.
+     */
+    char running[APP_ELF_SHA256_SZ + 1] = "";
+    esp_app_get_elf_sha256(running, sizeof running);
+    const bool ours = strncmp((const char *)s->app_elf_sha256, running, APP_ELF_SHA256_SZ - 1) == 0;
+    klog("P4", "last panic%s: task %s pc 0x%08lx mcause 0x%lx mtval 0x%08lx ra 0x%08lx sp 0x%08lx",
+         ours ? "" : " (older firmware, dump erased)", s->exc_task, (unsigned long)s->exc_pc,
+         (unsigned long)s->ex_info.mcause, (unsigned long)s->ex_info.mtval,
+         (unsigned long)s->ex_info.ra, (unsigned long)s->ex_info.sp);
+    if (!ours) esp_core_dump_image_erase();
   }
   free(s);
 }
@@ -245,8 +260,12 @@ void app_main(void) {
   clock_init();
 
   klog_init();
+  /* Telemetry off unless this body has been asked for it. See klog.h for what
+   * belongs on which channel (#202). */
+  klog_set_telemetry(config_bool("body.log.telemetry", false));
   klog("P4", "boot %s serial %s session %s", KINO_FW_VERSION, id.serial, id.session_id);
   log_last_panic();
+  safe_mode_boot();
   ESP_LOGI(TAG, "P4_BOOT %s serial %s session %s transport usb-serial-jtag",
            KINO_FW_VERSION, id.serial, id.session_id);
   hwv_init();
@@ -398,6 +417,10 @@ void app_main(void) {
      * even if nothing can be pressed. */
     esp_err_t ui_err = ui_start();
     if (ui_err != ESP_OK) ESP_LOGE(TAG, "ui unavailable: %s", esp_err_to_name(ui_err));
+    /* This far - KDP answering, the panel drawing - is what a good image
+     * looks like. With rollback armed, saying so is what keeps the bootloader
+     * from returning to the previous slot on the next reset. */
+    if (ui_err == ESP_OK) fw_update_mark_healthy();
   }
 
   /*
@@ -432,6 +455,17 @@ void app_main(void) {
   if (lid_err != ESP_OK) {
     ESP_LOGE(TAG, "lens cover watcher unavailable: %s", esp_err_to_name(lid_err));
   }
+  /*
+   * Whether it acts on what it sees, as a setting rather than as a rebuild.
+   *
+   * lid_set_acting() existed and nothing anywhere called it, so the watcher
+   * could only ever observe and the sleep behind it could not happen on any
+   * body (#169). The default is still false, for the reason lid.h gives: the
+   * two thresholds are unmeasured and the mistake this makes is putting the
+   * camera to sleep in the middle of a party. What changes is that measuring
+   * them and trying the result no longer needs a reflash.
+   */
+  lid_set_acting(config_bool("body.coverWatch", false));
 
   /*
    * Networking last, and every line of it is allowed to fail.
@@ -471,7 +505,9 @@ void app_main(void) {
    * is the whole point of the ordering above: bring-up drives GPIO54 and opens
    * an SDIO host, and a camera whose radio wedges must still take a
    * photograph. */
-  esp_err_t nh_err = net_hosted_start();
+  /* Three crashes in a row and the radio and the uploads stay out of this
+   * boot (safe_mode.h): the camera still shoots, STATUS says what is off. */
+  esp_err_t nh_err = safe_mode_active() ? ESP_ERR_NOT_SUPPORTED : net_hosted_start();
   if (nh_err != ESP_OK && nh_err != ESP_ERR_NOT_SUPPORTED) {
     ESP_LOGW(TAG, "radio host would not start: %s - NETWORK_STATUS says why",
              esp_err_to_name(nh_err));
@@ -482,11 +518,15 @@ void app_main(void) {
    * while the last power cut happened, or taken with no network months ago,
    * is found here and queued. It must come after storage_init() and after
    * roll_state_init(), because it needs the card and the Roll it belongs to. */
-  esp_err_t uq_err = upload_queue_start();
+  esp_err_t uq_err = safe_mode_active() ? ESP_OK : upload_queue_start();
   if (uq_err != ESP_OK) {
     ESP_LOGW(TAG, "upload queue unavailable: %s - captures stay on the card",
              esp_err_to_name(uq_err));
   }
+
+  /* The card watched, the log written to it (storage_watch.h). Last, so
+   * nothing it does contends with the boot. */
+  if (storage_watch_start() != ESP_OK) ESP_LOGW(TAG, "card watcher would not start");
 
   /* Every new capture is queued by upload_queue.c's own capture-done listener,
    * registered in upload_queue_start(): it has the shutter's Roll snapshot and

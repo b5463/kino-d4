@@ -50,8 +50,10 @@ esp_err_t lid_init(void);
 /**
  * Whether a settled `closed` may put the camera to sleep.
  *
- * FALSE until somebody has read PURE_LID_DARK and PURE_LID_LIT off the bench
- * log with the cover on and the cover off. Those two numbers cannot be
+ * Set from `body.coverWatch` at boot and on every accepted SET_CONFIG, so the
+ * thresholds can be measured and the result tried without a reflash. The
+ * default is false, and stays false until somebody has read PURE_LID_DARK and
+ * PURE_LID_LIT off the bench log with the cover on and the cover off. Those two numbers cannot be
  * derived: the node runs auto-exposure, so a covered sensor does not report
  * zero, it reports amplified noise, and how much is a property of the part.
  * Until they are measured this watcher observes and logs and changes nothing,

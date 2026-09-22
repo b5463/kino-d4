@@ -35,8 +35,70 @@ bool gfx_ready(void);
  */
 uint16_t *gfx_canvas(void);
 
+/**
+ * The drawing target: a window onto the logical UI_W x UI_H screen.
+ *
+ * `px` holds `w` x `h` pixels, `stride` per row, with logical (x0, y0) at
+ * px[0]. Pixels outside the window are not stored anywhere and every
+ * primitive clips to it. The whole canvas is the window most of the time;
+ * a tile renderer makes it a band of the screen in internal SRAM and runs the
+ * same drawing code once per band, which is how a frame reaches the panel
+ * without a landscape copy of it in PSRAM to rotate.
+ */
+typedef struct {
+  uint16_t *px;
+  int x0, y0, w, h;
+  int stride;
+} gfx_target_t;
+
+const gfx_target_t *gfx_target(void);
+
+/**
+ * Draw through a view instead of the target proper, until cleared with NULL.
+ *
+ * A view is a target whose window is a sub-rectangle of the real one with its
+ * origin moved: drawing code that thinks it is at (0, 0) lands wherever the
+ * view says, clipped to it. This is how a move draws a whole screen into a
+ * growing card, or a menu column shifted sideways, with the screen's own
+ * drawing code and no copy of anything.
+ */
+void gfx_target_view(const gfx_target_t *view);
+
 /** Rotate the canvas onto the back framebuffer and show it. */
 void gfx_present(void);
+
+/** A frame's drawing code: draws the whole logical screen into gfx_target(). */
+typedef void (*gfx_draw_fn)(void *ctx);
+
+/**
+ * Draw a frame and put it on the panel.
+ *
+ * The one way a frame reaches the screen. The compositor decides where
+ * `draw` draws - the whole canvas, or one band of the screen at a time in
+ * internal SRAM, written to the portrait framebuffer transposed - and `draw`
+ * must be a pure function of the UI's state: it may be called several times
+ * for one frame, and every call must draw the same picture.
+ */
+void gfx_render(gfx_draw_fn draw, void *ctx);
+
+/**
+ * Which drawing pass this is. Goes up once per gfx_render() or
+ * gfx_render_canvas(), and stays the same across the many calls of `draw`
+ * inside one tile pass - so drawing code that gathers state it does not need
+ * to gather seventy times a frame can key a cache on it.
+ */
+uint32_t gfx_pass_id(void);
+
+/** Run `draw` through the tile pass and time only the drawing; nothing is
+ *  written out or shown. For finding out what a screen costs on the bench. */
+uint32_t gfx_measure_draw_us(gfx_draw_fn draw, void *ctx);
+
+/**
+ * Draw a frame into the landscape canvas in PSRAM and leave it there, so a
+ * transition can keep it (gfx_stash, gfx_layer_keep, gfx_snapshot, the push
+ * and the dissolve all read the canvas). Nothing reaches the panel.
+ */
+void gfx_render_canvas(gfx_draw_fn draw, void *ctx);
 
 /**
  * Remember the canvas as the starting point of the next dissolve.
@@ -56,15 +118,17 @@ void gfx_snapshot(void);
  */
 void gfx_dissolve(int duration_ms);
 
-/** One screen pushing the other off. `from_right` is where the NEW frame
- *  comes from; deeper is rightward. Needs gfx_snapshot() first, as the
- *  dissolve does. */
-void gfx_slide(int duration_ms, bool from_right);
-
-/** A rectangle the compositor can move on its own. */
-typedef struct {
-  int16_t x, y, w, h;
-} gfx_band_t;
+/**
+ * One screen pushing the other off, one frame at a time, composed in the
+ * panel's own orientation. gfx_snapshot() first (the screen leaving), then
+ * draw the screen arriving into the stash (gfx_render_stash) and call
+ * gfx_slide_prepare() once; each frame gfx_slide_show() shows `o` columns of
+ * the arriving screen from its edge with the leaving one moved `b` columns
+ * the other way. `from_right` is where the NEW screen comes from; deeper is
+ * rightward. Counts as a frame and waits for the panel like one.
+ */
+void gfx_slide_prepare(void);
+void gfx_slide_show(int o, int b, bool from_right);
 
 /**
  * Keep the frame just drawn, and hand pieces of it back.
@@ -76,6 +140,11 @@ typedef struct {
  */
 void gfx_stash(void);
 void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h);
+/** Draw a frame straight into the stash, and read it back: for a move whose
+ *  card is a screen too costly to draw every frame (the finder's four live
+ *  panes, a page of thumbnails), drawn once here and blitted from here. */
+void gfx_render_stash(gfx_draw_fn draw, void *ctx);
+const uint16_t *gfx_stash_px(void);
 
 /**
  * A second retained layer, for the parts of a move that only translate.
@@ -93,16 +162,14 @@ void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h);
 void gfx_layer_keep(void);
 void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h);
 
-/**
- * A list arriving, one row at a time, over the frame already drawn.
- *
- * The bands come in from the right in order, staggered. `ground` is what is
- * behind them - the page's own background, because the row is not there yet.
- * Does not need a snapshot: everything it composites is the new frame.
- */
-void gfx_cascade(int duration_ms, const gfx_band_t *bands, int n, uint16_t ground);
-
 /** Frames presented and the time they took, for bandwidth checks. */
 void gfx_stats(uint32_t *frames, uint32_t *last_ms);
+
+/** Microseconds spent presenting (rotate plus hand-over) since boot. */
+uint64_t gfx_present_us_total(void);
+
+/** Microseconds spent drawing, writing tiles out, and waiting for the panel's
+ *  refresh end, since boot. */
+void gfx_pass_split(uint64_t *draw_us, uint64_t *xpose_us, uint64_t *vsync_us);
 
 #endif

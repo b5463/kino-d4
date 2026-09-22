@@ -12,6 +12,30 @@
 
 esp_err_t storage_init(void);
 bool storage_present(void);
+/**
+ * Format the card in the slot and mount it empty, with the KINO directories
+ * made. A mounted card is reformatted in place; a card that would not mount
+ * is formatted as its mount. THE CALLER MUST HOLD THE CARD
+ * (storage_acquire(STORAGE_USER_UI, ...)) for the whole call, and refresh the
+ * gallery afterwards. Seconds, on the calling task.
+ */
+esp_err_t storage_format(void);
+
+/** Try the slot again, quietly. ESP_OK once a card is mounted (or already was);
+ *  ESP_ERR_TIMEOUT when the card lock was busy. For storage_watch.c. */
+esp_err_t storage_remount(void);
+/** Ask the mounted card for its status. False when it has gone: it is then
+ *  unmounted and storage_get_status reports removed. */
+bool storage_card_alive(void);
+
+/**
+ * DELETE's undo. storage_capture_trash() moves the capture's folder to
+ * /KINO/TRASH; storage_capture_untrash() moves it back; storage_trash_purge()
+ * deletes whatever is in the trash. THE CALLER MUST HOLD THE CARD.
+ */
+esp_err_t storage_capture_trash(const char *id);
+esp_err_t storage_capture_untrash(const char *id);
+void storage_trash_purge(void);
 
 typedef struct {
   bool present;
@@ -22,6 +46,8 @@ typedef struct {
   const char *last_error; /* short code/message, NULL when none */
   uint32_t mount_attempts;
   const char *write_test; /* "none" | "pass" | "fail" */
+  uint32_t write_test_ms; /* how long the last write test took; 0 before one ran */
+  bool removed;           /* the card was pulled while running (storage_card_alive) */
 } storage_status_t;
 
 void storage_get_status(storage_status_t *out);

@@ -68,6 +68,8 @@ interface Kui {
   kui_sounds_clear(): void;
   kui_sound_add(id: number, name: number): void;
   kui_vf_ptr(cam: number): number;
+  /** Frames landed in the tiles of `mask`; the shim ages them from here. Absent on modules before 0.4.57. */
+  kui_vf_landed?(mask: number): void;
   kui_set_vf_dead(mask: number): void;
   kui_vf_wanted(): number;
   kui_set_capture_stage(stage: number): void;
@@ -609,6 +611,10 @@ export class FirmwareUi {
       const ptr = x.kui_vf_ptr(cam);
       rgbaToRgb565(rgba, new Uint16Array(x.memory.buffer, ptr, VF_W * VF_H));
     }
+    // Say so, or the shim never counts the pane live - and when this stops
+    // being said (hidden tab, stalled renderer) the pane goes NO RECENT
+    // FRAME after two seconds, the way the camera's own driver reports it.
+    x.kui_vf_landed?.(0xf);
   }
 
   // ---- the gallery ----

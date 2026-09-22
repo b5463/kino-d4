@@ -12,7 +12,12 @@ CONFIG_SPIRAM_SPEED_80M=y
 # tolerates that boot spew by contract.
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 
-CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+# Two OTA slots, so the P4 can update a node over the link (partitions.csv).
+# Rollback: an image that does not confirm itself (its first HELLO answered)
+# is rolled back by the bootloader on the next reset.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
 # -O2, not IDF's default -Og. The node's CRC-32 over a UXGA JPEG and the
 # KDP framing on the link UART run per capture and per preview frame; see

@@ -28,6 +28,13 @@ static volatile bool s_wake_gesture;
 bool power_wake_gesture(void) { return s_wake_gesture; }
 void power_end_wake_gesture(void) { s_wake_gesture = false; }
 
+/* The hand-over before sleep: set here, answered by the UI task. */
+static volatile bool s_sleep_pending;
+static volatile bool s_sleep_shown;
+
+bool power_sleep_pending(void) { return s_sleep_pending; }
+void power_sleep_shown(void) { s_sleep_shown = true; }
+
 /**
  * Drive the backlight, with or without a working panel.
  *
@@ -143,6 +150,14 @@ static void cam_bank(bool on) {
   klog("P4", "cam bank %s", on ? "on" : "off");
 }
 
+void power_cam_bank_cycle(void) {
+  klog("P4", "cam bank power cycle");
+  cam_bank(false);
+  vTaskDelay(pdMS_TO_TICKS(400));
+  cam_bank(true);
+  power_activity();
+}
+
 static void power_task(void *arg) {
   (void)arg;
   for (;;) {
@@ -188,8 +203,47 @@ static void power_task(void *arg) {
        * Studio can show where the timeout has got to, and it is one line to
        * make it real if the backlight ever gets a transistor. */
       if (want == POWER_ASLEEP) {
+        /*
+         * The mark first, then the dark.
+         *
+         * The backlight used to go straight off at sleepS, from whatever
+         * screen was up - which is exactly what a crash looks like from the
+         * outside. Shutting down and restarting already show the camera's
+         * own mark on the way out (ui.c, power_down_anim); sleep is the
+         * third way the screen goes dark and it said nothing. So this asks
+         * the UI to put the mark up, waits for it (bounded: a UI that does
+         * not answer in 900 ms does not get to keep the backlight on), holds
+         * it for 600 ms, and only then cuts the light. A touch anywhere in
+         * that window is activity, and activity calls the sleep off through
+         * the same race check the rest of this branch already has.
+         */
+        s_sleep_shown = false;
+        s_sleep_pending = true;
+        for (int i = 0; i < 45 && !s_sleep_shown && s_activity_seq == seq_before; i++) {
+          vTaskDelay(pdMS_TO_TICKS(20));
+        }
+        const bool shown = s_sleep_shown;
+        /* The screen winds down for two seconds before the light goes -
+         * long enough to read, and to look like a thing the camera is doing
+         * rather than a thing that happened to it. Pending stays true for the
+         * whole of it: it went false here, and the UI, seeing neither pending
+         * nor asleep, redrew the screen under the mark in the last half
+         * second - the flash back to the finder before the dark, which read
+         * as a crash. */
+        for (int i = 0; shown && i < 100 && s_activity_seq == seq_before; i++) {
+          vTaskDelay(pdMS_TO_TICKS(20));
+        }
+        if (s_activity_seq != seq_before) {
+          s_sleep_pending = false;
+          klog("P4", "sleep called off by a touch while the mark was up");
+          vTaskDelay(pdMS_TO_TICKS(100));
+          continue;
+        }
         backlight(false);
         s_stage = POWER_ASLEEP;
+        s_sleep_pending = false;
+        klog("P4", "asleep after %lus idle, mark %s", (unsigned long)idle,
+             shown ? "shown" : "not answered");
         /* The check above closed the gap between SAMPLING and DECIDING. This
          * closes the one between deciding and ACTING, which is the gap a
          * finger actually lands in: power_activity() runs on the touch task,

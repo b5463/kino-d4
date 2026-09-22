@@ -12,8 +12,10 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "node_link/node_link.h"
 #include "freertos/task.h"
 #include "klog.h"
+#include "power.h"
 
 static const char *TAG = "viewfinder";
 
@@ -61,9 +63,16 @@ static const char *TAG = "viewfinder";
 #define VF_QUALITY_NORMAL VF_QUALITY
 #define VF_QUALITY_HIGH 18
 
-/* A QVGA JPEG at this quality measures a few KB; this is generous headroom so
- * a busy frame is never truncated into a decode failure. */
-#define VF_MAX_JPEG (24 * 1024)
+/*
+ * A QVGA JPEG at this quality measures a few KB; this is generous headroom so
+ * a busy frame is never truncated into a decode failure.
+ *
+ * The same number the node uses to decide a frame is too big to be a preview
+ * at all (#208). They were 24 KB here and 32 KB there, which left a band where
+ * the node kept a frame and this end dropped it - the pane blinking on a
+ * camera that was working, which is what the node's guard exists to prevent.
+ */
+#define VF_MAX_JPEG NL_PREVIEW_MAX_BYTES
 
 /* Older than this and a pane stops claiming to be live. */
 #define VF_STALE_MS 2000
@@ -72,7 +81,10 @@ static const char *TAG = "viewfinder";
  * timing line's cadence for the same reason. A pump runs at up to 17 Hz and
  * there are four of them, so an unthrottled line per drop is 68 a second -
  * which does not describe a fault, it destroys the ring that would have. */
-#define VF_DROP_LOG_MS 5000
+/* 30 s, matching the failure throttle on the link itself. A dropped preview
+ * frame is evidence and stays on the evidence channel, but four cameras at one
+ * line each per 5 s is a second telemetry stream in all but name. */
+#define VF_DROP_LOG_MS 30000
 
 
 /* VF_CAPTURE_TIMEOUT_MS and VF_READ_TIMEOUT_MS moved to viewfinder.h: a
@@ -161,6 +173,13 @@ uint32_t viewfinder_quality_writes(int cam) {
  * hold, and viewfinder_run can be called as often as the UI likes without
  * being able to break one.
  */
+/* While set, each camera rests VF_THROTTLE_MS after a frame: about 5 fps for
+ * the four together instead of the link's ceiling. The conditions set it from
+ * the die temperature. */
+#define VF_THROTTLE_MS 200
+static atomic_bool s_throttle;
+void viewfinder_throttle(bool on) { atomic_store(&s_throttle, on); }
+
 void viewfinder_run(bool on) {
   /* The rising edge only. This is called every UI pass, and re-reading the
    * config on all of them would put a mutex take and a dotted-path walk in
@@ -336,15 +355,27 @@ static bool pump_camera(int cam) {
     s_status[cam].state = VF_NO_LINK;
     return false;
   }
-  if (res.size == 0 || res.size > VF_MAX_JPEG) {
+  if (res.size == 0) {
     camlink_release_ch(cam, res.frame_id);
-    /* Two different faults behind one test, and they were both silent. Empty
-     * is a node that answered without exposing; oversize is a scene detailed
-     * enough to beat VF_MAX_JPEG, which is a picture we could have had with a
-     * lower preview quality and is worth knowing about rather than guessing at. */
-    vf_drop(cam, res.size == 0 ? VF_DROP_EMPTY : VF_DROP_OVERSIZE, res.size);
+    /* Empty is a node that answered without exposing. */
+    vf_drop(cam, VF_DROP_EMPTY, res.size);
     s_status[cam].state = VF_ERROR;
     return false;
+  }
+  if (res.size > VF_MAX_JPEG) {
+    /*
+     * Oversize is nearly always the frame the node exposed at the PHOTOGRAPH's
+     * size before the mode change back to preview took: 70-130 KB, once per
+     * camera after every shot. It never crosses the link - only its header
+     * did - so it costs nothing to skip. It used to flip the pane to VF_ERROR
+     * and return false, which put the pane into the absent-camera backoff and
+     * announced "viewfinder live" again a frame later: a blink of a dead pane
+     * after every photograph, on four panes. The pane keeps its last frame and
+     * the next pump gets the next frame, which is the picture.
+     */
+    camlink_release_ch(cam, res.frame_id);
+    vf_drop(cam, VF_DROP_OVERSIZE, res.size);
+    return true;
   }
 
   const int64_t cap_us = esp_timer_get_time() - cap_start_us;
@@ -435,9 +466,13 @@ static bool pump_camera(int cam) {
    * dec ms says whether the decoder is a factor at all.
    */
   const int64_t dec_us = esp_timer_get_time() - dec_start_us;
-  if (now - s_report_us[cam] >= 5000000) { /* 5 s: four cameras at 1 Hz drowns the ring */
+  /* Telemetry. Four cameras at 1 Hz drowned the ring, so this was already
+   * cut to one line per camera per 5 s; at 0.8 lines a second it was still
+   * 77% of everything in it (#202). It is a bench number, so it lives on the
+   * bench channel now and the 5 s stays for when that is switched on. */
+  if (now - s_report_us[cam] >= 5000000) {
     s_report_us[cam] = now;
-    klog("P4", "cam%d vf %uB cap %ums xfer %ums dec %ums %u.%u fps", cam + 1,
+    klog_tel("P4", "cam%d vf %uB cap %ums xfer %ums dec %ums %u.%u fps", cam + 1,
          (unsigned)res.size, (unsigned)(cap_us / 1000), (unsigned)(xfer_us / 1000),
          (unsigned)(dec_us / 1000), (unsigned)(s_status[cam].fps_x10 / 10),
          (unsigned)(s_status[cam].fps_x10 % 10));
@@ -454,9 +489,22 @@ static bool pump_camera(int cam) {
  * transfers on the wire at once and the slowest node sets the pace instead of
  * the sum of all four.
  */
+/*
+ * A camera that was live and has gone silent for this long gets the bank
+ * cycled: the one reset the P4 has over a node, and what brings back a node
+ * whose firmware has wedged or whose sensor has stopped answering. Once per
+ * ten minutes at most, for the whole bank, because the other three cameras
+ * pay for it with two seconds of restart.
+ */
+#define VF_LOST_CYCLE_MS 90000
+#define VF_CYCLE_HOLDOFF_MS 600000
+static int64_t s_last_bank_cycle_us;
+
 static void camera_task(void *arg) {
   const int cam = (int)(intptr_t)arg;
   bool announced = false;
+  bool was_live = false;      /* this camera has answered at least once */
+  int64_t lost_since_us = 0;  /* when the current run of failures began */
   int miss = 0; /* consecutive failures, for the backoff below */
   for (;;) {
     /*
@@ -486,8 +534,36 @@ static void camera_task(void *arg) {
       announced = true;
       klog("P4", "cam%d viewfinder live", cam + 1);
     }
-    if (!ok) {
+    /*
+     * Coming back is only news if the camera was really gone.
+     *
+     * `announced` used to be cleared by any failed pump, and a camera dropping
+     * one frame in six - the rate the bench measured on a marginal link - then
+     * logged "viewfinder live" on every recovery. Across four cameras that was
+     * the single largest consumer of the log ring, ahead of the timing report
+     * (#202). An outage shorter than the drop throttle is a dropped frame, and
+     * vf_drop() already says so.
+     */
+    if (!ok && announced && lost_since_us != 0 &&
+        esp_timer_get_time() - lost_since_us > (int64_t)VF_DROP_LOG_MS * 1000) {
       announced = false;
+    }
+    if (ok) {
+      was_live = true;
+      lost_since_us = 0;
+    } else if (was_live) {
+      const int64_t now = esp_timer_get_time();
+      if (lost_since_us == 0) lost_since_us = now;
+      if (now - lost_since_us > (int64_t)VF_LOST_CYCLE_MS * 1000 &&
+          now - s_last_bank_cycle_us > (int64_t)VF_CYCLE_HOLDOFF_MS * 1000) {
+        s_last_bank_cycle_us = now;
+        lost_since_us = now;
+        klog("P4", "cam%d silent %d s after being live; cycling the camera bank", cam + 1,
+             VF_LOST_CYCLE_MS / 1000);
+        power_cam_bank_cycle();
+      }
+    }
+    if (!ok) {
       /*
        * Back off hard on a camera that is not there, and harder the longer it
        * stays away. An absent node costs VF_CAPTURE_TIMEOUT_MS before it fails,
@@ -521,8 +597,9 @@ static void camera_task(void *arg) {
       miss = 0;
       /* One tick between frames. Not a rate cap - the finder is free to run as
        * fast as the link allows - just a guaranteed yield, so a fast camera can
-       * never monopolise the core against the UI task that feeds the panel. */
-      vTaskDelay(1);
+       * never monopolise the core against the UI task that feeds the panel.
+       * Throttled (the warm condition), it is a rest instead. */
+      vTaskDelay(atomic_load(&s_throttle) ? pdMS_TO_TICKS(VF_THROTTLE_MS) : 1);
     }
   }
 }

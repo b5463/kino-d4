@@ -1,6 +1,7 @@
 #include "klog.h"
 
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -11,7 +12,13 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
-#define KLOG_CAPACITY 200
+/* 600, not 200. At the rate the ring was actually being written - 1.07 lines
+ * a second on a body sitting on the viewfinder - 200 entries was 3.1 minutes,
+ * which is shorter than the gap between a fault happening and somebody being
+ * asked about it. With the telemetry channel off the steady rate is a small
+ * fraction of that, and 600 entries of PSRAM is 72 KB of a pool with tens of
+ * megabytes spare. Internal SRAM, the scarce one, is untouched (#162). */
+#define KLOG_CAPACITY 600
 #define KLOG_MSG_MAX 96
 
 typedef struct {
@@ -24,13 +31,39 @@ typedef struct {
 /* 24 KB in PSRAM. Written under a mutex, so never from an ISR or with the
  * flash cache off; internal SRAM is reserved for what must be internal (#162). */
 static EXT_RAM_BSS_ATTR klog_entry_t s_ring[KLOG_CAPACITY];
-static uint32_t s_count; /* total entries ever written */
+static uint32_t s_count; /* total entries ever written, monotonic for the life of the boot */
+/*
+ * The first entry a reader may still see.
+ *
+ * klog_clear() used to set s_count back to 0, which is what stopped the field
+ * log: storage_watch.c holds its own cursor into this ring, klog_export()
+ * walks `while (*cursor < s_count)`, and a cursor of 3,400 against a count of
+ * 0 exports nothing, for ever. One CLEAR_LOGS in Studio therefore killed
+ * /KINO/LOGS for the rest of the boot, silently, which is the one file a
+ * customer is asked to send. A clear now moves this line instead, so the count
+ * stays monotonic and no cursor anybody holds can be left past the end.
+ */
+static uint32_t s_base;
 static SemaphoreHandle_t s_lock;
 static klog_emit_fn s_emit;
+/*
+ * Telemetry: a number that is worth having on a bench and worth nothing in a
+ * fault report. Off unless somebody asks for it.
+ *
+ * Measured before this existed: 158 entries over 148 s on a body on the SHOOT
+ * screen, of which 121 were per-camera preview timings and 37 were cover
+ * brightness means. Not one line was anything else. The ring is for the thing
+ * a person needs when a camera misbehaved, and that thing was being pushed out
+ * by numbers nobody reads.
+ */
+static volatile bool s_telemetry;
 
 void klog_init(void) { s_lock = xSemaphoreCreateMutex(); }
 
 void klog_set_emitter(klog_emit_fn fn) { s_emit = fn; }
+
+void klog_set_telemetry(bool on) { s_telemetry = on; }
+bool klog_telemetry(void) { return s_telemetry; }
 
 /* One wall clock, owned by clock.c. This used to call gettimeofday() directly,
  * which was the same reading only by accident and stopped being the same the
@@ -42,13 +75,9 @@ static int64_t now_ms(void) { return clock_now_ms(); }
 
 int64_t klog_now_us(void) { return esp_timer_get_time(); }
 
-void klog(const char *src, const char *fmt, ...) {
-  char msg[KLOG_MSG_MAX];
-  va_list args;
-  va_start(args, fmt);
-  vsnprintf(msg, sizeof msg, fmt, args);
-  va_end(args);
-
+/* The write itself, once, so klog() and klog_tel() cannot drift apart about
+ * what an entry is. */
+static void klog_put(const char *src, const char *msg) {
   /* Both clocks sampled here, before the ESP_LOGI: the console write is a
    * serial transaction and stamping after it would attribute its latency to
    * the event being logged. */
@@ -73,10 +102,49 @@ void klog(const char *src, const char *fmt, ...) {
   if (emit != NULL) emit(t, t_us, src, msg);
 }
 
+void klog(const char *src, const char *fmt, ...) {
+  char msg[KLOG_MSG_MAX];
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(msg, sizeof msg, fmt, args);
+  va_end(args);
+  klog_put(src, msg);
+}
+
+void klog_tel(const char *src, const char *fmt, ...) {
+  if (!s_telemetry) return;
+  char msg[KLOG_MSG_MAX];
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(msg, sizeof msg, fmt, args);
+  va_end(args);
+  klog_put(src, msg);
+}
+
+size_t klog_export(uint32_t *cursor, char *buf, size_t cap) {
+  if (s_lock == NULL || buf == NULL || cursor == NULL || cap < 128) return 0;
+  size_t used = 0;
+  xSemaphoreTake(s_lock, portMAX_DELAY);
+  uint32_t first = s_count > KLOG_CAPACITY ? s_count - KLOG_CAPACITY : 0;
+  if (first < s_base) first = s_base; /* cleared: what came before is not shown */
+  if (*cursor < first) *cursor = first; /* the ring moved on; what fell out is gone */
+  while (*cursor < s_count) {
+    const klog_entry_t *e = &s_ring[*cursor % KLOG_CAPACITY];
+    const int n = snprintf(buf + used, cap - used, "%6lld.%03lld %-5s %s\n",
+                           (long long)(e->t_us / 1000000), (long long)((e->t_us / 1000) % 1000),
+                           e->src, e->msg);
+    if (n < 0 || (size_t)n >= cap - used) break;
+    used += (size_t)n;
+    (*cursor)++;
+  }
+  xSemaphoreGive(s_lock);
+  return used;
+}
+
 void klog_clear(void) {
   if (s_lock == NULL) return;
   xSemaphoreTake(s_lock, portMAX_DELAY);
-  s_count = 0;
+  s_base = s_count;
   xSemaphoreGive(s_lock);
 }
 
@@ -116,7 +184,8 @@ cJSON *klog_entries_json(size_t budget) {
   cJSON *entries = cJSON_CreateArray();
   if (s_lock == NULL) return entries;
   xSemaphoreTake(s_lock, portMAX_DELAY);
-  uint32_t available = s_count < KLOG_CAPACITY ? s_count : KLOG_CAPACITY;
+  const uint32_t live = s_count - s_base;
+  uint32_t available = live < KLOG_CAPACITY ? live : KLOG_CAPACITY;
   uint32_t start = s_count - available;
   /* Newest entries win the budget: walk backward to the cutoff, then emit
    * forward so the array stays oldest-first. */

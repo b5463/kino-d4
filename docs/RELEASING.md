@@ -15,7 +15,7 @@ KINO has no published release pipeline yet. This checklist defines the first saf
 | KDP protocol | `1` | `PROTOCOL_VERSION` in `packages/kdp/src/protocol/commands.ts` |
 | KDP config envelope | `1` | `CONFIG_SCHEMA_VERSION` in `packages/kdp/src/protocol/types.ts` |
 | Portable documents | `1` per schema | `packages/schemas/src/` |
-| Physical firmware (P4 and camera node, one image family) | `0.4.56`, bench builds only, no published release | `firmware/VERSION`, checked against `versions.json` |
+| Physical firmware (P4 and camera node, one image family) | `0.4.58`, first tagged release `kino-fw-v0.4.58` (2026-09-22) | `firmware/VERSION`, checked against `versions.json` |
 
 A Studio release does not automatically bump KDP. A schema bump does not automatically bump the protocol. Change the smallest surface that matches the compatibility change.
 
@@ -25,12 +25,9 @@ A Studio release does not automatically bump KDP. A schema bump does not automat
   Windows 98 shell icons, which blocked every firmware release (#134). It no
   longer carries any artwork that is not ours to ship: the icons are gone with
   the tile menu, the baked Tahoma labels are gone with the header, and the type
-  is Inter and Oxanium under the OFL, rasterised by `tools/mkfont.swift`. One
-  baked raster remains and is deliberate - the studio's own mark
-  (`firmware/p4/main/logo_odd_jobs.h`, baked by `tools/mklogo.swift`), which is
-  Odd Jobs' trade mark and is marked `LicenseRef-KINO-Reserved` rather than
-  swallowed by the MIT grant over `firmware/**`. Anyone distributing a build
-  distributes that mark with it. What follows
+  is Inter and Oxanium under the OFL, rasterised by `tools/mkfont.swift`. No
+  baked raster remains: the studio's mark left the ABOUT screen in 0.4.58 and
+  `firmware/p4/main/logo_odd_jobs.h` is gone with it. What follows
   was the position while that was unresolved; it is kept because the release
   records it governed are still in the tree. **Operator decision, 2026-09-05:**
   the project is not

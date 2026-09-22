@@ -24,3 +24,12 @@ static inline void *heap_caps_aligned_calloc(size_t align, size_t c, size_t n, i
   (void)caps;
   return calloc(c, n);
 }
+/* One heap, no pools: the internal-SRAM figures the boot logs are zero here. */
+static inline size_t heap_caps_get_free_size(int caps) {
+  (void)caps;
+  return 0;
+}
+static inline size_t heap_caps_get_minimum_free_size(int caps) {
+  (void)caps;
+  return 0;
+}

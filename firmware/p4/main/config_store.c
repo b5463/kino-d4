@@ -130,6 +130,12 @@ static cJSON *default_config(void) {
   cJSON_AddNumberToObject(b, "autoDimS", 30);
   cJSON_AddNumberToObject(b, "sleepS", 120);
   cJSON_AddNumberToObject(b, "camIdleTimeoutS", 300);
+  /* Which hand holds the body: "right" or "left". The on-device UI puts its
+   * chrome on that side (ui.c, from_hand). The shutter is on the +X wall, so
+   * right is the body's own answer; left is for a shooter who holds it the
+   * other way round. Firmware-only for now - firmware-contract/README.md
+   * D25 - so Studio passes it through untouched. */
+  cJSON_AddStringToObject(b, "hand", "right");
   cJSON *snd = cJSON_AddObjectToObject(b, "sounds");
   cJSON_AddBoolToObject(snd, "startup", true);
   cJSON_AddBoolToObject(snd, "ui", true);
@@ -376,6 +382,29 @@ bool config_bool(const char *path, bool fallback) {
   const bool v = cJSON_IsBool(n) ? cJSON_IsTrue(n) : fallback;
   unlock();
   return v;
+}
+
+/**
+ * A number, with the fraction kept, saying separately whether it was there.
+ *
+ * config_int() cannot serve the capture path twice over: it truncates, and
+ * exposureBias is the one fractional setting in the envelope, so -1.5 EV would
+ * arrive as -1; and it cannot report absence, which is a distinct answer from
+ * zero when a per-lens slot has to either override a look's value or leave it
+ * standing.
+ *
+ * It exists as a locked accessor rather than as a walk over config_get()
+ * because the caller is the capture task and the writer is the KDP task. See
+ * the note on the lock at the top of this file (#206).
+ */
+bool config_num(const char *path, double *out) {
+  if (out == NULL) return false;
+  lock();
+  const cJSON *n = resolve(path);
+  const bool ok = cJSON_IsNumber(n);
+  if (ok) *out = n->valuedouble;
+  unlock();
+  return ok;
 }
 
 /**

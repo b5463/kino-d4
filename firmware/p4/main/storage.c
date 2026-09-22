@@ -28,11 +28,16 @@ static const char *TAG = "storage";
 #define MOUNT "/sdcard"
 
 static sdmmc_card_t *s_card;
+static sd_pwr_ctrl_handle_t s_pwr_ctrl;
 static bool s_power_ok;
 static uint32_t s_mount_attempts;
 static uint32_t s_sd_errors;
 static char s_last_error[48];
 static const char *s_write_test = "none";
+static uint32_t s_selftest_ms;  /* how long the last write test took */
+static bool s_removed;          /* the card was pulled while running */
+static bool s_card_seen;        /* a card answered but its filesystem would not mount */
+static bool s_quiet_mount;      /* a retry from the watcher: no log line per failure */
 
 static void set_error(const char *code) {
   if (code[0] != '\0') s_sd_errors++;
@@ -219,18 +224,10 @@ void storage_card_busy_message(char *out, size_t len) {
   }
 }
 
-esp_err_t storage_init(void) {
-  /* Before the mount, so nothing can reach the card without a lock to take.
-   * Idempotent: storage_init() is called once, but a retry must not leak a
-   * second mutex and split the exclusion in half. */
-  if (s_card_lock == NULL) {
-    s_card_lock = xSemaphoreCreateMutex();
-    if (s_card_lock == NULL) {
-      ESP_LOGE(TAG, "no memory for the card lock");
-      return ESP_ERR_NO_MEM;
-    }
-  }
-
+/* Mount the card. With format_if_mount_failed a card the filesystem will not
+ * read is formatted and mounted - storage_format()'s path for an unreadable
+ * card; the boot mount never formats anything on its own. */
+static esp_err_t card_mount(bool format_if_mount_failed) {
   sdmmc_host_t host = SDMMC_HOST_DEFAULT();
   host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
   /*
@@ -252,17 +249,20 @@ esp_err_t storage_init(void) {
    */
   host.slot = BOARD_SD_SLOT;
 
-  sd_pwr_ctrl_ldo_config_t ldo_config = {.ldo_chan_id = BOARD_SD_LDO_CHANNEL};
-  sd_pwr_ctrl_handle_t pwr_ctrl = NULL;
-  esp_err_t err = sd_pwr_ctrl_new_on_chip_ldo(&ldo_config, &pwr_ctrl);
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "SD_POWER_ENABLE failed: %s", esp_err_to_name(err));
-    set_error("POWER_ENABLE_FAILED");
-    s_power_ok = false;
-    return err;
+  esp_err_t err = ESP_OK;
+  if (s_pwr_ctrl == NULL) {
+    sd_pwr_ctrl_ldo_config_t ldo_config = {.ldo_chan_id = BOARD_SD_LDO_CHANNEL};
+    err = sd_pwr_ctrl_new_on_chip_ldo(&ldo_config, &s_pwr_ctrl);
+    if (err != ESP_OK) {
+      ESP_LOGE(TAG, "SD_POWER_ENABLE failed: %s", esp_err_to_name(err));
+      set_error("POWER_ENABLE_FAILED");
+      s_power_ok = false;
+      s_pwr_ctrl = NULL;
+      return err;
+    }
   }
   s_power_ok = true;
-  host.pwr_ctrl_handle = pwr_ctrl;
+  host.pwr_ctrl_handle = s_pwr_ctrl;
   ESP_LOGI(TAG, "SD_POWER_ENABLE ok (LDO ch%d)", BOARD_SD_LDO_CHANNEL);
 
   sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
@@ -275,20 +275,27 @@ esp_err_t storage_init(void) {
   slot.d3 = BOARD_SD_D3;
 
   esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-      .format_if_mount_failed = false,
+      .format_if_mount_failed = format_if_mount_failed,
       .max_files = STORAGE_MAX_OPEN_FILES,
       .allocation_unit_size = 16 * 1024,
   };
 
-  s_mount_attempts++;
+  if (!format_if_mount_failed) s_mount_attempts++;
   err = esp_vfs_fat_sdmmc_mount(MOUNT, &host, &slot, &mount_config, &s_card);
   if (err != ESP_OK) {
     // Missing/unreadable card is a reported state, not a boot failure. The
     // registry is NOT marked failed here — an empty slot and a wrong pin
     // look identical from software; that diagnosis is bench work.
-    ESP_LOGW(TAG, "SD_MOUNT failed: %s", esp_err_to_name(err));
-    klog("SD", "mount failed: %s", esp_err_to_name(err));
-    set_error(err == ESP_ERR_TIMEOUT ? "MOUNT_TIMEOUT" : "MOUNT_FAILED");
+    /* ESP_FAIL is the card answering and the filesystem refusing: a 64 GB
+     * card straight from the shop is exFAT, which this build does not read.
+     * Anything else is the slot not answering, which is no card. */
+    s_card_seen = err == ESP_FAIL;
+    if (!s_quiet_mount) {
+      ESP_LOGW(TAG, "SD_MOUNT failed: %s", esp_err_to_name(err));
+      klog("SD", "mount failed: %s", esp_err_to_name(err));
+      set_error(err == ESP_ERR_TIMEOUT ? "MOUNT_TIMEOUT"
+                                       : (err == ESP_FAIL ? "NO_FILESYSTEM" : "MOUNT_FAILED"));
+    }
     s_card = NULL;
     return err;
   }
@@ -321,16 +328,135 @@ esp_err_t storage_init(void) {
   return ESP_OK;
 }
 
+esp_err_t storage_init(void) {
+  if (s_card_lock == NULL) {
+    s_card_lock = xSemaphoreCreateMutex();
+    if (s_card_lock == NULL) {
+      ESP_LOGE(TAG, "no memory for the card lock");
+      return ESP_ERR_NO_MEM;
+    }
+  }
+  return card_mount(false);
+}
+
+esp_err_t storage_format(void) {
+  esp_err_t err;
+  if (s_card != NULL) {
+    err = esp_vfs_fat_sdcard_format(MOUNT, s_card);
+  } else {
+    /* Nothing mounted: the card is in but the filesystem would not read.
+     * Formatting it is the mount that was refused at boot. */
+    s_mount_attempts++;
+    err = card_mount(true);
+  }
+  if (err == ESP_OK) {
+    mkdir(MOUNT "/KINO", 0775);
+    mkdir(MOUNT "/KINO/CAPTURES", 0775);
+    set_error("");
+    storage_media_count_invalidate();
+    klog("SD", "card formatted");
+  } else {
+    klog("SD", "format failed: %s", esp_err_to_name(err));
+    set_error("FORMAT_FAILED");
+  }
+  return err;
+}
+
 bool storage_present(void) { return s_card != NULL; }
+
+/* The trash: a deleted capture's folder moved aside for thirty seconds so
+ * DELETE has an UNDO. One rename each way; the purge is the ordinary delete
+ * on whatever is left, on the UI's clock and at every boot. */
+#define TRASH_DIR MOUNT "/KINO/TRASH"
+
+esp_err_t storage_capture_trash(const char *id) {
+  if (s_card == NULL || id == NULL || id[0] == '\0') return ESP_ERR_INVALID_STATE;
+  char from[96], to[96];
+  snprintf(from, sizeof from, MOUNT "/KINO/CAPTURES/%s", id);
+  snprintf(to, sizeof to, TRASH_DIR "/%s", id);
+  mkdir(TRASH_DIR, 0775);
+  storage_capture_delete(to); /* a stale one of the same name would block the rename */
+  return rename(from, to) == 0 ? ESP_OK : ESP_FAIL;
+}
+
+esp_err_t storage_capture_untrash(const char *id) {
+  if (s_card == NULL || id == NULL || id[0] == '\0') return ESP_ERR_INVALID_STATE;
+  char from[96], to[96];
+  snprintf(from, sizeof from, TRASH_DIR "/%s", id);
+  snprintf(to, sizeof to, MOUNT "/KINO/CAPTURES/%s", id);
+  return rename(from, to) == 0 ? ESP_OK : ESP_FAIL;
+}
+
+void storage_trash_purge(void) {
+  if (s_card == NULL) return;
+  /* One entry per pass of the directory, reopened each time: deleting the
+   * entry a DIR is standing on is the one thing FatFs does not promise. */
+  for (int round = 0; round < 64; round++) {
+    DIR *d = opendir(TRASH_DIR);
+    if (d == NULL) return;
+    char name[48] = "";
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL) {
+      if (e->d_name[0] == '.') continue;
+      strlcpy(name, e->d_name, sizeof name);
+      break;
+    }
+    closedir(d);
+    if (name[0] == '\0') return;
+    char path[96];
+    snprintf(path, sizeof path, TRASH_DIR "/%s", name);
+    storage_capture_delete(path);
+    rmdir(path); /* a folder with files this firmware never wrote stays; not ours to take */
+  }
+}
+
+esp_err_t storage_remount(void) {
+  if (s_card != NULL) return ESP_OK;
+  if (s_card_lock == NULL) return ESP_ERR_INVALID_STATE;
+  if (xSemaphoreTake(s_card_lock, 0) != pdTRUE) return ESP_ERR_TIMEOUT;
+  s_quiet_mount = true;
+  const esp_err_t err = card_mount(false);
+  s_quiet_mount = false;
+  if (err == ESP_OK) {
+    s_removed = false;
+    storage_media_count_invalidate();
+  }
+  xSemaphoreGive(s_card_lock);
+  return err;
+}
+
+bool storage_card_alive(void) {
+  if (s_card == NULL) return false;
+  /* Busy means a task of ours is talking to it, which is proof enough. */
+  if (s_card_lock == NULL || xSemaphoreTake(s_card_lock, 0) != pdTRUE) return true;
+  const esp_err_t err = sdmmc_get_status(s_card);
+  if (err == ESP_OK) {
+    xSemaphoreGive(s_card_lock);
+    return true;
+  }
+  /* Pulled. Unmounted here, so the rest of the firmware sees "no card"
+   * rather than a write error per attempt; the watcher tries the slot again. */
+  klog("SD", "card stopped answering (%s); unmounted", esp_err_to_name(err));
+  esp_vfs_fat_sdcard_unmount(MOUNT, s_card);
+  s_card = NULL;
+  s_removed = true;
+  s_write_test = "none";
+  set_error("CARD_REMOVED");
+  storage_media_count_invalidate();
+  xSemaphoreGive(s_card_lock);
+  return false;
+}
 
 void storage_get_status(storage_status_t *out) {
   memset(out, 0, sizeof *out);
-  out->present = s_card != NULL;
+  out->present = s_card != NULL || (s_card_seen && !s_removed);
   out->mounted = s_card != NULL;
   out->filesystem = s_card != NULL ? "FAT" : NULL;
   out->mount_attempts = s_mount_attempts;
   out->last_error = s_last_error[0] != '\0' ? s_last_error : NULL;
   out->write_test = s_write_test;
+  out->write_test_ms = s_selftest_ms;
+  out->removed = s_removed;
   if (s_card != NULL) {
     uint64_t total = 0, free_bytes = 0;
     if (esp_vfs_fat_info(MOUNT, &total, &free_bytes) == ESP_OK) {
@@ -367,7 +493,17 @@ void storage_self_test(storage_selftest_result_t *out) {
 
     mkdir(MOUNT "/KINO", 0775); /* may already exist */
 
-    // Deterministic pattern, written and verified chunk-wise.
+    /*
+     * Deterministic pattern, written and verified chunk-wise.
+     *
+     * The buffer is static because 4 KB does not belong on the stack of
+     * either caller - the card watcher runs on 6 KB in PSRAM - and the path
+     * is fixed. Both of those are only safe because every caller holds the
+     * card lock: storage_watch.c takes it around the once-per-card test, and
+     * the KDP handler takes it around Studio's. Two callers inside at once
+     * would write and unlink the same file through the same buffer, and the
+     * loser would report a healthy card as failed (#210).
+     */
     static uint8_t block[SELFTEST_CHUNK];
     uint32_t written_state = kdp_crc32_begin();
     FILE *f = fopen(path, "wb");
@@ -405,6 +541,7 @@ void storage_self_test(storage_selftest_result_t *out) {
   out->bytes_tested = out->ok ? SELFTEST_BYTES : 0;
   out->duration_ms = (uint32_t)((esp_timer_get_time() - start) / 1000);
   s_write_test = out->ok ? "pass" : "fail";
+  s_selftest_ms = out->duration_ms;
   if (!out->ok) set_error(storage_selftest_phase_str(phase));
   klog("SD", "self-test %s (%s, %lu ms)", out->ok ? "pass" : "FAIL",
        storage_selftest_phase_str(phase), (unsigned long)out->duration_ms);

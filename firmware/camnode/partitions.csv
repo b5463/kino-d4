@@ -1,0 +1,20 @@
+# KINO camera node partition table — 8 MB flash (XIAO ESP32-S3 Sense).
+#
+# Replaces CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE (one 1.5 MB `factory` slot
+# at 0x10000, no OTA) so the P4 can update a node over the link (FW_* through
+# the P4, NL_CMD_FW_* on the link; firmware/p4/main/fw_update.c).
+#
+# Writing this table erases the node's NVS, which holds one boot counter -
+# nothing a node cannot recover. The app moves from 0x10000 to 0x20000, so a
+# node on this table must be flashed once over its own USB with the matching
+# bootloader; from then on the P4 does it.
+#
+# The node image is ~400 KB; 3 MB slots match the P4's and leave the ceiling
+# out of the way for as long as this part exists. Two slots use 6 MB of 8.
+#
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x6000,
+phy_init,   data, phy,      0xf000,   0x1000,
+otadata,    data, ota,      0x10000,  0x2000,
+ota_0,      app,  ota_0,    0x20000,  0x300000,
+ota_1,      app,  ota_1,    0x320000, 0x300000,

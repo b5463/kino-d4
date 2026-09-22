@@ -19,6 +19,7 @@
 #include "meta.h"
 #include "storage.h"
 #include "upload_queue.h"
+#include "upload_store.h"
 #include "taskmon.h"
 #include "thumb.h"
 
@@ -1065,6 +1066,15 @@ static void read_meta(gallery_item_t *it) {
    * is not a favourite - cJSON_IsTrue(NULL) is false, which is the answer we
    * want without a separate presence check. */
   it->favorite = cJSON_IsTrue(cJSON_GetObjectItem(m, "favorite"));
+  const cJSON *cm = cJSON_GetObjectItem(m, "capturedAtMs");
+  it->captured_ms = cJSON_IsNumber(cm) ? (int64_t)cm->valuedouble : 0;
+  {
+    /* Whether the Roll has it, from the queue's own record in the folder.
+     * Static: the job is a few hundred bytes and this is one task's stack. */
+    static rq_job_t job;
+    bool valid = false;
+    it->sent = upload_store_load(it->id, &job, &valid) && valid && job.state == RQ_COMPLETE;
+  }
   /* The capture's own alignment calibration, from the same parse. Absent on
    * every capture this firmware has written, in which case cal_present is false
    * and playback aligns nothing. */
@@ -1404,7 +1414,11 @@ static void gallery_task(void *arg) {
         lock();
         const int want = s_total_seen;
         unlock();
-        if (seen == want) klog("SD", "order index verified: %d captures", seen);
+        /* Telemetry: it fires once per photograph, and a line that says
+         * nothing happened is the one thing a 200-entry ring cannot afford
+         * after every shutter press (#202). The mismatch below stays on the
+         * evidence channel, because that one is a fault. */
+        if (seen == want) klog_tel("SD", "order index verified: %d captures", seen);
         if (seen != want) {
           ESP_LOGW(TAG, "card holds %d capture folders, the index says %d; rebuilding", seen, want);
           klog("SD", "card holds %d captures, the index says %d; rebuilding", seen, want);
@@ -1523,6 +1537,22 @@ void gallery_note_removed(const char *id) {
  * list holds; on a card inside the cap they are equal, and past it `seen` is
  * the truthful one. Either way this is index state, not a card walk.
  */
+int gallery_capture_files(const char *id, bool *has_thumb, uint8_t *slots, int cap) {
+  if (has_thumb != NULL) *has_thumb = false;
+  if (id == NULL || id[0] == '\0') return -1;
+  char path[160];
+  snprintf(path, sizeof path, "%s/%s", CAPTURES_DIR, id);
+  if (access(path, F_OK) != 0) return -1;
+  snprintf(path, sizeof path, "%s/%s/THUMB.JPG", CAPTURES_DIR, id);
+  if (has_thumb != NULL) *has_thumb = access(path, F_OK) == 0;
+  int n = 0;
+  for (int i = 0; i < 4 && n < cap; i++) {
+    snprintf(path, sizeof path, "%s/%s/C%d.JPG", CAPTURES_DIR, id, i + 1);
+    if (access(path, F_OK) == 0 && slots != NULL) slots[n++] = (uint8_t)(i + 1);
+  }
+  return n;
+}
+
 int gallery_media_count(void) {
   if (!s_have_list) return -1;
   const int n = s_total_seen > s_total ? s_total_seen : s_total;

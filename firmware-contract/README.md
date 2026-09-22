@@ -382,6 +382,31 @@ Two conventions this establishes for the response:
   nothing failed and nothing was attempted. `error` there would send someone to re-flash a chip that
   is merely unwired.
 
+**Resolved at firmware 0.4.58: the transfer path exists.** `FW_BEGIN`, `FW_CHUNK`, `FW_END`,
+`FW_ABORT` and `FW_STATUS` answer for `p4` and `cam1`..`cam4` (`firmware/p4/main/fw_update.c`), with
+the shapes in [commands.md](commands.md#firmware--0x600x66) and Studio's updater as the client they
+were written against. What the D4-V1 does differently from the reference device:
+
+- No maintenance mode exists, so `MAINT_REQUIRED` is never sent. A `BEGIN` during a capture gets
+  `INVALID_STATE`; a second `BEGIN` while a session is open gets `BUSY`.
+- `chunkSize` is 8192 for every target. A camera image is forwarded down the node's UART in 2 KB
+  `NL_CMD_FW_*` frames (`node_link.h`), each acknowledged, inside the host's 8 KB chunk.
+- The P4 answers `FW_END` and restarts 0.8 s later; the link drops, which the updater already
+  expects. A camera node verifies its own copy, answers, and restarts itself; the P4 reports it
+  `rebooting` until its `HELLO` returns the version named at `BEGIN` (`ready`), and after 40 s of
+  silence cycles the camera bank once so the node's bootloader can roll back; 95 s is `error`.
+- Both images boot with rollback armed (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`). The P4 confirms
+  itself once the panel and the host link are up; a node confirms itself when it answers its first
+  `HELLO`. An image that never gets there is rolled back on the next reset.
+- `GET_CAPABILITIES` now reports `xiaoProxyUpdate: true` and, additively, `firmwareUpdate: true`.
+- A node still on the single-app partition table has no slot to write and refuses `BEGIN` with
+  `HARDWARE_ERROR`; the P4 relays that. Such a node is flashed once over its own USB with
+  `firmware/camnode/partitions.csv`, and is updatable over the link from then on.
+- `FW_ROLLBACK` stays reserved and unimplemented: the bootloader's rollback covers the case it was
+  for, and a host-driven return to the previous slot is a release decision (`docs/RELEASE_TRUST.md`).
+- `FW_QUERY` reported the nodes shifted by one (a 1-based loop against a 0-based accessor); fixed in
+  the same change.
+
 The `c6` target carries two additive booleans, `fitted` and `reachable`, for the same reason
 `flashControl` and `flashHardware` are two flags. Without them a host sees an empty version and
 cannot tell an absent chip from an unrouted one — which on the D4 V1 is exactly the distinction that
@@ -436,7 +461,7 @@ sources rather than trusting these numbers — they have been stale twice.
 | Family | Commands | Roadmap |
 |---|---|---|
 | Camera control beyond capture | `CAMERA_ARM` `0x31`, `CAMERA_PREVIEW` `0x34`, `CAMERA_CALIBRATE` `0x35`, `CAMERA_PHASE` `0x36`, `CAMERA_FOCUS` `0x37` | Yes |
-| Firmware update | `FW_BEGIN` `0x61`, `FW_CHUNK` `0x62`, `FW_END` `0x63`, `FW_ABORT` `0x64`, `FW_STATUS` `0x65`, `FW_ROLLBACK` `0x66` | Yes — see [D15](#d15--targetid-gained-c6-and-fw_query-is-implemented-without-the-rest-of-fw_) |
+| Firmware update | `FW_ROLLBACK` `0x66` only. `FW_BEGIN`..`FW_STATUS` are implemented since 0.4.58 — see [D15](#d15--targetid-gained-c6-and-fw_query-is-implemented-without-the-rest-of-fw_) | Yes |
 | Maintenance | `ENTER_MAINTENANCE` `0x50`, `EXIT_MAINTENANCE` `0x51`, `FACTORY_RESET` `0x53` | Yes |
 | Bench | `LINK_BENCH` `0x44` | Yes |
 | Link | `SET_LINK_BAUD` `0x45` | Yes |
@@ -894,3 +919,16 @@ None of this is exposure timing. `timing.gpioTriggerSkewUs`,
 `unavailableReason`, and `vsyncTelemetry` stays false: the edge is a common
 time reference for frame-start measurement, not a trigger, and a rolling
 shutter integrates per row where this firmware cannot observe.
+
+### D25 — `body.hand` and `body.firstRunSeen` are firmware-only config keys
+
+Firmware 0.4.58 (#177). `BodyConfig` in `packages/kdp/src/protocol/types.ts`
+does not declare it, and `kino.device-config` (`packages/schemas/src/config.ts`)
+passes unknown keys through, so it travels in `GET_CONFIG` / `SET_CONFIG`
+untyped. Value `"right"` (default) or `"left"`: which hand holds the body, which
+is the side the on-device UI puts its chrome on (`firmware/p4/main/ui.c`,
+`from_hand()`). Studio shows no control for it. `body.firstRunSeen` (0.4.58) is the same kind of key: `false` until the `body.lastVersion` (0.4.58, #190) is the same kind: the firmware version the body last booted, so the first boot after an update shows one UPDATED note. Not a setting; Studio shows no control for it.
+first boot's note has been shown once, then `true`; the UI writes it, nothing reads it but the UI. The key is written into
+`default_config()` so a fresh camera reports it; an older stored envelope reads
+as `right` through the accessor's fallback. Promote it into `BodyConfig` when a
+Studio control exists.

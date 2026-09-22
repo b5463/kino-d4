@@ -14,11 +14,22 @@ CONFIG_SPIRAM_MODE_HEX=y
 # PSRAM moves 2 bytes per clock: 40 MB/s at 20 MHz, which is just under what
 # the panel needs, and 160 MB/s at 80 MHz, which is comfortably over.
 #
-# Not 200 MHz: that option depends on IDF_EXPERIMENTAL_FEATURES and was
-# silently dropped when set. Product firmware should not need an
-# experimental flag to hold a picture on the screen, and 80 MHz already has
-# three times the headroom required.
-CONFIG_SPIRAM_SPEED_80M=y
+# 200 MHz, since 0.4.58 (#177), and it needs the experimental flag below.
+#
+# 80 MHz held the picture, as the arithmetic above says it would. It did not
+# hold a frame rate. Measured on the panel with the frame reports in the log
+# ring (GET_LOGS after boot): the PPA rotate of one 800x480 frame took 30 ms
+# at 80 MHz - 1.5 MB at 50 MB/s, a third of the rated 160, because the panel
+# scan and the CPU's drawing share the same bus and every access is a 64-byte
+# line - and the CPU drew at the same 45 MB/s. The splash ran at 19 fps and
+# the menu cascade at 15. At 200 MHz the rotate takes 16 ms, drawing halves,
+# the splash runs at 35 fps and the cascade at 27, and the memory test passes
+# (Readlatency 14 cycles, fixed). Rotating in strips to fix the write pattern
+# was tried first and gained 4 percent at either clock, so the clock was the
+# limit and not the engine. If a board fails the boot memory test at 200,
+# the fallback is CONFIG_SPIRAM_SPEED_80M=y and half the frame rate.
+CONFIG_IDF_EXPERIMENTAL_FEATURES=y
+CONFIG_SPIRAM_SPEED_200M=y
 # More cache for the same reason: the framebuffer is the one workload here
 # with a continuous, unforgiving read rate.
 CONFIG_CACHE_L2_CACHE_256KB=y
@@ -68,6 +79,11 @@ CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 # and firmware/README.md have the flash sequence and what restores what.
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+# An image written over KDP boots PENDING_VERIFY; main.c confirms it once the
+# panel and the host link are up (fw_update_mark_healthy), and an image that
+# never gets that far is rolled back by the bootloader on the next reset.
+# Changing this reflashes the bootloader.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
 # The coredump partition is only useful if the panic handler is told to write
 # to it. Left at the IDF default (CONFIG_ESP_COREDUMP_ENABLE_TO_NONE) the

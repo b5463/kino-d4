@@ -14,6 +14,7 @@
 #include "bench_c6.h"
 #include "cam_link.h"
 #include "capture.h"
+#include "fw_update.h"
 #include "viewfinder.h"
 #include "clock.h"
 #include <dirent.h>
@@ -26,6 +27,7 @@
 #include "upload_queue.h"
 #include "gallery_index.h"
 #include "driver/temperature_sensor.h"
+#include "factory_reset.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_random.h"
@@ -44,6 +46,7 @@
 #include "kdp/packet.h"
 #include "kdp/protocol.h"
 #include "klog.h"
+#include "lid.h"
 #include "meta.h"
 #include "net_link.h"
 #include "ui.h"
@@ -704,12 +707,16 @@ static void handle_capabilities(uint32_t seq) {
   // Milestone 1B surface this build actually implements.
   cJSON *caps = cJSON_AddObjectToObject(json, "capabilities");
   cJSON_AddNumberToObject(caps, "cameraCount", 4);
-  const char *flags[] = {"vsyncTelemetry", "phaseCalibration", "xiaoProxyUpdate", "linkBench"};
+  const char *flags[] = {"vsyncTelemetry", "phaseCalibration", "linkBench"};
   for (size_t i = 0; i < sizeof flags / sizeof flags[0]; i++) {
     cJSON_AddBoolToObject(caps, flags[i], false);
   }
   /* Owned by their modules, so the flag and the handler cannot disagree:
    * each is true exactly when the module answers its commands. */
+  /* FW_BEGIN/CHUNK/END/ABORT/STATUS answer for p4 and cam1..cam4 (fw_update.c):
+   * the P4 writes its own OTA slot and forwards a node's image down its link. */
+  cJSON_AddBoolToObject(caps, "xiaoProxyUpdate", true);
+  cJSON_AddBoolToObject(caps, "firmwareUpdate", true);
   cJSON_AddBoolToObject(caps, "recipes", kdp_recipes_capable());
   cJSON_AddBoolToObject(caps, "customSounds", kdp_sounds_capable());
   /* benchDiagnostics gates the Milestone 1B group: STORAGE_SELF_TEST,
@@ -959,11 +966,9 @@ static cJSON *config_envelope(void) {
 /**
  * What every image on this body is running.
  *
- * Read-only, and deliberately the ONLY part of the `FW_*` group that is
- * implemented: `FW_BEGIN`/`CHUNK`/`END`/`ABORT`/`STATUS`/`ROLLBACK` still fail
- * closed, because there is one `factory` partition and no OTA slots (M8). A
- * query is not an update path, and `GET_CAPABILITIES` advertises no update
- * capability, so a host cannot mistake this for one.
+ * The versions are read here; the update itself is FW_BEGIN..FW_STATUS below
+ * (fw_update.c), now that both the P4 and the nodes carry two OTA slots.
+ * `state` is live: a target mid-update says so.
  *
  * It exists now because the D4 gained a sixth image. Issue #133 requires the
  * C6 slave version to be reportable alongside the P4 and the nodes: a C6
@@ -982,11 +987,13 @@ static void handle_fw_query(uint32_t seq) {
 
   cJSON *p4 = cJSON_AddObjectToObject(targets, "p4");
   cJSON_AddStringToObject(p4, "version", KINO_FW_VERSION);
-  cJSON_AddStringToObject(p4, "state", "idle");
+  cJSON_AddStringToObject(p4, "state", fw_update_state(FW_T_P4));
 
   for (int cam = 1; cam <= 4; cam++) {
     camlink_info_t info;
-    camlink_get_info_ch(cam, &info);
+    /* Channels are 0-based and this loop is 1-based for the key; it passed
+     * `cam` straight through and reported cam2's node as cam1's. */
+    camlink_get_info_ch(cam - 1, &info);
     char key[8];
     snprintf(key, sizeof key, "cam%d", cam);
     cJSON *t = cJSON_AddObjectToObject(targets, key);
@@ -994,7 +1001,7 @@ static void handle_fw_query(uint32_t seq) {
      * has ever been connected to a P4 (HARDWARE_VALIDATION.md), so this is
      * the ordinary case rather than the exceptional one. */
     cJSON_AddStringToObject(t, "version", info.online ? info.firmware : "");
-    cJSON_AddStringToObject(t, "state", "idle");
+    cJSON_AddStringToObject(t, "state", fw_update_state((fw_target_t)(FW_T_CAM1 + cam - 1)));
   }
 
   net_status_t net;
@@ -1010,6 +1017,111 @@ static void handle_fw_query(uint32_t seq) {
   cJSON_AddBoolToObject(c6, "reachable", net.radio_routed);
 
   send_json(KDP_CMD_FW_QUERY, seq, json);
+}
+
+/*
+ * The update path (contract FW_* 0x61..0x65; fw_update.c does the work).
+ *
+ * FW_BEGIN names the target, the size and the SHA-256; FW_CHUNK carries an
+ * 8-byte little-endian header - sessionId, offset - then data; FW_END
+ * verifies and applies. Studio's updater (apps/studio/src/firmware/updater.ts)
+ * is the client this matches: it expects the P4 to answer FW_END and then
+ * drop the link as it restarts, and it polls FW_STATUS for a camera target
+ * until "ready".
+ */
+static void handle_fw_begin(uint32_t seq, cJSON *req) {
+  const cJSON *target = cJSON_GetObjectItem(req, "target");
+  const cJSON *size = cJSON_GetObjectItem(req, "size");
+  const cJSON *sha = cJSON_GetObjectItem(req, "sha256");
+  const cJSON *version = cJSON_GetObjectItem(req, "version");
+  fw_target_t t;
+  if (!cJSON_IsString(target) || !fw_update_target_parse(target->valuestring, &t)) {
+    send_nack(KDP_CMD_FW_BEGIN, seq, "INVALID_ARGUMENT", "target must be p4 or cam1..cam4");
+    return;
+  }
+  if (!cJSON_IsNumber(size) || size->valuedouble < 0 || size->valuedouble > 4294967295.0) {
+    send_nack(KDP_CMD_FW_BEGIN, seq, "BAD_SIZE", "size must be a byte count");
+    return;
+  }
+  uint32_t sid = 0, chunk = 0;
+  fw_refusal_t why = {"ERROR", "Update could not start"};
+  const esp_err_t err = fw_update_begin(t, (uint32_t)size->valuedouble,
+                                        cJSON_IsString(sha) ? sha->valuestring : NULL,
+                                        cJSON_IsString(version) ? version->valuestring : "", &sid,
+                                        &chunk, &why);
+  if (err != ESP_OK) {
+    send_nack(KDP_CMD_FW_BEGIN, seq, why.code, why.message);
+    return;
+  }
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddNumberToObject(json, "sessionId", (double)sid);
+  cJSON_AddNumberToObject(json, "chunkSize", (double)chunk);
+  send_json(KDP_CMD_FW_BEGIN, seq, json);
+}
+
+static void handle_fw_chunk(uint32_t seq, const uint8_t *payload, uint32_t len) {
+  if (payload == NULL || len < 9) {
+    send_nack(KDP_CMD_FW_CHUNK, seq, "INVALID_ARGUMENT",
+              "A chunk is an 8-byte sessionId/offset header and data");
+    return;
+  }
+  const uint32_t sid = (uint32_t)payload[0] | ((uint32_t)payload[1] << 8) |
+                       ((uint32_t)payload[2] << 16) | ((uint32_t)payload[3] << 24);
+  const uint32_t offset = (uint32_t)payload[4] | ((uint32_t)payload[5] << 8) |
+                          ((uint32_t)payload[6] << 16) | ((uint32_t)payload[7] << 24);
+  fw_refusal_t why = {"ERROR", "Chunk refused"};
+  const esp_err_t err = fw_update_chunk(sid, offset, payload + 8, len - 8, &why);
+  if (err != ESP_OK) {
+    send_nack(KDP_CMD_FW_CHUNK, seq, why.code, why.message);
+    return;
+  }
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "ok", true);
+  cJSON_AddNumberToObject(json, "received", (double)(len - 8));
+  send_json(KDP_CMD_FW_CHUNK, seq, json);
+}
+
+static void handle_fw_end(uint32_t seq) {
+  bool verified = false;
+  fw_refusal_t why = {"ERROR", "Update could not finish"};
+  const esp_err_t err = fw_update_end(&verified, &why);
+  if (err != ESP_OK) {
+    send_nack(KDP_CMD_FW_END, seq, why.code, why.message);
+    return;
+  }
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "ok", true);
+  cJSON_AddBoolToObject(json, "verified", verified);
+  send_json(KDP_CMD_FW_END, seq, json);
+}
+
+static void handle_fw_abort(uint32_t seq) {
+  fw_update_abort();
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "ok", true);
+  send_json(KDP_CMD_FW_ABORT, seq, json);
+}
+
+static void handle_fw_status(uint32_t seq, cJSON *req) {
+  const cJSON *target = cJSON_GetObjectItem(req, "target");
+  fw_target_t t = FW_T_P4;
+  if (cJSON_IsString(target) && !fw_update_target_parse(target->valuestring, &t)) {
+    send_nack(KDP_CMD_FW_STATUS, seq, "INVALID_ARGUMENT", "target must be p4 or cam1..cam4");
+    return;
+  }
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddStringToObject(json, "target", fw_update_target_name(t));
+  cJSON_AddStringToObject(json, "state", fw_update_state(t));
+  if (t == FW_T_P4) {
+    cJSON_AddStringToObject(json, "version", KINO_FW_VERSION);
+  } else {
+    camlink_info_t info;
+    camlink_get_info_ch((int)t - FW_T_CAM1, &info);
+    cJSON_AddStringToObject(json, "version", info.online ? info.firmware : "");
+  }
+  const char *error = fw_update_error(t);
+  if (error[0] != '\0') cJSON_AddStringToObject(json, "error", error);
+  send_json(KDP_CMD_FW_STATUS, seq, json);
 }
 
 static void handle_get_config(uint32_t seq) {
@@ -1091,6 +1203,9 @@ static void handle_set_config(uint32_t seq, const cJSON *req) {
     send_nack(KDP_CMD_SET_CONFIG, seq, "BAD_REQUEST", "Config could not be merged");
     return;
   }
+  /* Studio can turn these on and off without a reflash. */
+  klog_set_telemetry(config_bool("body.log.telemetry", false));
+  lid_set_acting(config_bool("body.coverWatch", false));
   klog("P4", "config set rev %lu", (unsigned long)config_revision());
   send_json(KDP_CMD_SET_CONFIG, seq, config_envelope());
 }
@@ -1144,6 +1259,13 @@ static void handle_reset_config(uint32_t seq) {
     return;
   }
   send_json(KDP_CMD_RESET_CONFIG, seq, config_envelope());
+}
+
+bool kdp_p4_temp_c(float *out) {
+  float c = 0.0f;
+  if (s_tsens == NULL || temperature_sensor_get_celsius(s_tsens, &c) != ESP_OK) return false;
+  if (out != NULL) *out = c;
+  return true;
 }
 
 /**
@@ -1994,8 +2116,18 @@ static void handle_storage_bench(uint32_t seq, const cJSON *req) {
   const uint32_t block_kb = cJSON_IsNumber(jblock) ? (uint32_t)jblock->valuedouble : 0;
   const uint32_t passes = cJSON_IsNumber(jpasses) ? (uint32_t)jpasses->valuedouble : 0;
 
+  /* The card as well as the cameras, for the same reason the self-test takes
+   * it: the card watcher writes its own files on a card that has just
+   * mounted, and a megabyte of bench traffic across that is two measurements
+   * of each other (#210). */
+  if (!storage_acquire(STORAGE_USER_UI, 3000)) {
+    capture_unlock();
+    send_nack(KDP_CMD_STORAGE_BENCH, seq, "BUSY", "The card is busy");
+    return;
+  }
   storage_bench_result_t r;
   storage_bench(size_kb, block_kb, passes, &r);
+  storage_release(STORAGE_USER_UI);
   capture_unlock();
 
   if (!r.ok) {
@@ -2049,8 +2181,24 @@ static void handle_storage_self_test(uint32_t seq) {
     send_nack(KDP_CMD_STORAGE_SELF_TEST, seq, "BUSY", "A capture or soak run is active");
     return;
   }
+  /*
+   * And the card itself, which capture_lock() says nothing about.
+   *
+   * storage_watch.c runs this same self-test on a card that has just mounted,
+   * under storage_acquire(); this path only excluded captures. Run the Studio
+   * test inside that window and both tasks write, verify and unlink the one
+   * fixed path through one shared static buffer - and the loser reports
+   * VERIFY_FAILED on a healthy card, latches s_write_test to "fail", and the
+   * camera tells its owner the card cannot hold a photograph (#210).
+   */
+  if (!storage_acquire(STORAGE_USER_UI, 3000)) {
+    capture_unlock();
+    send_nack(KDP_CMD_STORAGE_SELF_TEST, seq, "BUSY", "The card is busy");
+    return;
+  }
   storage_selftest_result_t result;
   storage_self_test(&result);
+  storage_release(STORAGE_USER_UI);
   capture_unlock();
 
   if (result.ok) {
@@ -3082,6 +3230,17 @@ static void handle_reboot(uint32_t seq) {
   esp_restart();
 }
 
+/* The POWER screen's factory reset, for a host: the same erase
+ * (factory_reset.h), then the reboot. Photographs stay on the card. */
+static void handle_factory_reset(uint32_t seq) {
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "ok", true);
+  send_json(KDP_CMD_FACTORY_RESET, seq, json);
+  factory_reset_erase();
+  vTaskDelay(pdMS_TO_TICKS(200));
+  esp_restart();
+}
+
 /* Bench only: reset the C6 and nothing else. The decision is bench_c6.c,
  * host-tested; the pulse is net_hosted.c's own. Built in only with
  * -DKINO_C6_RESET_BENCH=1 on a radio build; otherwise the actuator is NULL
@@ -3485,11 +3644,15 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case KDP_CMD_CLEAR_LOGS: handle_clear_logs(frame->seq); break;
     case KDP_CMD_SELF_TEST: handle_self_test(frame->seq); break;
     case KDP_CMD_REBOOT: handle_reboot(frame->seq); break;
+    case KDP_CMD_FACTORY_RESET: handle_factory_reset(frame->seq); break;
     case KDP_CMD_C6_RESET_BENCH: handle_c6_reset_bench(frame->seq); break;
     case KDP_CMD_SYNC_BENCH: handle_sync_bench(frame->seq, req); break;
-    /* Read-only. The rest of the FW_* group stays failed-closed — see the
-     * handler's comment for why a query is not an update path. */
     case KDP_CMD_FW_QUERY: handle_fw_query(frame->seq); break;
+    case KDP_CMD_FW_BEGIN: handle_fw_begin(frame->seq, req); break;
+    case KDP_CMD_FW_CHUNK: handle_fw_chunk(frame->seq, frame->payload, frame->payload_len); break;
+    case KDP_CMD_FW_END: handle_fw_end(frame->seq); break;
+    case KDP_CMD_FW_ABORT: handle_fw_abort(frame->seq); break;
+    case KDP_CMD_FW_STATUS: handle_fw_status(frame->seq, req); break;
 
     /* Network / Roll / upload queue. kdp_net.c builds the reply and this
      * sends it — see kdp_net.h for which of these answer for real on a body

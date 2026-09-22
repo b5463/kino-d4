@@ -73,6 +73,8 @@
 /* Every second pixel on both axes: a quarter of the reads for a SAD surface
  * that is identical at this scale. */
 #define CAL_STEP 2
+/* Below this the match did not stand out from the sweep: a flat scene. */
+#define CAL_MIN_CONF 0.10f
 
 /** Read the stored calibration. False when the body has never been measured,
  *  and then `out` is all zeros and the caller must take the untouched path. */
@@ -116,14 +118,30 @@ static uint32_t cal_sad(const uint8_t *a, const uint8_t *b, int dx, int dy) {
 }
 
 /** The (dx, dy) at which `b` best matches `a`. Coarse sweep, then refine. */
-static void cal_search(const uint8_t *a, const uint8_t *b, int *out_dx, int *out_dy) {
+/*
+ * `conf` is how much the best match stands out from the coarse sweep's mean:
+ * (mean - best) / mean, 0..1. A scene with structure - a room, faces, a table
+ * - gives 0.3 and up; a blank wall or a lens cap gives a surface that is flat
+ * everywhere and a "best" offset that is noise with a number on it. The
+ * caller refuses to store what a flat surface says.
+ */
+static void cal_search(const uint8_t *a, const uint8_t *b, int *out_dx, int *out_dy,
+                       float *conf) {
   int bx = 0, by = 0;
   uint32_t best = 0xFFFFFFFFu;
+  uint64_t sum = 0;
+  int n = 0;
   for (int dy = -CAL_RANGE; dy <= CAL_RANGE; dy += CAL_COARSE)
     for (int dx = -CAL_RANGE; dx <= CAL_RANGE; dx += CAL_COARSE) {
       const uint32_t s = cal_sad(a, b, dx, dy);
+      sum += s;
+      n++;
       if (s < best) { best = s; bx = dx; by = dy; }
     }
+  if (conf != NULL) {
+    const double mean = n > 0 ? (double)sum / (double)n : 0.0;
+    *conf = mean > 0.0 ? (float)((mean - (double)best) / mean) : 0.0f;
+  }
   const int cx = bx, cy = by;
   for (int dy = cy - CAL_COARSE + 1; dy <= cy + CAL_COARSE - 1; dy++)
     for (int dx = cx - CAL_COARSE + 1; dx <= cx + CAL_COARSE - 1; dx++) {
@@ -157,9 +175,13 @@ static int calib_measure(const char *dir, int ref, pure_cam_offset_t *out) {
   for (int i = 0; i < PURE_WIGGLE_FRAMES_MAX; i++) out[i] = (pure_cam_offset_t){0, 0, 0};
   if (dir == NULL || dir[0] == '\0') return 0;
 
-  uint16_t *tile = heap_caps_malloc((size_t)CAL_W * CAL_H * sizeof(uint16_t),
-                                    MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  if (tile == NULL) tile = malloc((size_t)CAL_W * CAL_H * sizeof(uint16_t));
+  /* 64-byte aligned, because thumb_load() hands this tile to the PPA as the
+   * scale destination and the PPA is a DMA engine: a plain heap_caps_malloc
+   * gave 4-byte alignment and every scale returned ESP_ERR_INVALID_ARG, so
+   * the first photograph measured nothing on every body (#179). photo_open()
+   * learned the same rule earlier; this is it applied where it was missed. */
+  uint16_t *tile = heap_caps_aligned_calloc(64, 1, THUMB_TILE_BYTES(CAL_W, CAL_H),
+                                            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   uint8_t *luma[4] = {0};
   bool have[4] = {0};
   int n = 0;
@@ -187,7 +209,13 @@ static int calib_measure(const char *dir, int ref, pure_cam_offset_t *out) {
   for (int i = 0; i < 4; i++) {
     if (!have[i] || i == (ref & 3)) continue;
     int dx = 0, dy = 0;
-    cal_search(luma[ref & 3], luma[i], &dx, &dy);
+    float conf = 0.0f;
+    cal_search(luma[ref & 3], luma[i], &dx, &dy, &conf);
+    if (conf < CAL_MIN_CONF) {
+      ESP_LOGW("calib", "cam%d: match confidence %.2f, scene too flat; not stored", i + 1,
+               (double)conf);
+      continue;
+    }
     out[i].x = -(double)dx * CAL_SCALE;
     out[i].y = -(double)dy * CAL_SCALE;
     out[i].rot = 0;

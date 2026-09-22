@@ -25,8 +25,18 @@
 /** Load from NVS, or build the defaults when nothing is stored. */
 esp_err_t config_init(void);
 
-/** The live config object. Borrowed - never freed or detached by the caller. */
+/**
+ * The live config object. Borrowed - never freed or detached by the caller.
+ *
+ * ONLY SAFE ON THE TASK THAT WRITES IT. A cJSON write relinks the child list,
+ * so walking this from another task can follow a pointer that has just been
+ * freed. Every cross-task reader goes through the locked accessors below;
+ * config_num() exists because the capture path needed one (#206).
+ */
 const cJSON *config_get(void);
+
+/** A number with its fraction, false when the path is absent or not numeric. */
+bool config_num(const char *path, double *out);
 
 /** Increments on every accepted write, per the ConfigEnvelope contract. */
 uint32_t config_revision(void);

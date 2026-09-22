@@ -4,7 +4,7 @@
 set(kino_srcs
   "main.c" "usb_link.c" "storage.c" "cam_link.c" "kdp_server.c" "hardware_validation.c"
     "hwv_rules.c"
-  # mesh3d.c is NOT here: 493 lines that no translation unit calls. ui.c:37
+  # mesh3d.c is NOT here: 493 lines that no translation unit calls. ui.c
   # includes mesh3d.h and nothing else references a symbol from it, so the
   # object was compiled, linked and then dropped by --gc-sections at best.
   # The source stays on disk; it is just not in the image.
@@ -14,7 +14,8 @@ set(kino_srcs
     "wifi_creds.c"
   "roll_queue.c" "upload_queue.c" "upload_store.c" "roll_state.c" "kdp_net.c" "qr.c"
   "roll_api.c" "roll_client.c" "bench_c6.c" "radio_recovery.c" "cam_sched.c"
-  "kdp_recipes.c" "kdp_sounds.c" "recipe_rules.c" "wav_probe.c" "isr_watch.c")
+  "kdp_recipes.c" "kdp_sounds.c" "recipe_rules.c" "wav_probe.c" "isr_watch.c"
+  "fw_update.c" "safe_mode.c" "factory_reset.c" "storage_watch.c")
 
 set(kino_reqs kdp_core node_link json nvs_flash fatfs sdmmc esp_driver_sdmmc
               esp_driver_uart esp_driver_usb_serial_jtag esp_driver_tsens esp_timer
@@ -22,6 +23,8 @@ set(kino_reqs kdp_core node_link json nvs_flash fatfs sdmmc esp_driver_sdmmc
               esp_lcd esp_driver_gpio esp_lcd_st7701 esp_lcd_touch_gt911 esp_driver_i2c
               esp_driver_i2s esp_codec_dev esp_driver_ppa esp_driver_jpeg esp_mm
   espcoredump # the last panic, read from the coredump partition at boot (main.c)
+  esp_app_format # esp_app_get_elf_sha256, to tell whose dump the coredump is (main.c)
+  app_update esp_partition mbedtls # firmware update: OTA slots and the image hash (fw_update.c)
 )
 
 # The radio variant:
@@ -205,3 +208,11 @@ string(STRIP "${KINO_FW_VERSION}" KINO_FW_VERSION)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
              "${CMAKE_CURRENT_LIST_DIR}/../../VERSION")
 target_compile_definitions(${COMPONENT_LIB} PRIVATE KINO_FW_VERSION="${KINO_FW_VERSION}")
+
+# Our own code compiles clean, and stays that way: a warning here is a build
+# failure rather than a line in a log nobody reads. Three of the defects the
+# September hygiene pass removed had been in every build log for days - two
+# dead functions and a NUL byte in a literal - because nothing failed on them.
+# Scoped to this component on purpose: managed_components is not ours to fix.
+target_compile_options(${COMPONENT_LIB} PRIVATE -Werror)
+

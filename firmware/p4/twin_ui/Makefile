@@ -28,7 +28,10 @@ KDP_CORE := ../../components/kdp_core/include
 HOST_SHIM := ../host_preview/shim
 VERSION := $(shell tr -d '\r\n' < ../../VERSION)
 
+# -DKINO_RADIO=1: the Twin rehearses the image that ships, and the STATUS row
+# for a Roll with no server is behind that flag (#198, #203).
 CFLAGS := --target=wasm32-wasip1 -O2 -std=gnu11 -Wall -Wno-unused-function \
+	-DKINO_RADIO=1 \
           -mexec-model=reactor \
           -I shim -I $(HOST_SHIM) -I $(MAIN) -I $(KDP_CORE) \
           -DKINO_FW_VERSION=\"$(VERSION)\" -DKINO_TWIN_UI=1
@@ -38,7 +41,7 @@ LDFLAGS := -Wl,--no-entry -Wl,--initial-memory=33554432 -Wl,--max-memory=1342177
 
 SRCS := twin_ui.c $(MAIN)/mesh3d.c $(MAIN)/qr.c $(MAIN)/pure.c
 DEPS := $(SRCS) $(MAIN)/ui.c $(MAIN)/ui.h $(MAIN)/mesh3d.h \
-        $(MAIN)/ui_font.h $(MAIN)/logo_kino_d4.h $(MAIN)/logo_odd_jobs.h \
+        $(MAIN)/ui_font.h $(MAIN)/logo_kino_d4.h \
         $(MAIN)/conditions.h $(MAIN)/calibrate.h \
         $(MAIN)/meta.h $(MAIN)/qr.h $(MAIN)/net_link.h \
         $(MAIN)/wifi_creds.h $(MAIN)/roll_state.h $(MAIN)/upload_queue.h \

@@ -17,6 +17,11 @@ CFLAGS := -O2 -std=gnu11 -Wall -Wno-unused-function -I shim -I $(MAIN) -I $(KDP_
 # here it is a check that runs over every screen the product has every time
 # somebody looks at one of them.
 CFLAGS += -DKINO_UI_AUDIT=1
+# The radio build, because that is the one that ships. conditions.h gates the
+# "Uploads have no server" row on KINO_RADIO (#198), so without this the
+# renderer cannot draw a screen the product has. Nothing else in the UI is
+# behind the flag; the network modules it also gates are not compiled here.
+CFLAGS += -DKINO_RADIO=1
 LDFLAGS := -lm
 
 # qr.c is compiled for real, not stubbed: it has no ESP-IDF dependency, and a
@@ -29,7 +34,7 @@ LDFLAGS := -lm
 # will ever play. It has no ESP-IDF dependency - that is what it is for.
 SRCS := preview.c $(MAIN)/mesh3d.c $(MAIN)/qr.c $(MAIN)/pure.c
 DEPS := $(SRCS) $(MAIN)/ui.c $(MAIN)/ui.h $(MAIN)/mesh3d.h \
-        $(MAIN)/ui_font.h $(MAIN)/logo_kino_d4.h $(MAIN)/logo_odd_jobs.h \
+        $(MAIN)/ui_font.h $(MAIN)/logo_kino_d4.h \
         $(MAIN)/conditions.h $(MAIN)/calibrate.h \
         $(MAIN)/meta.h $(MAIN)/qr.h $(MAIN)/net_link.h \
         $(MAIN)/wifi_creds.h $(MAIN)/roll_state.h $(MAIN)/upload_queue.h \

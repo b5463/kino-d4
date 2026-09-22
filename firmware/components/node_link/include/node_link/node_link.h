@@ -20,6 +20,21 @@
  * recovered by a retry either way, the faster line with retries beats the
  * slower line without them.
  */
+/*
+ * The largest preview frame the link will carry, and both ends mean it.
+ *
+ * This was two numbers that disagreed (#208): the node treated anything above
+ * 32 KB as a photograph-sized leftover and took the next frame, while the body
+ * refused anything above 24 KB by size. A 320x240 frame of a detailed scene at
+ * the highest preview quality lands between the two, so the node kept it and
+ * the body dropped it - the pane blinked on a camera that was working.
+ *
+ * One number, at the larger value, so there is no band where a frame is
+ * acceptable at one end and not the other. The body's buffer is in PSRAM, so
+ * the difference costs 8 KB a channel on a body with megabytes to spare.
+ */
+#define NL_PREVIEW_MAX_BYTES (32 * 1024)
+
 #define NL_DEFAULT_BAUD 921600
 
 // Largest data slice in one NL_CMD_READ response (matches the KDP firmware
@@ -35,6 +50,10 @@
  * not with the bytes carried, so fewer and larger chunks is the cheaper trade.
  */
 #define NL_CHUNK_MAX 8192
+// Largest data slice in one NL_CMD_FW_CHUNK request. Smaller than a READ
+// reply because the node's request decoder is sized for requests: 2 KB is
+// 22 ms on the link and a 400 KB node image is 200 of them.
+#define NL_FW_CHUNK_MAX 2048
 
 typedef enum {
   // -> {} <- {product,protocol,firmware,sessionId,resetReason,chipRevision,
@@ -170,6 +189,29 @@ typedef enum {
   NL_CMD_SENSOR = 0x15,
 
   NL_CMD_REBOOT = 0x20,  // -> {} <- {ok}, then the node restarts
+
+  /*
+   * Firmware update, proxied by the P4 from the host's FW_* session
+   * (firmware/p4/main/fw_update.c). The node writes the image into the OTA
+   * slot it is not running, verifies the whole thing against the SHA-256
+   * named at BEGIN, selects the slot and restarts. Its bootloader has
+   * rollback armed: the image confirms itself when it answers its first
+   * HELLO, and an image that never does is rolled back on the next reset,
+   * which the P4 forces by cycling the camera bank.
+   *
+   *   FW_BEGIN -> {size, sha256, version}  <- {ok, chunkSize, slot}
+   *   FW_CHUNK -> BINARY: u32 LE offset, then data  <- {ok, received}
+   *   FW_END   -> {}  <- {ok, verified}, then the node restarts
+   *   FW_ABORT -> {}  <- {ok}
+   *
+   * Refusals: BAD_SIZE, BAD_OFFSET (chunks are in order), NO_SESSION,
+   * SHORT_IMAGE, CHECKSUM_FAILED, FLASH_WRITE, HARDWARE_ERROR (a node still on
+   * the single-app table has no slot to write), BUSY (a capture is held).
+   */
+  NL_CMD_FW_BEGIN = 0x30,
+  NL_CMD_FW_CHUNK = 0x31,
+  NL_CMD_FW_END = 0x32,
+  NL_CMD_FW_ABORT = 0x33,
 } nl_cmd_t;
 
 // Node state machine, reported as strings in NL_CMD_STATUS. The P4 maps

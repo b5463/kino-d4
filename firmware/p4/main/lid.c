@@ -118,14 +118,21 @@ static void lid_task(void *arg) {
       }
     }
 
-    /* The chatty half is the calibration half: while nothing is acting on this
-     * signal, put the numbers somewhere a person can read them, because the
-     * two thresholds cannot be worked out any other way. Once acting is on,
-     * only the edges are logged. */
+    /*
+     * The chatty half is the calibration half: while nothing is acting on this
+     * signal, the four means are the only way the two thresholds can be worked
+     * out (#169). Once acting is on, only the edges are logged.
+     *
+     * Telemetry, because nothing calls lid_set_acting() yet, so "while nothing
+     * is acting" is every body that ships. At one line every four seconds for
+     * the life of the camera this was 23% of a log ring that a customer is
+     * asked to send, and the ring held three minutes (#202). Set
+     * `body.log.telemetry` on the bench to get it back.
+     */
     if (!s_acting && ++since_log >= LID_LOG_EVERY) {
       since_log = 0;
       if (s_lid.answered > 0) {
-        klog("P4", "lid %s (%d %d %d %d), %d of %d answering",
+        klog_tel("P4", "lid %s (%d %d %d %d), %d of %d answering",
              pure_lid_state_name(now), means[0], means[1], means[2], means[3], s_lid.answered,
              PURE_LID_CAMS);
       }
