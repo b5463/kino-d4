@@ -46,13 +46,6 @@ not reach them:
   apps/twin/public/icon-*.png
   apps/roll-web/public/icon-*.png
 
-The camera is made by the studio Odd Jobs, and the firmware carries its mark:
-on the boot screen and at the foot of ABOUT, baked from the studio's own
-artwork into a coverage map. It is not KINO's mark and it is not ours to put
-under the MIT grant that covers firmware/**:
-
-  firmware/p4/main/logo_odd_jobs.h
-
 Those files are marked LicenseRef-KINO-Reserved. See
 LICENSES/LicenseRef-KINO-Reserved.txt.
 

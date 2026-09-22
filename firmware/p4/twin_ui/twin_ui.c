@@ -804,6 +804,15 @@ int safe_mode_crashes(void) { return 0; }
 #include "storage_watch.h"
 bool storage_watch_take(storage_event_t *out) { (void)out; return false; }
 bool safe_mode_brownout(void) { return false; }
+#include "lid.h"
+void lid_get(lid_state_t *out) { memset(out, 0, sizeof *out); out->mean[0] = out->mean[1] = out->mean[2] = out->mean[3] = -1; }
+int clock_offset_min(void) { return 0; }
+bool clock_offset_known(void) { return true; }
+void clock_set_offset(int m) { (void)m; }
+esp_err_t storage_capture_trash(const char *id) { (void)id; return ESP_OK; }
+esp_err_t storage_capture_untrash(const char *id) { (void)id; return ESP_OK; }
+void storage_trash_purge(void) {}
+int64_t clock_now_ms(void) { return 0; } /* 2026-09-21T16:01Z */
 void power_cam_bank_cycle(void) {}
 bool gallery_deleting(void) { return g_deleting; }
 void gallery_delete_progress(int *done, int *total) {

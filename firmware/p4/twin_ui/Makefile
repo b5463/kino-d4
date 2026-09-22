@@ -38,7 +38,7 @@ LDFLAGS := -Wl,--no-entry -Wl,--initial-memory=33554432 -Wl,--max-memory=1342177
 
 SRCS := twin_ui.c $(MAIN)/mesh3d.c $(MAIN)/qr.c $(MAIN)/pure.c
 DEPS := $(SRCS) $(MAIN)/ui.c $(MAIN)/ui.h $(MAIN)/mesh3d.h \
-        $(MAIN)/ui_font.h $(MAIN)/logo_kino_d4.h $(MAIN)/logo_odd_jobs.h \
+        $(MAIN)/ui_font.h $(MAIN)/logo_kino_d4.h \
         $(MAIN)/conditions.h $(MAIN)/calibrate.h \
         $(MAIN)/meta.h $(MAIN)/qr.h $(MAIN)/net_link.h \
         $(MAIN)/wifi_creds.h $(MAIN)/roll_state.h $(MAIN)/upload_queue.h \

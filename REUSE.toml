@@ -141,16 +141,3 @@ precedence = "override"
 SPDX-FileCopyrightText = "2016 The Inter Project Authors (https://github.com/rsms/inter), 2019 The Oxanium Project Authors (https://github.com/sevmeyer/oxanium)"
 SPDX-License-Identifier = "OFL-1.1"
 
-# Odd Jobs' mark, which is the studio's and not the project's.
-#
-# The camera opens with it and the About screen signs off with it, baked by
-# tools/mklogo.swift from the studio's own artwork into a 160x160 coverage map
-# - the same kind of derivation as the KINO wordmarks two blocks up, and the
-# same reason it needs saying: firmware/** is declared MIT, and an MIT grant
-# over somebody else's trade mark is a licence this project cannot give. The
-# annotation records whose the mark is; it grants nothing.
-[[annotations]]
-path = ["firmware/p4/main/logo_odd_jobs.h"]
-precedence = "override"
-SPDX-FileCopyrightText = "2026 Odd Jobs"
-SPDX-License-Identifier = "LicenseRef-KINO-Reserved"

@@ -28,6 +28,15 @@ esp_err_t storage_remount(void);
  *  unmounted and storage_get_status reports removed. */
 bool storage_card_alive(void);
 
+/**
+ * DELETE's undo. storage_capture_trash() moves the capture's folder to
+ * /KINO/TRASH; storage_capture_untrash() moves it back; storage_trash_purge()
+ * deletes whatever is in the trash. THE CALLER MUST HOLD THE CARD.
+ */
+esp_err_t storage_capture_trash(const char *id);
+esp_err_t storage_capture_untrash(const char *id);
+void storage_trash_purge(void);
+
 typedef struct {
   bool present;
   bool mounted;

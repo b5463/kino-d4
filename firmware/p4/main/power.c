@@ -223,17 +223,25 @@ static void power_task(void *arg) {
           vTaskDelay(pdMS_TO_TICKS(20));
         }
         const bool shown = s_sleep_shown;
-        s_sleep_pending = false;
-        for (int i = 0; shown && i < 30 && s_activity_seq == seq_before; i++) {
+        /* The screen winds down for two seconds before the light goes -
+         * long enough to read, and to look like a thing the camera is doing
+         * rather than a thing that happened to it. Pending stays true for the
+         * whole of it: it went false here, and the UI, seeing neither pending
+         * nor asleep, redrew the screen under the mark in the last half
+         * second - the flash back to the finder before the dark, which read
+         * as a crash. */
+        for (int i = 0; shown && i < 100 && s_activity_seq == seq_before; i++) {
           vTaskDelay(pdMS_TO_TICKS(20));
         }
         if (s_activity_seq != seq_before) {
+          s_sleep_pending = false;
           klog("P4", "sleep called off by a touch while the mark was up");
           vTaskDelay(pdMS_TO_TICKS(100));
           continue;
         }
         backlight(false);
         s_stage = POWER_ASLEEP;
+        s_sleep_pending = false;
         klog("P4", "asleep after %lus idle, mark %s", (unsigned long)idle,
              shown ? "shown" : "not answered");
         /* The check above closed the gap between SAMPLING and DECIDING. This

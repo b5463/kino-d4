@@ -34,6 +34,7 @@ static const char *NVS_NS = "clock";
  * is the point: a wall-clock correction must be free to jump, and durations
  * must be free of it. */
 static int s_offset_min;
+static bool s_offset_known; /* a host or a person set the zone; UTC by default is a guess */
 static clock_source_t s_source = CLOCK_UNSET;
 
 /* The comparison key pure.c uses, which is deliberately not this enum: pure.c
@@ -71,7 +72,10 @@ esp_err_t clock_init(void) {
     int32_t off = 0;
     /* The offset is metadata and is restored either way: it says how to print
      * a time, not what the time is. */
-    if (nvs_get_i32(nvs, "off_min", &off) == ESP_OK) s_offset_min = (int)off;
+    if (nvs_get_i32(nvs, "off_min", &off) == ESP_OK) {
+      s_offset_min = (int)off;
+      s_offset_known = true;
+    }
     nvs_close(nvs);
   }
 
@@ -125,6 +129,7 @@ void clock_set(int64_t epoch_ms, int utc_offset_min) {
   const int64_t before = clock_now_ms();
   wall_set_ms(epoch_ms);
   s_offset_min = utc_offset_min;
+  s_offset_known = true;
   const bool was_unset = s_source == CLOCK_UNSET;
   s_source = CLOCK_HOST;
 
@@ -205,6 +210,20 @@ const char *clock_source_str(void) {
 
 void clock_iso8601(char *out, size_t cap) {
   pure_format_iso8601(clock_now_ms(), s_offset_min, out, cap);
+}
+
+int clock_offset_min(void) { return s_offset_min; }
+bool clock_offset_known(void) { return s_offset_known; }
+
+void clock_set_offset(int utc_offset_min) {
+  s_offset_min = pure_clamp_utc_offset_min(utc_offset_min);
+  s_offset_known = true;
+  /* The offset is metadata: written even while the clock itself is unset,
+   * so a zone chosen before the first sync is not lost to the next boot. */
+  nvs_handle_t nvs;
+  if (nvs_open(NVS_NS, NVS_READWRITE, &nvs) != ESP_OK) return;
+  if (nvs_set_i32(nvs, "off_min", (int32_t)s_offset_min) == ESP_OK) nvs_commit(nvs);
+  nvs_close(nvs);
 }
 
 void clock_persist(void) {

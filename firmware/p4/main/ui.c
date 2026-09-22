@@ -37,9 +37,9 @@
 #include "kdp_server.h"
 #include "kdp_sounds.h"
 #include "klog.h"
+#include "lid.h"
 #include "taskmon.h"
 #include "logo_kino_d4.h"
-#include "logo_odd_jobs.h"
 #include "meta.h"
 #include "mesh3d.h"
 #include "net_link.h"
@@ -49,6 +49,7 @@
 #include "roll_state.h"
 #include "storage.h"
 #include "storage_watch.h"
+#include <time.h>
 #include "upload_queue.h"
 #include "wifi_creds.h"
 #include "thumb.h"
@@ -599,12 +600,33 @@ static void card_words(char *out, size_t cap, const storage_status_t *sd) {
   else snprintf(out, cap, "%d SHOTS", shots);
 }
 
+/* "TODAY 18:01" or "21 SEP 18:01", in the zone the clock prints with. The
+ * capture id stays where it is; this is what a person reads first. */
+static void date_words(char *out, size_t cap, int64_t ms) {
+  if (ms <= 0) {
+    out[0] = '\0';
+    return;
+  }
+  const time_t local = (time_t)(ms / 1000 + (int64_t)clock_offset_min() * 60);
+  const time_t now_local = (time_t)(clock_now_ms() / 1000 + (int64_t)clock_offset_min() * 60);
+  struct tm t, n;
+  gmtime_r(&local, &t);
+  gmtime_r(&now_local, &n);
+  if (t.tm_year == n.tm_year && t.tm_yday == n.tm_yday) {
+    snprintf(out, cap, "TODAY %02d:%02d", t.tm_hour, t.tm_min);
+  } else {
+    static const char *const MON[12] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                                        "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+    snprintf(out, cap, "%d %s %02d:%02d", t.tm_mday, MON[t.tm_mon % 12], t.tm_hour, t.tm_min);
+  }
+}
+
 #ifndef UI_DRAW_PROFILE
 #define UI_DRAW_PROFILE 0
 #endif
 enum {
   DL_FILL, DL_RRECT, DL_ROUTLINE, DL_CUT, DL_DISC, DL_STROKE, DL_SCRIM, DL_TEXT,
-  DL_ODD, DL_FIELD, DL_SHBLIT, DL_BLIT, DL_BITS, DL_FOCUS, DL_RING,
+  DL_FIELD, DL_SHBLIT, DL_BLIT, DL_BITS, DL_FOCUS, DL_RING,
 };
 #define DL_OPS (DL_RING + 1)
 /* What the per-tile pass needs about a command without touching PSRAM:
@@ -732,6 +754,19 @@ static int64_t s_shot_seen_us;
 static bool s_shot_hold;
 static char s_toast[48];
 static int64_t s_toast_us;
+static bool s_toast_long;        /* the undo toast: thirty seconds, not two */
+/* The software dim: how dark the scrim over the screen is (0 = awake), and
+ * when the DIM stage began, for the three-step arrival. 150 of 255 leaves
+ * the screen readable and unmistakably dimmed. */
+#define DIM_SCRIM_K 150
+#define DIM_RAMP_US 1600000 /* long enough that no frame's step is seen on a dark ground */
+static int s_dim_k;
+static int64_t s_dim_since_us;
+static char s_undo_id[40];       /* a capture in the trash, restorable until s_undo_until_us */
+static int64_t s_undo_ms;
+static int64_t s_undo_until_us;
+#define UNDO_MS 30000
+#define IT_UNDO 201
 static uint16_t *s_photo;        /* PH_W * PH_H, decoded on entering SCR_PHOTO */
 static bool s_photo_ok;
 static char s_photo_id[40];
@@ -742,6 +777,8 @@ static int s_photo_frames;
  * opens and kept here, not re-read on every draw: a draw runs many times a
  * second and this would be an SD read and a JSON parse in each of them. */
 static bool s_photo_fav;
+static int64_t s_photo_ms;
+static bool s_photo_sent;
 
 /*
  * The wigglegram player (#160).
@@ -1952,6 +1989,7 @@ static bool usb_attached(void) {
 
 static void toast(const char *s) {
   snprintf(s_toast, sizeof s_toast, "%s", s);
+  s_toast_long = false;
   s_toast_us = esp_timer_get_time();
 }
 
@@ -2004,62 +2042,6 @@ static float span01(float t, float from, float to) {
 }
 
 static int lerpi(int a, int b, float e) { return a + (int)((float)(b - a) * e + 0.5f); }
-
-/**
- * The Odd Jobs mark, from the studio's own artwork.
- *
- * It was drawn procedurally first - four discs unioned, four subtracted to
- * pinch the waists, one for the hole - on the theory that a logo made of
- * circles can be described as geometry. It cannot: the real mark is not
- * fourfold symmetric, its lobes are different sizes and its curvature varies,
- * and every parameter I tuned by eye moved it further from the thing rather
- * than closer. A logo is somebody's drawing. You trace it.
- *
- * So `tools/mklogo.swift` bakes the 2048 px master's alpha down to a 160 px
- * coverage map, trimmed to the mark's own bounding box, and this samples it
- * bilinearly at whatever size the caller wants. One map is sharp at the boot
- * screen's 124 px and at the ABOUT row's 34, because a bilinear sample of a
- * coverage field is exactly what an antialiased scale-down is.
- */
-static void oddjobs_mark(int cx, int cy, float r, uint16_t ink) {
-  if (s_dl.rec) {
-    const int e = (int)r + 3;
-    dl_cmd_t *k = dl_push(DL_ODD, cx - e, cy - e, cx + e + 1, cy + e + 1);
-    if (k) { k->a = cx; k->b = cy; k->f0 = r; k->col = ink; }
-    return;
-  }
-  PX_BLEND((size_t)((2.0f * r + 2.0f) * (2.0f * r + 2.0f)));
-
-  const int span = (int)r + 1;
-  const float scale = (float)ODD_JOBS_MARK_N / (2.0f * r);
-  const gfx_target_t *t = TG;
-  int y0 = cy - span, y1 = cy + span, x0 = cx - span, x1 = cx + span;
-  if (x0 < t->x0) x0 = t->x0;
-  if (y0 < t->y0) y0 = t->y0;
-  if (x1 >= CV_X1(t)) x1 = CV_X1(t) - 1;
-  if (y1 >= CV_Y1(t)) y1 = CV_Y1(t) - 1;
-  for (int py = y0; py <= y1; py++) {
-    uint16_t *row = cv_ptr(t, t->x0, py) - t->x0;
-    for (int px = x0; px <= x1; px++) {
-      /* Into the map's own pixels, at its centre. */
-      const float u = ((float)px + 0.5f - (float)cx) * scale + (float)ODD_JOBS_MARK_N / 2.0f;
-      const float v = ((float)py + 0.5f - (float)cy) * scale + (float)ODD_JOBS_MARK_N / 2.0f;
-      if (u < 0.0f || v < 0.0f || u >= (float)ODD_JOBS_MARK_N - 1.0f ||
-          v >= (float)ODD_JOBS_MARK_N - 1.0f) {
-        continue;
-      }
-      const int iu = (int)u, iv = (int)v;
-      const float fu = u - (float)iu, fv = v - (float)iv;
-      const uint8_t *m = ODD_JOBS_MARK + (size_t)iv * ODD_JOBS_MARK_N + iu;
-      const float a = (float)m[0] * (1.0f - fu) + (float)m[1] * fu;
-      const float b = (float)m[ODD_JOBS_MARK_N] * (1.0f - fu) +
-                      (float)m[ODD_JOBS_MARK_N + 1] * fu;
-      const int k = (int)(a * (1.0f - fv) + b * fv + 0.5f);
-      if (k <= 0) continue;
-      row[px] = k >= 254 ? ink : mix(row[px], ink, k);
-    }
-  }
-}
 
 /* ------------------------------------------------------------------ */
 /* Boot                                                                */
@@ -2449,11 +2431,12 @@ static void boot_field(float reach, int32_t ms, int pal, float warm) {
  * restarting, one mark, centred, until the screen does. A machine that is
  * leaving should say which machine is leaving and nothing else.
  */
-static void boot_mark(void) {
+static void boot_mark_ink(uint16_t ink) {
   const int lx = (UI_W - KINO_D4_LOGO_W) / 2;
   const int ly = (UI_H - KINO_D4_LOGO_H) / 2;
-  draw_bits(KINO_D4_LOGO, KINO_D4_LOGO_W, KINO_D4_LOGO_H, KINO_D4_LOGO_STRIDE, lx, ly, 1, MZ_CARD);
+  draw_bits(KINO_D4_LOGO, KINO_D4_LOGO_W, KINO_D4_LOGO_H, KINO_D4_LOGO_STRIDE, lx, ly, 1, ink);
 }
+static void boot_mark(void) { boot_mark_ink(MZ_CARD); }
 
 /* ------------------------------------------------------------------ */
 /* The animation driver                                                */
@@ -3972,7 +3955,6 @@ static void dl_exec(const dl_cmd_t *c) {
     case DL_STROKE: stroke(c->f0, c->f1, c->f2, c->f3, c->f4, c->col); break;
     case DL_SCRIM: scrim(c->a, c->b, c->c, c->d, c->col, c->e); break;
     case DL_TEXT: text((const ui_font_t *)c->p, c->a, c->b, s_dl.str + c->g, c->col); break;
-    case DL_ODD: oddjobs_mark(c->a, c->b, c->f0, c->col); break;
     case DL_FIELD: boot_field(c->f0, c->a, c->b, c->f1); break;
     case DL_SHBLIT: sh_blit((const uint16_t *)c->p, c->a, c->b); break;
     case DL_BLIT: blit_rows((const uint16_t *)c->p, c->a, c->b, c->c, c->d, c->e); break;
@@ -5002,6 +4984,13 @@ static void draw_gallery(void) {
     const int d = down ? 1 : 0;
     if (slots[i].state == TILE_READY && slots[i].pixels) {
       gal_blit(slots[i].pixels, x, y);
+      if (slots[i].sent) {
+        /* The Roll has it: safe to delete, which is the one question a
+         * person asks a full card. */
+        const int bw = text_w(&UI_FONT_T, "SENT") + 14;
+        round_rect(x + 8, y + 8, bw, 20, 6, MZ_MINT);
+        text(&UI_FONT_T, x + 15, y + 11, "SENT", MZ_GROUND);
+      }
     } else if (slots[i].state == TILE_PENDING) {
       /* Not yet decoded is not the same state as will not decode, and they
        * used to be drawn identically: the same grey word on the same dark
@@ -5194,6 +5183,8 @@ static bool photo_open(const gallery_item_t *it) {
    * its own copy from here on because the toggle below changes it and the
    * gallery's slot is only refreshed on the next scan. */
   s_photo_fav = it->favorite;
+  s_photo_ms = it->captured_ms;
+  s_photo_sent = it->sent;
 
   /* 64-byte aligned, because this is a PPA destination and the PPA is a DMA
    * engine: a plain heap_caps_malloc gave 4-byte alignment and every scale
@@ -5693,11 +5684,17 @@ static void draw_photo(void) {
 
     /* Sized for both inputs whole. The compiler cannot see that a capture id
      * is ten characters and is right to insist. */
+    /* The mode, and whether the Roll has it. The "CAP" prefix said nothing a
+     * person needed; the date that replaced it on the next line does. */
     char sub[64];
-    if (tail != NULL && mode[0] != '\0') snprintf(sub, sizeof sub, "%s  %s", raw, mode);
-    else if (tail != NULL) snprintf(sub, sizeof sub, "%s", raw);
-    else snprintf(sub, sizeof sub, "%s", mode);
-    text(&UI_FONT_T, fx, cy, sub, D_DIM);
+    snprintf(sub, sizeof sub, "%s%s", mode[0] != '\0' ? mode : raw, s_photo_sent ? "  SENT" : "");
+    text(&UI_FONT_T, fx, cy, sub, s_photo_sent ? MZ_MINT : D_DIM);
+    if (s_photo_ms > 0) {
+      cy += UI_FONT_T.line_h;
+      char when[24];
+      date_words(when, sizeof when, s_photo_ms);
+      text(&UI_FONT_T, fx, cy, when, D_DIM);
+    }
     cy += UI_FONT_T.line_h;
   }
 
@@ -6020,26 +6017,19 @@ static void draw_roll(void) {
 
   /* ---- left column: the symbol, at whatever pitch the height allows ---- */
   if (s_qr_ok) {
-    const int side = draw_qr_centred(&s_qr, RL_QR_CX, RL_TOP, RL_QR_BOX);
+    /* The QR on its own rounded card, with what it is for under it: the
+     * guests see this half from across a table, the owner reads the other.
+     * The quiet zone is inside draw_qr_centred's box; the card is outside it. */
+    round_rect(RL_M, RL_TOP, RL_QR_COL_W, UI_H - RL_TOP - PAGE_M, UI_R, W_ROW);
+    const int side = draw_qr_centred(&s_qr, RL_QR_CX, RL_TOP + 12, RL_QR_BOX - 40);
     if (side > 0) {
-      /* The plate the symbol sits on, as a well - a white square floating on
-       * face grey was the last piece of bare chrome on this screen.
-       *
-       * The bevel is drawn OUTSIDE the white block, not over its edge. The
-       * outer 4 modules of that block are the quiet zone the QR spec requires,
-       * and at this pitch that is 40 px: eating 2 of them for a frame would
-       * take the margin a phone needs to find the symbol's edges down to 3.8
-       * modules to buy a border. The screen grows 2 px instead. */
-
-      /* The address under the symbol, without its scheme: a guest whose phone
-       * will not scan types this. Secondary to the QR by size and colour. */
       const char *addr = roll.guest_url;
       if (strncmp(addr, "https://", 8) == 0) addr += 8;
       else if (strncmp(addr, "http://", 7) == 0) addr += 7;
-      if (text_w(&UI_FONT_S, addr) <= RL_QR_COL_W - 8) {
-        text_mid(&UI_FONT_S, RL_QR_CX, RL_TOP + side + 8, addr, W_GRAYTEXT);
-      } else {
-        text_mid(&UI_FONT_T, RL_QR_CX, RL_TOP + side + 8, "SCAN TO JOIN", W_GRAYTEXT);
+      text_mid(&UI_FONT_T, RL_QR_CX, RL_TOP + 12 + side + 10, "SCAN TO JOIN", W_TEXT);
+      if (text_w(&UI_FONT_S, addr) <= RL_QR_COL_W - 24) {
+        text_mid(&UI_FONT_S, RL_QR_CX, RL_TOP + 12 + side + 10 + UI_FONT_T.line_h + 2, addr,
+                 W_GRAYTEXT);
       }
     }
   } else {
@@ -6068,137 +6058,105 @@ static void draw_roll(void) {
   const bool can_send = online && !server_quiet && !q.halted;
   const int waiting = q.pending + q.card_pending;
 
+  /*
+   * The right column in the grammar every other screen uses: the roll's
+   * name as the title, then facts in rows - CODE, STATUS, PHOTOS, UPLOADED -
+   * and under them one sentence about what is happening and, while it is
+   * happening, a bar. It was a stack of five type sizes with a lamp in the
+   * middle, and nothing on it lined up with anything else on the camera.
+   */
   const char *title = roll.name[0] != '\0' ? roll.name : roll.slug;
   int y = RL_TOP;
   const ui_font_t *tf = fit_face(title, RL_RW);
   text(tf, RL_RX, y, title, W_TEXT);
   y += tf->line_h + 10;
-  if (roll.name[0] != '\0') {
-    /* The code, named, in a well. Only when the name is not already the code.
-     *
-     * It is the one string on this screen a guest reads out or types when a
-     * phone will not scan, and it was the quietest thing in the column: grey,
-     * at body size, under a name set twice as large. A value someone copies
-     * belongs in a well on this interface - it is where the look's name sits
-     * on LOOK and where every reading sits on ABOUT - and that well is also
-     * the container this column never had. */
-    text(&UI_FONT_T, RL_RX, y, "CODE", W_GRAYTEXT);
-    y += UI_FONT_S.line_h + 4;
-    well(RL_RX, y, RL_RW, UI_FONT_M.line_h + 12);
-    text(&UI_FONT_M, RL_RX + 10, y + 6, roll.slug, W_TEXT);
-    y += UI_FONT_M.line_h + 12 + RL_GROUP;
+
+  const char *word;
+  uint16_t lamp;
+  if (q.halted) {
+    word = "Paused";
+    lamp = C_BAD;
+  } else if (server_quiet) {
+    word = "KINO not answering";
+    lamp = C_BAD;
+  } else if (online) {
+    word = "Online";
+    lamp = C_OK;
+  } else {
+    word = "Offline";
+    lamp = W_SHADOW;
+  }
+  const int total = gallery_media_count();
+  char photos[16], sent[32];
+  if (total < 0) snprintf(photos, sizeof photos, "-");
+  else snprintf(photos, sizeof photos, "%d", total);
+  if (total < 0 || !q.scan_complete) {
+    snprintf(sent, sizeof sent, "counting");
+  } else {
+    int done = total - waiting - q.uploading;
+    if (done < 0) done = 0;
+    snprintf(sent, sizeof sent, "%d of %d", done, total);
   }
 
-  /* The connection word, with a square lamp in front of it. Green is "your
-   * photographs are leaving the camera"; grey is "not right now"; the third
-   * colour is the one case a guest can do nothing about and should not be
-   * told is their Wi-Fi. */
+  const int ph = 44;
+  fact_row(RL_RX, RL_RW, y, ph, "Code", roll.slug, true, false);
+  fact_row(RL_RX, RL_RW, y + ph, ph, "Status", word, true, false);
+  /* The lamp, left of the status word: colour beside the word, never instead. */
   {
-    const char *word;
-    uint16_t lamp;
-    if (q.halted) {
-      word = "UPLOAD PAUSED";
-      lamp = C_BAD;
-    } else if (server_quiet) {
-      word = "KINO NOT ANSWERING";
-      lamp = C_BAD;
-    } else if (online) {
-      word = "ONLINE";
-      lamp = C_OK;
-    } else {
-      word = "OFFLINE";
-      lamp = W_SHADOW;
-    }
-    const int ly = y + (UI_FONT_M.line_h - 12) / 2;
-    fill(RL_RX, ly, 12, 12, W_TEXT);
-    fill(RL_RX + 2, ly + 2, 8, 8, lamp);
-    text(&UI_FONT_M, RL_RX + 22, y, word, W_TEXT);
-    y += UI_FONT_M.line_h + RL_GROUP;
+    const int lw = text_w(&UI_FONT_M, word);
+    const int lx = RL_RX + RL_RW - lw - 16 - 18;
+    const int ly = y + ph + (ph - 10) / 2;
+    fill(lx, ly, 10, 10, W_TEXT);
+    fill(lx + 2, ly + 2, 6, 6, lamp);
   }
+  fact_row(RL_RX, RL_RW, y + 2 * ph, ph, "Photos", photos, true, false);
+  fact_row(RL_RX, RL_RW, y + 3 * ph, ph, "Uploaded", sent, true, true);
+  y += 4 * ph + 16;
 
-  /* The card, as one big number. gallery_media_count() is the index in RAM,
-   * exact, the same figure the Storage screen shows; -1 only before the
-   * first index read after boot. */
-  {
-    const int total = gallery_media_count();
-    char big[24];
-    if (total < 0) snprintf(big, sizeof big, "- PHOTOS");
-    else snprintf(big, sizeof big, "%d %s", total, total == 1 ? "PHOTO" : "PHOTOS");
-    const ui_font_t *bf = fit_face(big, RL_RW);
-    text(bf, RL_RX, y, big, W_TEXT);
-    y += bf->line_h + RL_GROUP;
-  }
-
-  /* What is happening to them. Three lines at most. */
-  char l1[48] = "", l2[48] = "", l3[48] = "";
+  char l1[48] = "", l2[48] = "";
   bool bar = false;
   int bar_done = 0, bar_total = 0;
   if (q.halted) {
-    snprintf(l1, sizeof l1, "%d waiting to upload", waiting);
-    snprintf(l2, sizeof l2, "Saved safely on camera");
-    snprintf(l3, sizeof l3, "Check the roll in Studio.");
+    snprintf(l1, sizeof l1, "%d waiting, saved on the camera.", waiting);
+    snprintf(l2, sizeof l2, "Check the roll in Studio.");
   } else if (waiting > 0 || q.uploading > 0) {
-    snprintf(l1, sizeof l1, "%d waiting to upload", waiting);
     if (can_send) {
       bar = true;
       bar_done = q.burst_done;
       bar_total = q.burst_done + waiting + q.uploading;
-      snprintf(l2, sizeof l2, "%s", q.uploading > 0 ? "Uploading now" : "Starting upload");
+      snprintf(l1, sizeof l1, "%s, %d to go.", q.uploading > 0 ? "Uploading" : "Starting", waiting + q.uploading);
     } else {
-      snprintf(l2, sizeof l2, "Saved safely on camera");
-      snprintf(l3, sizeof l3, "%s",
-               server_quiet ? "Wi-Fi is up. They go when KINO answers."
-                            : "They go when Wi-Fi returns.");
+      snprintf(l1, sizeof l1, "%d waiting, saved on the camera.", waiting);
+      snprintf(l2, sizeof l2, "%s",
+               server_quiet ? "They go when KINO answers." : "They go when Wi-Fi returns.");
     }
   } else if (!q.scan_complete) {
-    /* Nothing waiting that the queue knows of, and it has not seen the
-     * whole card since boot. Honest for the seconds it lasts. */
-    snprintf(l1, sizeof l1, "COUNTING THE CARD");
+    snprintf(l1, sizeof l1, "Counting the card.");
   } else if (q.last_upload_ms > 0) {
-    snprintf(l1, sizeof l1, "All uploaded");
     const int64_t ago_s = (now - q.last_upload_ms) / 1000;
-    if (ago_s < 60) snprintf(l2, sizeof l2, "Last upload %llds ago", (long long)ago_s);
-    else if (ago_s < 3600) snprintf(l2, sizeof l2, "Last upload %lldm ago", (long long)(ago_s / 60));
-    else snprintf(l2, sizeof l2, "Last upload %lldh ago", (long long)(ago_s / 3600));
+    if (ago_s < 60) snprintf(l1, sizeof l1, "All uploaded, %llds ago.", (long long)ago_s);
+    else if (ago_s < 3600) snprintf(l1, sizeof l1, "All uploaded, %lldm ago.", (long long)(ago_s / 60));
+    else snprintf(l1, sizeof l1, "All uploaded, %lldh ago.", (long long)(ago_s / 3600));
   } else if (can_send) {
-    snprintf(l1, sizeof l1, "All uploaded");
+    snprintf(l1, sizeof l1, "All uploaded.");
   } else {
-    snprintf(l1, sizeof l1, "Nothing waiting");
+    snprintf(l1, sizeof l1, "Nothing waiting.");
     if (!online) snprintf(l2, sizeof l2, "Uploads resume when Wi-Fi returns.");
   }
 
-  /* Straight on from the count: the column is one stack of the roll's facts,
-   * top to bottom, with one interval between them. The status block used to
-   * be pinned to the page's foot, which left a hole in the middle of the
-   * column the size of whatever the camera had to say. The longest state -
-   * four lines - still ends 60 px clear of the bottom. */
-
-  if (l1[0]) { text(&UI_FONT_M, RL_RX, y, l1, W_TEXT); y += UI_FONT_M.line_h + 14; }
   if (bar) {
-    /* The bar exists only while there is work: a full or empty bar with
-     * nothing behind it would be a decoration. */
-    const int bw = RL_RW - 4, bh = 14;
-
-    fill(RL_RX + 2, y + 2, bw - 4, bh - 4, W_HILITE);
+    const int bh = 8;
+    round_rect(RL_RX, y, RL_RW, bh, 4, W_HILITE);
     if (bar_total > 0) {
-      const int fw = (int)((int64_t)(bw - 4) * bar_done / bar_total);
-      /* The accent, like the storage gauge. It was 0000A8 - the 1998 desktop's
-       * navy, the one colour the redesign was there to remove. */
-      if (fw > 0) fill(RL_RX + 2, y + 2, fw, bh - 4, W_SEL);
+      const int fw = (int)((int64_t)RL_RW * bar_done / bar_total);
+      if (fw > 8) round_rect(RL_RX, y, fw, bh, 4, W_SEL);
     }
-    y += bh + 14;
+    y += bh + 12;
   }
-  /* The two reading lines wrap. They are sentences, not labels, and the
-   * longest of them - "Wi-Fi is up. They go when KINO answers." - is 386 px
-   * against a 344 px column, so it had been losing "answers" off the right of
-   * the panel on the one screen a guest reads at a party. */
-  if (l2[0]) { y += text_block(&UI_FONT_S, RL_RX, y, RL_RW, l2, W_GRAYTEXT) + 10; }
-  if (l3[0]) { text_block(&UI_FONT_S, RL_RX, y, RL_RW, l3, W_GRAYTEXT); }
+  if (l1[0]) y += text_block(&UI_FONT_S, RL_RX, y, RL_RW, l1, W_TEXT) + 6;
+  if (l2[0]) text_block(&UI_FONT_S, RL_RX, y, RL_RW, l2, W_GRAYTEXT);
 }
 
-/* ------------------------------------------------------------------ */
-/* Settings                                                            */
-/* ------------------------------------------------------------------ */
 
 static const char *const SET_ROWS[6] = {"Display", "Sound",   "Connection",
                                         "Storage", "About",   "Status"};
@@ -6800,6 +6758,13 @@ static void draw_sound(void) {
  * Every value comes from net_link, so this screen becomes correct on its own
  * once the transport lands. Nothing here is hard-coded to the V1 state.
  */
+#define CN_IT_TZ_MINUS 0
+#define CN_IT_TZ_PLUS 1
+#define CN_IT_COUNT 2
+#define CN_PITCH 42
+#define CN_TZ_Y (LIST_TOP_DEFAULT + 7 * CN_PITCH + 12) /* under the seven facts */
+#define CN_TZ_H 40
+#define CN_TZ_BTN 64
 static void draw_connection(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
   draw_header(SCR_CONNECTION);
@@ -6890,7 +6855,7 @@ static void draw_connection(void) {
       {"USB", usb_attached() ? "Connected" : "Not connected", true},
   };
   const int n = (int)(sizeof ROWS / sizeof ROWS[0]);
-  const int pitch = 46;
+  const int pitch = CN_PITCH;
 
   fill(0, BODY_Y, UI_W, UI_H - BODY_Y, W_FACE);
   const int lh = n * pitch;
@@ -6903,16 +6868,38 @@ static void draw_connection(void) {
    * on-screen keyboard on purpose: a passphrase entered on a 480x800 panel
    * with no physical keys is worse than the USB path, and building a bad one
    * to claim independence from Studio would be the wrong trade. */
-  const int y = LIST_Y + lh + 18;
+  /* One line under the zone band, so the seven facts, the band and the note
+   * share the height that six facts and a two-line note had. */
+  const int y = CN_TZ_Y + CN_TZ_H + 8;
+  (void)lh;
   if (!net.radio_fitted) {
     text(&UI_FONT_S, PAGE_M, y, "No radio on this body. Photos leave over USB-C.", W_GRAYTEXT);
   } else if (!net.radio_routed) {
-    text(&UI_FONT_S, PAGE_M, y, "The C6 radio is fitted, but this firmware has no", W_GRAYTEXT);
-    text(&UI_FONT_S, PAGE_M, y + 20, "route to it. Photos leave over USB-C.", W_GRAYTEXT);
+    text(&UI_FONT_S, PAGE_M, y, "Radio fitted, no route to it yet. Photos leave over USB-C.", W_GRAYTEXT);
   } else if (net.state != NET_IP_READY) {
     text(&UI_FONT_S, PAGE_M, y, "Set up Wi-Fi in Studio over USB-C.", W_GRAYTEXT);
   } else {
     text(&UI_FONT_S, PAGE_M, y, "Captures upload to the active roll.", W_GRAYTEXT);
+  }
+
+  /* The zone the clock prints with. SNTP gives UTC and nothing else, and a
+   * body that never met Studio dated every photograph an ocean away; two
+   * buttons in half-hour steps is the whole of what a person needs. */
+  {
+    const int off = clock_offset_min();
+    char zone[32];
+    snprintf(zone, sizeof zone, "TIME ZONE   UTC%c%02d:%02d", off < 0 ? '-' : '+', abs(off) / 60,
+             abs(off) % 60);
+    round_rect(LIST_X, CN_TZ_Y, CN_TZ_BTN, CN_TZ_H, UI_R,
+               s_pressed == CN_IT_TZ_MINUS ? W_PRESS : W_ROW);
+    text_mid(&UI_FONT_M, LIST_X + CN_TZ_BTN / 2, CN_TZ_Y + (CN_TZ_H - UI_FONT_M.line_h) / 2, "-",
+             W_TEXT);
+    round_rect(LIST_X + LIST_W - CN_TZ_BTN, CN_TZ_Y, CN_TZ_BTN, CN_TZ_H, UI_R,
+               s_pressed == CN_IT_TZ_PLUS ? W_PRESS : W_ROW);
+    text_mid(&UI_FONT_M, LIST_X + LIST_W - CN_TZ_BTN / 2, CN_TZ_Y + (CN_TZ_H - UI_FONT_M.line_h) / 2,
+             "+", W_TEXT);
+    text_mid(&UI_FONT_T, UI_W / 2, CN_TZ_Y + (CN_TZ_H - UI_FONT_T.line_h) / 2, zone,
+             clock_offset_known() ? W_TEXT : W_GRAYTEXT);
   }
 }
 
@@ -7048,10 +7035,13 @@ static void draw_storage(void) {
     /* Why, not just that. mount_attempts separates "no card in the slot" from
      * "a card the driver has tried and failed to mount", which are different
      * problems and the screen used to show the same "None" for both. */
-    text(&UI_FONT_M, PAGE_M, by, sd.present ? "Card present, not mounted" : "No card in the slot",
+    text(&UI_FONT_M, PAGE_M, by, sd.present ? "The card cannot be read" : "No card in the slot",
          W_TEXT);
     char detail[80];
-    if (sd.last_error != NULL && sd.last_error[0] != '\0') {
+    if (sd.present && sd.last_error != NULL && strcmp(sd.last_error, "NO_FILESYSTEM") == 0) {
+      snprintf(detail, sizeof detail,
+               "Cards over 32 GB come in a format KINO does not read. FORMAT CARD fixes it.");
+    } else if (sd.last_error != NULL && sd.last_error[0] != '\0') {
       snprintf(detail, sizeof detail, "%s, after %u mount attempt%s", sd.last_error,
                (unsigned)sd.mount_attempts, sd.mount_attempts == 1 ? "" : "s");
     } else {
@@ -7235,7 +7225,6 @@ static void draw_about(void) {
   fill(AB_RX, LIST_Y + AB_ROW - 1, AB_RW, 1, W_RULE);
   const int cy0 = LIST_Y + AB_ROW;
   const int ch = 4 * AB_CAM_ROW;
-  const char *NOTE = "Node firmware, then the sensor each node reports.";
   const int note_y = cy0 + ch + 12;
 
   const camlink_info_t *cams = about_cameras();
@@ -7263,31 +7252,27 @@ static void draw_about(void) {
   /* Node firmware is per camera and the four can differ - a node reflashed on
    * its own is the normal way that happens - which is the whole reason this is
    * four rows and not one summary line. */
-  text_block(&UI_FONT_S, AB_RX, note_y, AB_RW, NOTE, W_GRAYTEXT);
-
-  /*
-   * Who made it.
-   *
-   * At the foot of the one screen that says what this object is, with the
-   * studio's own mark beside its name - the same mark the camera opens with,
-   * drawn by the same function at a twentieth of the size. A maker's plate:
-   * every other line on this screen is a fact about the machine, and this is
-   * the one about the people.
-   */
+  /* Help in one scan: the serial and the firmware, prefilled into a new
+   * issue, so support never asks "which version". Encoded once; the struct is
+   * 4 KB and lives in PSRAM, not in the .bss the C6 reserve is paid from. */
   {
-    /* The plate is as tall as the two lines in it. It was pinned to a flat 34
-     * and set two lines of 18 and 24 inside that, so "Studio" hung 12 px below
-     * where the plate claimed to end and finished 12 px past the page margin -
-     * the mark beside it looked high for the same reason, being centred on a
-     * box shorter than its contents. */
-    const int plate_h = 4 + UI_FONT_T.line_h + UI_FONT_S.line_h;
-    const int py = UI_H - PAGE_M - plate_h;
-    const float mr = plate_h / 2.0f;
-    oddjobs_mark(AB_RX + (int)mr, py + plate_h / 2, mr, MZ_ACCENT);
-    text(&UI_FONT_T, AB_RX + (int)(2 * mr) + 12, py + 4, "ODD JOBS", W_TEXT);
-    text(&UI_FONT_S, AB_RX + (int)(2 * mr) + 12, py + 4 + UI_FONT_T.line_h, "Studio",
-         W_GRAYTEXT);
+    static qr_t *qr;
+    static bool encoded;
+    if (qr == NULL) qr = heap_caps_calloc(1, sizeof *qr, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (qr != NULL && !encoded) {
+      char url[160];
+      snprintf(url, sizeof url, "https://github.com/b5463/kino-d4/issues/new?title=%s+%s",
+               serial[0] != '\0' ? serial : "KD4", KINO_FW_VERSION);
+      encoded = qr_encode(url, qr);
+    }
+    const int room = UI_H - PAGE_M - note_y - UI_FONT_T.line_h - 6;
+    const int box = room < AB_RW ? room : AB_RW;
+    if (encoded && qr != NULL && box >= 64) {
+      draw_qr_centred(qr, AB_RX + AB_RW / 2, note_y, box);
+      text_mid(&UI_FONT_T, AB_RX + AB_RW / 2, note_y + box + 4, "SCAN FOR HELP", W_GRAYTEXT);
+    }
   }
+
 }
 
 /* ------------------------------------------------------------------ */
@@ -7545,14 +7530,110 @@ static void draw_strip(const fm_cell_t *st, const char *line, uint16_t accent) {
 
 /** The camera at work on something that is not a capture. All four cells
  *  lit, because this is about the four and not about one of them. */
-/* The mark, and one line under it, so a screen going dark reads as sleep and
- * not as a crash. The wake is the one thing worth saying at that moment. */
+/*
+ * What the lenses see, as a word on the finder.
+ *
+ * lid.c reads a mean off every finder pane to know where the cover is. Its
+ * thresholds are unmeasured (lid.h says so, and gates the sleep on
+ * lid_acting() for that reason), and on the bench a body facing the desk
+ * read "closed" with the cover off - so nothing here trusts an absolute
+ * level. Both hints are transitions seen while on SHOOT: the panes were lit
+ * and then all went dark (the cover went on), or one pane was lit and went
+ * dark while the others stayed lit (a finger, a cap on one lens). A body
+ * switched on in a dim room, or a lens that is dark from the start, says
+ * nothing; those are STATUS matters, not a word over the picture. Polled
+ * every half second, two polls before it is said, cleared the moment the
+ * panes disagree with it.
+ */
+static char s_lens_hint[40];
+static void lens_hint_poll(void) {
+  static int64_t last_us;
+  static bool seen_lit;      /* every pane lit at some point this SHOOT session */
+  static bool was_lit[4];    /* this pane lit at some point this SHOOT session */
+  static int dark_cand = -1, dark_n, cover_n;
+  const int64_t now = esp_timer_get_time();
+  if (now - last_us < 500000) return;
+  last_us = now;
+  char next[40] = "";
+  if (s_screen != SCR_SHOOT) {
+    seen_lit = false;
+    memset(was_lit, 0, sizeof was_lit);
+    dark_cand = -1;
+    dark_n = cover_n = 0;
+  } else if (!anim_active()) {
+    lid_state_t l;
+    lid_get(&l);
+    int hi = 0, answered = 0, lit = 0, dark = -1, ndark = 0;
+    for (int i = 0; i < 4; i++) {
+      if (l.mean[i] < 0) continue;
+      answered++;
+      if (l.mean[i] > hi) hi = l.mean[i];
+      if (l.mean[i] >= 40) {
+        lit++;
+        was_lit[i] = true;
+      }
+    }
+    if (answered >= 3 && lit == answered) seen_lit = true;
+    for (int i = 0; i < 4; i++) {
+      if (l.mean[i] < 0 || !was_lit[i]) continue;
+      if (hi >= 60 && l.mean[i] * 3 < hi) {
+        dark = i;
+        ndark++;
+      }
+    }
+    if (seen_lit && l.state == PURE_LID_CLOSED) {
+      cover_n++;
+      if (cover_n >= 2) snprintf(next, sizeof next, "TAKE THE LENS COVER OFF");
+    } else {
+      cover_n = 0;
+      if (ndark == 1 && dark == dark_cand) dark_n++;
+      else dark_n = 0;
+      dark_cand = ndark == 1 ? dark : -1;
+      if (ndark == 1 && dark_n >= 2) {
+        static const char *const POS[4] = {"FIRST", "SECOND", "THIRD", "FOURTH"};
+        snprintf(next, sizeof next, "CHECK THE %s LENS", POS[dark]);
+      }
+    }
+  }
+  if (strcmp(next, s_lens_hint) != 0) {
+    snprintf(s_lens_hint, sizeof s_lens_hint, "%s", next);
+    ui_render(render_screen, NULL);
+  }
+}
+
+/*
+ * The self-timer: a long press on the shutter starts ten seconds, counted
+ * down on the finder with a tick a second; any press during it cancels. The
+ * camera is for groups, and the person holding it wants to be in the
+ * picture.
+ */
+#define TIMER_S 10
+static int64_t s_timer_end_us;
+static int s_timer_last_s;
+static bool s_shot_queued; /* a second press while saving: fired when the report lands */
+
+static void timer_cancel(const char *why) {
+  if (s_timer_end_us == 0) return;
+  s_timer_end_us = 0;
+  if (why != NULL) toast(why);
+  ui_render(render_screen, NULL);
+}
+
+/*
+ * Going to sleep, in three frames over a second and a half: the mark with
+ * the line under it, then the mark alone and dimmer, then dimmer again -
+ * and then the light goes. A screen that shows one thing and cuts to black
+ * reads as a crash; one that visibly winds down reads as sleep. `ctx` is the
+ * stage, 0..2.
+ */
+/* The mark and its line at visibility `k` (0 = the dark ground alone,
+ * 255 = full). One frame of the sleep's fade-in and fade-out. */
 static void render_sleep(void *ctx) {
-  (void)ctx;
+  const int k = ctx != NULL ? *(const int *)ctx : 255;
   fill(0, 0, UI_W, UI_H, MZ_GROUND);
-  boot_mark();
+  boot_mark_ink(mix(MZ_GROUND, MZ_CARD, k));
   text_mid(&UI_FONT_T, UI_W / 2, UI_H - PAGE_M - UI_FONT_T.line_h, "GOING TO SLEEP.  TAP TO WAKE",
-           W_GRAYTEXT);
+           mix(MZ_GROUND, W_GRAYTEXT, k));
 }
 
 static void draw_working_banner(const char *line) {
@@ -7581,7 +7662,7 @@ static void draw_capture_banner(void) {
       break;
     case CAPTURE_WRITING:
       st[0] = st[1] = st[2] = FM_ON;
-      snprintf(line, sizeof line, "SAVING");
+      snprintf(line, sizeof line, "SAVING%s", s_shot_queued ? " - NEXT SHOT QUEUED" : "");
       break;
     default:
       if (!r.ok) {
@@ -7614,7 +7695,20 @@ static void draw_capture_banner(void) {
  * expired between two tiles would be half on the screen. */
 #define TOAST_MS 2200
 static bool toast_expired(void) {
-  return s_toast[0] != '\0' && esp_timer_get_time() - s_toast_us > (int64_t)TOAST_MS * 1000;
+  return s_toast[0] != '\0' && esp_timer_get_time() - s_toast_us > (int64_t)(s_toast_long ? (int64_t)UNDO_MS : TOAST_MS) * 1000;
+}
+
+static void toast_rect(int *ox, int *oy, int *ow, int *oh) {
+  const int w = text_w(&UI_FONT_T, s_toast) + 40, h = 36;
+  int y = UI_H - 14 - h;
+  if (s_screen == SCR_SHOOT) y = SH_BAR_Y - h - 10;
+  int x = (UI_W - w) / 2;
+  if (s_screen == SCR_MENU) {
+    y = MZ_M + MZ_CARD_H / 2 + 50;
+    x = mz_card_x() + (MZ_CARD_W - w) / 2;
+  }
+  if (s_screen == SCR_PHOTO) x = ph_well_x() + (PH_W - w) / 2;
+  *ox = x; *oy = y; *ow = w; *oh = h;
 }
 
 static void draw_toast(void) {
@@ -7635,18 +7729,8 @@ static void draw_toast(void) {
    * photograph's own well rather than the panel, because every message there
    * is about the picture and the panel's centre straddles the button column.
    */
-  const int w = text_w(&UI_FONT_T, s_toast) + 40, h = 36;
-  int y = UI_H - 14 - h;
-  if (s_screen == SCR_SHOOT) y = SH_BAR_Y - h - 10;
-  int x = (UI_W - w) / 2;
-  /* The menu's rows run to the bottom of the panel, so the bottom band is a
-   * control. The card's own air - between the mark and the word - is the
-   * empty place on that screen, and the card is on the hand's side. */
-  if (s_screen == SCR_MENU) {
-    y = MZ_M + MZ_CARD_H / 2 + 50;
-    x = mz_card_x() + (MZ_CARD_W - w) / 2;
-  }
-  if (s_screen == SCR_PHOTO) x = ph_well_x() + (PH_W - w) / 2;
+  int x, y, w, h;
+  toast_rect(&x, &y, &w, &h);
   round_rect(x, y, w, h, UI_R, MZ_MINT);
   text_mid(&UI_FONT_T, x + w / 2, y + (h - UI_FONT_T.line_h) / 2, s_toast, W_INFOTEXT);
 }
@@ -7786,11 +7870,28 @@ static void draw_screen(void) {
     default: break;
   }
   draw_capture_banner();
+  if (s_screen == SCR_SHOOT && s_timer_end_us != 0) {
+    /* The countdown, large, over the finder: the one number that matters
+     * for the next ten seconds. */
+    char n[8];
+    snprintf(n, sizeof n, "%d", s_timer_last_s);
+    const int w = text_w(&UI_FONT_L, n) + 60, h = UI_FONT_L.line_h + 30;
+    scrim((UI_W - w) / 2, UI_H / 2 - h / 2 - 20, w, h, MZ_GROUND, 160);
+    text_mid(&UI_FONT_L, UI_W / 2, UI_H / 2 - UI_FONT_L.line_h / 2 - 20, n, W_TEXT);
+    text_mid(&UI_FONT_T, UI_W / 2, UI_H / 2 + h / 2 - 12, "SELF-TIMER.  PRESS TO CANCEL", W_TEXT);
+  } else if (s_screen == SCR_SHOOT && s_lens_hint[0] != '\0') {
+    const int w = text_w(&UI_FONT_T, s_lens_hint) + 32, h = 30;
+    round_rect((UI_W - w) / 2, 12, w, h, UI_R, C_RED);
+    text_mid(&UI_FONT_T, UI_W / 2, 12 + (h - UI_FONT_T.line_h) / 2, s_lens_hint, W_TEXT);
+  }
   if (s_formatting) draw_working_banner("FORMATTING THE CARD");
   else if (s_cams_restart_us != 0 && esp_timer_get_time() - s_cams_restart_us < CAMS_RESTART_BANNER_US)
     draw_working_banner("RESTARTING THE CAMERAS");
   draw_toast();
   if (s_dialog != DLG_NONE) draw_dialog();
+  /* The software dim, last, over everything - it is the room going quiet,
+   * not a layer of the interface. */
+  if (s_dim_k > 0) scrim(0, 0, UI_W, UI_H, MZ_GROUND, s_dim_k);
 }
 
 /* ------------------------------------------------------------------ */
@@ -8130,6 +8231,7 @@ static int item_count(screen_t s) {
     case SCR_PHOTO: return 3;
     case SCR_SETTINGS: return settings_rows();
     case SCR_DISPLAY: return DSP_IT_COUNT;
+    case SCR_CONNECTION: return CN_IT_COUNT;
     case SCR_SOUND: return SN_IT_COUNT;
     case SCR_STORAGE: return ST_IT_COUNT;
     case SCR_POWER: return PW_IT_COUNT;
@@ -8346,6 +8448,11 @@ static int hit_test(int x, int y) {
       return -1;
     }
 
+    case SCR_CONNECTION:
+      if (in(x, y, LIST_X, CN_TZ_Y, CN_TZ_BTN, CN_TZ_H)) return CN_IT_TZ_MINUS;
+      if (in(x, y, LIST_X + LIST_W - CN_TZ_BTN, CN_TZ_Y, CN_TZ_BTN, CN_TZ_H)) return CN_IT_TZ_PLUS;
+      return -1;
+
     case SCR_POWER:
       for (int i = 0; i < PW_IT_COUNT; i++)
         if (in(x, y, LIST_X, LIST_Y + i * ROW_H, LIST_W, ROW_H)) return i;
@@ -8389,8 +8496,17 @@ static void dialog_commit(void) {
       /* Queue first, files second, as Delete All does: a job left behind
        * re-reads a missing asset to the retry cap and parks FAILED. */
       upload_queue_forget(s_photo_id);
-      storage_capture_delete(dir);
+      /* Into the trash, not gone: thirty seconds of UNDO on the toast. A
+       * rename that fails (a card with no room for a folder entry) falls
+       * back to the delete it always was. */
+      const bool trashed = storage_capture_trash(s_photo_id) == ESP_OK;
+      if (!trashed) storage_capture_delete(dir);
       storage_release(STORAGE_USER_UI);
+      if (trashed) {
+        snprintf(s_undo_id, sizeof s_undo_id, "%s", s_photo_id);
+        s_undo_ms = s_photo_ms;
+        s_undo_until_us = esp_timer_get_time() + (int64_t)UNDO_MS * 1000;
+      }
       photo_release();
       /* Told, not discovered, and before the refresh: the gallery's order
        * index still names this capture, and the only other way it would find
@@ -8398,7 +8514,8 @@ static void dialog_commit(void) {
        * of the card. Non-blocking; the gallery task does the work. */
       gallery_note_removed(s_photo_id);
       gallery_refresh();
-      toast("Deleted");
+      toast(trashed ? "Deleted.  TAP TO UNDO" : "Deleted");
+      s_toast_long = trashed;
       go(SCR_GALLERY, NAV_BACK_MS);
       return;
     }
@@ -8599,6 +8716,12 @@ static void activate(int item) {
       }
       break;
 
+    case SCR_CONNECTION:
+      if (item == CN_IT_TZ_MINUS || item == CN_IT_TZ_PLUS) {
+        clock_set_offset(clock_offset_min() + (item == CN_IT_TZ_PLUS ? 30 : -30));
+      }
+      break;
+
     case SCR_STATUS:
       if (item == STS_IT_REMEASURE) {
         /* Clear the result; the next photograph measures, exactly as the first
@@ -8640,9 +8763,49 @@ static void activate(int item) {
  * screen does not change underneath you.
  */
 static void fire_shutter(bool long_press) {
+  if (s_timer_end_us != 0) {
+    /* Any press while the timer runs is "no". */
+    timer_cancel("Timer cancelled");
+    return;
+  }
+  if (long_press) {
+    s_timer_end_us = esp_timer_get_time() + (int64_t)TIMER_S * 1000000;
+    s_timer_last_s = TIMER_S;
+    audio_tick();
+    ui_render(render_screen, NULL);
+    return;
+  }
   if (config_bool("body.sounds.save", true)) audio_shutter();
-  if (!capture_request(long_press ? "shutter-hold" : "shutter")) {
-    klog("P4", "shutter ignored - a capture is already running");
+  if (!capture_request("shutter")) {
+    if (capture_stage() != CAPTURE_IDLE && !s_shot_queued) {
+      /* A second press while saving is not a mistake to swallow: it fires
+       * the moment the report lands, and the banner says so meanwhile. */
+      s_shot_queued = true;
+      klog("P4", "shutter while saving - next shot queued");
+      ui_render(render_screen, NULL);
+    } else {
+      klog("P4", "shutter ignored - a capture is already running");
+    }
+  }
+}
+
+static void timer_poll(void) {
+  if (s_timer_end_us == 0) return;
+  if (s_screen != SCR_SHOOT) {
+    timer_cancel(NULL);
+    return;
+  }
+  const int64_t left = s_timer_end_us - esp_timer_get_time();
+  if (left <= 0) {
+    s_timer_end_us = 0;
+    fire_shutter(false);
+    return;
+  }
+  const int secs = (int)((left + 999999) / 1000000);
+  if (secs != s_timer_last_s) {
+    s_timer_last_s = secs;
+    audio_tick();
+    ui_render(render_screen, NULL);
   }
 }
 
@@ -8822,13 +8985,14 @@ static void first_start_note(void) {
 }
 
 /*
- * The first photograph ever taken on this body plays back once, as the
- * wiggle it is. The review hold after a shot shows a still, and a still of a
- * four-lens photograph shows nothing of what was bought; one loop of the
- * motion does. Then back to SHOOT on its own, unless a finger got there
- * first.
+ * Every photograph plays back as the wiggle it is, for the AFTER SHOT time.
+ * The review hold used to show a still, and a still of a four-lens
+ * photograph shows nothing of what was bought; one loop of the motion does.
+ * Then back to SHOOT on its own (HOLD stays until a finger moves it), unless
+ * a finger got there first.
  */
-static int64_t s_first_review_us;
+static int64_t s_first_review_us; /* when the review opened; 0 when none is up */
+static int64_t s_review_span_us;  /* how long it stays; 0 for HOLD */
 static void first_review_open(const capture_report_t *r) {
   gallery_item_t it;
   memset(&it, 0, sizeof it);
@@ -8836,6 +9000,7 @@ static void first_review_open(const capture_report_t *r) {
   snprintf(it.label, sizeof it.label, "%s", r->id);
   snprintf(it.mode, sizeof it.mode, "%s", r->mode);
   it.frames = r->stored;
+  it.captured_ms = r->captured_at_ms;
   if (!photo_open(&it)) return; /* the card is still busy with it; a still it is */
   s_focus[SCR_PHOTO] = P_IT_DELETE;
   s_first_review_us = esp_timer_get_time();
@@ -8847,9 +9012,47 @@ static void first_review_poll(void) {
     s_first_review_us = 0;
     return;
   }
-  if (esp_timer_get_time() - s_first_review_us < 4500000) return;
+  if (s_review_span_us == 0) return; /* HOLD: a finger ends it */
+  if (esp_timer_get_time() - s_first_review_us < s_review_span_us) return;
   s_first_review_us = 0;
   go(SCR_SHOOT, NAV_BACK_MS);
+}
+
+/* The undo: the folder back where it was, the gallery told, the toast
+ * answered. Thirty seconds after the delete, or at the next boot, the trash
+ * is emptied for good. */
+static void undo_delete(void) {
+  if (s_undo_id[0] == '\0' || esp_timer_get_time() > s_undo_until_us) return;
+  if (!storage_acquire(STORAGE_USER_UI, 2000)) {
+    toast("Card busy. Try again");
+    return;
+  }
+  const esp_err_t err = storage_capture_untrash(s_undo_id);
+  storage_release(STORAGE_USER_UI);
+  if (err == ESP_OK) {
+    gallery_note_added(s_undo_id, s_undo_ms > 0 ? (uint64_t)s_undo_ms : 0);
+    gallery_refresh();
+    toast("Restored");
+    audio_done();
+  } else {
+    toast("Could not restore it");
+    audio_warning();
+  }
+  s_undo_id[0] = '\0';
+  ui_render(render_screen, NULL);
+}
+static void undo_poll(void) {
+  if (s_undo_id[0] == '\0' || esp_timer_get_time() <= s_undo_until_us) return;
+  if (!storage_acquire(STORAGE_USER_UI, 0)) return; /* next pass */
+  storage_trash_purge();
+  storage_release(STORAGE_USER_UI);
+  s_undo_id[0] = '\0';
+}
+static bool undo_hit(int x, int y) {
+  if (s_undo_id[0] == '\0' || s_toast[0] == '\0' || toast_expired()) return false;
+  int tx, ty, tw, th;
+  toast_rect(&tx, &ty, &tw, &th);
+  return in(x, y, tx - 8, ty - 8, tw + 16, th + 16);
 }
 
 /* What the card watcher saw, said on the screen it happened under. */
@@ -8986,6 +9189,14 @@ static int s_down_x, s_down_y;
  * Touches are swallowed while it is, and the screen is redrawn when the sleep
  * is called off or over. */
 static bool s_sleep_mark = false;
+static int s_sleep_stage; /* the mark's visibility last drawn, -1 before the first */
+static int s_sleep_dim0;  /* the dim level the wind-down started from */
+static int64_t s_sleep_mark_us;
+#define SLEEP_DARK_K 245     /* the picture's scrim at the end of its darkening: the ground */
+#define SLEEP_OUT_US 450000  /* the picture darkening */
+#define SLEEP_IN_US 400000   /* the mark fading in */
+#define SLEEP_HOLD_US 550000 /* the mark and the line, still */
+#define SLEEP_FADE_US 500000 /* the mark fading out; power.c cuts the light at 2.0 s */
 
 /** One pass of the UI loop. Returns how long the task sleeps before the next. */
 static uint32_t ui_pass(void) {
@@ -9067,6 +9278,9 @@ static uint32_t ui_pass(void) {
     calib_poll();
     first_review_poll();
     storage_events_poll();
+    lens_hint_poll();
+    timer_poll();
+    undo_poll();
     if (s_cams_restart_us != 0 && esp_timer_get_time() - s_cams_restart_us >= CAMS_RESTART_BANNER_US) {
       s_cams_restart_us = 0;
       ui_render(render_screen, NULL);
@@ -9096,9 +9310,40 @@ static uint32_t ui_pass(void) {
       ESP_LOGI(TAG, "woke: repainting");
       klog("P4", "woke, repainting");
       s_sleep_mark = false;
+      s_dim_k = 0;
       ui_render(render_screen, NULL);
     }
     was_asleep = asleep_now;
+
+    /*
+     * Dim, in software. The backlight is a GPIO with no PWM, so power.c's
+     * DIM stage changed nothing a person could see: the screen sat at full
+     * brightness for the whole idle time and then, at the sleep, went out.
+     * The dim is drawn instead - a scrim over whatever is on the screen,
+     * arriving in three steps over half a second so it reads as the camera
+     * settling, not as a fault - and lifted the moment a touch or the
+     * shutter brings the stage back to AWAKE.
+     */
+    {
+      const bool dim_now = pst.stage == POWER_DIM && !power_sleep_pending() && !asleep_now;
+      if (dim_now && s_dim_since_us == 0) s_dim_since_us = esp_timer_get_time();
+      if (!dim_now) s_dim_since_us = 0;
+      int k = 0;
+      if (power_sleep_pending() || s_sleep_mark) {
+        k = s_dim_k; /* the sleep's wind-down owns the scrim from here */
+      } else if (dim_now) {
+        /* Eased over DIM_RAMP_US on the frame clock, so the room goes quiet
+         * rather than stepping down. */
+        const int64_t up = esp_timer_get_time() - s_dim_since_us;
+        float t = (float)up / (float)DIM_RAMP_US;
+        if (t > 1.0f) t = 1.0f;
+        k = (int)(ease_ui(t) * (float)DIM_SCRIM_K + 0.5f);
+      }
+      if (k != s_dim_k) {
+        s_dim_k = k;
+        ui_render(render_screen, NULL);
+      }
+    }
 
     /*
      * Going to sleep: the mark, then the dark.
@@ -9110,12 +9355,48 @@ static uint32_t ui_pass(void) {
      * the panel is back, the screen underneath is redrawn.
      */
     if (power_sleep_pending() && !s_sleep_mark) {
-      ui_render(render_sleep, NULL);
+      /* One continuous timeline from the dimmed picture to the dark, so
+       * there is no cut anywhere in it: the picture under its dim scrim
+       * darkens to the ground (SLEEP_OUT_US), the mark fades in from the
+       * ground (SLEEP_IN_US), holds (SLEEP_HOLD_US), fades out
+       * (SLEEP_FADE_US) - and then power.c cuts the light. The first frame
+       * is the screen exactly as it was, so nothing jumps. */
+      s_sleep_stage = -1;
+      s_sleep_dim0 = s_dim_k;
+      s_sleep_mark_us = esp_timer_get_time();
       power_sleep_shown();
       s_sleep_mark = true;
-      klog("P4", "sleep: mark up on screen %d", (int)s_screen);
+      klog("P4", "sleep: wind-down from dim %d on screen %d", s_dim_k, (int)s_screen);
+    } else if (s_sleep_mark && power_sleep_pending() && !asleep_now) {
+      const int64_t up = esp_timer_get_time() - s_sleep_mark_us;
+      if (up < SLEEP_OUT_US) {
+        const float t = (float)up / (float)SLEEP_OUT_US;
+        const int k = s_sleep_dim0 + (int)((float)(SLEEP_DARK_K - s_sleep_dim0) * ease_ui(t) + 0.5f);
+        if (k != s_dim_k) {
+          s_dim_k = k;
+          ui_render(render_screen, NULL);
+        }
+      } else {
+        const int64_t u = up - SLEEP_OUT_US;
+        int k;
+        if (u < SLEEP_IN_US) {
+          k = (int)(ease_ui((float)u / (float)SLEEP_IN_US) * 255.0f + 0.5f);
+        } else if (u < SLEEP_IN_US + SLEEP_HOLD_US) {
+          k = 255;
+        } else {
+          float t = (float)(u - SLEEP_IN_US - SLEEP_HOLD_US) / (float)SLEEP_FADE_US;
+          if (t > 1.0f) t = 1.0f;
+          k = 255 - (int)(ease_ui(t) * 255.0f + 0.5f);
+        }
+        if (k != s_sleep_stage) {
+          s_sleep_stage = k;
+          ui_render(render_sleep, &s_sleep_stage);
+        }
+      }
     } else if (s_sleep_mark && !power_sleep_pending() && !asleep_now) {
+      /* Called off by a touch: the screen comes straight back, undimmed. */
       s_sleep_mark = false;
+      s_dim_k = 0;
       ui_render(render_screen, NULL);
     }
 
@@ -9199,7 +9480,7 @@ static uint32_t ui_pass(void) {
         s_down_x = lx;
         s_down_y = ly;
       }
-      region = hit_test(lx, ly);
+      region = undo_hit(lx, ly) ? IT_UNDO : hit_test(lx, ly);
     }
 
     if (down && region != s_pressed) {
@@ -9213,7 +9494,9 @@ static uint32_t ui_pass(void) {
       const int fired = (s_pressed == held) ? held : -1;
       s_pressed = -1;
       held = -1;
-      if (fired != -1) {
+      if (fired == IT_UNDO) {
+        undo_delete();
+      } else if (fired != -1) {
         /* Touch sets focus as well as acting, so the two input models never
          * disagree about what is selected. */
         if (s_dialog != DLG_NONE) s_dlg_focus = fired;
@@ -9309,9 +9592,20 @@ static uint32_t ui_pass(void) {
         if (r.ok && r.stored >= 2 && !config_bool("body.calibration.done", false)) {
           calib_start(r.dir, r.id);
         }
-        if (r.ok && r.stored >= 2 && !config_bool("body.firstShotSeen", false)) {
-          cfg_set_bool("body.firstShotSeen", true);
-          first_review_open(&r);
+        if (s_shot_queued) {
+          /* The press taken while saving: the report is acknowledged and
+           * the next photograph starts now, review or none. */
+          s_shot_queued = false;
+          capture_ack();
+          fire_shutter(false);
+        } else if (r.ok && r.stored >= 2 && s_screen == SCR_SHOOT) {
+          const int hold_s = config_int("shoot.displayAfterShotS", 2);
+          if (hold_s != 0) {
+            /* One loop of the wiggle is about three seconds with the load;
+             * a shorter AFTER SHOT still gets the loop, HOLD gets no clock. */
+            s_review_span_us = hold_s < 0 ? 0 : (int64_t)(hold_s < 3 ? 3 : hold_s) * 1000000 + 800000;
+            first_review_open(&r);
+          }
         }
       }
       /*

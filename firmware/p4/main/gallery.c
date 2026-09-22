@@ -19,6 +19,7 @@
 #include "meta.h"
 #include "storage.h"
 #include "upload_queue.h"
+#include "upload_store.h"
 #include "taskmon.h"
 #include "thumb.h"
 
@@ -1065,6 +1066,15 @@ static void read_meta(gallery_item_t *it) {
    * is not a favourite - cJSON_IsTrue(NULL) is false, which is the answer we
    * want without a separate presence check. */
   it->favorite = cJSON_IsTrue(cJSON_GetObjectItem(m, "favorite"));
+  const cJSON *cm = cJSON_GetObjectItem(m, "capturedAtMs");
+  it->captured_ms = cJSON_IsNumber(cm) ? (int64_t)cm->valuedouble : 0;
+  {
+    /* Whether the Roll has it, from the queue's own record in the folder.
+     * Static: the job is a few hundred bytes and this is one task's stack. */
+    static rq_job_t job;
+    bool valid = false;
+    it->sent = upload_store_load(it->id, &job, &valid) && valid && job.state == RQ_COMPLETE;
+  }
   /* The capture's own alignment calibration, from the same parse. Absent on
    * every capture this firmware has written, in which case cal_present is false
    * and playback aligns nothing. */
