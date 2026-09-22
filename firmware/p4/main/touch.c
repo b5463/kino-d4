@@ -61,7 +61,7 @@ bool touch_get(uint16_t *x, uint16_t *y) {
 
 static void touch_task(void *arg) {
   (void)arg;
-  uint16_t xs[1], ys[1], strength[1];
+  esp_lcd_touch_point_data_t pt[1];
   uint8_t points = 0;
   bool was_down = false;
   int empty = 0;
@@ -84,7 +84,10 @@ static void touch_task(void *arg) {
         klog("P4", "touch bus recovered after %lu failures", (unsigned long)s_read_fail);
         s_read_fail = 0;
       }
-      got = esp_lcd_touch_get_coordinates(s_tp, xs, ys, strength, &points, 1) && points > 0;
+      /* esp_lcd_touch_get_data, not get_coordinates: the latter is deprecated
+       * and goes in the driver's 2.0.0. Same read, one struct instead of
+       * three parallel arrays. */
+      got = esp_lcd_touch_get_data(s_tp, pt, &points, 1) == ESP_OK && points > 0;
     } else {
       /* Rate limited: at 15 ms a hard failure would otherwise fill the log
        * at 66 lines a second and push out the thing that caused it. */
@@ -102,15 +105,16 @@ static void touch_task(void *arg) {
        * every poll rather than only on the press edge means a long drag keeps
        * the panel awake too. */
       power_activity();
-      s_point = ((uint32_t)xs[0] << 16) | ys[0];
+      s_point = ((uint32_t)pt[0].x << 16) | pt[0].y;
       s_down = true;
       if (!was_down) {
         s_count++;
         /* A finger, not a probe: the controller reported a real contact. */
         hwv_mark_validated(HWV_TOUCH_GT911, "reported a contact");
         ESP_LOGI(TAG, "touch #%lu at x=%u y=%u (native %dx%d), strength %u",
-                 (unsigned long)s_count, xs[0], ys[0], DISPLAY_H_RES, DISPLAY_V_RES, strength[0]);
-        klog("P4", "touch %u,%u", xs[0], ys[0]);
+                 (unsigned long)s_count, pt[0].x, pt[0].y, DISPLAY_H_RES, DISPLAY_V_RES,
+                 pt[0].strength);
+        klog("P4", "touch %u,%u", pt[0].x, pt[0].y);
         was_down = true;
       }
     } else if (was_down && ++empty < RELEASE_POLLS) {
