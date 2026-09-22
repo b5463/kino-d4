@@ -260,6 +260,9 @@ void app_main(void) {
   clock_init();
 
   klog_init();
+  /* Telemetry off unless this body has been asked for it. See klog.h for what
+   * belongs on which channel (#202). */
+  klog_set_telemetry(config_bool("body.log.telemetry", false));
   klog("P4", "boot %s serial %s session %s", KINO_FW_VERSION, id.serial, id.session_id);
   log_last_panic();
   safe_mode_boot();

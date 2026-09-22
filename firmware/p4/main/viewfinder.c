@@ -73,7 +73,10 @@ static const char *TAG = "viewfinder";
  * timing line's cadence for the same reason. A pump runs at up to 17 Hz and
  * there are four of them, so an unthrottled line per drop is 68 a second -
  * which does not describe a fault, it destroys the ring that would have. */
-#define VF_DROP_LOG_MS 5000
+/* 30 s, matching the failure throttle on the link itself. A dropped preview
+ * frame is evidence and stays on the evidence channel, but four cameras at one
+ * line each per 5 s is a second telemetry stream in all but name. */
+#define VF_DROP_LOG_MS 30000
 
 
 /* VF_CAPTURE_TIMEOUT_MS and VF_READ_TIMEOUT_MS moved to viewfinder.h: a
@@ -455,9 +458,13 @@ static bool pump_camera(int cam) {
    * dec ms says whether the decoder is a factor at all.
    */
   const int64_t dec_us = esp_timer_get_time() - dec_start_us;
-  if (now - s_report_us[cam] >= 5000000) { /* 5 s: four cameras at 1 Hz drowns the ring */
+  /* Telemetry. Four cameras at 1 Hz drowned the ring, so this was already
+   * cut to one line per camera per 5 s; at 0.8 lines a second it was still
+   * 77% of everything in it (#202). It is a bench number, so it lives on the
+   * bench channel now and the 5 s stays for when that is switched on. */
+  if (now - s_report_us[cam] >= 5000000) {
     s_report_us[cam] = now;
-    klog("P4", "cam%d vf %uB cap %ums xfer %ums dec %ums %u.%u fps", cam + 1,
+    klog_tel("P4", "cam%d vf %uB cap %ums xfer %ums dec %ums %u.%u fps", cam + 1,
          (unsigned)res.size, (unsigned)(cap_us / 1000), (unsigned)(xfer_us / 1000),
          (unsigned)(dec_us / 1000), (unsigned)(s_status[cam].fps_x10 / 10),
          (unsigned)(s_status[cam].fps_x10 % 10));
@@ -519,6 +526,20 @@ static void camera_task(void *arg) {
       announced = true;
       klog("P4", "cam%d viewfinder live", cam + 1);
     }
+    /*
+     * Coming back is only news if the camera was really gone.
+     *
+     * `announced` used to be cleared by any failed pump, and a camera dropping
+     * one frame in six - the rate the bench measured on a marginal link - then
+     * logged "viewfinder live" on every recovery. Across four cameras that was
+     * the single largest consumer of the log ring, ahead of the timing report
+     * (#202). An outage shorter than the drop throttle is a dropped frame, and
+     * vf_drop() already says so.
+     */
+    if (!ok && announced && lost_since_us != 0 &&
+        esp_timer_get_time() - lost_since_us > (int64_t)VF_DROP_LOG_MS * 1000) {
+      announced = false;
+    }
     if (ok) {
       was_live = true;
       lost_since_us = 0;
@@ -535,7 +556,6 @@ static void camera_task(void *arg) {
       }
     }
     if (!ok) {
-      announced = false;
       /*
        * Back off hard on a camera that is not there, and harder the longer it
        * stays away. An absent node costs VF_CAPTURE_TIMEOUT_MS before it fails,
