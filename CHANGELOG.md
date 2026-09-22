@@ -71,6 +71,15 @@ KINO has no published release yet. Changes intended for the first release collec
   reports an absent base, the preview renders `status_roll_no_server` and
   `roll_no_server`, and the Twin's page can drive it through
   `kui_set_roll_server`.
+- **Firmware 0.4.59: one number for the largest preview frame (#208).** The node
+  treated anything above 32 KB as a photograph-sized leftover and took the next
+  frame; the body refused anything above 24 KB by size. A 320x240 frame of a
+  detailed scene at the highest preview quality lands between the two, so the
+  node kept it and the body dropped it, and the pane blinked on a camera that
+  was working - which is the symptom the node's guard exists to prevent. The
+  ceiling is `NL_PREVIEW_MAX_BYTES` in the header both ends read, at the larger
+  value, so there is no band where a frame is acceptable at one end and not the
+  other. The body's buffer is in PSRAM, so matching costs 8 KB a channel.
 - **Firmware 0.4.59: two ways a photograph was lost (#205, #206).** A settings
   write from Studio during a shutter press could panic the capture task:
   `cfg_num()` walked the live cJSON document with no lock, on a different task
