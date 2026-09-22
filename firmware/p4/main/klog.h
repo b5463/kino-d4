@@ -30,6 +30,7 @@
 #ifndef P4_KLOG_H
 #define P4_KLOG_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -48,6 +49,32 @@ void klog_init(void);
 /** Registered by the KDP server; entries logged earlier only buffer. */
 void klog_set_emitter(klog_emit_fn fn);
 void klog(const char *src, const char *fmt, ...);
+
+/**
+ * Telemetry, not evidence.
+ *
+ * Same ring, same format, but dropped entirely unless klog_set_telemetry(true)
+ * has been called. Use it for anything periodic: a frame rate, a sensor mean,
+ * a poll result that is interesting on a bench and is noise in a fault report.
+ * Use klog() for anything a person would want to read after something went
+ * wrong, however rare.
+ *
+ * The rule exists because the ring was measured holding 3.1 minutes of
+ * preview timings and nothing else (#202). If in doubt: would this line help
+ * somebody work out why a camera misbehaved an hour ago? If not, it is
+ * telemetry.
+ */
+void klog_tel(const char *src, const char *fmt, ...);
+
+/** Off at boot; set from `body.log.telemetry`. */
+void klog_set_telemetry(bool on);
+bool klog_telemetry(void);
+
+/**
+ * Hide everything logged so far. The count stays monotonic, so a cursor held
+ * by klog_export() elsewhere stays valid - resetting the count is what stopped
+ * the card's field log dead after one CLEAR_LOGS (#207).
+ */
 void klog_clear(void);
 
 /**

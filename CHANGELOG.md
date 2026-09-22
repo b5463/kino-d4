@@ -6,6 +6,25 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Changed
 
+- **Firmware 0.4.59: the log ring keeps evidence instead of telemetry (#202, #207).**
+  Measured on a bench body: 158 entries over 148 s, of which 121 were per-camera
+  preview timings and 37 were cover brightness means. Not one line was anything
+  else. At 1.07 lines a second the 200-entry ring held 3.1 minutes, so any fault
+  older than that was gone before anyone could ask about it, and
+  `/KINO/LOGS/BOOT-nnnnn.TXT` - the file an owner is asked to send - was the
+  same content at length. klog now has two channels: `klog()` for what a person
+  needs when a camera misbehaved, and `klog_tel()` for a number that is worth
+  having on a bench and is noise in a fault report. Telemetry is off unless
+  `body.log.telemetry` is set, which Studio can do without a reflash. The
+  viewfinder's timing report, the cover watcher's calibration line, the gallery's
+  once-per-photograph index line and the per-press touch line all moved to it.
+  Two recovery lines stopped repeating: "viewfinder live" was cleared by any
+  failed pump, so a camera dropping one frame in six logged it on every
+  recovery, and the link's recovery line fired for a run of one timeout while
+  its failure side was throttled to 30 s. The ring is 600 entries now, 72 KB of
+  PSRAM. And CLEAR_LOGS no longer stops the field log: it used to reset the
+  count while the card writer kept its own cursor, so one press in Studio left
+  that cursor permanently past the end and the file never gained another line.
 - **Firmware 0.4.59: a warning fails the build, and three NUL bytes are gone (#201).**
   `firmware/p4/host_preview/preview.c`, `firmware/p4/twin_ui/twin_ui.c` and
   `firmware/p4/main/gallery.c` each held a raw zero byte inside a character

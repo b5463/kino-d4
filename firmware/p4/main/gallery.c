@@ -1414,7 +1414,11 @@ static void gallery_task(void *arg) {
         lock();
         const int want = s_total_seen;
         unlock();
-        if (seen == want) klog("SD", "order index verified: %d captures", seen);
+        /* Telemetry: it fires once per photograph, and a line that says
+         * nothing happened is the one thing a 200-entry ring cannot afford
+         * after every shutter press (#202). The mismatch below stays on the
+         * evidence channel, because that one is a fault. */
+        if (seen == want) klog_tel("SD", "order index verified: %d captures", seen);
         if (seen != want) {
           ESP_LOGW(TAG, "card holds %d capture folders, the index says %d; rebuilding", seen, want);
           klog("SD", "card holds %d captures, the index says %d; rebuilding", seen, want);
