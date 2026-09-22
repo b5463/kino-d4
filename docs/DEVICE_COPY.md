@@ -40,6 +40,7 @@ Severity words: PROBLEM stops photographs, CHECK does not yet, NOTE is informati
 | Running without Wi-Fi | It crashed 3 times in a row. Restart to try again. | PROBLEM |
 | The camera is warm | 78 C inside. The finder slows until it cools. | CHECK |
 | The clock is on UTC | Set the time zone in CONNECTION. | NOTE |
+| Uploads have no server | Set the Roll server in Studio. Photos stay on the card. | CHECK |
 
 Action rows at the foot of STATUS: **Restart the cameras** (always) and **Measure cameras again** (once measured).
 

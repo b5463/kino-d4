@@ -31,6 +31,8 @@
 #include "clock.h"
 #include "config_store.h"
 #include "kdp_server.h"
+#include "roll_http.h"
+#include "roll_state.h"
 #include "safe_mode.h"
 #include "storage.h"
 
@@ -47,6 +49,7 @@ typedef enum {
   COND_CARD_SLOW,        /* the card passed, slowly */
   COND_BROWNOUT,         /* this boot follows a brownout reset */
   COND_ZONE_UNSET,       /* the clock is on UTC: nobody has said where the camera is */
+  COND_ROLL_NO_SERVER,   /* a Roll is joined but there is no server to upload to */
   COND_COUNT,
 } cond_id_t;
 
@@ -201,6 +204,25 @@ static void conditions_scan(const camlink_info_t *cams) {
       snprintf(c->detail, sizeof c->detail, "Connect to Studio to update them.");
     }
   }
+
+#ifdef KINO_RADIO
+  {
+    /* A Roll joined and nowhere to send to: the build has no compiled API
+     * base and Studio has not set network.apiBase. Without this row every
+     * upload parked FAILED and the ROLL screen said "Online". Radio builds
+     * only: a body without a route to the C6 uploads over USB-C, and
+     * roll_http.h has no API base on it to ask about. */
+    roll_state_t roll;
+    char base[160];
+    if (roll_state_get(&roll) && !roll_http_api_base(base, sizeof base)) {
+      cond_t *c = &found[n++];
+      c->id = COND_ROLL_NO_SERVER;
+      c->sev = COND_WARN;
+      c->title = "Uploads have no server";
+      snprintf(c->detail, sizeof c->detail, "Set the Roll server in Studio. Photos stay on the card.");
+    }
+  }
+#endif
 
   if (clock_source() != CLOCK_UNSET && !clock_offset_known()) {
     cond_t *c = &found[n++];

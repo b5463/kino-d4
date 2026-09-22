@@ -812,6 +812,7 @@ void clock_set_offset(int m) { (void)m; }
 esp_err_t storage_capture_trash(const char *id) { (void)id; return ESP_OK; }
 esp_err_t storage_capture_untrash(const char *id) { (void)id; return ESP_OK; }
 void storage_trash_purge(void) {}
+bool roll_http_api_base(char *out, size_t cap) { if (cap) out[0] = ' '; return true; }
 int64_t clock_now_ms(void) { return 0; } /* 2026-09-21T16:01Z */
 void power_cam_bank_cycle(void) {}
 bool gallery_deleting(void) { return g_deleting; }
