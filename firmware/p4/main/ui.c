@@ -8727,7 +8727,14 @@ static void fire_shutter(bool long_press) {
   }
   if (config_bool("body.sounds.save", true)) audio_shutter();
   if (!capture_request("shutter")) {
-    if (capture_stage() != CAPTURE_IDLE && !s_shot_queued) {
+    if (!capture_ready()) {
+      /* Not "a capture is already running", which is what this used to say to
+       * a body whose capture pipeline never started (#210). */
+      toast("The cameras did not start. Restart the camera");
+      audio_warning();
+      klog("P4", "shutter refused - the capture pipeline did not start");
+      ui_render(render_screen, NULL);
+    } else if (capture_stage() != CAPTURE_IDLE && !s_shot_queued) {
       /* A second press while saving is not a mistake to swallow: it fires
        * the moment the report lands, and the banner says so meanwhile. */
       s_shot_queued = true;

@@ -113,6 +113,15 @@ KINO has no published release yet. Changes intended for the first release collec
   camera told its owner the card could not hold a photograph. Both that and
   STORAGE_BENCH now take the card lock, and `storage.c` says why the shared
   buffer is only safe while they do.
+- **Firmware 0.4.59: a shutter that cannot work says so (#210).** If
+  `capture_init()` failed part way - some workers created, the request queue
+  created, and no capture task to drain it - nothing downstream could tell.
+  `capture_request()` queued into a queue nobody reads and returned true, so
+  the first press was swallowed and every later one was refused as "a capture
+  is already running", which was not true. The shutter was dead and the camera
+  said nothing. The pipeline now reports whether it came up, a part-built one
+  refuses instead of swallowing, and the shutter says "The cameras did not
+  start. Restart the camera" rather than inventing a reason.
 - **Firmware 0.4.59: uploads with nowhere to go are said (#198).** A body with a Roll joined but no Roll server - no compiled API base and no `network.apiBase` from Studio - parked every upload as FAILED while ROLL said Online. STATUS now carries "Uploads have no server. Set the Roll server in Studio. Photos stay on the card." Found on the 0.4.58 release soak: 40 captures, 34 uploads parked for that one reason.
 - **Twin: a viewfinder pane that stops receiving frames stops being live.**
   The firmware shim marked a pane live for ever once its buffer pointer had

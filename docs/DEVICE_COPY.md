@@ -96,6 +96,7 @@ Action rows at the foot of STATUS: **Restart the cameras** (always) and **Measur
 | Still reading the card | A tile tapped before the gallery had its id. |
 | No looks on this camera | LOOK with no recipes. |
 | Hold the power slide to switch off | SHUT DOWN row, which has no soft power-off. |
+| The cameras did not start. Restart the camera | The shutter, on a body whose capture pipeline failed to come up at boot. Said instead of blaming a capture that is not running. |
 | Favourite / Not favourite | FAVOURITE pressed on PHOTO; the mark went on or came off. |
 | First photo / Last photo | PREV on the first photograph, or NEXT on the last. |
 
