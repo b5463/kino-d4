@@ -985,29 +985,12 @@ static uint32_t s_vf_quality_writes[CAPTURE_CAMS];
  * zero: a slot with no exposureBias of its own must leave the look's value
  * standing, while a slot set to exactly 0 EV must override it.
  *
- * There is no config_double(), so this walks the live document. config_store.h
- * documents that pointer as borrowed; it is read here and not held.
+ * This used to walk the live document through config_get(), on this task,
+ * while SET_CONFIG relinked it on another - a freed child away from a panic
+ * mid-shutter. config_store.c has the lock and now has config_num(); the walk
+ * belongs behind it and not here (#206).
  */
-static bool cfg_num(const char *path, double *out) {
-  const cJSON *node = config_get();
-  if (node == NULL) return false;
-  const char *p = path;
-  while (*p != '\0') {
-    const char *dot = strchr(p, '.');
-    const size_t len = dot != NULL ? (size_t)(dot - p) : strlen(p);
-    char key[32];
-    if (len == 0 || len >= sizeof key) return false;
-    memcpy(key, p, len);
-    key[len] = '\0';
-    node = cJSON_GetObjectItem(node, key);
-    if (node == NULL) return false;
-    if (dot == NULL) break;
-    p = dot + 1;
-  }
-  if (!cJSON_IsNumber(node)) return false;
-  *out = node->valuedouble;
-  return true;
-}
+static bool cfg_num(const char *path, double *out) { return config_num(path, out); }
 
 /** True when `want` asks for something `sent` did not already ask for. Only
  * the flagged fields are compared: an unflagged field says nothing about the
