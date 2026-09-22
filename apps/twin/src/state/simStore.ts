@@ -255,7 +255,13 @@ async function privateKdp(run: (client: KinoProtocolClient) => Promise<void>): P
   const client = new KinoProtocolClient(transport);
   await transport.open();
   try {
-    await client.hello({ attempts: 1 });
+    /* Three attempts on a two-second budget, not one on 500 ms: the mock
+     * transport trickles every frame through 1 ms timers, and on a CI runner
+     * with the firmware wasm sharing the thread a single HELLO round trip
+     * can pass 500 ms on its own. That was the acceptance walk's "CAPTURE
+     * FAILED - RETRY" (#195): the shutter gave up before asking for the
+     * capture. The real link's client already retries; this one should too. */
+    await client.hello({ attempts: 3, timeoutMs: 2000 });
     await run(client);
   } finally {
     client.dispose();
