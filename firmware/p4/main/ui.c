@@ -48,6 +48,7 @@
 #include "qr.h"
 #include "roll_state.h"
 #include "storage.h"
+#include "storage_watch.h"
 #include "upload_queue.h"
 #include "wifi_creds.h"
 #include "thumb.h"
@@ -503,6 +504,7 @@ typedef enum {
   DLG_WELCOME, /* the first boot's one note */
   DLG_FORMAT,
   DLG_FACTORY,
+  DLG_UPDATED, /* the first boot after an update, once */
 } dialog_t;
 
 /*
@@ -583,6 +585,20 @@ static const net_status_t *net_status(void) {
  *
  * If the list fills, the frame is drawn the old way; nothing is lost.
  */
+/* The card in the words the chips use, from one place: the header chip, the
+ * SHOOT bar and the menu card each said it their own way. Six MB a
+ * photograph. The last five are counted down, and a full card says so. */
+static void card_words(char *out, size_t cap, const storage_status_t *sd) {
+  if (!sd->mounted) {
+    snprintf(out, cap, "%s", sd->removed ? "CARD OUT" : "NO CARD");
+    return;
+  }
+  const int shots = (int)(sd->free_bytes / (6ull * 1024 * 1024));
+  if (shots <= 0) snprintf(out, cap, "CARD FULL");
+  else if (shots <= 5) snprintf(out, cap, "LAST %d", shots);
+  else snprintf(out, cap, "%d SHOTS", shots);
+}
+
 #ifndef UI_DRAW_PROFILE
 #define UI_DRAW_PROFILE 0
 #endif
@@ -2512,6 +2528,7 @@ static void render_mark(void *ctx) {
   fill(0, 0, UI_W, UI_H, MZ_GROUND);
   boot_mark();
 }
+static void render_sleep(void *ctx);
 
 static void render_mark_fade(void *ctx) {
   const int *k = ctx;
@@ -3071,8 +3088,7 @@ static int chrome_state(int left, int right, int y, uint16_t ink, const char *fi
    * storage_get_status() is a FatFs free-space query behind its mutex. */
   const storage_status_t sd = *sd_status();
   char card[24];
-  if (!sd.mounted) snprintf(card, sizeof card, "NO CARD");
-  else snprintf(card, sizeof card, "%d SHOTS", (int)(sd.free_bytes / (6ull * 1024 * 1024)));
+  card_words(card, sizeof card, &sd);
   const char *const pwr = usb_attached() ? "USB" : "BATTERY";
 
   /* The chip exists only when a condition does, so an unmarked bar means a
@@ -3616,8 +3632,12 @@ static void menu_card_line(char *out, size_t cap) {
   const storage_status_t sd = *sd_status();
   const cond_t *worst = conditions_at(0);
   if (worst != NULL) snprintf(out, cap, "%s", worst->title);
-  else if (!sd.mounted) snprintf(out, cap, "NO CARD");
-  else snprintf(out, cap, "CAMERA  %d SHOTS", (int)(sd.free_bytes / (6ull * 1024 * 1024)));
+  else if (!sd.mounted) card_words(out, cap, &sd);
+  else {
+    char w[24];
+    card_words(w, sizeof w, &sd);
+    snprintf(out, cap, "CAMERA  %s", w);
+  }
   upcase(out);
 }
 
@@ -4232,9 +4252,7 @@ static void draw_shoot(void) {
    * the power comes from and not how much of it there is. */
   const storage_status_t sd_bar = *sd_status();
   char card_bar[24];
-  if (!sd_bar.mounted) snprintf(card_bar, sizeof card_bar, "NO CARD");
-  else snprintf(card_bar, sizeof card_bar, "%d SHOTS",
-                (int)(sd_bar.free_bytes / (6ull * 1024 * 1024)));
+  card_words(card_bar, sizeof card_bar, &sd_bar);
   const char *const pwr_bar = usb_attached() ? "USB" : "BATTERY";
   const int w_card = text_w(&UI_FONT_T, card_bar) + 2 * SH_PN_PAD;
   const int w_pwr = text_w(&UI_FONT_T, pwr_bar) + 2 * SH_PN_PAD;
@@ -5446,7 +5464,7 @@ static void photo_send_to_roll(void) {
       return;
     }
     if (n <= 0) {
-      toast("No frames on the card to send");
+      toast("No pictures on the card to send");
       audio_warning();
       return;
     }
@@ -5456,7 +5474,7 @@ static void photo_send_to_roll(void) {
     toast("Sent to the roll");
     audio_done();
   } else {
-    toast("Could not queue it for the roll");
+    toast("Could not send. Try again later");
     audio_warning();
   }
 }
@@ -5464,7 +5482,7 @@ static void photo_send_to_roll(void) {
 static void photo_toggle_favourite(void) {
   if (s_photo_id[0] == '\0') return;
   if (!storage_acquire(STORAGE_USER_UI, 2000)) {
-    toast("Card busy");
+    toast("Card busy. Try again");
     audio_warning();
     return;
   }
@@ -5475,7 +5493,7 @@ static void photo_toggle_favourite(void) {
     /* NOT_FOUND is a capture with no META.JSON, which the gallery can show and
      * this cannot mark. One message for all of them: the user's next move is
      * the same whichever it was. */
-    toast("Could not save");
+    toast("Could not save the change");
     audio_warning();
     return;
   }
@@ -5549,7 +5567,7 @@ static bool photo_step(int delta) {
     return false;
   }
   if (!photo_open(it)) {
-    toast("Card busy");
+    toast("Card busy. Try again");
     audio_warning();
   }
   return false;
@@ -6294,18 +6312,31 @@ static void settings_summary(int i, char *out, size_t cap) {
  * measures, as the first one did. Drawn at the foot, and only while there is
  * a result to clear and room under the list for the row.
  */
-#define STS_IT_REMEASURE 0
-static int sts_action_y(int rows) {
-  const int y = UI_H - PAGE_M - (ROW_H - ROW_GAP);
+#define STS_IT_RESTART_CAMS 0
+#define STS_IT_REMEASURE 1
+/* The action rows hang from the bottom: RESTART THE CAMERAS always - half of
+ * every support call ends with "turn it off and on", and the camera bank
+ * cycle is that for the four lenses - and MEASURE AGAIN above it once there
+ * is a measurement to redo. Row k's top edge, or -1 when the list above
+ * leaves it no room. */
+static int sts_action_y(int rows, int k) {
+  const int y = UI_H - PAGE_M - (k + 1) * (ROW_H - ROW_GAP) - k * ROW_GAP;
   return LIST_TOP_DEFAULT + rows * ROW_H <= y - 8 ? y : -1;
 }
-static bool sts_has_action(void) { return config_bool("body.calibration.done", false); }
+static int sts_action_count(void) { return config_bool("body.calibration.done", false) ? 2 : 1; }
+static int64_t s_cams_restart_us; /* when RESTART THE CAMERAS was pressed; the banner's clock */
+#define CAMS_RESTART_BANNER_US 3000000
 static void draw_status_action(int rows) {
-  const int y = sts_action_y(rows);
-  if (!sts_has_action() || y < 0) return;
-  draw_row_at(LIST_X, LIST_W, y, ROW_H - ROW_GAP, 0, false, foc(SCR_STATUS, STS_IT_REMEASURE),
-              s_pressed == STS_IT_REMEASURE, true, "Measure cameras again",
-              "The next photograph measures them", true);
+  const int n = sts_action_count();
+  for (int k = 0; k < n; k++) {
+    const int y = sts_action_y(rows, k);
+    if (y < 0) continue;
+    const bool restart = k == STS_IT_RESTART_CAMS;
+    draw_row_at(LIST_X, LIST_W, y, ROW_H - ROW_GAP, k, false, foc(SCR_STATUS, k), s_pressed == k,
+                true, restart ? "Restart the cameras" : "Measure cameras again",
+                restart ? "Switches the four lenses off and on" : "The next photograph measures them",
+                true);
+  }
 }
 
 static void draw_status(void) {
@@ -6345,6 +6376,16 @@ static void draw_status(void) {
      * close. An alert is not a destination, so no chevron. */
     fill(LIST_X, y + 10, 4, h - 20, sev_ink(c->sev));
     text_right(&UI_FONT_T, LIST_X + LIST_W - 18, y + 12, sev_word(c->sev), sev_ink(c->sev));
+    if (c->id == COND_CAMERA_DOWN) {
+      /* Which ones: the four cells the SHOOT bar uses, left to right as the
+       * lenses are on the body. */
+      fm_cell_t st[4];
+      for (int k = 0; k < 4; k++) st[k] = (c->mask & (1u << k)) ? FM_LOST : FM_ON;
+      const int cell = 12;
+      const int mw = 4 * cell + 3 * FM_GAP;
+      four_mark(LIST_X + LIST_W - 18 - text_w(&UI_FONT_T, sev_word(c->sev)) - 16 - mw, y + 12, cell,
+                st, false);
+    }
 
     char name[48];
     snprintf(name, sizeof name, "%s", c->title);
@@ -6502,8 +6543,12 @@ static void draw_display(void) {
    * grey sentence in it is also the clearest possible statement that there is
    * nothing here to press. */
   const int ny = DSP_BAND_Y(DSP_ROWS - 1) + DSP_BAND_H + 18;
-  group_box(DSP_BOX_X, ny, DSP_BOX_W, 22 + UI_FONT_S.line_h + 10, "BRIGHTNESS", W_GRAYTEXT, NULL);
-  text(&UI_FONT_S, DSP_X, ny + 22, "Not adjustable - the backlight on this body is on or off.",
+  /* One line, inside the safe area: what the backlight cannot do, and the
+   * two things about it a person has to know. */
+  group_box(DSP_BOX_X, ny, DSP_BOX_W, 22 + UI_FONT_S.line_h + 10, "BRIGHTNESS AND POWER",
+            W_GRAYTEXT, NULL);
+  text(&UI_FONT_S, DSP_X, ny + 22,
+       "On or off, not dimmable. Tap the screen to wake. Hold the slide to switch off.",
        W_GRAYTEXT);
 }
 
@@ -7325,6 +7370,10 @@ static void dialog_spec(dlg_spec_t *d) {
        * survives a destructive action reads as a warning about them. */
       *d = (dlg_spec_t){"DELETE ALL", "Delete every photo?", sub, "DELETE ALL", true};
       break;
+    case DLG_UPDATED:
+      snprintf(sub, sizeof sub, "Now on %s. Nothing to do.", KINO_FW_VERSION);
+      *d = (dlg_spec_t){"UPDATED", "KINO has been updated.", sub, "OK", false};
+      break;
     case DLG_FORMAT:
       *d = (dlg_spec_t){"FORMAT CARD", "Erase the card?", "Every photo on it is deleted.", "FORMAT", true};
       break;
@@ -7496,6 +7545,16 @@ static void draw_strip(const fm_cell_t *st, const char *line, uint16_t accent) {
 
 /** The camera at work on something that is not a capture. All four cells
  *  lit, because this is about the four and not about one of them. */
+/* The mark, and one line under it, so a screen going dark reads as sleep and
+ * not as a crash. The wake is the one thing worth saying at that moment. */
+static void render_sleep(void *ctx) {
+  (void)ctx;
+  fill(0, 0, UI_W, UI_H, MZ_GROUND);
+  boot_mark();
+  text_mid(&UI_FONT_T, UI_W / 2, UI_H - PAGE_M - UI_FONT_T.line_h, "GOING TO SLEEP.  TAP TO WAKE",
+           W_GRAYTEXT);
+}
+
 static void draw_working_banner(const char *line) {
   const fm_cell_t st[4] = {FM_ON, FM_ON, FM_ON, FM_ON};
   draw_strip(st, line, MZ_MINT);
@@ -7728,6 +7787,8 @@ static void draw_screen(void) {
   }
   draw_capture_banner();
   if (s_formatting) draw_working_banner("FORMATTING THE CARD");
+  else if (s_cams_restart_us != 0 && esp_timer_get_time() - s_cams_restart_us < CAMS_RESTART_BANNER_US)
+    draw_working_banner("RESTARTING THE CAMERAS");
   draw_toast();
   if (s_dialog != DLG_NONE) draw_dialog();
 }
@@ -8074,7 +8135,10 @@ static int item_count(screen_t s) {
     case SCR_POWER: return PW_IT_COUNT;
     case SCR_STATUS: {
       const int n = conditions_count();
-      return sts_has_action() && sts_action_y(n < 6 ? n : 6) >= 0 ? 1 : 0;
+      int count = 0;
+      for (int k = 0; k < sts_action_count(); k++)
+        if (sts_action_y(n < 6 ? n : 6, k) >= 0) count++;
+      return count;
     }
     default: return 0;
   }
@@ -8274,10 +8338,12 @@ static int hit_test(int x, int y) {
       return -1;
 
     case SCR_STATUS: {
-      if (item_count(SCR_STATUS) == 0) return -1;
       const int n = conditions_count();
-      const int ay = sts_action_y(n < 6 ? n : 6);
-      return in(x, y, LIST_X, ay, LIST_W, ROW_H - ROW_GAP) ? STS_IT_REMEASURE : -1;
+      for (int k = 0; k < sts_action_count(); k++) {
+        const int ay = sts_action_y(n < 6 ? n : 6, k);
+        if (ay >= 0 && in(x, y, LIST_X, ay, LIST_W, ROW_H - ROW_GAP)) return k;
+      }
+      return -1;
     }
 
     case SCR_POWER:
@@ -8316,7 +8382,7 @@ static void dialog_commit(void) {
        * screen does not move, which is the only safe answer for an
        * irreversible operation. */
       if (!storage_acquire(STORAGE_USER_UI, 2000)) {
-        toast("Card busy");
+        toast("Card busy. Try again");
         audio_warning();
         break;
       }
@@ -8351,7 +8417,7 @@ static void dialog_commit(void) {
        * worker and a capture all wait, which is the one correct order for
        * an operation that removes what they would be reading. */
       if (!storage_acquire(STORAGE_USER_UI, 5000)) {
-        toast("Card busy");
+        toast("Card busy. Try again");
         audio_warning();
         break;
       }
@@ -8376,6 +8442,11 @@ static void dialog_commit(void) {
       vTaskDelay(pdMS_TO_TICKS(420));
       power_down_anim();
       esp_restart();
+      break;
+    case DLG_WELCOME:
+    case DLG_UPDATED:
+      /* Read, and dismissed. These two fell through to the default and
+       * GOT IT on the first-start note toasted the shutdown line. */
       break;
     default:
       toast("Hold the power slide to switch off");
@@ -8447,7 +8518,7 @@ static void activate(int item) {
          * say why rather than opening an empty photograph screen that looks
          * like a lost capture. */
         if (!photo_open(&slots[item])) {
-          toast("Card busy");
+          toast("Card busy. Try again");
           audio_warning();
           break;
         }
@@ -8535,6 +8606,11 @@ static void activate(int item) {
          * screen's own way of saying it took. */
         cfg_set_bool("body.calibration.done", false);
         toast("The next photo measures the cameras");
+      }
+      if (item == STS_IT_RESTART_CAMS) {
+        power_cam_bank_cycle();
+        s_cams_restart_us = esp_timer_get_time();
+        audio_done();
       }
       break;
 
@@ -8726,11 +8802,77 @@ static void boot_handoff(void) {
  * once. `body.firstRunSeen` is a firmware-only config key like `body.hand`.
  */
 static void first_start_note(void) {
-  if (config_bool("body.firstRunSeen", false)) return;
-  cfg_set_bool("body.firstRunSeen", true);
-  s_dialog = DLG_WELCOME;
-  s_dlg_focus = 0;
-  ui_render(render_screen, NULL);
+  if (!config_bool("body.firstRunSeen", false)) {
+    cfg_set_bool("body.firstRunSeen", true);
+    cfg_set_str("body.lastVersion", KINO_FW_VERSION);
+    s_dialog = DLG_WELCOME;
+    s_dlg_focus = 0;
+    ui_render(render_screen, NULL);
+    return;
+  }
+  /* The first boot after an update says so, once. body.lastVersion is a
+   * firmware-only key like firstRunSeen; a body that never had it is on its
+   * first updated boot, which is true. */
+  if (strcmp(config_str("body.lastVersion", ""), KINO_FW_VERSION) != 0) {
+    cfg_set_str("body.lastVersion", KINO_FW_VERSION);
+    s_dialog = DLG_UPDATED;
+    s_dlg_focus = 0;
+    ui_render(render_screen, NULL);
+  }
+}
+
+/*
+ * The first photograph ever taken on this body plays back once, as the
+ * wiggle it is. The review hold after a shot shows a still, and a still of a
+ * four-lens photograph shows nothing of what was bought; one loop of the
+ * motion does. Then back to SHOOT on its own, unless a finger got there
+ * first.
+ */
+static int64_t s_first_review_us;
+static void first_review_open(const capture_report_t *r) {
+  gallery_item_t it;
+  memset(&it, 0, sizeof it);
+  snprintf(it.id, sizeof it.id, "%s", r->uuid);
+  snprintf(it.label, sizeof it.label, "%s", r->id);
+  snprintf(it.mode, sizeof it.mode, "%s", r->mode);
+  it.frames = r->stored;
+  if (!photo_open(&it)) return; /* the card is still busy with it; a still it is */
+  s_focus[SCR_PHOTO] = P_IT_DELETE;
+  s_first_review_us = esp_timer_get_time();
+  go(SCR_PHOTO, NAV_OPEN_MS);
+}
+static void first_review_poll(void) {
+  if (s_first_review_us == 0) return;
+  if (s_screen != SCR_PHOTO) {
+    s_first_review_us = 0;
+    return;
+  }
+  if (esp_timer_get_time() - s_first_review_us < 4500000) return;
+  s_first_review_us = 0;
+  go(SCR_SHOOT, NAV_BACK_MS);
+}
+
+/* What the card watcher saw, said on the screen it happened under. */
+static void storage_events_poll(void) {
+  storage_event_t ev;
+  while (storage_watch_take(&ev)) {
+    storage_status_t sd;
+    storage_get_status(&sd);
+    gallery_refresh();
+    if (ev == STORAGE_EV_MOUNTED) {
+      char w[24];
+      card_words(w, sizeof w, &sd);
+      char line[48];
+      snprintf(line, sizeof line, "Card ready, %s", w);
+      toast(line);
+      audio_done();
+    } else {
+      toast("Card taken out. Photos cannot be saved");
+      audio_warning();
+    }
+    conditions_scan(about_cameras());
+    ui_render(render_screen, NULL);
+  }
 }
 
 /* The figures a boot leaves in the ring for the bench: what internal SRAM is
@@ -8923,6 +9065,12 @@ static uint32_t ui_pass(void) {
       }
     }
     calib_poll();
+    first_review_poll();
+    storage_events_poll();
+    if (s_cams_restart_us != 0 && esp_timer_get_time() - s_cams_restart_us >= CAMS_RESTART_BANNER_US) {
+      s_cams_restart_us = 0;
+      ui_render(render_screen, NULL);
+    }
 
     uint16_t tx = 0, ty = 0;
     int region = -1;
@@ -8962,7 +9110,7 @@ static uint32_t ui_pass(void) {
      * the panel is back, the screen underneath is redrawn.
      */
     if (power_sleep_pending() && !s_sleep_mark) {
-      ui_render(render_mark, NULL);
+      ui_render(render_sleep, NULL);
       power_sleep_shown();
       s_sleep_mark = true;
       klog("P4", "sleep: mark up on screen %d", (int)s_screen);
@@ -9160,6 +9308,10 @@ static uint32_t ui_pass(void) {
          */
         if (r.ok && r.stored >= 2 && !config_bool("body.calibration.done", false)) {
           calib_start(r.dir, r.id);
+        }
+        if (r.ok && r.stored >= 2 && !config_bool("body.firstShotSeen", false)) {
+          cfg_set_bool("body.firstShotSeen", true);
+          first_review_open(&r);
         }
       }
       /*

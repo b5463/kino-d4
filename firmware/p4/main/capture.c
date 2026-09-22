@@ -1428,11 +1428,11 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   gpio_setup();
 
   if (!storage_present()) {
-    fail(&r, "SD_NOT_MOUNTED", "No card to write the capture to");
+    fail(&r, "SD_NOT_MOUNTED", "No card. Put one in.");
     goto finish;
   }
   if (!cams_powered()) {
-    fail(&r, "CAMERA_OFFLINE", "The camera bank did not come back on");
+    fail(&r, "CAMERA_OFFLINE", "The lenses did not wake. Try a restart.");
     goto finish;
   }
 
@@ -1478,7 +1478,7 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   }
 
   if (ask == 0) {
-    fail(&r, "CAMERA_OFFLINE", "No camera answered");
+    fail(&r, "CAMERA_OFFLINE", "No lens answered. Try a restart.");
     goto finish;
   }
 
@@ -1504,10 +1504,10 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
     }
     uint64_t need = 0, avail = 0;
     if (!storage_capture_space_ok(r.online, rw, rh, &need, &avail)) {
-      char msg[96];
-      snprintf(msg, sizeof msg, "Needs %lu KB, %lu KB free",
-               (unsigned long)(need / 1024), (unsigned long)(avail / 1024));
-      fail(&r, "SD_FULL", msg);
+      /* The numbers go to the log; the screen gets what to do about it. */
+      klog("P4", "card full: needs %lu KB, %lu KB free", (unsigned long)(need / 1024),
+           (unsigned long)(avail / 1024));
+      fail(&r, "SD_FULL", "Card full. Delete photos or change the card.");
       goto finish;
     }
   }
@@ -1526,7 +1526,7 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
     }
   }
   if (storage_capture_open(&store, r.uuid, "CAP") != ESP_OK) {
-    fail(&r, "SD_WRITE_FAILED", "Could not create the capture folder");
+    fail(&r, "SD_WRITE_FAILED", "Card error. Photo not saved.");
     goto finish;
   }
   folder_open = true;
@@ -1796,7 +1796,7 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
     /* The frames are on the card but nothing describes them. A folder of
      * unexplained JPEGs is worse than no folder: it would be imported as a
      * capture with no mode, no timestamp and no frame order. */
-    fail(&r, "SD_WRITE_FAILED", "Frames written but META.JSON failed");
+    fail(&r, "SD_WRITE_FAILED", "Card error. Photo saved without its notes.");
     goto finish;
   }
   folder_open = false;

@@ -20,4 +20,7 @@ bool safe_mode_active(void);
 /** Crashes in a row before this boot; 0 after a clean reset. */
 int safe_mode_crashes(void);
 
+/** This boot follows a brownout reset: the supply dropped while running. */
+bool safe_mode_brownout(void);
+
 #endif

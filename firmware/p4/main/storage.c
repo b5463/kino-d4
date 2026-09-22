@@ -34,6 +34,9 @@ static uint32_t s_mount_attempts;
 static uint32_t s_sd_errors;
 static char s_last_error[48];
 static const char *s_write_test = "none";
+static uint32_t s_selftest_ms;  /* how long the last write test took */
+static bool s_removed;          /* the card was pulled while running */
+static bool s_quiet_mount;      /* a retry from the watcher: no log line per failure */
 
 static void set_error(const char *code) {
   if (code[0] != '\0') s_sd_errors++;
@@ -282,9 +285,11 @@ static esp_err_t card_mount(bool format_if_mount_failed) {
     // Missing/unreadable card is a reported state, not a boot failure. The
     // registry is NOT marked failed here — an empty slot and a wrong pin
     // look identical from software; that diagnosis is bench work.
-    ESP_LOGW(TAG, "SD_MOUNT failed: %s", esp_err_to_name(err));
-    klog("SD", "mount failed: %s", esp_err_to_name(err));
-    set_error(err == ESP_ERR_TIMEOUT ? "MOUNT_TIMEOUT" : "MOUNT_FAILED");
+    if (!s_quiet_mount) {
+      ESP_LOGW(TAG, "SD_MOUNT failed: %s", esp_err_to_name(err));
+      klog("SD", "mount failed: %s", esp_err_to_name(err));
+      set_error(err == ESP_ERR_TIMEOUT ? "MOUNT_TIMEOUT" : "MOUNT_FAILED");
+    }
     s_card = NULL;
     return err;
   }
@@ -353,6 +358,43 @@ esp_err_t storage_format(void) {
 
 bool storage_present(void) { return s_card != NULL; }
 
+esp_err_t storage_remount(void) {
+  if (s_card != NULL) return ESP_OK;
+  if (s_card_lock == NULL) return ESP_ERR_INVALID_STATE;
+  if (xSemaphoreTake(s_card_lock, 0) != pdTRUE) return ESP_ERR_TIMEOUT;
+  s_quiet_mount = true;
+  const esp_err_t err = card_mount(false);
+  s_quiet_mount = false;
+  if (err == ESP_OK) {
+    s_removed = false;
+    storage_media_count_invalidate();
+  }
+  xSemaphoreGive(s_card_lock);
+  return err;
+}
+
+bool storage_card_alive(void) {
+  if (s_card == NULL) return false;
+  /* Busy means a task of ours is talking to it, which is proof enough. */
+  if (s_card_lock == NULL || xSemaphoreTake(s_card_lock, 0) != pdTRUE) return true;
+  const esp_err_t err = sdmmc_get_status(s_card);
+  if (err == ESP_OK) {
+    xSemaphoreGive(s_card_lock);
+    return true;
+  }
+  /* Pulled. Unmounted here, so the rest of the firmware sees "no card"
+   * rather than a write error per attempt; the watcher tries the slot again. */
+  klog("SD", "card stopped answering (%s); unmounted", esp_err_to_name(err));
+  esp_vfs_fat_sdcard_unmount(MOUNT, s_card);
+  s_card = NULL;
+  s_removed = true;
+  s_write_test = "none";
+  set_error("CARD_REMOVED");
+  storage_media_count_invalidate();
+  xSemaphoreGive(s_card_lock);
+  return false;
+}
+
 void storage_get_status(storage_status_t *out) {
   memset(out, 0, sizeof *out);
   out->present = s_card != NULL;
@@ -361,6 +403,8 @@ void storage_get_status(storage_status_t *out) {
   out->mount_attempts = s_mount_attempts;
   out->last_error = s_last_error[0] != '\0' ? s_last_error : NULL;
   out->write_test = s_write_test;
+  out->write_test_ms = s_selftest_ms;
+  out->removed = s_removed;
   if (s_card != NULL) {
     uint64_t total = 0, free_bytes = 0;
     if (esp_vfs_fat_info(MOUNT, &total, &free_bytes) == ESP_OK) {
@@ -435,6 +479,7 @@ void storage_self_test(storage_selftest_result_t *out) {
   out->bytes_tested = out->ok ? SELFTEST_BYTES : 0;
   out->duration_ms = (uint32_t)((esp_timer_get_time() - start) / 1000);
   s_write_test = out->ok ? "pass" : "fail";
+  s_selftest_ms = out->duration_ms;
   if (!out->ok) set_error(storage_selftest_phase_str(phase));
   klog("SD", "self-test %s (%s, %lu ms)", out->ok ? "pass" : "FAIL",
        storage_selftest_phase_str(phase), (unsigned long)out->duration_ms);

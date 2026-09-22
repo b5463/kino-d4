@@ -43,6 +43,9 @@ typedef enum {
   COND_UNCALIBRATED,     /* the four have never been measured against each other */
   COND_SAFE_MODE,        /* three crashes in a row; radio and uploads left out */
   COND_WARM,             /* the P4 die is over the warm line; the finder is slowed */
+  COND_CARD_FAILED,      /* the card failed its write test */
+  COND_CARD_SLOW,        /* the card passed, slowly */
+  COND_BROWNOUT,         /* this boot follows a brownout reset */
   COND_COUNT,
 } cond_id_t;
 
@@ -56,6 +59,7 @@ typedef struct {
   cond_sev_t sev;
   const char *title;
   char detail[64];
+  uint8_t mask; /* COND_CAMERA_DOWN: bit i set for the (i+1)th lens from the left */
 } cond_t;
 
 /* Six is every condition at once, which is a camera with no card in a drawer. */
@@ -84,6 +88,10 @@ static inline bool conditions_has(cond_id_t id) {
 #define COND_WARM_C 75.0f
 #define COND_COOL_C 68.0f
 
+/* The 64 KB write test (storage_self_test) takes 30-100 ms on a card that
+ * is any good; a card past this is worth a word before it costs a photograph. */
+#define COND_CARD_SLOW_MS 600
+
 /**
  * Take a reading. `cams` is camlink's four, already fetched by the caller so
  * this never reaches for the channel itself.
@@ -94,6 +102,7 @@ static inline bool conditions_has(cond_id_t id) {
  */
 static void conditions_scan(const camlink_info_t *cams) {
   cond_t found[COND_MAX];
+  memset(found, 0, sizeof found);
   int n = 0;
 
   storage_status_t sd;
@@ -103,14 +112,33 @@ static void conditions_scan(const camlink_info_t *cams) {
     cond_t *c = &found[n++];
     c->id = COND_CARD_MISSING;
     c->sev = COND_FAULT;
-    c->title = "No card";
+    c->title = sd.removed ? "The card was taken out" : "No card";
     snprintf(c->detail, sizeof c->detail, "%s",
-             sd.present ? "The card is in but would not mount." : "Photographs cannot be saved.");
+             sd.removed ? "Put it back. Photos cannot be saved."
+                        : "Put a card in. Photos cannot be saved.");
   } else {
-    /* Six megabytes is what one capture costs; under fifty of them left is
-     * close enough to matter to someone standing at a party. */
+    if (sd.write_test != NULL && strcmp(sd.write_test, "fail") == 0) {
+      cond_t *c = &found[n++];
+      c->id = COND_CARD_FAILED;
+      c->sev = COND_FAULT;
+      c->title = "This card failed a write";
+      snprintf(c->detail, sizeof c->detail, "Copy your photos off it and change the card.");
+    } else if (sd.write_test != NULL && strcmp(sd.write_test, "pass") == 0 &&
+               sd.write_test_ms > COND_CARD_SLOW_MS) {
+      cond_t *c = &found[n++];
+      c->id = COND_CARD_SLOW;
+      c->sev = COND_WARN;
+      c->title = "This card is slow";
+      snprintf(c->detail, sizeof c->detail, "Photos take longer to save. A faster card helps.");
+    }
     const int shots = (int)(sd.free_bytes / (6ull * 1024 * 1024));
-    if (shots < 50) {
+    if (shots <= 0) {
+      cond_t *c = &found[n++];
+      c->id = COND_CARD_LOW;
+      c->sev = COND_FAULT;
+      c->title = "The card is full";
+      snprintf(c->detail, sizeof c->detail, "Delete photos or change the card.");
+    } else if (shots < 50) {
       cond_t *c = &found[n++];
       c->id = COND_CARD_LOW;
       c->sev = COND_WARN;
@@ -120,22 +148,30 @@ static void conditions_scan(const camlink_info_t *cams) {
   }
 
   if (cams != NULL) {
-    char down[32] = {0};
-    int ndown = 0;
+    /* By position, not by number: the lenses are CAM1..CAM4 from the left
+     * as the camera is held (hardware/TESTING.md), and "CAM3" means nothing
+     * to the hand holding it. The row draws the four cells from the mask. */
+    static const char *const POS[4] = {"first", "second", "third", "fourth"};
+    uint8_t mask = 0;
+    int ndown = 0, last = 0;
     for (int i = 0; i < 4; i++) {
       if (cams[i].online) continue;
-      char one[8];
-      snprintf(one, sizeof one, "%sCAM%d", ndown ? ", " : "", i + 1);
-      strncat(down, one, sizeof down - strlen(down) - 1);
+      mask |= (uint8_t)(1u << i);
       ndown++;
+      last = i;
     }
     if (ndown > 0) {
       cond_t *c = &found[n++];
       c->id = COND_CAMERA_DOWN;
       c->sev = COND_FAULT;
-      c->title = ndown == 1 ? "A camera is not answering" : "Cameras are not answering";
-      snprintf(c->detail, sizeof c->detail, "%s. Photos get %d of 4 pictures. Try a restart.", down,
-               4 - ndown);
+      c->mask = mask;
+      c->title = ndown == 1 ? "A lens is not answering" : "Lenses are not answering";
+      if (ndown == 1) {
+        snprintf(c->detail, sizeof c->detail, "The %s from the left. Try RESTART THE CAMERAS below.",
+                 POS[last]);
+      } else {
+        snprintf(c->detail, sizeof c->detail, "%d of 4. Try RESTART THE CAMERAS below.", ndown);
+      }
     }
 
     /* Node firmware skew. Compared only across the nodes that answered: a node
@@ -153,13 +189,7 @@ static void conditions_scan(const camlink_info_t *cams) {
       c->id = COND_NODE_SKEW;
       c->sev = COND_WARN;
       c->title = "The cameras need an update";
-      int used = 0;
-      c->detail[0] = '\0';
-      for (int i = 0; i < 4 && used < (int)sizeof c->detail - 12; i++) {
-        if (!cams[i].online) continue;
-        used += snprintf(c->detail + used, sizeof c->detail - used, "%sCAM%d %s", used ? "  " : "",
-                         i + 1, cams[i].firmware);
-      }
+      snprintf(c->detail, sizeof c->detail, "Connect to Studio to update them.");
     }
   }
 
@@ -170,7 +200,7 @@ static void conditions_scan(const camlink_info_t *cams) {
     c->title = "The date is not set";
     /* Said as what it costs, not as what is missing. "No RTC fitted" is a
      * fact about the board; this is a fact about the photographs. */
-    snprintf(c->detail, sizeof c->detail, "Connect to Studio once to set it.");
+    snprintf(c->detail, sizeof c->detail, "Wi-Fi or Studio sets it once.");
   }
 
   if (!config_bool("body.calibration.done", false)) {
@@ -179,6 +209,14 @@ static void conditions_scan(const camlink_info_t *cams) {
     c->sev = COND_NOTE;
     c->title = "Cameras not measured";
     snprintf(c->detail, sizeof c->detail, "The first photograph measures them.");
+  }
+
+  if (safe_mode_brownout()) {
+    cond_t *c = &found[n++];
+    c->id = COND_BROWNOUT;
+    c->sev = COND_WARN;
+    c->title = "The camera lost power while running";
+    snprintf(c->detail, sizeof c->detail, "Charge or replace the cells.");
   }
 
   if (safe_mode_active()) {

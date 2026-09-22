@@ -36,6 +36,7 @@
 #include "roll_state.h"
 #include "safe_mode.h"
 #include "storage.h"
+#include "storage_watch.h"
 #include "taskmon.h"
 #include "upload_queue.h"
 #include "wifi_creds.h"
@@ -508,6 +509,10 @@ void app_main(void) {
     ESP_LOGW(TAG, "upload queue unavailable: %s - captures stay on the card",
              esp_err_to_name(uq_err));
   }
+
+  /* The card watched, the log written to it (storage_watch.h). Last, so
+   * nothing it does contends with the boot. */
+  if (storage_watch_start() != ESP_OK) ESP_LOGW(TAG, "card watcher would not start");
 
   /* Every new capture is queued by upload_queue.c's own capture-done listener,
    * registered in upload_queue_start(): it has the shutter's Roll snapshot and

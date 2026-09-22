@@ -561,6 +561,9 @@ void viewfinder_throttle(bool on) { (void)on; }
 bool kdp_p4_temp_c(float *out) { (void)out; return false; }
 bool safe_mode_active(void) { return false; }
 int safe_mode_crashes(void) { return 0; }
+#include "storage_watch.h"
+bool storage_watch_take(storage_event_t *out) { (void)out; return false; }
+bool safe_mode_brownout(void) { return false; }
 bool gallery_deleting(void) { return false; }
 void gallery_delete_progress(int *done, int *total) {
   if (done != NULL) *done = 0;
