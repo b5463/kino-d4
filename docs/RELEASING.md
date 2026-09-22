@@ -15,7 +15,7 @@ KINO has no published release pipeline yet. This checklist defines the first saf
 | KDP protocol | `1` | `PROTOCOL_VERSION` in `packages/kdp/src/protocol/commands.ts` |
 | KDP config envelope | `1` | `CONFIG_SCHEMA_VERSION` in `packages/kdp/src/protocol/types.ts` |
 | Portable documents | `1` per schema | `packages/schemas/src/` |
-| Physical firmware (P4 and camera node, one image family) | `0.4.56`, bench builds only, no published release | `firmware/VERSION`, checked against `versions.json` |
+| Physical firmware (P4 and camera node, one image family) | `0.4.58`, first tagged release `kino-fw-v0.4.58` (2026-09-22) | `firmware/VERSION`, checked against `versions.json` |
 
 A Studio release does not automatically bump KDP. A schema bump does not automatically bump the protocol. Change the smallest surface that matches the compatibility change.
 
