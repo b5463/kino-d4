@@ -261,6 +261,25 @@ esp_err_t camlink_set_baud_ch(int cam, uint32_t baud);
 
 /** What the channel is running at now. 0 for an invalid cam. */
 uint32_t camlink_baud_ch(int cam);
+
+/**
+ * Find this channel's node at whatever rate it is on, and bring it to `baud`.
+ *
+ * The nodes do not share the body's reset. After a restart - an update, a
+ * panic, POWER > RESTART - the body's UARTs are back at NL_DEFAULT_BAUD and
+ * the nodes are wherever they were left, and nothing recovers that on its own:
+ * a node's revert arms only when a switch happens, so one sitting at 3 Mbaud
+ * has no deadline running (#221).
+ *
+ * Tries `baud` first, so a body and node that already agree pay one HELLO.
+ * Otherwise it walks the other supported rates, and on finding the node it
+ * switches the channel to `baud` through camlink_set_baud_ch().
+ *
+ * Returns ESP_OK when the channel ends up at `baud` with the node answering.
+ * ESP_ERR_NOT_FOUND when no rate answered, in which case the channel is left
+ * at NL_DEFAULT_BAUD, which is where a node that reboots will come up.
+ */
+esp_err_t camlink_resync_baud_ch(int cam, uint32_t baud);
 /** HELLO with a caller-chosen timeout. For a channel believed empty a few
  * hundred milliseconds is generous - a node that is there answers in a few -
  * and the difference is what a periodic probe would otherwise charge the

@@ -2978,6 +2978,25 @@ static void handle_set_link_baud(uint32_t seq, cJSON *req) {
   viewfinder_release(vf_was_running);
   capture_unlock();
 
+  /*
+   * A rate every channel took is worth keeping.
+   *
+   * Stored only on a clean sweep: a partial switch is a state to get out of,
+   * not one to come back to after a restart. cam_probe_task() reads this at
+   * boot and brings the nodes to it (#221).
+   */
+  if (all_ok && only < 0) {
+    cJSON *store = cJSON_CreateObject();
+    cJSON *body_obj = store != NULL ? cJSON_CreateObject() : NULL;
+    if (body_obj != NULL) {
+      cJSON_AddNumberToObject(body_obj, "linkBaud", (double)baud);
+      /* store owns body_obj from here; one Delete covers both. */
+      cJSON_AddItemToObject(store, "body", body_obj);
+      if (config_merge(store) == ESP_OK) (void)config_save();
+    }
+    if (store != NULL) cJSON_Delete(store);
+  }
+
   /* `ok` and `baud` are the shape firmware-contract/commands.md documents;
    * `cams` is added beside them because one channel at a different rate from
    * the other three is the state worth seeing at once rather than during the

@@ -6,6 +6,7 @@
 #include "audio.h"
 #include "buttons.h"
 #include "cam_link.h"
+#include "node_link/node_link.h"
 #include "capture.h"
 #include "gallery.h"
 #include "thumb.h"
@@ -105,6 +106,23 @@ static uint32_t next_boot_count(void) {
 static void cam_probe_task(void *arg) {
   (void)arg;
   bool was_online[CAMLINK_CAMS] = {false};
+  /*
+   * The link's rate, settled once per boot, per channel.
+   *
+   * The nodes do not share the body's reset, so after a restart the body's
+   * UARTs are back at NL_DEFAULT_BAUD and the nodes are wherever they were
+   * left. Two cases and one answer (#221): the stored rate is not what this
+   * end is on, so the nodes have to be moved to it; or the stored rate is the
+   * default and a node is still somewhere else, so it has to be found.
+   * camlink_resync_baud_ch() handles both - it tries the intended rate first,
+   * which is one HELLO on every boot where nothing moved.
+   *
+   * Here rather than in app_main() because a body with no nodes fitted pays
+   * three extra probes per channel, and that belongs in the background sweep
+   * rather than in front of the splash.
+   */
+  bool baud_settled[CAMLINK_CAMS] = {false};
+  const uint32_t link_baud = (uint32_t)config_int("body.linkBaud", NL_DEFAULT_BAUD);
   for (;;) {
     /*
      * Maintenance, one bounded transaction at a time, and never in the
@@ -141,8 +159,20 @@ static void cam_probe_task(void *arg) {
        * A node that is present answers in a few milliseconds; one that has
        * stopped answering costs one 3000 ms transaction before it is marked
        * offline, and that is the longest a capture can ever wait here. */
+      if (!baud_settled[cam] && link_baud != camlink_baud_ch(cam)) {
+        baud_settled[cam] = true;
+        camlink_resync_baud_ch(cam, link_baud);
+      }
       const uint32_t probe_ms = was_online[cam] ? 3000u : OFFLINE_PROBE_MS;
-      const bool online = camlink_hello_ch_timeout(cam, probe_ms) == ESP_OK;
+      bool online = camlink_hello_ch_timeout(cam, probe_ms) == ESP_OK;
+      /* Silence on the first sweep is the other half: the stored rate may be
+       * the default while this node is still somewhere else, which is what a
+       * bench leaves behind when it changes the rate without storing it. */
+      if (!online && !baud_settled[cam]) {
+        baud_settled[cam] = true;
+        online = camlink_resync_baud_ch(cam, link_baud) == ESP_OK;
+      }
+      baud_settled[cam] = true;
       capture_probe_end(cam);
       if (online) {
         online_count++;
