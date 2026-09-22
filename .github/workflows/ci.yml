@@ -12,6 +12,7 @@ jobs:
       - run: npm ci
       - run: npm run version:check
       - run: npm run license:check
+      - run: npm run copy:check
       - run: npm run twin:body:check
       - run: npm run lint
       # service-free suites; add new workspaces here

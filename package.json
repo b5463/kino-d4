@@ -13,6 +13,7 @@
     "lint": "npm run lint --workspaces --if-present",
     "version:check": "node scripts/check-versions.mjs",
     "license:check": "node scripts/check-licenses.mjs",
+    "copy:check": "node scripts/check-device-copy.mjs",
     "firmware:daemon": "node scripts/firmware-daemon.mjs",
     "firmware:publish": "tsx infra/scripts/publish-firmware.ts",
     "test:uploader": "tsx infra/scripts/test-uploader.ts",

@@ -47,6 +47,19 @@ KINO has no published release yet. Changes intended for the first release collec
   instead of computing them once in the draw and again in the hit test, which
   is the convention every other screen already kept; all 206 rendered screens
   are byte-identical before and after.
+- **The device copy table is checked, not promised (#204).** `docs/DEVICE_COPY.md`
+  opens by saying it holds every line the body says on its own screen, and said
+  it was checked against the source when a line changed. Nothing enforced that,
+  and it had drifted to 43 of the 93 lines the camera can actually draw. Missing
+  were things a person reads and quotes back on a support call: "The camera has
+  no complaints.", "Press the shutter to take one.", "No radio on this body.
+  Photos leave over USB-C.", the whole of the ROLL screen's empty state, and
+  every row of SOUND and POWER. `npm run copy:check` now walks the drawing and
+  toast calls in `ui.c`, `conditions.h` and `capture.c` with comments stripped,
+  and fails when a line they can draw is not in the table. It runs in CI beside
+  `version:check` and `license:check`. The table gained a section per screen; a
+  string that is genuinely not copy goes in the script's short NOT_COPY list
+  with the reason, so the exceptions are visible rather than assumed.
 - **Firmware 0.4.59: uploads with nowhere to go are said (#198).** A body with a Roll joined but no Roll server - no compiled API base and no `network.apiBase` from Studio - parked every upload as FAILED while ROLL said Online. STATUS now carries "Uploads have no server. Set the Roll server in Studio. Photos stay on the card." Found on the 0.4.58 release soak: 40 captures, 34 uploads parked for that one reason.
 - **Twin: a viewfinder pane that stops receiving frames stops being live.**
   The firmware shim marked a pane live for ever once its buffer pointer had
