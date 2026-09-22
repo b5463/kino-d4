@@ -110,6 +110,18 @@ static kdp_decoder_t s_decoder;
 
 // Reply frames: header + chunk + CRC is the largest we ever send.
 static uint8_t s_tx_buf[KDP_HEADER_LEN + NL_CHUNK_MAX + KDP_CRC_LEN];
+
+/*
+ * The link's speed, and the deadline a provisional one lives under.
+ *
+ * s_baud is what the UART is set to now. s_baud_revert_us is non-zero while a
+ * switch is unconfirmed: the first frame that decodes at the new rate clears
+ * it, and the loop putting the baud back is what happens if none does. See
+ * NL_CMD_SET_BAUD in node_link.h for why a link with two wires has to be able
+ * to change its mind alone.
+ */
+static uint32_t s_baud = NL_DEFAULT_BAUD;
+static int64_t s_baud_revert_us;
 /* Larger than any preview-sized JPEG this sensor makes (a 320x240 frame at the
  * finder's quality is 2-8 KB), smaller than any photograph (90 KB up). */
 #define NL_PREVIEW_STALE_BYTES (32 * 1024)
@@ -975,6 +987,79 @@ static void handle_fw_abort(uint32_t seq) {
   send_json(NL_CMD_FW_ABORT, seq, json);
 }
 
+static void handle_set_baud(uint32_t seq, const cJSON *req) {
+  static const uint32_t supported[NL_BAUD_SUPPORTED_N] = NL_BAUD_SUPPORTED_LIST;
+  const cJSON *want = cJSON_GetObjectItem(req, "baud");
+  if (!cJSON_IsNumber(want)) {
+    send_nack(NL_CMD_SET_BAUD, seq, "INVALID_ARGUMENT", "baud must be a number");
+    return;
+  }
+  const double asked = want->valuedouble;
+  uint32_t baud = 0;
+  for (int i = 0; i < NL_BAUD_SUPPORTED_N; i++) {
+    if (asked == (double)supported[i]) baud = supported[i];
+  }
+  if (baud == 0) {
+    send_nack(NL_CMD_SET_BAUD, seq, "INVALID_ARGUMENT", "Unsupported baud");
+    return;
+  }
+  /* Not while a photograph is being read out of this node: the body would be
+   * mid-transfer and a rate change under it loses the frame. */
+  if (s_fb != NULL) {
+    send_nack(NL_CMD_SET_BAUD, seq, "BUSY", "A frame is held; release it first");
+    return;
+  }
+
+  cJSON *json = cJSON_CreateObject();
+  if (json == NULL) {
+    send_nack(NL_CMD_SET_BAUD, seq, "INTERNAL_ERROR", "Out of memory");
+    return;
+  }
+  cJSON_AddBoolToObject(json, "ok", true);
+  cJSON_AddNumberToObject(json, "baud", (double)baud);
+  cJSON_AddNumberToObject(json, "revertMs", (double)NL_BAUD_PROBE_MS);
+  send_json(NL_CMD_SET_BAUD, seq, json);
+
+  if (baud == s_baud) return;
+
+  /*
+   * The reply leaves at the OLD rate, and the switch waits for it.
+   *
+   * uart_wait_tx_done returns when the last bit has left the shift register,
+   * not when the driver has accepted the bytes. Switching before that would
+   * corrupt the tail of the one message that tells the body what is about to
+   * happen.
+   */
+  uart_wait_tx_done(BOARD_LINK_UART_NUM, pdMS_TO_TICKS(500));
+  if (uart_set_baudrate(BOARD_LINK_UART_NUM, baud) != ESP_OK) {
+    ESP_LOGE(TAG, "baud %lu refused by the driver", (unsigned long)baud);
+    return;
+  }
+  /* Whatever was mid-flight at the old rate is now noise. */
+  uart_flush_input(BOARD_LINK_UART_NUM);
+  s_baud = baud;
+  s_baud_revert_us = esp_timer_get_time() + (int64_t)NL_BAUD_PROBE_MS * 1000;
+  ESP_LOGI(TAG, "link at %lu baud, reverting in %d ms unless something arrives",
+           (unsigned long)baud, NL_BAUD_PROBE_MS);
+}
+
+/** Put the link back on the default after a switch nothing confirmed. */
+static void baud_revert_if_unconfirmed(void) {
+  if (s_baud_revert_us == 0) return;
+  if (esp_timer_get_time() < s_baud_revert_us) return;
+  s_baud_revert_us = 0;
+  if (s_baud == NL_DEFAULT_BAUD) return;
+  uart_wait_tx_done(BOARD_LINK_UART_NUM, pdMS_TO_TICKS(100));
+  uart_set_baudrate(BOARD_LINK_UART_NUM, NL_DEFAULT_BAUD);
+  uart_flush_input(BOARD_LINK_UART_NUM);
+  ESP_LOGW(TAG, "nothing arrived at %lu baud; back to %d", (unsigned long)s_baud,
+           NL_DEFAULT_BAUD);
+  s_baud = NL_DEFAULT_BAUD;
+}
+
+/* A frame that decoded at the current rate is the only confirmation a baud
+ * switch can have on a link with two wires, so it is taken here rather than in
+ * any one handler - a STATUS confirms as well as a HELLO does. */
 static void on_frame(const kdp_frame_t *frame, void *ctx) {
   (void)ctx;
   if (frame->version != NL_PROTOCOL_VERSION) {
@@ -997,6 +1082,15 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     return;
   }
 
+  /*
+   * A real request, of the right version, with a CRC that checked: the only
+   * confirmation a baud switch can have on a link with two wires. Taken here
+   * rather than in any one handler, so a STATUS confirms as well as a HELLO
+   * does - and taken after the guards above, so a looped-back reply or a
+   * frame from another protocol version cannot vouch for a rate.
+   */
+  s_baud_revert_us = 0;
+
   cJSON *req = NULL;
   if (frame->payload_len > 0 && (frame->flags & KDP_FLAG_BINARY) == 0) {
     req = cJSON_ParseWithLength((const char *)frame->payload, frame->payload_len);
@@ -1013,6 +1107,7 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case NL_CMD_READ: handle_read(frame->seq, req); break;
     case NL_CMD_RELEASE: handle_release(frame->seq, req); break;
     case NL_CMD_SENSOR: handle_sensor(frame->seq, req); break;
+    case NL_CMD_SET_BAUD: handle_set_baud(frame->seq, req); break;
     case NL_CMD_REBOOT: {
       cJSON *json = cJSON_CreateObject();
       cJSON_AddBoolToObject(json, "ok", true);
@@ -1034,16 +1129,12 @@ static void server_task(void *arg) {
   uint8_t rx[512];
   for (;;) {
     /*
-     * Take what has arrived rather than waiting for a full buffer.
-     *
-     * uart_read_bytes blocks until `length` bytes are read or the timeout
-     * expires, and a request is about 60 bytes against the 512 asked for
-     * here, so every single request used to cost this task the whole 100 ms
-     * before it was even seen. Three exchanges per preview frame made that
-     * 300 ms of sleep per frame on the node alone.
-     */
-    /*
      * Block in the UART driver for ONE byte, then take the rest with no wait.
+     *
+     * Asking for a full buffer is what this replaced: uart_read_bytes blocks
+     * until `length` bytes are read or the timeout expires, so a 60-byte
+     * request against a 512-byte read cost this task the whole timeout before
+     * it was even seen.
      *
      * The obvious "poll what is buffered, sleep 1 ms otherwise" is a busy-wait
      * on this build: CONFIG_FREERTOS_HZ is 100, so a tick is 10 ms and
@@ -1057,6 +1148,7 @@ static void server_task(void *arg) {
      * zero-latency behaviour the poll was written for, and an idle channel
      * genuinely sleeps instead of burning the core.
      */
+    baud_revert_if_unconfirmed();
     int n = uart_read_bytes(BOARD_LINK_UART_NUM, rx, 1, pdMS_TO_TICKS(10));
     if (n > 0) {
       size_t avail = 0;

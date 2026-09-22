@@ -2900,6 +2900,95 @@ static void on_capture_done(const capture_report_t *r) {
   send_event(KDP_EVT_CAPTURE, json);
 }
 
+/*
+ * SET_LINK_BAUD - move the camera link to a different speed.
+ *
+ * The measured cost of a shutter is the largest JPEG divided by the line rate
+ * (#218). This is the lever on that, and the only one that does not trade
+ * picture quality for time.
+ *
+ *   -> {baud, cam?}   cam omitted means all four
+ *   <- {baud, cams: [{cam, ok, baud, error?}]}
+ *
+ * Every channel is reported, including the ones that stayed where they were,
+ * because a link where two nodes are at different rates is the state worth
+ * seeing immediately rather than discovering during a capture.
+ *
+ * Under capture_lock(): switching a channel mid-transfer loses the frame, and
+ * both ends treat a switch as provisional with a revert on a timer, so this
+ * must not overlap a shutter.
+ */
+static void handle_set_link_baud(uint32_t seq, cJSON *req) {
+  const cJSON *baud_node = cJSON_GetObjectItem(req, "baud");
+  if (!cJSON_IsNumber(baud_node)) {
+    send_nack(KDP_CMD_SET_LINK_BAUD, seq, "INVALID_ARGUMENT", "baud must be a number");
+    return;
+  }
+  const uint32_t baud = (uint32_t)baud_node->valuedouble;
+
+  int only = -1;
+  if (cJSON_GetObjectItem(req, "cam") != NULL) {
+    only = cam_index_from_request(req);
+    if (only < 0) {
+      send_nack(KDP_CMD_SET_LINK_BAUD, seq, "INVALID_ARGUMENT", "cam must be cam1..cam4");
+      return;
+    }
+  }
+
+  if (!capture_lock(2000)) {
+    send_nack(KDP_CMD_SET_LINK_BAUD, seq, "BUSY", "A capture is running");
+    return;
+  }
+  /*
+   * And the finder, which talks to the same four channels and is not a
+   * capture.
+   *
+   * capture_lock() excludes a shutter; it does not stop the preview pumps.
+   * A pump that sent a request at the old rate while the node had already
+   * switched would time out, fail the HELLO behind it, and trigger a revert
+   * that nothing was wrong with. viewfinder_hold() also waits for a pump
+   * already in flight, which is the half that matters.
+   */
+  const bool vf_was_running = viewfinder_hold(VF_HOLD_MS);
+
+  cJSON *json = cJSON_CreateObject();
+  cJSON *cams = cJSON_CreateArray();
+  if (json == NULL || cams == NULL) {
+    if (json != NULL) cJSON_Delete(json);
+    if (cams != NULL) cJSON_Delete(cams);
+    viewfinder_release(vf_was_running);
+    capture_unlock();
+    send_nack(KDP_CMD_SET_LINK_BAUD, seq, "INTERNAL_ERROR", "Out of memory");
+    return;
+  }
+
+  bool all_ok = true;
+  for (int cam = 0; cam < CAMLINK_CAMS; cam++) {
+    if (only >= 0 && cam != only) continue;
+    const esp_err_t err = camlink_set_baud_ch(cam, baud);
+    if (err != ESP_OK) all_ok = false;
+    cJSON *entry = cJSON_CreateObject();
+    if (entry == NULL) continue;
+    cJSON_AddStringToObject(entry, "cam", cam_id_str(cam));
+    cJSON_AddBoolToObject(entry, "ok", err == ESP_OK);
+    cJSON_AddNumberToObject(entry, "baud", (double)camlink_baud_ch(cam));
+    if (err != ESP_OK) cJSON_AddStringToObject(entry, "error", esp_err_to_name(err));
+    cJSON_AddItemToArray(cams, entry);
+  }
+  viewfinder_release(vf_was_running);
+  capture_unlock();
+
+  /* `ok` and `baud` are the shape firmware-contract/commands.md documents;
+   * `cams` is added beside them because one channel at a different rate from
+   * the other three is the state worth seeing at once rather than during the
+   * next capture. `ok` is false unless every channel asked for made it. */
+  cJSON_AddBoolToObject(json, "ok", all_ok);
+  cJSON_AddNumberToObject(json, "baud", (double)baud);
+  cJSON_AddItemToObject(json, "cams", cams);
+  klog("P4", "link baud %lu asked for", (unsigned long)baud);
+  send_json(KDP_CMD_SET_LINK_BAUD, seq, json);
+}
+
 static void handle_camera_test(uint32_t seq, cJSON *req) {
   int index = cam_index_from_request(req);
   if (index < 0) {
@@ -3605,6 +3694,7 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case KDP_CMD_GET_CAMERA_INFO: handle_camera_info(frame->seq); break;
     case KDP_CMD_CAMERA_STATUS: handle_camera_status(frame->seq, req); break;
     case KDP_CMD_CAMERA_TEST: handle_camera_test(frame->seq, req); break;
+    case KDP_CMD_SET_LINK_BAUD: handle_set_link_baud(frame->seq, req); break;
     case KDP_CMD_STORAGE_SELF_TEST: handle_storage_self_test(frame->seq); break;
     case KDP_CMD_STORAGE_BENCH: handle_storage_bench(frame->seq, req); break;
     case KDP_CMD_CAMERA_LINK_STATS: handle_link_stats(frame->seq, req); break;

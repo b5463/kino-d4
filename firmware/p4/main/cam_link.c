@@ -12,6 +12,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 #include "hardware_validation.h"
 #include "kdp/decoder.h"
 #include "kdp/packet.h"
@@ -111,6 +112,7 @@ typedef struct {
  * that separation is what allows two transfers to be in flight at once. */
 struct channel_s {
   uart_port_t uart;
+  uint32_t baud; /* what this channel runs at now; NL_DEFAULT_BAUD at init */
   int tx_pin;
   int rx_pin;
   const char *tag; /* "C1".."C4", the klog source for this node */
@@ -420,6 +422,7 @@ esp_err_t camlink_init(void) {
   for (int i = 0; i < CAMLINK_CAMS; i++) {
     channel_t *ch = &s_ch[i];
     ch->uart = WIRING[i].uart;
+    ch->baud = NL_DEFAULT_BAUD;
     ch->tx_pin = WIRING[i].tx;
     ch->rx_pin = WIRING[i].rx;
     ch->tag = WIRING[i].tag;
@@ -906,6 +909,76 @@ esp_err_t camlink_release_ch(int cam, uint32_t frame_id) {
 }
 
 esp_err_t camlink_release(uint32_t frame_id) { return camlink_release_ch(0, frame_id); }
+
+uint32_t camlink_baud_ch(int cam) { return valid_cam(cam) ? s_ch[cam].baud : 0; }
+
+/* One channel's UART back on the default, said out loud. Every path out of a
+ * failed switch goes through here, so there is one definition of "home". */
+static esp_err_t baud_home(channel_t *ch, const char *why) {
+  uart_wait_tx_done(ch->uart, pdMS_TO_TICKS(100));
+  const esp_err_t err = uart_set_baudrate(ch->uart, NL_DEFAULT_BAUD);
+  uart_flush_input(ch->uart);
+  ch->baud = NL_DEFAULT_BAUD;
+  klog(ch->tag, "link back to %d baud: %s", NL_DEFAULT_BAUD, why);
+  return err;
+}
+
+esp_err_t camlink_set_baud_ch(int cam, uint32_t baud) {
+  if (!valid_cam(cam)) return ESP_ERR_INVALID_ARG;
+  channel_t *ch = &s_ch[cam];
+  if (baud == ch->baud) return ESP_OK;
+
+  char req_json[40];
+  snprintf(req_json, sizeof req_json, "{\"baud\":%lu}", (unsigned long)baud);
+  uint8_t resp[160];
+  /* The node answers at the OLD rate and switches only once its reply has left
+   * the wire, so this exchange is ordinary. Everything after it is not. */
+  const esp_err_t asked =
+      request(cam, NL_CMD_SET_BAUD, req_json, resp, sizeof resp - 1, NULL, DEFAULT_TIMEOUT_MS);
+  if (asked != ESP_OK) {
+    klog(ch->tag, "baud %lu refused: %s", (unsigned long)baud, esp_err_to_name(asked));
+    return asked;
+  }
+
+  /* Its reply is in; it is switching now. Follow it. */
+  uart_wait_tx_done(ch->uart, pdMS_TO_TICKS(200));
+  const esp_err_t set = uart_set_baudrate(ch->uart, baud);
+  if (set != ESP_OK) {
+    /* We never left and the node did. Wait out its revert rather than talk
+     * into a rate this end cannot produce. */
+    vTaskDelay(pdMS_TO_TICKS(NL_BAUD_PROBE_MS + 200));
+    uart_flush_input(ch->uart);
+    klog(ch->tag, "this end cannot do %lu baud; waited out the node's revert",
+         (unsigned long)baud);
+    return set;
+  }
+  uart_flush_input(ch->uart);
+  ch->baud = baud;
+
+  /*
+   * One HELLO decides it, inside the node's own deadline.
+   *
+   * Any frame that decodes at the new rate clears the node's revert, so a
+   * successful HELLO both proves the link and confirms the switch. If it does
+   * not get through, the node goes home on its own and so do we.
+   */
+  const esp_err_t hello = camlink_hello_ch_timeout(cam, NL_BAUD_PROBE_MS / 2);
+  if (hello == ESP_OK) {
+    klog(ch->tag, "link at %lu baud", (unsigned long)baud);
+    return ESP_OK;
+  }
+
+  /* Longer than the node's deadline, so we are not talking while it reverts. */
+  vTaskDelay(pdMS_TO_TICKS(NL_BAUD_PROBE_MS + 200));
+  baud_home(ch, "the node did not answer at the new rate");
+  const esp_err_t back = camlink_hello_ch_timeout(cam, DEFAULT_TIMEOUT_MS);
+  if (back != ESP_OK) {
+    klog(ch->tag, "the node is not answering at %d baud either: %s", NL_DEFAULT_BAUD,
+         esp_err_to_name(back));
+    return back;
+  }
+  return hello;
+}
 
 /* Copy the node's NACK reason out for the caller, when there was one. */
 static void take_code(int cam, esp_err_t err, char *code, size_t cap) {

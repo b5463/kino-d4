@@ -237,6 +237,30 @@ void camlink_get_info_ch(int cam, camlink_info_t *out);
 void camlink_get_stats_ch(int cam, camlink_stats_t *out);
 void camlink_reset_stats_ch(int cam);
 esp_err_t camlink_hello_ch(int cam);
+
+/**
+ * Move one channel to a new baud, or leave it exactly where it was.
+ *
+ * The measured cost of a shutter is the largest JPEG divided by the line rate
+ * (#218), so this is the only lever on it that does not cost picture quality.
+ *
+ * Both ends treat the change as provisional, because a link with two wires and
+ * no flow control has no way to report that the two ends disagree about the
+ * rate - nothing either of them sends would be understood. The node reverts to
+ * NL_DEFAULT_BAUD unless a frame decodes at the new rate within
+ * NL_BAUD_PROBE_MS; this waits longer than that before giving up, so on any
+ * failure the node is already back on the default when the body looks for it.
+ *
+ * Returns ESP_OK only when a HELLO has been answered at the new rate. On any
+ * other outcome the channel is back at NL_DEFAULT_BAUD and usable, and the
+ * error says which step failed.
+ *
+ * Not while a capture is running: take capture_lock() first.
+ */
+esp_err_t camlink_set_baud_ch(int cam, uint32_t baud);
+
+/** What the channel is running at now. 0 for an invalid cam. */
+uint32_t camlink_baud_ch(int cam);
 /** HELLO with a caller-chosen timeout. For a channel believed empty a few
  * hundred milliseconds is generous - a node that is there answers in a few -
  * and the difference is what a periodic probe would otherwise charge the

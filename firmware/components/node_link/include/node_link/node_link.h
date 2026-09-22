@@ -22,6 +22,30 @@
  */
 #define NL_DEFAULT_BAUD 921600
 
+/*
+ * The rates a node will accept.
+ *
+ * 921600 is the floor and the fallback. The rest are what the bench is for:
+ * the measured cost of a shutter is the largest JPEG divided by the line rate
+ * (#218), so this is the only lever on it that does not cost picture quality.
+ *
+ * Both ends derive the UART clock from a source that divides exactly to all
+ * four, so none of them is an approximation with a built-in error budget.
+ */
+#define NL_BAUD_SUPPORTED_N 4
+#define NL_BAUD_SUPPORTED_LIST \
+  { 921600, 1500000, 2000000, 3000000 }
+
+/*
+ * How long a provisional baud lasts without a clean frame.
+ *
+ * Long enough for the body to finish its own switch and get a HELLO across at
+ * the new rate, short enough that a person watching a bench does not think the
+ * camera has died. The body's own revert has to be longer than this, so that
+ * the node is always back on the default before the body gives up on it.
+ */
+#define NL_BAUD_PROBE_MS 2500
+
 // Largest data slice in one NL_CMD_READ response (matches the KDP firmware
 // chunk convention; well under KDP_MAX_PAYLOAD).
 /*
@@ -172,6 +196,29 @@ typedef enum {
    * settings beats no photograph.
    */
   NL_CMD_SENSOR = 0x15,
+
+  /*
+   * NL_CMD_SET_BAUD - change the link's speed, with a way back.
+   *
+   *   -> {baud}     one of NL_BAUD_SUPPORTED
+   *   <- {ok, baud, revertMs}   sent at the OLD baud, before the switch
+   *
+   * The reply goes out at the current rate and the node switches only once
+   * that reply has left the shift register. So the body always hears the
+   * acknowledgement, whatever happens next.
+   *
+   * THE REVERT IS THE POINT. This link has no flow control and no out-of-band
+   * channel: if the two ends disagree about the rate, nothing either of them
+   * sends can say so. The node therefore treats a switch as provisional. It
+   * arms a deadline of `revertMs`, and unless a frame decodes cleanly at the
+   * new rate before then, it puts the baud back to NL_DEFAULT_BAUD. The body
+   * has the same rule in reverse, so a failed negotiation costs a couple of
+   * seconds and settles back where it started.
+   *
+   * A capture in flight is not a good moment: the node refuses with BUSY
+   * while it holds a frame.
+   */
+  NL_CMD_SET_BAUD = 0x16,
 
   NL_CMD_REBOOT = 0x20,  // -> {} <- {ok}, then the node restarts
 
