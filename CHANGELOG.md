@@ -6,6 +6,7 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Changed
 
+- **Firmware 0.4.59: uploads with nowhere to go are said (#198).** A body with a Roll joined but no Roll server - no compiled API base and no `network.apiBase` from Studio - parked every upload as FAILED while ROLL said Online. STATUS now carries "Uploads have no server. Set the Roll server in Studio. Photos stay on the card." Found on the 0.4.58 release soak: 40 captures, 34 uploads parked for that one reason.
 - **Twin: a viewfinder pane that stops receiving frames stops being live.**
   The firmware shim marked a pane live for ever once its buffer pointer had
   been fetched, so SCREEN VIEW showed four black panes under a lit 4/4 when

@@ -414,18 +414,18 @@ export const FIRMWARE_PROFILES: Record<FirmwareProfileId, FirmwareProfile> = {
   },
   'd4-settings-0-4-9': {
     id: 'd4-settings-0-4-9',
-    label: 'CURRENT FIRMWARE 0.4.58 — settings reach the hardware',
+    label: 'CURRENT FIRMWARE 0.4.59 — settings reach the hardware',
     simulatedFuture: false,
     /* This profile covers every release from 0.4.9 up to the current
      * firmware/VERSION (see PROFILE_FOR_VERSION) — none of them added a KDP
      * command or a capability — so it reports the newest of them, which is
      * what a camera flashed with today's build answers. Bump alongside
      * firmware/VERSION. */
-    p4Fw: '0.4.58',
+    p4Fw: '0.4.59',
     /* The node image is built from the same firmware/VERSION, so a camera
      * node on this body reports the same version — 0.4.9 was the first
      * release where the node has work of its own to do (NL_CMD_SENSOR). */
-    camFw: '0.4.58',
+    camFw: '0.4.59',
     /* Unchanged: one node is jumpered to the bench harness. Per-camera
      * exposure reaches the one sensor that is wired. */
     camsOnline: [true, false, false, false],
@@ -656,4 +656,5 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // chrome on the thumb's side, the shoot card on the right, the menu in two
   // columns, thumb-sized targets, body.hand. Screen only, same profile.
   '0.4.58': 'd4-settings-0-4-9',
+  '0.4.59': 'd4-settings-0-4-9',
 };
