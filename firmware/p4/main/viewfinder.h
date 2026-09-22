@@ -155,6 +155,9 @@ uint32_t viewfinder_quality_writes(int cam);
  *  reboot. Safe to call every UI pass; only the edge does any work. */
 void viewfinder_run(bool on);
 
+/** Slow the finder to a few frames a second while on (the warm condition). */
+void viewfinder_throttle(bool on);
+
 /**
  * Take the cameras away from the viewfinder for a capture.
  *

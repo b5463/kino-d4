@@ -90,7 +90,8 @@ void gfx_present(void) {
 void gfx_snapshot(void) {}
 void gfx_dissolve(int ms) { (void)ms; }
 /* The renderer writes stills, so a transition is its end state. */
-void gfx_slide(int ms, bool from_right) { (void)ms; (void)from_right; }
+void gfx_slide_prepare(void) {}
+void gfx_slide_show(int o, int b, bool from_right) { (void)o; (void)b; (void)from_right; }
 /* Drawing passes begun; see gfx_pass_id(). Declared here because the stash
  * render below is the first pass-counting stub in the file. */
 static uint32_t s_pass;
@@ -552,6 +553,14 @@ void gallery_note_removed(const char *id) { (void)id; }
  * by gallery_loading() above, which is what the preview varies. */
 int gallery_scan_progress(void) { return 0; }
 void gallery_delete_all(void) {}
+
+/* #188: the consumer pass's new doors, none of which a picture needs. */
+esp_err_t storage_format(void) { return ESP_OK; }
+void factory_reset_erase(void) {}
+void viewfinder_throttle(bool on) { (void)on; }
+bool kdp_p4_temp_c(float *out) { (void)out; return false; }
+bool safe_mode_active(void) { return false; }
+int safe_mode_crashes(void) { return 0; }
 bool gallery_deleting(void) { return false; }
 void gallery_delete_progress(int *done, int *total) {
   if (done != NULL) *done = 0;
@@ -1076,15 +1085,15 @@ int main(int argc, char **argv) {
 
   fake_gallery();
 
-  /* The first photograph's calibration, mid-measurement. The arithmetic runs
-   * on the card and there is none here, so this is the modal it puts up while
-   * it does - which is the part a person sees and the part worth checking. */
-  s_screen = SCR_SHOOT;
-  draw_screen(); /* what is underneath: the modal does not clear the canvas */
-  s_calibrating = true;
+  /* A format, mid-way. The calibration used to own this banner; it runs on
+   * its own task now and puts up nothing. The format is the one operation
+   * left that holds the UI task, and this is what it shows while it does. */
+  s_screen = SCR_STORAGE;
+  draw_screen(); /* what is underneath: the banner does not clear the canvas */
+  s_formatting = true;
   draw_screen();
-  shot("calibrating");
-  s_calibrating = false;
+  shot("formatting");
+  s_formatting = false;
 
   /* ---- the menu, which is the home screen ---- */
   s_pressed = -1;
@@ -1443,6 +1452,19 @@ int main(int argc, char **argv) {
   scan_conditions();
   draw_screen();
   shot("power_restart_confirm");
+  s_dialog = DLG_NONE;
+  /* The two erasures behind a confirm: the camera's own factory reset and
+   * the card format, both with focus on CANCEL. */
+  s_dialog = DLG_FACTORY;
+  s_dlg_focus = 0;
+  draw_screen();
+  shot("power_factory_confirm");
+  s_dialog = DLG_NONE;
+  s_screen = SCR_STORAGE;
+  s_dialog = DLG_FORMAT;
+  s_dlg_focus = 0;
+  draw_screen();
+  shot("settings_storage_format_confirm");
   s_dialog = DLG_NONE;
 
   /* ---- a single photograph, and the delete confirmation over it ---- */

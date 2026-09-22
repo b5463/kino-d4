@@ -661,7 +661,7 @@ timing metrics at the end of this document, and a host must not present it as sk
 | `ENTER_MAINTENANCE` | `0x50` | → `{}` ← **mock** `{ "ok": true }` — capture disabled while in maintenance |
 | `EXIT_MAINTENANCE` | `0x51` | → `{}` ← **mock** `{ "ok": true }` |
 | `REBOOT` | `0x52` | → `{}` ← **mock** `{ "ok": true }`, **then** reboot. Answer first, reboot after |
-| `FACTORY_RESET` | `0x53` | → `{}` ← **mock** `{ "ok": true }`, then clear config/recipes/sounds/calibration and reboot. Timeout 6 s |
+| `FACTORY_RESET` | `0x53` | → `{}` ← `{ "ok": true }`, then the body erases its settings (as `RESET_CONFIG`, keeping the device identity), its saved networks and its Roll membership with the device credential, clears the crash counter and reboots. Photographs on the card are not touched. Same door as the POWER screen's FACTORY RESET. Timeout 6 s |
 
 Both reboots produce a new `sessionId` — see [Session change](#session-change).
 

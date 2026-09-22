@@ -15,7 +15,7 @@ set(kino_srcs
   "roll_queue.c" "upload_queue.c" "upload_store.c" "roll_state.c" "kdp_net.c" "qr.c"
   "roll_api.c" "roll_client.c" "bench_c6.c" "radio_recovery.c" "cam_sched.c"
   "kdp_recipes.c" "kdp_sounds.c" "recipe_rules.c" "wav_probe.c" "isr_watch.c"
-  "fw_update.c")
+  "fw_update.c" "safe_mode.c" "factory_reset.c")
 
 set(kino_reqs kdp_core node_link json nvs_flash fatfs sdmmc esp_driver_sdmmc
               esp_driver_uart esp_driver_usb_serial_jtag esp_driver_tsens esp_timer

@@ -12,6 +12,14 @@
 
 esp_err_t storage_init(void);
 bool storage_present(void);
+/**
+ * Format the card in the slot and mount it empty, with the KINO directories
+ * made. A mounted card is reformatted in place; a card that would not mount
+ * is formatted as its mount. THE CALLER MUST HOLD THE CARD
+ * (storage_acquire(STORAGE_USER_UI, ...)) for the whole call, and refresh the
+ * gallery afterwards. Seconds, on the calling task.
+ */
+esp_err_t storage_format(void);
 
 typedef struct {
   bool present;

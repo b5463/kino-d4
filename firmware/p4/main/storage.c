@@ -28,6 +28,7 @@ static const char *TAG = "storage";
 #define MOUNT "/sdcard"
 
 static sdmmc_card_t *s_card;
+static sd_pwr_ctrl_handle_t s_pwr_ctrl;
 static bool s_power_ok;
 static uint32_t s_mount_attempts;
 static uint32_t s_sd_errors;
@@ -219,18 +220,10 @@ void storage_card_busy_message(char *out, size_t len) {
   }
 }
 
-esp_err_t storage_init(void) {
-  /* Before the mount, so nothing can reach the card without a lock to take.
-   * Idempotent: storage_init() is called once, but a retry must not leak a
-   * second mutex and split the exclusion in half. */
-  if (s_card_lock == NULL) {
-    s_card_lock = xSemaphoreCreateMutex();
-    if (s_card_lock == NULL) {
-      ESP_LOGE(TAG, "no memory for the card lock");
-      return ESP_ERR_NO_MEM;
-    }
-  }
-
+/* Mount the card. With format_if_mount_failed a card the filesystem will not
+ * read is formatted and mounted - storage_format()'s path for an unreadable
+ * card; the boot mount never formats anything on its own. */
+static esp_err_t card_mount(bool format_if_mount_failed) {
   sdmmc_host_t host = SDMMC_HOST_DEFAULT();
   host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
   /*
@@ -252,17 +245,20 @@ esp_err_t storage_init(void) {
    */
   host.slot = BOARD_SD_SLOT;
 
-  sd_pwr_ctrl_ldo_config_t ldo_config = {.ldo_chan_id = BOARD_SD_LDO_CHANNEL};
-  sd_pwr_ctrl_handle_t pwr_ctrl = NULL;
-  esp_err_t err = sd_pwr_ctrl_new_on_chip_ldo(&ldo_config, &pwr_ctrl);
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "SD_POWER_ENABLE failed: %s", esp_err_to_name(err));
-    set_error("POWER_ENABLE_FAILED");
-    s_power_ok = false;
-    return err;
+  esp_err_t err = ESP_OK;
+  if (s_pwr_ctrl == NULL) {
+    sd_pwr_ctrl_ldo_config_t ldo_config = {.ldo_chan_id = BOARD_SD_LDO_CHANNEL};
+    err = sd_pwr_ctrl_new_on_chip_ldo(&ldo_config, &s_pwr_ctrl);
+    if (err != ESP_OK) {
+      ESP_LOGE(TAG, "SD_POWER_ENABLE failed: %s", esp_err_to_name(err));
+      set_error("POWER_ENABLE_FAILED");
+      s_power_ok = false;
+      s_pwr_ctrl = NULL;
+      return err;
+    }
   }
   s_power_ok = true;
-  host.pwr_ctrl_handle = pwr_ctrl;
+  host.pwr_ctrl_handle = s_pwr_ctrl;
   ESP_LOGI(TAG, "SD_POWER_ENABLE ok (LDO ch%d)", BOARD_SD_LDO_CHANNEL);
 
   sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
@@ -275,12 +271,12 @@ esp_err_t storage_init(void) {
   slot.d3 = BOARD_SD_D3;
 
   esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-      .format_if_mount_failed = false,
+      .format_if_mount_failed = format_if_mount_failed,
       .max_files = STORAGE_MAX_OPEN_FILES,
       .allocation_unit_size = 16 * 1024,
   };
 
-  s_mount_attempts++;
+  if (!format_if_mount_failed) s_mount_attempts++;
   err = esp_vfs_fat_sdmmc_mount(MOUNT, &host, &slot, &mount_config, &s_card);
   if (err != ESP_OK) {
     // Missing/unreadable card is a reported state, not a boot failure. The
@@ -319,6 +315,40 @@ esp_err_t storage_init(void) {
    */
   hwv_mark_validated(HWV_SD_SLOT0, detail);
   return ESP_OK;
+}
+
+esp_err_t storage_init(void) {
+  if (s_card_lock == NULL) {
+    s_card_lock = xSemaphoreCreateMutex();
+    if (s_card_lock == NULL) {
+      ESP_LOGE(TAG, "no memory for the card lock");
+      return ESP_ERR_NO_MEM;
+    }
+  }
+  return card_mount(false);
+}
+
+esp_err_t storage_format(void) {
+  esp_err_t err;
+  if (s_card != NULL) {
+    err = esp_vfs_fat_sdcard_format(MOUNT, s_card);
+  } else {
+    /* Nothing mounted: the card is in but the filesystem would not read.
+     * Formatting it is the mount that was refused at boot. */
+    s_mount_attempts++;
+    err = card_mount(true);
+  }
+  if (err == ESP_OK) {
+    mkdir(MOUNT "/KINO", 0775);
+    mkdir(MOUNT "/KINO/CAPTURES", 0775);
+    set_error("");
+    storage_media_count_invalidate();
+    klog("SD", "card formatted");
+  } else {
+    klog("SD", "format failed: %s", esp_err_to_name(err));
+    set_error("FORMAT_FAILED");
+  }
+  return err;
 }
 
 bool storage_present(void) { return s_card != NULL; }

@@ -162,6 +162,13 @@ uint32_t viewfinder_quality_writes(int cam) {
  * hold, and viewfinder_run can be called as often as the UI likes without
  * being able to break one.
  */
+/* While set, each camera rests VF_THROTTLE_MS after a frame: about 5 fps for
+ * the four together instead of the link's ceiling. The conditions set it from
+ * the die temperature. */
+#define VF_THROTTLE_MS 200
+static atomic_bool s_throttle;
+void viewfinder_throttle(bool on) { atomic_store(&s_throttle, on); }
+
 void viewfinder_run(bool on) {
   /* The rising edge only. This is called every UI pass, and re-reading the
    * config on all of them would put a mutex take and a dotted-path walk in
@@ -562,8 +569,9 @@ static void camera_task(void *arg) {
       miss = 0;
       /* One tick between frames. Not a rate cap - the finder is free to run as
        * fast as the link allows - just a guaranteed yield, so a fast camera can
-       * never monopolise the core against the UI task that feeds the panel. */
-      vTaskDelay(1);
+       * never monopolise the core against the UI task that feeds the panel.
+       * Throttled (the warm condition), it is a rest instead. */
+      vTaskDelay(atomic_load(&s_throttle) ? pdMS_TO_TICKS(VF_THROTTLE_MS) : 1);
     }
   }
 }

@@ -6,6 +6,7 @@
 #include "display.h"
 #include "driver/ppa.h"
 #include "esp_attr.h"
+#include "esp_cache.h"
 #include "esp_heap_caps.h"
 #include "esp_lcd_mipi_dsi.h"
 #include "esp_lcd_panel_ops.h"
@@ -125,7 +126,6 @@ static uint16_t *s_to;       /* portrait, the dissolve's ending frame */
  * for it. Two more canvases of PSRAM against getting the direction wrong on
  * hardware that does not exist yet.
  */
-static uint16_t *s_prev;     /* landscape, the frame being pushed out */
 static uint16_t *s_mix;      /* landscape, the two of them side by side */
 /*
  * A second retained layer, for the parts of a transition that only move.
@@ -217,7 +217,6 @@ esp_err_t gfx_init(void) {
     return err;
   }
 
-  s_prev = heap_caps_aligned_calloc(64, 1, CANVAS_BYTES, MALLOC_CAP_SPIRAM);
   s_mix = heap_caps_aligned_calloc(64, 1, CANVAS_BYTES, MALLOC_CAP_SPIRAM);
   s_layer = heap_caps_aligned_calloc(64, 1, CANVAS_BYTES, MALLOC_CAP_SPIRAM);
   s_canvas = heap_caps_aligned_calloc(64, 1, CANVAS_BYTES, MALLOC_CAP_SPIRAM);
@@ -553,11 +552,6 @@ uint64_t gfx_present_us_total(void) { return s_present_us; }
 void gfx_snapshot(void) {
   if (!s_ready) return;
   rotate_to(s_from);
-  /* And a landscape copy, for the push. Taken here rather than at the top of
-   * gfx_slide() because by then the caller has already drawn the new frame
-   * over the old one - the snapshot has to happen before draw_screen(), which
-   * is exactly where the dissolve already takes its own. */
-  if (s_prev != NULL) memcpy(s_prev, s_canvas, CANVAS_BYTES);
 }
 
 /* Accelerating away: nothing that leaves a screen should leave at full speed
@@ -620,45 +614,6 @@ static inline void fill_landscape(uint16_t *buf, int y, int h, uint16_t colour) 
  * rotate the dissolve avoids; a push is six or seven frames and the panel is
  * reading 46 MB/s out of the same PSRAM, so the budget is real but it fits.
  */
-void gfx_slide(int duration_ms, bool from_right) {
-  if (!s_ready || s_prev == NULL || s_mix == NULL || duration_ms <= 0) {
-    gfx_present();
-    return;
-  }
-  const int64_t start = esp_timer_get_time();
-  const int64_t span = (int64_t)duration_ms * 1000;
-
-  for (;;) {
-    const float t = (float)(esp_timer_get_time() - start) / (float)span;
-    if (t >= 1.0f) break;
-    int o = (int)(ease_settle(t) * (float)UI_W);
-    if (o < 0) o = 0;
-    if (o > UI_W) o = UI_W;
-
-    /* The frame being left behind travels a third as far as the one arriving.
-     * Two sheets locked together read as one sheet; a parallax says the
-     * arriving screen is in front and the one behind it is being left, which
-     * is the sentence the move is trying to make. */
-    int b = (o * 3) / 8;
-
-    for (int y = 0; y < UI_H; y++) {
-      uint16_t *dst = s_mix + (size_t)y * UI_W;
-      const uint16_t *old = s_prev + (size_t)y * UI_W;
-      const uint16_t *fresh = s_canvas + (size_t)y * UI_W;
-      if (from_right) {
-        memcpy(dst, old + b, (size_t)(UI_W - o) * sizeof(uint16_t));
-        memcpy(dst + (UI_W - o), fresh, (size_t)o * sizeof(uint16_t));
-      } else {
-        memcpy(dst, fresh + (UI_W - o), (size_t)o * sizeof(uint16_t));
-        memcpy(dst + o, old + (UI_W - o) - b, (size_t)(UI_W - o) * sizeof(uint16_t));
-      }
-    }
-    if (!mix_show()) break;
-  }
-  gfx_present();
-  s_last_ms = (uint32_t)((esp_timer_get_time() - start) / 1000);
-}
-
 /**
  * Keep the frame that has just been drawn, and hand pieces of it back.
  *
@@ -674,6 +629,53 @@ void gfx_slide(int duration_ms, bool from_right) {
  * destination that has arrived. The renderer keeps the one thing it is good
  * at - holding a whole frame - and the drawing stays where the drawing is.
  */
+/*
+ * A slide is two pictures and nothing else changes inside it, so it is
+ * composed where the panel reads: in its own orientation. The leaving screen
+ * is already there (gfx_snapshot() rotates the canvas into s_from); this
+ * rotates the stash, the arriving screen, into s_to. rotate_block() maps a
+ * landscape column to a panel row, so a landscape offset is a row offset and
+ * one frame is two contiguous copies into the back buffer - about a
+ * millisecond, against the 13 ms of blitting the same pixels through the
+ * tiles and the 28 fps of the compositor loop this replaced.
+ */
+void gfx_slide_prepare(void) {
+  if (!s_ready || s_mix == NULL || s_to == NULL) return;
+  rotate(s_mix, s_to);
+}
+
+void gfx_slide_show(int o, int b, bool from_right) {
+  if (!s_ready || s_from == NULL || s_to == NULL) return;
+  const int64_t t0 = esp_timer_get_time();
+  if (o < 0) o = 0;
+  if (o > UI_W) o = UI_W;
+  if (b < 0) b = 0;
+  if (b > o) b = o;
+  const size_t row = DISPLAY_H_RES; /* one landscape column, in pixels */
+  uint16_t *fb = s_fb[s_back];
+  wait_back_free();
+  if (from_right) {
+    /* Columns [0, UI_W-o) show the leaving screen from column b on; the rest
+     * is the arriving screen's first o columns. */
+    memcpy(fb, s_from + (size_t)b * row, (size_t)(UI_W - o) * row * sizeof(uint16_t));
+    memcpy(fb + (size_t)(UI_W - o) * row, s_to, (size_t)o * row * sizeof(uint16_t));
+  } else {
+    /* The arriving screen's last o columns first; the leaving one follows,
+     * moved b columns the other way. */
+    memcpy(fb, s_to + (size_t)(UI_W - o) * row, (size_t)o * row * sizeof(uint16_t));
+    memcpy(fb + (size_t)o * row, s_from + (size_t)(o - b) * row,
+           (size_t)(UI_W - o) * row * sizeof(uint16_t));
+  }
+  /* The CPU wrote it; the panel reads it by DMA. */
+  esp_cache_msync(fb, PANEL_BYTES, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+  show(fb);
+  s_back ^= 1;
+  s_frames++;
+  const int64_t dt = esp_timer_get_time() - t0;
+  s_last_ms = (uint32_t)(dt / 1000);
+  s_present_us += (uint64_t)dt;
+}
+
 void gfx_stash(void) {
   if (!s_ready || s_mix == NULL) return;
   memcpy(s_mix, s_canvas, CANVAS_BYTES);

@@ -30,6 +30,8 @@
 #include "cam_link.h"
 #include "clock.h"
 #include "config_store.h"
+#include "kdp_server.h"
+#include "safe_mode.h"
 #include "storage.h"
 
 typedef enum {
@@ -39,6 +41,8 @@ typedef enum {
   COND_NODE_SKEW,        /* the four nodes are not on one firmware */
   COND_CLOCK_UNSET,      /* every capture is dated 1970 plus uptime */
   COND_UNCALIBRATED,     /* the four have never been measured against each other */
+  COND_SAFE_MODE,        /* three crashes in a row; radio and uploads left out */
+  COND_WARM,             /* the P4 die is over the warm line; the finder is slowed */
   COND_COUNT,
 } cond_id_t;
 
@@ -68,6 +72,17 @@ static inline const cond_t *conditions_at(int i) {
 static inline cond_sev_t conditions_worst(void) {
   return s_cond_n > 0 ? s_cond[0].sev : COND_NOTE;
 }
+static inline bool conditions_has(cond_id_t id) {
+  for (int i = 0; i < s_cond_n; i++)
+    if (s_cond[i].id == id) return true;
+  return false;
+}
+
+/* The die temperature that slows the finder, and the one it resumes at.
+ * The P4's sensor is rated to 80 C; the case is warm to the hand well
+ * before the die reads 75. */
+#define COND_WARM_C 75.0f
+#define COND_COOL_C 68.0f
 
 /**
  * Take a reading. `cams` is camlink's four, already fetched by the caller so
@@ -100,7 +115,7 @@ static void conditions_scan(const camlink_info_t *cams) {
       c->id = COND_CARD_LOW;
       c->sev = COND_WARN;
       c->title = "Card nearly full";
-      snprintf(c->detail, sizeof c->detail, "Room for about %d more.", shots);
+      snprintf(c->detail, sizeof c->detail, "Room for about %d more photos.", shots);
     }
   }
 
@@ -119,7 +134,8 @@ static void conditions_scan(const camlink_info_t *cams) {
       c->id = COND_CAMERA_DOWN;
       c->sev = COND_FAULT;
       c->title = ndown == 1 ? "A camera is not answering" : "Cameras are not answering";
-      snprintf(c->detail, sizeof c->detail, "%s. Photographs will have %d of 4.", down, 4 - ndown);
+      snprintf(c->detail, sizeof c->detail, "%s. Photos get %d of 4 pictures. Try a restart.", down,
+               4 - ndown);
     }
 
     /* Node firmware skew. Compared only across the nodes that answered: a node
@@ -136,7 +152,7 @@ static void conditions_scan(const camlink_info_t *cams) {
       cond_t *c = &found[n++];
       c->id = COND_NODE_SKEW;
       c->sev = COND_WARN;
-      c->title = "Camera firmware differs";
+      c->title = "The cameras need an update";
       int used = 0;
       c->detail[0] = '\0';
       for (int i = 0; i < 4 && used < (int)sizeof c->detail - 12; i++) {
@@ -154,7 +170,7 @@ static void conditions_scan(const camlink_info_t *cams) {
     c->title = "The date is not set";
     /* Said as what it costs, not as what is missing. "No RTC fitted" is a
      * fact about the board; this is a fact about the photographs. */
-    snprintf(c->detail, sizeof c->detail, "Photographs are dated from power on.");
+    snprintf(c->detail, sizeof c->detail, "Connect to Studio once to set it.");
   }
 
   if (!config_bool("body.calibration.done", false)) {
@@ -163,6 +179,34 @@ static void conditions_scan(const camlink_info_t *cams) {
     c->sev = COND_NOTE;
     c->title = "Cameras not measured";
     snprintf(c->detail, sizeof c->detail, "The first photograph measures them.");
+  }
+
+  if (safe_mode_active()) {
+    cond_t *c = &found[n++];
+    c->id = COND_SAFE_MODE;
+    c->sev = COND_FAULT;
+    c->title = "Running without Wi-Fi";
+    snprintf(c->detail, sizeof c->detail, "It crashed %d times in a row. Restart to try again.",
+             safe_mode_crashes());
+  }
+
+  {
+    /* Hysteresis, so the row does not flicker on the line. */
+    static bool warm;
+    static int last_c;
+    float t;
+    if (kdp_p4_temp_c(&t)) {
+      last_c = (int)(t + 0.5f);
+      if (t >= COND_WARM_C) warm = true;
+      else if (t <= COND_COOL_C) warm = false;
+    }
+    if (warm) {
+      cond_t *c = &found[n++];
+      c->id = COND_WARM;
+      c->sev = COND_WARN;
+      c->title = "The camera is warm";
+      snprintf(c->detail, sizeof c->detail, "%d C inside. The finder slows until it cools.", last_c);
+    }
   }
 
   /* Worst first, stable inside a severity. */

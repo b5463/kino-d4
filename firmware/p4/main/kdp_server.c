@@ -27,6 +27,7 @@
 #include "upload_queue.h"
 #include "gallery_index.h"
 #include "driver/temperature_sensor.h"
+#include "factory_reset.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_random.h"
@@ -1254,6 +1255,13 @@ static void handle_reset_config(uint32_t seq) {
     return;
   }
   send_json(KDP_CMD_RESET_CONFIG, seq, config_envelope());
+}
+
+bool kdp_p4_temp_c(float *out) {
+  float c = 0.0f;
+  if (s_tsens == NULL || temperature_sensor_get_celsius(s_tsens, &c) != ESP_OK) return false;
+  if (out != NULL) *out = c;
+  return true;
 }
 
 /**
@@ -3192,6 +3200,17 @@ static void handle_reboot(uint32_t seq) {
   esp_restart();
 }
 
+/* The POWER screen's factory reset, for a host: the same erase
+ * (factory_reset.h), then the reboot. Photographs stay on the card. */
+static void handle_factory_reset(uint32_t seq) {
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "ok", true);
+  send_json(KDP_CMD_FACTORY_RESET, seq, json);
+  factory_reset_erase();
+  vTaskDelay(pdMS_TO_TICKS(200));
+  esp_restart();
+}
+
 /* Bench only: reset the C6 and nothing else. The decision is bench_c6.c,
  * host-tested; the pulse is net_hosted.c's own. Built in only with
  * -DKINO_C6_RESET_BENCH=1 on a radio build; otherwise the actuator is NULL
@@ -3595,6 +3614,7 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case KDP_CMD_CLEAR_LOGS: handle_clear_logs(frame->seq); break;
     case KDP_CMD_SELF_TEST: handle_self_test(frame->seq); break;
     case KDP_CMD_REBOOT: handle_reboot(frame->seq); break;
+    case KDP_CMD_FACTORY_RESET: handle_factory_reset(frame->seq); break;
     case KDP_CMD_C6_RESET_BENCH: handle_c6_reset_bench(frame->seq); break;
     case KDP_CMD_SYNC_BENCH: handle_sync_bench(frame->seq, req); break;
     case KDP_CMD_FW_QUERY: handle_fw_query(frame->seq); break;

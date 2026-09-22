@@ -247,38 +247,6 @@ void gfx_dissolve(int duration_ms) {
  * Twin runs on a virtual clock, so "elapsed" is whatever this function says
  * it is, and a fixed step is the honest version of that.
  */
-void gfx_slide(int duration_ms, bool from_right) {
-  if (duration_ms <= 0) {
-    gfx_present();
-    return;
-  }
-  const int steps = tw_steps(duration_ms);
-  for (int k = 1; k < steps; k++) {
-    const float t = (float)k / (float)steps;
-    const float u = 1.0f - t;
-    const float e = 1.0f - u * u * u; /* out-cubic, as on the device */
-    int o = (int)(e * (float)UI_W);
-    if (o < 0) o = 0;
-    if (o > UI_W) o = UI_W;
-    for (int y = 0; y < UI_H; y++) {
-      uint16_t *dst = g_blend + (size_t)y * UI_W;
-      const uint16_t *old = g_snapshot + (size_t)y * UI_W;
-      const uint16_t *new_ = g_canvas + (size_t)y * UI_W;
-      if (from_right) {
-        memcpy(dst, old + o, (size_t)(UI_W - o) * sizeof(uint16_t));
-        memcpy(dst + (UI_W - o), new_, (size_t)o * sizeof(uint16_t));
-      } else {
-        memcpy(dst, new_ + (UI_W - o), (size_t)o * sizeof(uint16_t));
-        memcpy(dst + o, old, (size_t)(UI_W - o) * sizeof(uint16_t));
-      }
-    }
-    push_frame(g_blend);
-    s_frames_presented++;
-    kui_now_us += (int64_t)duration_ms * 1000 / steps;
-  }
-  gfx_present();
-}
-
 static inline float tw_settle(float t) {
   return t * t * t * (t * (t * 6.0f - 15.0f) + 10.0f);
 }
@@ -296,6 +264,32 @@ static inline void tw_fill_rows(uint16_t *buf, int y, int h, uint16_t c) {
  * render below is the first pass-counting stub in the file. */
 static uint32_t s_pass;
 void gfx_stash(void) { memcpy(g_blend, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t)); }
+/* The slide, as the device composes it: the snapshot leaving, the stash
+ * arriving, one frame per call. Composed into the canvas, which the move's
+ * last frame redraws anyway. */
+void gfx_slide_prepare(void) {}
+void gfx_slide_show(int o, int b, bool from_right) {
+  if (o < 0) o = 0;
+  if (o > UI_W) o = UI_W;
+  if (b < 0) b = 0;
+  if (b > o) b = o;
+  for (int y = 0; y < UI_H; y++) {
+    uint16_t *dst = g_canvas + (size_t)y * UI_W;
+    const uint16_t *old = g_snapshot + (size_t)y * UI_W;
+    const uint16_t *new_ = g_blend + (size_t)y * UI_W;
+    if (from_right) {
+      memcpy(dst, old + b, (size_t)(UI_W - o) * sizeof(uint16_t));
+      memcpy(dst + (UI_W - o), new_, (size_t)o * sizeof(uint16_t));
+    } else {
+      memcpy(dst, new_ + (UI_W - o), (size_t)o * sizeof(uint16_t));
+      memcpy(dst + o, old + (o - b), (size_t)(UI_W - o) * sizeof(uint16_t));
+    }
+  }
+  push_frame(g_canvas);
+  s_frames_presented++;
+  s_last_present_ms = (uint32_t)KUI_PRESENT_US / 1000;
+  kui_now_us += KUI_PRESENT_US;
+}
 void gfx_render_stash(gfx_draw_fn draw, void *ctx) {
   s_pass++;
   /* Through a view: gfx_target() snaps g_target back to the canvas whenever
@@ -799,6 +793,14 @@ void gallery_note_added(const char *id, uint64_t when) {
 void gallery_note_removed(const char *id) { js_capture_delete(id); }
 int gallery_scan_progress(void) { return 0; }
 void gallery_delete_all(void) { js_delete_all(); }
+
+/* #188: the consumer pass's new doors, none of which a picture needs. */
+esp_err_t storage_format(void) { return ESP_OK; }
+void factory_reset_erase(void) {}
+void viewfinder_throttle(bool on) { (void)on; }
+bool kdp_p4_temp_c(float *out) { (void)out; return false; }
+bool safe_mode_active(void) { return false; }
+int safe_mode_crashes(void) { return 0; }
 bool gallery_deleting(void) { return g_deleting; }
 void gallery_delete_progress(int *done, int *total) {
   if (done) *done = g_delete_done;

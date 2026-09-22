@@ -34,6 +34,7 @@
 #include "nvs_flash.h"
 #include "power.h"
 #include "roll_state.h"
+#include "safe_mode.h"
 #include "storage.h"
 #include "taskmon.h"
 #include "upload_queue.h"
@@ -260,6 +261,7 @@ void app_main(void) {
   klog_init();
   klog("P4", "boot %s serial %s session %s", KINO_FW_VERSION, id.serial, id.session_id);
   log_last_panic();
+  safe_mode_boot();
   ESP_LOGI(TAG, "P4_BOOT %s serial %s session %s transport usb-serial-jtag",
            KINO_FW_VERSION, id.serial, id.session_id);
   hwv_init();
@@ -488,7 +490,9 @@ void app_main(void) {
    * is the whole point of the ordering above: bring-up drives GPIO54 and opens
    * an SDIO host, and a camera whose radio wedges must still take a
    * photograph. */
-  esp_err_t nh_err = net_hosted_start();
+  /* Three crashes in a row and the radio and the uploads stay out of this
+   * boot (safe_mode.h): the camera still shoots, STATUS says what is off. */
+  esp_err_t nh_err = safe_mode_active() ? ESP_ERR_NOT_SUPPORTED : net_hosted_start();
   if (nh_err != ESP_OK && nh_err != ESP_ERR_NOT_SUPPORTED) {
     ESP_LOGW(TAG, "radio host would not start: %s - NETWORK_STATUS says why",
              esp_err_to_name(nh_err));
@@ -499,7 +503,7 @@ void app_main(void) {
    * while the last power cut happened, or taken with no network months ago,
    * is found here and queued. It must come after storage_init() and after
    * roll_state_init(), because it needs the card and the Roll it belongs to. */
-  esp_err_t uq_err = upload_queue_start();
+  esp_err_t uq_err = safe_mode_active() ? ESP_OK : upload_queue_start();
   if (uq_err != ESP_OK) {
     ESP_LOGW(TAG, "upload queue unavailable: %s - captures stay on the card",
              esp_err_to_name(uq_err));
