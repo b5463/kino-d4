@@ -31,7 +31,30 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
-  retries: 0,
+  /*
+   * One retry on CI, and the evidence for it is unusually clean.
+   *
+   * This walk failed on four consecutive pushes to main and passed on four
+   * consecutive pull-request runs - of a BYTE-IDENTICAL TREE. `main` and the
+   * PR head that passed before it were the same object, 20fb7ff, because a
+   * merge-commit PR run tests exactly what main becomes. The failing step was
+   * a different one each time, and re-running main's failed job with no change
+   * at all passed.
+   *
+   * So the variable is the runner, not the repository: no GPU, the Twin's 3D
+   * scene through SwiftShader, two browser tabs and a preview server sharing
+   * the cores. A long multi-app browser journey on that hardware occasionally
+   * loses a step, and the honest response is to let it have a second go rather
+   * than to keep widening timeouts - which is what the previous two attempts
+   * did, one of them introducing a worse bug than it fixed.
+   *
+   * ONE retry, and only on CI. A test that fails twice still fails the build,
+   * so a real regression cannot hide behind this; and locally a flake stays
+   * visible, where somebody can look at it. Playwright reports the retry in
+   * its summary, so a step that starts needing the second attempt every time
+   * is something a reader can see rather than something this line conceals.
+   */
+  retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : [['list']],
   use: {
     baseURL: `http://localhost:${PORT}`,
