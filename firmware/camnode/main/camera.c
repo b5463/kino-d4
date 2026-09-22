@@ -5,6 +5,8 @@
 #include "board_xiao_s3.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "camera";
 
@@ -505,6 +507,16 @@ esp_err_t camsensor_set_resolution(const char *resolution) {
    * actual mode change, which the change-only guard above already makes rare.
    */
   for (int i = 0; i < CAMERA_FB_QUEUE_DEPTH; i++) {
+    /*
+     * Ask the driver first, the way camsensor_discard_queued() does and for
+     * the same reason. A bare fb_get() on an empty queue blocks for the
+     * driver's 4000 ms, and this runs before a capture's budget has even
+     * started - so a mode change with nothing queued could spend the P4's
+     * whole timeout before the photograph was attempted (#205). The comment
+     * above says this costs a frame period per fetch, and that is only true
+     * when a frame is actually coming.
+     */
+    if (!esp_camera_available_frames()) break;
     camera_fb_t *stale = esp_camera_fb_get();
     if (stale == NULL) break;
     esp_camera_fb_return(stale);
@@ -520,7 +532,38 @@ bool camsensor_is_preview_resolution(const char *resolution) {
 }
 
 camera_fb_t *camsensor_capture(uint32_t *duration_ms, camsensor_timing_t *timing) {
+  /* The driver's own ceiling, for the callers that have no deadline of their
+   * own. A capture always has one - see camsensor_capture_by(). */
+  return camsensor_capture_by(esp_timer_get_time() + 4000 * 1000, duration_ms, timing);
+}
+
+camera_fb_t *camsensor_capture_by(int64_t deadline_us, uint32_t *duration_ms,
+                                  camsensor_timing_t *timing) {
   const int64_t start = esp_timer_get_time();
+  /*
+   * Wait for a frame to be queued rather than inside the fetch.
+   *
+   * esp_camera_available_frames() is the same question camsensor_discard_queued
+   * asks. Once it is true the fetch returns at once, so the only waiting
+   * happens here, where the deadline can be seen. 5 ms steps: the sensor's
+   * frame period is about 112 ms, so this costs at most a couple of percent of
+   * one and never misses a frame by more than that.
+   */
+  while (!esp_camera_available_frames()) {
+    if (esp_timer_get_time() >= deadline_us) {
+      const int64_t gave_up = esp_timer_get_time();
+      if (duration_ms != NULL) *duration_ms = (uint32_t)((gave_up - start) / 1000);
+      if (timing != NULL) {
+        timing->duration_ms = (uint32_t)((gave_up - start) / 1000);
+        timing->fb_get_start_us = start;
+        timing->fb_get_end_us = gave_up;
+        timing->fb_get_us = gave_up - start;
+        timing->frame_start_us = 0;
+      }
+      return NULL;
+    }
+    vTaskDelay(pdMS_TO_TICKS(5));
+  }
   camera_fb_t *fb = esp_camera_fb_get();
   const int64_t end = esp_timer_get_time();
   if (duration_ms != NULL) *duration_ms = (uint32_t)((end - start) / 1000);
