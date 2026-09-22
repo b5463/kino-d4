@@ -235,4 +235,4 @@ ABOUT carries a QR under SCAN FOR HELP that opens a new issue with the serial an
 
 ## Field log
 
-Every 30 s the log ring is appended to `/KINO/LOGS/BOOT-nnnnn.TXT` on the card; the twenty newest boots are kept. A person can copy the file from a card reader and send it.
+Every 30 s the log ring is appended to `/KINO/LOGS/BOOT-nnnnn.TXT` on the card; the twenty newest boots are kept. A person can copy the file from a card reader and send it. The ring holds 600 entries and carries evidence only: per-frame and per-poll numbers are telemetry and are dropped unless `body.log.telemetry` is set, which is a bench setting Studio can turn on. Clearing the logs from Studio hides what came before and does not stop the file.

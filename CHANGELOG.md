@@ -6,6 +6,47 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Changed
 
+- **Firmware 0.4.59: the log ring keeps evidence instead of telemetry (#202, #207).**
+  Measured on a bench body: 158 entries over 148 s, of which 121 were per-camera
+  preview timings and 37 were cover brightness means. Not one line was anything
+  else. At 1.07 lines a second the 200-entry ring held 3.1 minutes, so any fault
+  older than that was gone before anyone could ask about it, and
+  `/KINO/LOGS/BOOT-nnnnn.TXT` - the file an owner is asked to send - was the
+  same content at length. klog now has two channels: `klog()` for what a person
+  needs when a camera misbehaved, and `klog_tel()` for a number that is worth
+  having on a bench and is noise in a fault report. Telemetry is off unless
+  `body.log.telemetry` is set, which Studio can do without a reflash. The
+  viewfinder's timing report, the cover watcher's calibration line, the gallery's
+  once-per-photograph index line and the per-press touch line all moved to it.
+  Two recovery lines stopped repeating: "viewfinder live" was cleared by any
+  failed pump, so a camera dropping one frame in six logged it on every
+  recovery, and the link's recovery line fired for a run of one timeout while
+  its failure side was throttled to 30 s. The ring is 600 entries now, 72 KB of
+  PSRAM. And CLEAR_LOGS no longer stops the field log: it used to reset the
+  count while the card writer kept its own cursor, so one press in Studio left
+  that cursor permanently past the end and the file never gained another line.
+- **Firmware 0.4.59: a warning fails the build, and three NUL bytes are gone (#201).**
+  `firmware/p4/host_preview/preview.c`, `firmware/p4/twin_ui/twin_ui.c` and
+  `firmware/p4/main/gallery.c` each held a raw zero byte inside a character
+  constant that was meant to be an escaped zero. It compiled as zero, so
+  nothing misbehaved; what broke was searching, because grep and ripgrep
+  classify a file with a NUL in it as binary and skip it without saying so.
+  Two audits of this tree were given wrong answers by it, one of them a false
+  report that the host preview was broken. Our own components now compile with
+  `-Werror`, scoped so that `managed_components` is still not ours to fix - and
+  the gate found the third NUL byte on its first run, in a file the host
+  preview does not compile. The other three warnings the build had been
+  printing for days are gone with it: two dead functions, and the deprecated
+  `esp_lcd_touch_get_coordinates`, now `esp_lcd_touch_get_data`.
+  Removed with them: five uncalled functions and three orphaned doc comments in
+  `gfx.c`, thirteen dead symbols in `ui.c`, five leftovers in the Twin shim, and
+  the comments that described a guest mode, an icon builder, a six-tile menu and
+  a `tile_rect()` that have not existed since the shell rewrite. Fourteen
+  triple-encoded dashes in `ui.c` comments are readable again. The LOOK picker
+  and the SOUND volume band now derive their rectangles from one helper each
+  instead of computing them once in the draw and again in the hit test, which
+  is the convention every other screen already kept; all 206 rendered screens
+  are byte-identical before and after.
 - **The device copy table is checked, not promised (#204).** `docs/DEVICE_COPY.md`
   opens by saying it holds every line the body says on its own screen, and said
   it was checked against the source when a line changed. Nothing enforced that,

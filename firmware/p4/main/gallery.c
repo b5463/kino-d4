@@ -1414,7 +1414,11 @@ static void gallery_task(void *arg) {
         lock();
         const int want = s_total_seen;
         unlock();
-        if (seen == want) klog("SD", "order index verified: %d captures", seen);
+        /* Telemetry: it fires once per photograph, and a line that says
+         * nothing happened is the one thing a 200-entry ring cannot afford
+         * after every shutter press (#202). The mismatch below stays on the
+         * evidence channel, because that one is a fault. */
+        if (seen == want) klog_tel("SD", "order index verified: %d captures", seen);
         if (seen != want) {
           ESP_LOGW(TAG, "card holds %d capture folders, the index says %d; rebuilding", seen, want);
           klog("SD", "card holds %d captures, the index says %d; rebuilding", seen, want);
@@ -1535,7 +1539,7 @@ void gallery_note_removed(const char *id) {
  */
 int gallery_capture_files(const char *id, bool *has_thumb, uint8_t *slots, int cap) {
   if (has_thumb != NULL) *has_thumb = false;
-  if (id == NULL || id[0] == ' ') return -1;
+  if (id == NULL || id[0] == '\0') return -1;
   char path[160];
   snprintf(path, sizeof path, "%s/%s", CAPTURES_DIR, id);
   if (access(path, F_OK) != 0) return -1;

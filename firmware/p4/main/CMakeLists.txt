@@ -4,7 +4,7 @@
 set(kino_srcs
   "main.c" "usb_link.c" "storage.c" "cam_link.c" "kdp_server.c" "hardware_validation.c"
     "hwv_rules.c"
-  # mesh3d.c is NOT here: 493 lines that no translation unit calls. ui.c:37
+  # mesh3d.c is NOT here: 493 lines that no translation unit calls. ui.c
   # includes mesh3d.h and nothing else references a symbol from it, so the
   # object was compiled, linked and then dropped by --gc-sections at best.
   # The source stays on disk; it is just not in the image.
@@ -208,3 +208,11 @@ string(STRIP "${KINO_FW_VERSION}" KINO_FW_VERSION)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
              "${CMAKE_CURRENT_LIST_DIR}/../../VERSION")
 target_compile_definitions(${COMPONENT_LIB} PRIVATE KINO_FW_VERSION="${KINO_FW_VERSION}")
+
+# Our own code compiles clean, and stays that way: a warning here is a build
+# failure rather than a line in a log nobody reads. Three of the defects the
+# September hygiene pass removed had been in every build log for days - two
+# dead functions and a NUL byte in a literal - because nothing failed on them.
+# Scoped to this component on purpose: managed_components is not ours to fix.
+target_compile_options(${COMPONENT_LIB} PRIVATE -Werror)
+

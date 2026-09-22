@@ -83,8 +83,6 @@ static const char *TAG = "ui";
  * favourite star, and the dark ground a thumbnail that will not decode sits
  * on. Those read the same in either grammar.
  */
-#define C_CANVAS RGB(0xf7, 0xf8, 0xfa)  /* the icon sheet's ground, host preview only */
-#define C_YELLOW RGB(0xf4, 0xc5, 0x42)
 #define C_RED RGB(0xc8, 0x3a, 0x3a)
 /* Red as TYPE, on the dark grounds. C_RED is a mark colour: as a fill or a
  * dot it reads, but as 18 px text on W_WINDOW it measures 3.5:1, under the
@@ -159,10 +157,8 @@ static const char *TAG = "ui";
  * ground. It sat on a plate of that colour before, and a full-width plate
  * of the brightest tone on the panel was the first thing every screen said. */
 #define W_TITLE RGB(0xe8, 0xa1, 0x83)
-/* A transient message, on the one cool colour in the set. It is a plate and
- * not a bevel, because a tooltip is neither a window nor a control, and it is
- * mint rather than warm so that a remark is never mistaken for a selection. */
-#define W_INFO RGB(0x86, 0xd6, 0xb4)
+/* The toast's ink. A remark is set dark on the mint plate, so that it is
+ * never mistaken for a selection. */
 #define W_INFOTEXT RGB(0x0d, 0x22, 0x1a)
 
 /* Dark chrome, for the shoot and photograph views. The same world as the
@@ -177,30 +173,10 @@ static const char *TAG = "ui";
 /* Layout                                                              */
 /* ------------------------------------------------------------------ */
 
-/* Main menu: a launcher of six bevelled tiles over a status bar.
- *
- * The two lines at the foot - the wordmark and where the power is coming from -
- * were floating silkscreen in the margin, which is what an unfinished theme
- * looks like. They are the same two facts, in the window-bottom strip the era
- * put exactly this kind of passive reading in, with a sunken panel round each
- * so the pair reads as a status bar rather than as two stray captions. Nothing
- * was added: there is still no battery percentage, because there is still no
- * gauge on this body to read one from.
- *
- * The strip costs 36 px of grid height, which came out of the margins rather
- * than the tiles - 24 px of outer margin and 16 px of gap was a grid designed
- * to hold six loose objects apart, and tiles need the opposite. 13 and 12
- * divide 800 exactly three ways at 250 px, so the row is symmetric to the pixel
- * instead of one short on the right.
- *
- * tile_rect() and hit_test()'s SCR_MENU branch both derive from these, so the
- * touch rectangles move with the tiles by construction.
- */
 /* The menu's own geometry lives with draw_menu(); nothing else needs it. */
 
 /* Detail screens. */
 #define HEAD_H 62
-#define BACK_W 84
 #define ROW_H 64
 #define ROW_GAP 8   /* the rows are separate cards, not a list in a box */
 #define BODY_Y (HEAD_H + 1)
@@ -227,9 +203,7 @@ static const char *TAG = "ui";
  * a screen, and 480 px of panel cannot spare a 16 px band above it.
  */
 #define PAGE_M 16
-#define HD_BAR_X PAGE_M
 #define HD_BAR_Y 2
-#define HD_BAR_W (UI_W - 2 * PAGE_M)
 #define HD_BAR_H (HEAD_H - 4)
 /*
  * The system button, and the size a thumb actually needs on this glass.
@@ -310,9 +284,9 @@ static int hd_next_x(void) { return s_right_hand ? hd_pair_inner_x() : hd_pair_o
  *
  * So a body that does not fill the page is centred in it, and one that fills
  * starts at the top and runs. Set by each screen before it draws, and read by
- * the hit test afterwards, the way s_head_state_left already works - which is
- * also why it MUST be set in the draw rather than computed twice: a layout
- * the touch map derives separately is the one bug this file keeps finding.
+ * the hit test afterwards - which is also why it MUST be set in the draw
+ * rather than computed twice: a layout the touch map derives separately is
+ * the one bug this file keeps finding.
  */
 #define LIST_TOP_DEFAULT (BODY_Y + 12)
 static int s_list_top = LIST_TOP_DEFAULT;
@@ -498,7 +472,6 @@ static const char *const MENU_LABEL[6] = {
 
 typedef enum {
   DLG_NONE = 0,
-  DLG_SHUTDOWN,
   DLG_RESTART,
   DLG_DELETE,
   DLG_DELETE_ALL,
@@ -1390,9 +1363,6 @@ static void button(int x, int y, int w, int h, bool down) {
   if (!down) round_outline(x, y, w, h, UI_R, W_KEYLINE);
 }
 
-static uint16_t dim_ink(uint16_t ink, uint16_t face);
-static float contrast(uint16_t a, uint16_t b);
-
 /*
  * The edge of a control, for the ground it stands on.
  *
@@ -1627,7 +1597,7 @@ static void text(const ui_font_t *f, int x, int y, const char *s, uint16_t ink) 
    *
    * Renderer only. It reports rather than asserts, because a long roll name
    * genuinely can outgrow its column and the answer there is fit_face() or
-   * ellipsis(), not a crash on the bench. */
+   * text_fit(), not a crash on the bench. */
   /* Once per string, at the recording call: a replay is the same string
    * again, after the chrome flag has moved on. */
   if (!s_dl.play) {
@@ -1753,12 +1723,6 @@ static int text_block(const ui_font_t *f, int x, int y, int w, const char *s, ui
   return text_wrap(f, x, y, w, s, ink, true);
 }
 
-/* The same measurement without the ink, so a box can be sized to the note it
- * is about to contain rather than to a guess about how the note will break. */
-static int text_block_h(const ui_font_t *f, int w, const char *s) {
-  return text_wrap(f, 0, 0, w, s, 0, false);
-}
-
 /**
  * The largest scale at which `s` fits `w` pixels, 1 or 2.
  *
@@ -1774,7 +1738,7 @@ static const ui_font_t *fit_face(const char *s, int w) {
 /**
  * `s` into `out`, cut to `w` pixels with an ellipsis when it did not fit.
  *
- * fit_scale() is the other half of this problem and only works where the
+ * fit_face() is the other half of this problem and only works where the
  * container can afford two type sizes. A status panel cannot: it is 18 rows
  * tall and the string in it is a look's name, which the wire contract allows
  * to be 40 characters - about 440 px, wider than the panel will ever be.
@@ -2467,8 +2431,6 @@ static void boot_mark(void) { boot_mark_ink(MZ_CARD); }
 static void draw_screen(void);
 static void open_frame(int row, float t);
 static void go(screen_t s, int ms);
-static void boot_mark(void);
-static void boot_field(float reach, int32_t ms, int pal, float warm);
 
 /*
  * The frames, as functions the compositor can call.
@@ -2578,7 +2540,6 @@ enum {
   SPL_GROW = 0, /* out of nothing to the whole panel, one motion */
   SPL_HELD,     /* full, and alive: the cells go on re-rolling */
   SPL_BACK,     /* and away again */
-  SPL_DONE,
 };
 /*
  * Slower, and weighted toward the two beats that are worth watching.
@@ -3152,9 +3113,6 @@ static int hd_plate_right(screen_t s) {
 /** Where chrome_state() ends on a header screen: just short of the buttons. */
 static int head_state_right(screen_t s) { return hd_plate_right(s) - 4; }
 
-/* Where the header's state reading starts, for a screen with its own line of
- * text on the same plate. Set by every draw_header(); read by the gallery. */
-static int s_head_state_left;
 /* What the screen wants at the two ends of the readout group, set before
  * draw_header() runs - it lays the whole group and nothing else may. */
 static char s_head_first[24];
@@ -3190,7 +3148,7 @@ static void draw_header(screen_t s) {
   if (name != NULL) {
     text(&UI_FONT_L, cap_x + 2, HD_CAP_Y + (HD_CAP_H - UI_FONT_L.line_h) / 2, name, W_TITLE);
   }
-  s_head_state_left = chrome_state(
+  chrome_state(
       cap_x + 2 + (name != NULL ? text_w(&UI_FONT_L, name) : 0) + BAR_GROUP_GAP,
       head_state_right(s), HD_CAP_Y + (HD_CAP_H - UI_FONT_T.line_h) / 2, W_GRAYTEXT,
       s == SCR_GALLERY ? s_head_first : NULL, s == SCR_GALLERY ? s_head_last : NULL);
@@ -3840,7 +3798,7 @@ static bool s_look_from_shoot;
  * The way out, at the header's own button origin.
  *
  * It used to be a 116x44 plate at 10,10 while every other screen put its back
- * button at HD_BTN_X, HD_BTN_Y as a 44 px square - so the one control that is
+ * button at hd_btn_x(), HD_BTN_Y as a 44 px square - so the one control that is
  * on every screen was in a different place and a different shape on this one,
  * which is the loudest way an interface says it was assembled rather than
  * designed. Origin and height now come from the header's constants; only the
@@ -4071,7 +4029,6 @@ static void ui_render(gfx_draw_fn draw, void *ctx) {
  * below. The finder needs the same string - the same look, spelled the same
  * way - and a second copy of that lookup is how two screens start disagreeing
  * about which look is loaded. */
-static bool look_current_id(char *out, size_t cap);
 static void look_display(char *out, size_t cap);
 
 /**
@@ -4435,6 +4392,10 @@ static int lk_top(bool quad) {
 }
 static int lk_hero_y(bool quad) { return lk_top(quad); }
 static int lk_trio_y(bool quad) { return lk_hero_y(quad) + lk_hero_h(quad) + LK_GAP; }
+/* The picker row, inset from the hero card's foot. The draw and the hit test
+ * both come through here: this screen has had a hit map outlive its layout
+ * twice, and both times it was this row. */
+static int lk_pick_y(bool quad) { return lk_hero_y(quad) + lk_hero_h(quad) - 16 - LK_CTL_H; }
 static int lk_tgt_y(bool quad) { return lk_trio_y(quad) + LK_CAP_H + LK_CTL_H + LK_GAP; }
 /** Column `i` of the three-up row. */
 static int lk_col_x(int i) { return PAGE_M + i * (LK_COL_W + LK_COL_GAP); }
@@ -4723,7 +4684,7 @@ static void draw_look(void) {
   /* The two picker buttons at the card's foot on the hand's side, and the
    * name filling the rest of it - the name is the subject, so it takes the
    * room. */
-  const int by = hy + hh - 16 - LK_CTL_H;
+  const int by = lk_pick_y(quad);
   const int nx = lk_next_x();
   const int px2 = lk_prev_x();
   const bool pd = band_rel(p0, LK_IT_PREV, 2) == 0, nd = band_rel(p0, LK_IT_PREV, 2) == 1;
@@ -5614,7 +5575,7 @@ static void draw_photo(void) {
   /* Back: the system button, at the header's own origin. This screen drew a
    * bare chevron and the word BACK straight on the ground, the viewfinder
    * drew a plate at 10,10 and every other screen a 44 px square at
-   * HD_BTN_X - three treatments of the one control that is on every screen.
+   * hd_btn_x() - three treatments of the one control that is on every screen.
    * It is the same button in the same place everywhere now. */
   {
     const bool bdown = s_pressed == IT_BACK;
@@ -5837,14 +5798,14 @@ static void draw_photo(void) {
 static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
   const int total = qr->size + 2 * QR_QUIET;
   const int pitch = box / total;
-  if (pitch < 1) return 0; /* no room ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the caller shows the code as text */
+  if (pitch < 1) return 0; /* no room - the caller shows the code as text */
 
   const int side = total * pitch;
   const int x0 = cx - side / 2;
 
   /* White ground for the symbol and its quiet zone together. W_WINDOW is
    * 0xffffff and W_TEXT is 0x000000, so the symbol gets full contrast rather
-   * than the 0xc0 face grey ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â a QR drawn on the face ground scans poorly. */
+   * than the 0xc0 face grey - a QR drawn on the face ground scans poorly. */
   fill(x0, top, side, side, W_WINDOW);
 
   const int m0 = x0 + QR_QUIET * pitch;
@@ -5862,10 +5823,10 @@ static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
  *
  * Four states, and the difference between them is what a user needs:
  *
- *   no roll   ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â nothing to show, and how to get one
- *   active    ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the QR a guest scans, plus what is waiting
- *   offline   ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the same, but honest that nothing is moving
- *   paused    ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â something is wrong and retrying will not fix it
+ *   no roll   - nothing to show, and how to get one
+ *   active    - the QR a guest scans, plus what is waiting
+ *   offline   - the same, but honest that nothing is moving
+ *   paused    - something is wrong and retrying will not fix it
  *
  * The old screen said "NOT CONNECTED / This body has no radio fitted", which
  * was wrong on both counts: the radio IS fitted, and a Roll assigned from
@@ -5905,17 +5866,6 @@ static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
 #define RL_QR_CX (RL_M + RL_QR_COL_W / 2)
 #define RL_RX (RL_M + RL_QR_COL_W + 24)        /* right column */
 #define RL_RW (UI_W - RL_M - RL_RX)
-/*
- * One gap between the groups in the right column.
- *
- * It was 22 after the code, 30 after the connection word and 26 after the
- * count - three numbers for one relationship, each picked by eye against a
- * different neighbour, and together 18 px more than the column had room for.
- * The identity group is four things of the same kind stacked: a name, a code,
- * a state, a count. They get one interval.
- */
-#define RL_GROUP 20
-
 /* The symbol has to clear the panel with its caption under it. Checked rather
  * than trusted: RL_QR_BOX is the only number here that a change to HEAD_H
  * silently invalidates, and the failure mode is a QR running off the bottom. */
@@ -5937,7 +5887,7 @@ static void draw_roll(void) {
   const bool online = net_link_can_upload(&net);
 
   if (!active) {
-    /* No Roll. Say how to get one rather than only that there isn't one ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â and
+    /* No Roll. Say how to get one rather than only that there isn't one - and
      * do not offer a CREATE button, because ROLL_CREATE is an HTTP POST this
      * body cannot make. A control that cannot work is the same defect as a
      * shutter that logs instead of capturing. */
@@ -5996,7 +5946,7 @@ static void draw_roll(void) {
    * Encoded once per Roll and cached, not once per repaint. Two reasons, and
    * the second is the one that matters: the screen repaints every 90 ms while
    * anything is busy, and qr_encode() puts about 1.4 KB of bitfields and
-   * codeword buffers on the caller's stack ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â which here is the UI task's. Nine
+   * codeword buffers on the caller's stack - which here is the UI task's. Nine
    * mask evaluations of a 57x57 grid on every frame would also be pure waste
    * for a symbol that changes only when the Roll does.
    *
@@ -6631,6 +6581,16 @@ static void snd_step(int delta) {
 static int sn_next_x(void) { return LIST_X + LIST_W - 14 - SN_BTN; }
 static int sn_prev_x(void) { return sn_next_x() - 6 - SN_BTN; }
 static int sn_btn_y(void) { return LIST_Y + (ROW_H - ROW_GAP - SN_BTN) / 2; }
+/* The VOLUME band. The group box starts at sn_vol_y(), the three segments sit
+ * 24 px into it, and the draw and the hit test both read them from here - the
+ * convention the picker buttons above already keep, and the one this band
+ * skipped. */
+#define SN_VOL_X (LIST_X + 8)
+#define SN_VOL_W (LIST_W - 16)
+static int sn_vol_y(void) { return LIST_Y + 3 * ROW_H + 26; }
+static int sn_vol_band_y(void) { return sn_vol_y() + 24; }
+static int sn_vol_seg_w(void) { return SN_VOL_W / 3; }
+static int sn_vol_seg_x(int i) { return SN_VOL_X + i * sn_vol_seg_w(); }
 
 static void draw_sound(void) {
   fill(0, 0, UI_W, UI_H, W_FACE);
@@ -6688,7 +6648,7 @@ static void draw_sound(void) {
   draw_toggle(LIST_X + LIST_W - 18 - 52, LIST_Y + 2 * ROW_H + (ROW_H - ROW_GAP - 28) / 2, ui, false,
               s_pressed == SN_IT_BUTTON ? W_SEL : W_ROW);
 
-  const int y = LIST_Y + 3 * ROW_H + 26;
+  const int y = sn_vol_y();
   /* The one control on this screen that sat outside the list well, under a
    * bare word. Same treatment as every other band on the camera, and the box
    * reaches to the window margin the list well uses rather than to the band
@@ -6696,7 +6656,7 @@ static void draw_sound(void) {
   group_box(LIST_X, y, LIST_W, 24 + SN_VOL_H + 6, "VOLUME", W_TEXT, NULL);
   static const char *const VOL[3] = {"LOW", "MEDIUM", "HIGH"};
   static const int VOLV[3] = {3, 6, 9};
-  draw_segments(LIST_X + 8, y + 24, LIST_W - 16, SN_VOL_H, VOL, 3,
+  draw_segments(SN_VOL_X, sn_vol_band_y(), SN_VOL_W, SN_VOL_H, VOL, 3,
                 nearest_idx(config_int("shoot.volume", 6), VOLV), band_rel(s_pressed, SN_IT_VOL, 3),
                 band_rel(s_focus_shown ? s_focus[SCR_SOUND] : -1, SN_IT_VOL, 3));
 
@@ -6713,8 +6673,8 @@ static void draw_sound(void) {
    * live-looking controls over silence.
    *
    * Below the volume band on purpose: the band is hit-tested at
-   * LIST_Y + 3 * ROW_H + 26 + 24 for 44 px, so everything here is clear of the
-   * only touch targets on the lower half of the screen.
+   * sn_vol_band_y() for SN_VOL_H, so everything here is clear of the only
+   * touch targets on the lower half of the screen.
    */
   const int ny = y + 24 + SN_VOL_H + 30;
   char line[72];
@@ -6751,8 +6711,8 @@ static void draw_sound(void) {
  * "Not fitted" was wrong twice over: the ESP32-C6 IS on the Guition module,
  * and what is missing is the P4's route to it, which is a wiring question
  * rather than an absent part. A user reading "Not fitted" goes looking for a
- * component to add. So the screen reports the two facts separately ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the chip
- * is there, and the firmware cannot reach it ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the same way the capabilities
+ * component to add. So the screen reports the two facts separately - the chip
+ * is there, and the firmware cannot reach it - the same way the capabilities
  * split `flashControl` from `flashHardware`.
  *
  * Every value comes from net_link, so this screen becomes correct on its own
@@ -6789,7 +6749,7 @@ static void draw_connection(void) {
 
   /* Wi-Fi: the SSID and signal when there is one, and otherwise a state a
    * user can act on. Association without an address says "Getting address"
-   * rather than "Connected" ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â claiming connected there is how a camera
+   * rather than "Connected" - claiming connected there is how a camera
    * insists it is online while nothing resolves. */
   char wifi[64];
   switch (net.state) {
@@ -7829,14 +7789,6 @@ static void calib_poll(void) {
   ui_render(render_screen, NULL);
 }
 
-/*
- * The guest half takes the whole screen and nothing else runs.
- *
- * Not a screen in the shell's sense - it is the other half of the product,
- * and while it is up the shell does not exist. No header, no status bar, no
- * capture banner, no toast, no dialog: a guest cannot act on any of them and
- * every one of them is furniture between a stranger and a photograph.
- */
 static void draw_screen(void) {
   /*
    * The body's top, reset before every screen.
@@ -8295,11 +8247,10 @@ static bool hit_hand_button(int x, int y, int bx, int by, int bw, int bh) {
 }
 
 static int hit_test(int x, int y) {
-  /* In guest mode the panel reaches nothing. Not a region, not a row, not a
-   * dialog - the glass is a viewfinder. This is the whole of "nothing a
-   * finger touches changes anything", and it is one line here rather than a
-   * guard on every control because a guard that has to be remembered on every
-   * new control is a guard that will be forgotten on one. */
+  /* A dialog takes every press on the glass, wherever it lands. One line
+   * here rather than a guard on every control, because a guard that has to be
+   * remembered on every new control is a guard that will be forgotten on
+   * one. */
   if (s_dialog != DLG_NONE) return hit_dialog(x, y);
 
   switch (s_screen) {
@@ -8351,8 +8302,7 @@ static int hit_test(int x, int y) {
       const bool quad = mode_is_quad();
 
       /* The picker, at the hero card's foot on the hand's side. */
-      const int hy = lk_hero_y(quad);
-      const int by = hy + lk_hero_h(quad) - 16 - LK_CTL_H;
+      const int by = lk_pick_y(quad);
       if (in(x, y, lk_prev_x(), by, LK_PICK_BTN, LK_CTL_H)) return LK_IT_PREV;
       if (in(x, y, lk_next_x(), by, LK_PICK_BTN, LK_CTL_H)) return LK_IT_NEXT;
 
@@ -8425,9 +8375,9 @@ static int hit_test(int x, int y) {
       if (in(x, y, sn_next_x(), by, SN_BTN, SN_BTN)) return SN_IT_NEXT;
       if (in(x, y, LIST_X, LIST_Y + ROW_H, LIST_W, ROW_H)) return SN_IT_SHUTTER;
       if (in(x, y, LIST_X, LIST_Y + 2 * ROW_H, LIST_W, ROW_H)) return SN_IT_BUTTON;
-      const int y0 = LIST_Y + 3 * ROW_H + 26, sw = (LIST_W - 16) / 3;
       for (int i = 0; i < 3; i++)
-        if (in(x, y, LIST_X + 8 + i * sw, y0 + 24, sw, SN_VOL_H)) return SN_IT_VOL + i;
+        if (in(x, y, sn_vol_seg_x(i), sn_vol_band_y(), sn_vol_seg_w(), SN_VOL_H))
+          return SN_IT_VOL + i;
       return -1;
     }
     case SCR_STORAGE:
@@ -9202,8 +9152,8 @@ static int64_t s_sleep_mark_us;
 static uint32_t ui_pass(void) {
   {
     /* The pulse, first thing and unconditionally. Several branches below
-     * `continue`, and a stamp that some passes skip reads as a wedge on a loop
-     * that is merely swallowing a wake press. */
+     * return early, and a stamp that some passes skip reads as a wedge on a
+     * loop that is merely swallowing a wake press. */
     s_ui_pass++;
     s_ui_pass_ms = (uint32_t)(esp_timer_get_time() / 1000);
 
@@ -9526,19 +9476,6 @@ static uint32_t ui_pass(void) {
     /* The nodes are only asked for frames while the viewfinder is up. Left
      * running behind a menu it would be four sensors and four UARTs burning
      * battery to fill a buffer nobody reads. */
-    /*
-     * The guest half IS a viewfinder, so the cameras run for all of it.
-     *
-     * This read `s_screen == SCR_SHOOT` alone, and in guest mode s_screen is
-     * whatever the owner left behind - usually the menu. So every camera
-     * stayed off, no tile ever arrived, and the guest half decided all four
-     * lenses were down and put up CAMERAS DOWN. A guest would have been
-     * handed a camera that says it is broken, on a camera that is fine.
-     *
-     * Found in the Twin in about a minute, which is the whole argument for
-     * the Twin: the host preview draws states it is told to draw, and this
-     * one is a state nothing would have thought to ask for.
-     */
     viewfinder_run(s_screen == SCR_SHOOT);
 
     const capture_stage_t cstage = capture_stage();
@@ -9694,7 +9631,7 @@ static uint32_t ui_pass(void) {
      *
      * `present_due` is the tail of this pass, below: the SHOOT screen with
      * nothing latched is the one path that presents unconditionally. The busy
-     * path presents and `continue`s before reaching here, and a latched press
+     * path presents and returns before reaching here, and a latched press
      * means no repaint is owed - which is why the latch is watched separately
      * rather than folded into the stall.
      */
@@ -9754,13 +9691,8 @@ static uint32_t ui_pass(void) {
       }
     }
 
-    /* The guest half is a live viewfinder and repaints on the same clock the
-     * shoot screen does. This branch read `s_screen == SCR_SHOOT` alone, so
-     * in guest mode - where s_screen is whatever the owner left behind -
-     * nothing ever drew a frame after the first: the module's canvas held the
-     * guest half and the panel was never handed one. The picture simply did
-     * not move. Second half of the same fault as viewfinder_run() above, and
-     * the Twin found both of them inside two minutes. */
+    /* The viewfinder repaints on the link's clock, not the panel's: it is the
+     * one screen that presents with nothing having been touched. */
     if (s_screen == SCR_SHOOT && held == -1) {
       ui_render(render_screen, NULL);
       /* Paced against the link, not the panel: new frames arrive a few times
@@ -9799,13 +9731,13 @@ esp_err_t ui_start(void) {
   ESP_LOGI(TAG, "UI_READY %dx%d landscape via PPA", UI_W, UI_H);
   TaskHandle_t ui_h = NULL;
   /* 8192, not 6144. The ROLL screen calls qr_encode(), which puts roughly
-   * 1.4 KB of bitfields and codeword buffers on this stack ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â two 456-byte
-   * module grids plus 562 bytes of codewords ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â on top of whatever the draw
+   * 1.4 KB of bitfields and codeword buffers on this stack - two 456-byte
+   * module grids plus 562 bytes of codewords - on top of whatever the draw
    * path already uses. That figure is CALCULATED from the sizes in qr.c, not
    * measured on a board, so the margin is deliberate: an overflow here would
    * land on a repaint and read as a display or touch fault rather than as a
    * QR encoder. Confirm against GET_RUNTIME_STATS on the first bench run that
-   * opens the ROLL screen with a Roll assigned ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â that is what the per-task
+   * opens the ROLL screen with a Roll assigned - that is what the per-task
    * high-water figure is for. */
   /*
    * Pinned to CPU1, away from the link interrupts.
@@ -9838,9 +9770,5 @@ esp_err_t ui_start(void) {
   }
   taskmon_register("ui", ui_h);
 
-  /* The icon builder starts AFTER the UI. Created first it would simply run
-   * to completion before the splash existed, because it outranks the task
-   * calling ui_start(); created second, the UI task is already animating and
-   * blocking on frame timing and the builder fills exactly those gaps. */
   return ESP_OK;
 }

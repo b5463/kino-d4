@@ -371,9 +371,16 @@ static esp_err_t request_raw(int cam, uint8_t cmd, uint8_t flags, const uint8_t 
     if (ch->info.latency_ms > ch->stats.latency_max_ms)
       ch->stats.latency_max_ms = ch->info.latency_ms;
     if (ch->timeout_run > 0) {
-      /* Recovery is worth a line: a node that came back after a run of
-       * failures is the interesting half of an intermittent link. */
-      klog(ch->tag, "recovered after %lu timeouts", (unsigned long)ch->timeout_run);
+      /*
+       * Recovery is worth a line: a node that came back after a run of
+       * failures is the interesting half of an intermittent link. A run of
+       * one is not a run - the failure side is throttled to 30 s and this side
+       * was not, so a channel losing the odd frame wrote a recovery line for
+       * every one of them (#202).
+       */
+      if (ch->timeout_run > 1) {
+        klog(ch->tag, "recovered after %lu timeouts", (unsigned long)ch->timeout_run);
+      }
       ch->timeout_run = 0;
     }
     result = ESP_OK;

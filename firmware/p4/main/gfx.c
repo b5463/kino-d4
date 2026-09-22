@@ -554,81 +554,6 @@ void gfx_snapshot(void) {
   rotate_to(s_from);
 }
 
-/* Accelerating away: nothing that leaves a screen should leave at full speed
- * from a standing start. The list's rows use this and the opening card does
- * not, which is the whole difference between something being pushed aside and
- * something being lifted. */
-static inline float ease_in(float t) { return t * t; }
-
-/*
- * Smootherstep: no speed and no acceleration at either end.
- *
- * The curve before this one left at full speed and spent the rest of the
- * move slowing down, which is right for something thrown and wrong for
- * something a person is meant to read. At 200 ms it was over before the eye
- * found it; at 400 ms it was a jump followed by a crawl. What makes a move
- * legible is that it starts from rest, which this does - the object appears
- * to gather itself, travel, and settle, and every part of that is on screen
- * long enough to see.
- *
- * Every motion a person is meant to follow uses it, so the product moves one
- * way rather than three.
- */
-static inline float ease_settle(float t) {
-  return t * t * t * (t * (t * 6.0f - 15.0f) + 10.0f);
-}
-
-static inline float clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
-
-/* Put s_mix on the panel. rotate_to() reads s_canvas, so the composite is
- * pointed at from there for the length of one rotate and put back. */
-static bool mix_show(void) {
-  void *fb = s_fb[s_back];
-  wait_back_free();
-  const esp_err_t err = rotate(s_mix, fb);
-  if (err != ESP_OK) return false;
-  show(fb);
-  s_back ^= 1;
-  s_frames++;
-  return true;
-}
-
-/* Paint `h` whole rows of a landscape buffer one colour. */
-static inline void fill_landscape(uint16_t *buf, int y, int h, uint16_t colour) {
-  uint16_t *p = buf + (size_t)y * UI_W;
-  const uint32_t pair = ((uint32_t)colour << 16) | colour;
-  uint32_t *q = (uint32_t *)(void *)p;
-  for (size_t i = (size_t)h * UI_W / 2; i != 0; i--) *q++ = pair;
-}
-
-/**
- * One screen pushing the other off.
- *
- * The outgoing and incoming frames travel together, so the eye follows a
- * single moving object rather than watching one thing vanish and another
- * appear. `from_right` is the direction the NEW frame comes from: going into
- * something pushes it in from the right, coming back brings it in from the
- * left, and that is the whole of the spatial model - deeper is rightward.
- *
- * Composited row by row in landscape and rotated per frame. That costs a
- * rotate the dissolve avoids; a push is six or seven frames and the panel is
- * reading 46 MB/s out of the same PSRAM, so the budget is real but it fits.
- */
-/**
- * Keep the frame that has just been drawn, and hand pieces of it back.
- *
- * This is what lets a transition be DRAWN rather than composited. The old
- * gfx_open() moved two finished frames around each other, which is all a
- * compositor can do - and it is why the word on the card stopped following
- * the card: a rectangle of pixels cut out of a 50 px row cannot become a
- * 40 px title, because by the time it is a picture the letters are already
- * the size they are.
- *
- * So the destination is stashed here, ui.c draws every frame of the move with
- * the real fonts and the real shapes, and asks for the part of the
- * destination that has arrived. The renderer keeps the one thing it is good
- * at - holding a whole frame - and the drawing stays where the drawing is.
- */
 /*
  * A slide is two pictures and nothing else changes inside it, so it is
  * composed where the panel reads: in its own orientation. The leaving screen
@@ -676,6 +601,20 @@ void gfx_slide_show(int o, int b, bool from_right) {
   s_present_us += (uint64_t)dt;
 }
 
+/**
+ * Keep the frame that has just been drawn, and hand pieces of it back.
+ *
+ * This is what lets a transition be DRAWN rather than composited. A
+ * compositor can only move two finished frames around each other, and that is
+ * why the word on the card stopped following the card: a rectangle of pixels
+ * cut out of a 50 px row cannot become a 40 px title, because by the time it
+ * is a picture the letters are already the size they are.
+ *
+ * So the destination is stashed here, ui.c draws every frame of the move with
+ * the real fonts and the real shapes, and asks for the part of the
+ * destination that has arrived. The renderer keeps the one thing it is good
+ * at - holding a whole frame - and the drawing stays where the drawing is.
+ */
 void gfx_stash(void) {
   if (!s_ready || s_mix == NULL) return;
   memcpy(s_mix, s_canvas, CANVAS_BYTES);
