@@ -104,6 +104,15 @@ KINO has no published release yet. Changes intended for the first release collec
   unmeasured and the mistake this feature makes is putting the camera to sleep
   in the middle of a party - but measuring them and trying the result no longer
   needs a reflash.
+- **Firmware 0.4.59: the card self-test stops racing itself (#210).** The card
+  watcher runs a write self-test on a card that has just mounted, under the
+  card lock. Studio's STORAGE_SELF_TEST took only the capture lock, which says
+  nothing about the card, so running it inside that window put two tasks
+  through one fixed path and one shared static buffer - and the loser reported
+  VERIFY_FAILED on a healthy card, latched the write test to "fail", and the
+  camera told its owner the card could not hold a photograph. Both that and
+  STORAGE_BENCH now take the card lock, and `storage.c` says why the shared
+  buffer is only safe while they do.
 - **Firmware 0.4.59: uploads with nowhere to go are said (#198).** A body with a Roll joined but no Roll server - no compiled API base and no `network.apiBase` from Studio - parked every upload as FAILED while ROLL said Online. STATUS now carries "Uploads have no server. Set the Roll server in Studio. Photos stay on the card." Found on the 0.4.58 release soak: 40 captures, 34 uploads parked for that one reason.
 - **Twin: a viewfinder pane that stops receiving frames stops being live.**
   The firmware shim marked a pane live for ever once its buffer pointer had

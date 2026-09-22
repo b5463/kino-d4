@@ -493,7 +493,17 @@ void storage_self_test(storage_selftest_result_t *out) {
 
     mkdir(MOUNT "/KINO", 0775); /* may already exist */
 
-    // Deterministic pattern, written and verified chunk-wise.
+    /*
+     * Deterministic pattern, written and verified chunk-wise.
+     *
+     * The buffer is static because 4 KB does not belong on the stack of
+     * either caller - the card watcher runs on 6 KB in PSRAM - and the path
+     * is fixed. Both of those are only safe because every caller holds the
+     * card lock: storage_watch.c takes it around the once-per-card test, and
+     * the KDP handler takes it around Studio's. Two callers inside at once
+     * would write and unlink the same file through the same buffer, and the
+     * loser would report a healthy card as failed (#210).
+     */
     static uint8_t block[SELFTEST_CHUNK];
     uint32_t written_state = kdp_crc32_begin();
     FILE *f = fopen(path, "wb");
