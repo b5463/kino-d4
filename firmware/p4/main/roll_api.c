@@ -119,10 +119,6 @@ static char *read_card_file_ex(const char *path, size_t cap, bool *card_busy) {
   return buf;
 }
 
-static char *read_card_file(const char *path, size_t cap) {
-  return read_card_file_ex(path, cap, NULL);
-}
-
 /**
  * The `kino.capture` document to register, from META.JSON on the card.
  *
