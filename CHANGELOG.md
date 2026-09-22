@@ -71,31 +71,6 @@ KINO has no published release yet. Changes intended for the first release collec
   reports an absent base, the preview renders `status_roll_no_server` and
   `roll_no_server`, and the Twin's page can drive it through
   `kui_set_roll_server`.
-- **Firmware 0.4.59: the camera link can change speed (#218).** Measured on the
-  bench, a four-camera capture moves 686 KB in a 2.75 s transfer window with
-  every link holding 86.5 to 86.9 KB/s, which is 96% of a 921600-baud wire. The
-  body is not the constraint and the four transfers do overlap; what sets the
-  shutter-to-ready time is the largest JPEG divided by the line rate, and on
-  that capture the four lenses produced 114 KB to 224 KB. So the only lever
-  that does not trade picture quality for time is the wire itself.
-  `SET_LINK_BAUD` now exists end to end - a new `NL_CMD_SET_BAUD` on the node,
-  `camlink_set_baud_ch()` on the body, and the KDP command that was reserved
-  at 0x45 and never implemented - accepting 921600, 1.5M, 2M and 3M.
-  The link is two wires with no flow control and none is possible on V1, so
-  neither end can report that the two disagree about the rate. Both therefore
-  treat a switch as provisional: the node returns to 921600 unless a frame
-  decodes at the new rate within 2.5 s, and the body waits longer than that
-  before giving up, so a failed switch always settles back on its own without a
-  power cycle. The finder is held across the change, because it talks to the
-  same four channels and a capture lock does not stop it.
-  `scripts/kino-baud-ramp.mjs` walks the rates in one session and reports
-  throughput and the CRC, resync and timeout counters at each, and puts the
-  link back on 921600 whatever happens.
-  Measured on KD4-D121BC with all four cameras: 87.0 KB/s per link at 921600,
-  139.9 at 1.5M, 185.6 at 2M and 274.9 at 3M, with zero CRC failures, resyncs
-  and timeouts at every rate over 24 captures and six switches in both
-  directions. Shutter-to-ready goes from 3716 ms to 1755 ms. The FIFO headroom
-  argument against 3 Mbaud did not survive contact with the bench.
 - **Firmware 0.4.59: one number for the largest preview frame (#208).** The node
   treated anything above 32 KB as a photograph-sized leftover and took the next
   frame; the body refused anything above 24 KB by size. A 320x240 frame of a
