@@ -484,6 +484,9 @@ uint32_t capture_asked_cams(void) { return 0xF; }
 capture_stage_t capture_stage(void) { return g_stage; }
 void capture_ack(void) { g_stage = CAPTURE_IDLE; }
 bool capture_busy(void) { return false; }
+/* Always ready here: the renderer has no pipeline to fail, and a screen that
+ * only appears when one did is driven by its own scene, not by this. */
+bool capture_ready(void) { return true; }
 void capture_last(capture_report_t *out) {
   if (out) *out = g_report;
 }

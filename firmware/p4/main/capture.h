@@ -251,6 +251,20 @@ esp_err_t capture_fire(const char *source, capture_report_t *out);
  * rather than queued — nobody wants their second press two shots later. */
 bool capture_request(const char *source);
 
+/**
+ * Whether the capture pipeline came up at all.
+ *
+ * False when capture_init() failed part way: some workers created, the queue
+ * created, and no capture task to drain it. Nothing downstream could see that
+ * - capture_request() queued into a queue nobody reads and returned true - so
+ * the first press was swallowed, every later one was refused as "a capture is
+ * already running", and the shutter was dead with nothing said (#210).
+ *
+ * The shutter asks so it can tell the person what happened instead of
+ * inventing a reason.
+ */
+bool capture_ready(void);
+
 capture_stage_t capture_stage(void);
 
 /**

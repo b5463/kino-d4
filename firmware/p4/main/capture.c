@@ -204,6 +204,9 @@ static worker_t s_worker[CAPTURE_CAMS];
 /* Bit i set once cap(i+1) is actually running. See the mask check in
  * capture_fire: waiting on a worker that does not exist never returns. */
 static uint32_t s_workers_ready;
+/* True only once capture_init() has built the whole pipeline. See
+ * capture_ready() in capture.h for what a part-built one used to do. */
+static bool s_ready;
 static EventGroupHandle_t s_exposed; /* bit per camera: node finished capturing */
 static EventGroupHandle_t s_done;    /* bit per camera: worker is finished */
 static SemaphoreHandle_t s_card;     /* one writer at a time on the card */
@@ -1890,11 +1893,16 @@ static void capture_task(void *arg) {
 }
 
 bool capture_request(const char *source) {
-  if (s_requests == NULL || capture_busy()) return false;
+  /* s_ready, not just s_requests: a part-built pipeline has the queue and no
+   * task to drain it, and queuing into that is how the shutter went quiet
+   * with nothing said (#210). */
+  if (!s_ready || s_requests == NULL || capture_busy()) return false;
   char slot[16];
   snprintf(slot, sizeof slot, "%s", source != NULL ? source : "shutter");
   return xQueueSend(s_requests, slot, 0) == pdTRUE;
 }
+
+bool capture_ready(void) { return s_ready; }
 
 uint32_t capture_ready_cams(void) { return s_workers_ready; }
 uint32_t capture_asked_cams(void) { return s_asked_mask; }
@@ -2011,6 +2019,7 @@ esp_err_t capture_init(const char *device_id) {
      */
     TaskHandle_t wh = NULL;
     if (xTaskCreatePinnedToCore(worker_task, name, 8192, &s_worker[i], 5, &wh, 1) != pdPASS) {
+      klog("P4", "no room for capture worker %d - the shutter will refuse", i + 1);
       return ESP_ERR_NO_MEM;
     }
     taskmon_register(name, wh);
@@ -2032,11 +2041,15 @@ esp_err_t capture_init(const char *device_id) {
    * decode with cache maintenance over megabytes - the moment the transfers
    * end, which is also the moment the viewfinder resumes pulling frames. */
   if (xTaskCreatePinnedToCore(capture_task, "capture", 10240, NULL, 5, &s_task, 1) != pdPASS) {
+    klog("P4", "no room for the capture task - the shutter will refuse");
     return ESP_ERR_NO_MEM;
   }
   taskmon_register("capture", s_task);
 
   gpio_setup();
+  /* Last, and only here: every return above this line leaves a pipeline that
+   * cannot take a photograph, and capture_request() has to be able to tell. */
+  s_ready = true;
   if (s_flash_ready) {
     ESP_LOGI(TAG, "ready — %d workers, trigger on GPIO%d, flash on GPIO%d", CAPTURE_CAMS,
              BOARD_SYNC_OUT, BOARD_FLASH_EN);
