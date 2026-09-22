@@ -1535,7 +1535,7 @@ void gallery_note_removed(const char *id) {
  */
 int gallery_capture_files(const char *id, bool *has_thumb, uint8_t *slots, int cap) {
   if (has_thumb != NULL) *has_thumb = false;
-  if (id == NULL || id[0] == ' ') return -1;
+  if (id == NULL || id[0] == '\0') return -1;
   char path[160];
   snprintf(path, sizeof path, "%s/%s", CAPTURES_DIR, id);
   if (access(path, F_OK) != 0) return -1;

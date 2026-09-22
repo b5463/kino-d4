@@ -199,20 +199,6 @@ void gfx_present(void) {
 }
 void gfx_snapshot(void) { memcpy(g_snapshot, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t)); }
 
-/* How many frames a transition of `ms` is worth here.
- *
- * One per display refresh. The device runs its transitions off the clock and
- * emits as many frames as the compositor can manage; the Twin runs on a
- * virtual clock, so the number has to be chosen - and choosing anything other
- * than the refresh interval guarantees judder, because a frame that lasts
- * 1.4 refreshes is shown for one refresh and then two. */
-static int tw_steps(int ms) {
-  int n = (ms + 8) / 16;
-  if (n < 4) n = 4;
-  if (n > KUI_FRAME_MAX - 2) n = KUI_FRAME_MAX - 2;
-  return n;
-}
-
 static inline uint16_t blend565(uint16_t a, uint16_t b, int t, int n) {
   const int ar = (a >> 11) & 31, ag = (a >> 5) & 63, ab = a & 31;
   const int br = (b >> 11) & 31, bg = (b >> 5) & 63, bb = b & 31;
@@ -238,26 +224,6 @@ void gfx_dissolve(int duration_ms) {
   }
   gfx_present();
 }
-/*
- * The push. On the device the two frames are composited in landscape and
- * rotated per frame by the PPA; here there is no panel and no rotation, so it
- * is the same row-wise composite straight into the blend buffer.
- *
- * Kept frame-stepped like the dissolve above rather than time-stepped: the
- * Twin runs on a virtual clock, so "elapsed" is whatever this function says
- * it is, and a fixed step is the honest version of that.
- */
-static inline float tw_settle(float t) {
-  return t * t * t * (t * (t * 6.0f - 15.0f) + 10.0f);
-}
-static inline float tw_in(float t) { return t * t; }
-static inline float tw_clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
-
-static inline void tw_fill_rows(uint16_t *buf, int y, int h, uint16_t c) {
-  uint16_t *p = buf + (size_t)y * UI_W;
-  for (size_t i = (size_t)h * UI_W; i != 0; i--) *p++ = c;
-}
-
 /* The stash: the destination frame, kept while ui.c draws the move over it.
  * Same as the device's, into the blend buffer. */
 /* Drawing passes begun; see gfx_pass_id(). Declared here because the stash
@@ -812,7 +778,7 @@ void clock_set_offset(int m) { (void)m; }
 esp_err_t storage_capture_trash(const char *id) { (void)id; return ESP_OK; }
 esp_err_t storage_capture_untrash(const char *id) { (void)id; return ESP_OK; }
 void storage_trash_purge(void) {}
-bool roll_http_api_base(char *out, size_t cap) { if (cap) out[0] = ' '; return true; }
+bool roll_http_api_base(char *out, size_t cap) { if (cap) out[0] = '\0'; return true; }
 int64_t clock_now_ms(void) { return 0; } /* 2026-09-21T16:01Z */
 void power_cam_bank_cycle(void) {}
 bool gallery_deleting(void) { return g_deleting; }

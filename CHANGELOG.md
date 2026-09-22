@@ -6,6 +6,28 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Changed
 
+- **Firmware 0.4.59: a warning fails the build, and three NUL bytes are gone (#201).**
+  `firmware/p4/host_preview/preview.c`, `firmware/p4/twin_ui/twin_ui.c` and
+  `firmware/p4/main/gallery.c` each held a raw zero byte inside a character
+  constant that was meant to be an escaped zero. It compiled as zero, so
+  nothing misbehaved; what broke was searching, because grep and ripgrep
+  classify a file with a NUL in it as binary and skip it without saying so.
+  Two audits of this tree were given wrong answers by it, one of them a false
+  report that the host preview was broken. Our own components now compile with
+  `-Werror`, scoped so that `managed_components` is still not ours to fix - and
+  the gate found the third NUL byte on its first run, in a file the host
+  preview does not compile. The other three warnings the build had been
+  printing for days are gone with it: two dead functions, and the deprecated
+  `esp_lcd_touch_get_coordinates`, now `esp_lcd_touch_get_data`.
+  Removed with them: five uncalled functions and three orphaned doc comments in
+  `gfx.c`, thirteen dead symbols in `ui.c`, five leftovers in the Twin shim, and
+  the comments that described a guest mode, an icon builder, a six-tile menu and
+  a `tile_rect()` that have not existed since the shell rewrite. Fourteen
+  triple-encoded dashes in `ui.c` comments are readable again. The LOOK picker
+  and the SOUND volume band now derive their rectangles from one helper each
+  instead of computing them once in the draw and again in the hit test, which
+  is the convention every other screen already kept; all 206 rendered screens
+  are byte-identical before and after.
 - **Firmware 0.4.59: uploads with nowhere to go are said (#198).** A body with a Roll joined but no Roll server - no compiled API base and no `network.apiBase` from Studio - parked every upload as FAILED while ROLL said Online. STATUS now carries "Uploads have no server. Set the Roll server in Studio. Photos stay on the card." Found on the 0.4.58 release soak: 40 captures, 34 uploads parked for that one reason.
 - **Twin: a viewfinder pane that stops receiving frames stops being live.**
   The firmware shim marked a pane live for ever once its buffer pointer had

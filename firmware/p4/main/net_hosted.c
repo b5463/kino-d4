@@ -309,8 +309,21 @@ static bool version_gate(void) {
 
   net_link_report_versions(host_ver, cp_ver, "rpc-v2");
 
-  if ((uint32_t)cp.major1 != (uint32_t)HOST_HOSTED_MAJOR ||
-      (uint32_t)cp.minor1 < (uint32_t)HOST_HOSTED_MINOR) {
+  /*
+   * The minor floor, written so that it stays a test.
+   *
+   * This was `cp.minor1 < HOST_HOSTED_MINOR` on unsigned operands, and
+   * HOST_HOSTED_MINOR is the esp_hosted component's own minor version, which
+   * is 0. An unsigned value is never below zero, so the second half of the
+   * version gate has never been able to refuse anything; the compiler says so
+   * under -Wtype-limits. The rule is what it always meant to be, and it comes
+   * back the day the component's minor version moves off zero.
+   */
+  bool minor_too_old = false;
+#if HOST_HOSTED_MINOR > 0
+  minor_too_old = (uint32_t)cp.minor1 < (uint32_t)HOST_HOSTED_MINOR;
+#endif
+  if ((uint32_t)cp.major1 != (uint32_t)HOST_HOSTED_MAJOR || minor_too_old) {
     char detail[NET_DETAIL_LEN];
     snprintf(detail, sizeof detail, "C6 image %s cannot serve host %s; reflash the C6", cp_ver,
              host_ver);
