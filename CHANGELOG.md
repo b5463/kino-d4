@@ -147,6 +147,13 @@ KINO has no published release yet. Changes intended for the first release collec
   and timeouts at every rate over 24 captures and six switches in both
   directions. Shutter-to-ready goes from 3716 ms to 1755 ms. The FIFO headroom
   argument against 3 Mbaud did not survive contact with the bench.
+- **Firmware 0.4.59: the camera stops saying a deleted photograph was saved
+  (#210).** When META.JSON would not commit, the capture said "Card error.
+  Photo saved without its notes" and then deleted the folder, because a set of
+  unexplained JPEGs is worse than none - the right policy, and the words were
+  wrong. The outcome is the same as a folder that could not be made, so it says
+  the same thing: "Card error. Photo not saved." The error code and the log
+  still separate the two causes.
 - **Firmware 0.4.59: uploads with nowhere to go are said (#198).** A body with a Roll joined but no Roll server - no compiled API base and no `network.apiBase` from Studio - parked every upload as FAILED while ROLL said Online. STATUS now carries "Uploads have no server. Set the Roll server in Studio. Photos stay on the card." Found on the 0.4.58 release soak: 40 captures, 34 uploads parked for that one reason.
 - **Twin: a viewfinder pane that stops receiving frames stops being live.**
   The firmware shim marked a pane live for ever once its buffer pointer had

@@ -1779,10 +1779,20 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   r.meta_commit_ms = ms_since(meta0);
   cJSON_free(text);
   if (committed != ESP_OK) {
-    /* The frames are on the card but nothing describes them. A folder of
+    /*
+     * The frames are on the card but nothing describes them. A folder of
      * unexplained JPEGs is worse than no folder: it would be imported as a
-     * capture with no mode, no timestamp and no frame order. */
-    fail(&r, "SD_WRITE_FAILED", "Card error. Photo saved without its notes.");
+     * capture with no mode, no timestamp and no frame order. So the abort at
+     * `finish:` removes it, and that is the right policy.
+     *
+     * The words are what changed. This said "Photo saved without its notes",
+     * which told the owner their photograph was on the card seconds before
+     * storage_capture_abort() deleted it. The outcome here is the same as the
+     * folder-creation failure above - nothing on the card - so it says the
+     * same thing, and the err_code and the log still separate the two causes
+     * for anyone reading them afterwards.
+     */
+    fail(&r, "SD_WRITE_FAILED", "Card error. Photo not saved.");
     goto finish;
   }
   folder_open = false;
