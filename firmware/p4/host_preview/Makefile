@@ -17,6 +17,11 @@ CFLAGS := -O2 -std=gnu11 -Wall -Wno-unused-function -I shim -I $(MAIN) -I $(KDP_
 # here it is a check that runs over every screen the product has every time
 # somebody looks at one of them.
 CFLAGS += -DKINO_UI_AUDIT=1
+# The radio build, because that is the one that ships. conditions.h gates the
+# "Uploads have no server" row on KINO_RADIO (#198), so without this the
+# renderer cannot draw a screen the product has. Nothing else in the UI is
+# behind the flag; the network modules it also gates are not compiled here.
+CFLAGS += -DKINO_RADIO=1
 LDFLAGS := -lm
 
 # qr.c is compiled for real, not stubbed: it has no ESP-IDF dependency, and a

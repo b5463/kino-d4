@@ -28,7 +28,10 @@ KDP_CORE := ../../components/kdp_core/include
 HOST_SHIM := ../host_preview/shim
 VERSION := $(shell tr -d '\r\n' < ../../VERSION)
 
+# -DKINO_RADIO=1: the Twin rehearses the image that ships, and the STATUS row
+# for a Roll with no server is behind that flag (#198, #203).
 CFLAGS := --target=wasm32-wasip1 -O2 -std=gnu11 -Wall -Wno-unused-function \
+	-DKINO_RADIO=1 \
           -mexec-model=reactor \
           -I shim -I $(HOST_SHIM) -I $(MAIN) -I $(KDP_CORE) \
           -DKINO_FW_VERSION=\"$(VERSION)\" -DKINO_TWIN_UI=1

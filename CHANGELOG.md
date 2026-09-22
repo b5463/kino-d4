@@ -28,6 +28,17 @@ KINO has no published release yet. Changes intended for the first release collec
   instead of computing them once in the draw and again in the hit test, which
   is the convention every other screen already kept; all 206 rendered screens
   are byte-identical before and after.
+- **Both rehearsal surfaces compile the build that ships (#203).** The image
+  customers get is the radio build, and neither the host preview nor the Twin
+  defined `KINO_RADIO`. The only UI-visible thing behind that flag is the STATUS
+  row 0.4.59 added for a Roll with no server (#198) - so the two tools whose
+  whole purpose is looking at every screen before it ships could not show one of
+  them. Turning the flag on was not enough on its own: both stubbed the server
+  lookup as present-but-empty and returned true, which is a state no camera can
+  be in, and the condition fires when that call returns false. The stub now
+  reports an absent base, the preview renders `status_roll_no_server` and
+  `roll_no_server`, and the Twin's page can drive it through
+  `kui_set_roll_server`.
 - **Firmware 0.4.59: uploads with nowhere to go are said (#198).** A body with a Roll joined but no Roll server - no compiled API base and no `network.apiBase` from Studio - parked every upload as FAILED while ROLL said Online. STATUS now carries "Uploads have no server. Set the Roll server in Studio. Photos stay on the card." Found on the 0.4.58 release soak: 40 captures, 34 uploads parked for that one reason.
 - **Twin: a viewfinder pane that stops receiving frames stops being live.**
   The firmware shim marked a pane live for ever once its buffer pointer had
