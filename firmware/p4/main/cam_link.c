@@ -12,6 +12,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 #include "hardware_validation.h"
 #include "kdp/decoder.h"
 #include "kdp/packet.h"
@@ -35,6 +36,16 @@
  * the explanation.
  */
 #define LINK_RX_BUF (4 * (NL_CHUNK_MAX + 64))
+
+/*
+ * One rate probe, when looking for a node whose rate we do not know (#221).
+ *
+ * Short on purpose. A node at the rate being tried answers a HELLO in single
+ * milliseconds; one at any other rate hears noise and answers nothing, and
+ * there is nothing to wait for. Four of these is the worst case for a channel
+ * whose node moved, and it happens once per boot.
+ */
+#define BAUD_PROBE_TIMEOUT_MS 250
 /* The largest request the P4 sends a node is a firmware chunk. In PSRAM:
  * four of these in internal SRAM is 9 KB the recovery reserve cannot spare,
  * and the UART driver copies from wherever the bytes are. */
@@ -111,6 +122,7 @@ typedef struct {
  * that separation is what allows two transfers to be in flight at once. */
 struct channel_s {
   uart_port_t uart;
+  uint32_t baud; /* what this channel runs at now; NL_DEFAULT_BAUD at init */
   int tx_pin;
   int rx_pin;
   const char *tag; /* "C1".."C4", the klog source for this node */
@@ -420,6 +432,7 @@ esp_err_t camlink_init(void) {
   for (int i = 0; i < CAMLINK_CAMS; i++) {
     channel_t *ch = &s_ch[i];
     ch->uart = WIRING[i].uart;
+    ch->baud = NL_DEFAULT_BAUD;
     ch->tx_pin = WIRING[i].tx;
     ch->rx_pin = WIRING[i].rx;
     ch->tag = WIRING[i].tag;
@@ -906,6 +919,148 @@ esp_err_t camlink_release_ch(int cam, uint32_t frame_id) {
 }
 
 esp_err_t camlink_release(uint32_t frame_id) { return camlink_release_ch(0, frame_id); }
+
+uint32_t camlink_baud_ch(int cam) { return valid_cam(cam) ? s_ch[cam].baud : 0; }
+
+/*
+ * Reprogram one channel's UART, with the channel to ourselves while we do it.
+ *
+ * uart_flush_input() and uart_set_baudrate() are not safe against another task
+ * sitting in uart_read_bytes() on the same port: the flush walks the driver's
+ * ring while the reader is taking from it. Every other entry point in this
+ * file goes through request(), which holds ch->lock for one transaction, so
+ * the rate change has to take the same lock or it is the one operation here
+ * that can land in the middle of somebody else's.
+ *
+ * The lock is held only for the reconfiguration. The HELLO that follows takes
+ * it again through request(), which is what keeps this a plain mutex.
+ */
+static esp_err_t baud_set_locked(channel_t *ch, uint32_t baud) {
+  xSemaphoreTake(ch->lock, portMAX_DELAY);
+  uart_wait_tx_done(ch->uart, pdMS_TO_TICKS(100));
+  const esp_err_t err = uart_set_baudrate(ch->uart, baud);
+  if (err == ESP_OK) {
+    uart_flush_input(ch->uart);
+    ch->baud = baud;
+  }
+  xSemaphoreGive(ch->lock);
+  return err;
+}
+
+/* One channel's UART back on the default, said out loud. Every path out of a
+ * failed switch goes through here, so there is one definition of "home". */
+static esp_err_t baud_home(channel_t *ch, const char *why) {
+  const esp_err_t err = baud_set_locked(ch, NL_DEFAULT_BAUD);
+  klog(ch->tag, "link back to %d baud: %s", NL_DEFAULT_BAUD, why);
+  return err;
+}
+
+/* One probe at one rate: set the local end, ask, and say whether anybody was
+ * there. Deliberately short - a node at the right rate answers immediately,
+ * and the whole point is to get through four of these quickly. */
+static bool baud_probe(channel_t *ch, int cam, uint32_t baud) {
+  if (baud_set_locked(ch, baud) != ESP_OK) return false;
+  return camlink_hello_ch_timeout(cam, BAUD_PROBE_TIMEOUT_MS) == ESP_OK;
+}
+
+esp_err_t camlink_resync_baud_ch(int cam, uint32_t baud) {
+  if (!valid_cam(cam)) return ESP_ERR_INVALID_ARG;
+  channel_t *ch = &s_ch[cam];
+  static const uint32_t supported[NL_BAUD_SUPPORTED_N] = NL_BAUD_SUPPORTED_LIST;
+
+  /* The intended rate first: a body and node that already agree - every boot
+   * where nothing moved - pay exactly one HELLO for this whole function. */
+  if (baud_probe(ch, cam, baud)) return ESP_OK;
+
+  for (int i = 0; i < NL_BAUD_SUPPORTED_N; i++) {
+    if (supported[i] == baud) continue;
+    if (!baud_probe(ch, cam, supported[i])) continue;
+    klog(ch->tag, "node found at %lu baud, moving it to %lu", (unsigned long)supported[i],
+         (unsigned long)baud);
+    const esp_err_t moved = camlink_set_baud_ch(cam, baud);
+    if (moved != ESP_OK) {
+      klog(ch->tag, "could not move it: %s", esp_err_to_name(moved));
+    }
+    return moved;
+  }
+
+  /* Nobody answered anywhere. Leave the channel on the default, which is
+   * where a node that reboots will come up, so the next probe finds it. */
+  baud_set_locked(ch, NL_DEFAULT_BAUD);
+  return ESP_ERR_NOT_FOUND;
+}
+
+esp_err_t camlink_set_baud_ch(int cam, uint32_t baud) {
+  if (!valid_cam(cam)) return ESP_ERR_INVALID_ARG;
+  channel_t *ch = &s_ch[cam];
+  if (baud == ch->baud) return ESP_OK;
+
+  char req_json[40];
+  snprintf(req_json, sizeof req_json, "{\"baud\":%lu}", (unsigned long)baud);
+  uint8_t resp[160];
+  /* The node answers at the OLD rate and switches only once its reply has left
+   * the wire, so this exchange is ordinary. Everything after it is not. */
+  const esp_err_t asked =
+      request(cam, NL_CMD_SET_BAUD, req_json, resp, sizeof resp - 1, NULL, DEFAULT_TIMEOUT_MS);
+  if (asked != ESP_OK) {
+    klog(ch->tag, "baud %lu refused: %s", (unsigned long)baud, esp_err_to_name(asked));
+    return asked;
+  }
+
+  /* Its reply is in; it is switching now. Follow it. */
+  const esp_err_t set = baud_set_locked(ch, baud);
+  if (set != ESP_OK) {
+    /* We never left and the node did. Wait out its revert rather than talk
+     * into a rate this end cannot produce. */
+    vTaskDelay(pdMS_TO_TICKS(NL_BAUD_PROBE_MS + 200));
+    /* Still on the old rate - the set failed - so this only discards what the
+     * node said while it was switching. Under the lock like every other touch
+     * of this port. */
+    baud_set_locked(ch, ch->baud);
+    klog(ch->tag, "this end cannot do %lu baud; waited out the node's revert",
+         (unsigned long)baud);
+    return set;
+  }
+
+  /*
+   * A HELLO decides it, inside the node's own deadline - and it gets more
+   * than one go at it.
+   *
+   * Any frame that decodes at the new rate clears the node's revert, so a
+   * successful HELLO both proves the link and confirms the switch. A single
+   * attempt is not enough: both ends have just reprogrammed a divider and
+   * flushed, and the first frame after that can be lost to the settling
+   * rather than to the rate being wrong. Measured on the bench, the switch
+   * back down from 3 Mbaud dropped one channel's first HELLO while the link
+   * was in fact healthy - the node answered everything afterwards.
+   *
+   * Two attempts inside the node's deadline, which is what the halved
+   * timeout leaves room for. If neither gets through, the node goes home on
+   * its own and so do we.
+   */
+  esp_err_t hello = ESP_FAIL;
+  for (int attempt = 0; attempt < 2 && hello != ESP_OK; attempt++) {
+    hello = camlink_hello_ch_timeout(cam, NL_BAUD_PROBE_MS / 4);
+  }
+  if (hello == ESP_OK) {
+    klog(ch->tag, "link at %lu baud", (unsigned long)baud);
+    return ESP_OK;
+  }
+
+  /* Longer than the node's deadline, so we are not talking while it reverts. */
+  vTaskDelay(pdMS_TO_TICKS(NL_BAUD_PROBE_MS + 200));
+  baud_home(ch, "the node did not answer at the new rate");
+  esp_err_t back = ESP_FAIL;
+  for (int attempt = 0; attempt < 2 && back != ESP_OK; attempt++) {
+    back = camlink_hello_ch_timeout(cam, DEFAULT_TIMEOUT_MS);
+  }
+  if (back != ESP_OK) {
+    klog(ch->tag, "the node is not answering at %d baud either: %s", NL_DEFAULT_BAUD,
+         esp_err_to_name(back));
+    return back;
+  }
+  return hello;
+}
 
 /* Copy the node's NACK reason out for the caller, when there was one. */
 static void take_code(int cam, esp_err_t err, char *code, size_t cap) {
