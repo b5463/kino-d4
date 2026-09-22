@@ -485,6 +485,17 @@ void app_main(void) {
   if (lid_err != ESP_OK) {
     ESP_LOGE(TAG, "lens cover watcher unavailable: %s", esp_err_to_name(lid_err));
   }
+  /*
+   * Whether it acts on what it sees, as a setting rather than as a rebuild.
+   *
+   * lid_set_acting() existed and nothing anywhere called it, so the watcher
+   * could only ever observe and the sleep behind it could not happen on any
+   * body (#169). The default is still false, for the reason lid.h gives: the
+   * two thresholds are unmeasured and the mistake this makes is putting the
+   * camera to sleep in the middle of a party. What changes is that measuring
+   * them and trying the result no longer needs a reflash.
+   */
+  lid_set_acting(config_bool("body.coverWatch", false));
 
   /*
    * Networking last, and every line of it is allowed to fail.

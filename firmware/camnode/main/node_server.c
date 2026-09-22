@@ -124,7 +124,10 @@ static uint32_t s_baud = NL_DEFAULT_BAUD;
 static int64_t s_baud_revert_us;
 /* Larger than any preview-sized JPEG this sensor makes (a 320x240 frame at the
  * finder's quality is 2-8 KB), smaller than any photograph (90 KB up). */
-#define NL_PREVIEW_STALE_BYTES (32 * 1024)
+/* The body refuses anything larger, so a frame above this is one neither end
+ * can use: take the next one. One definition, in the header both ends read
+ * (#208). */
+#define NL_PREVIEW_STALE_BYTES NL_PREVIEW_MAX_BYTES
 
 void node_server_set_state(const char *state) { s_state = state; }
 
@@ -476,6 +479,29 @@ static void handle_capture(uint32_t seq, cJSON *req) {
     send_nack(NL_CMD_CAPTURE, seq, "HARDWARE_ERROR", "No sensor detected");
     return;
   }
+  /*
+   * Everything this CAPTURE may spend, measured from here.
+   *
+   * From the top of the handler, not from just before the first fetch: the
+   * resolution change and its drain are part of what a CAPTURE costs, and
+   * leaving them outside the budget is what let one run past the P4's
+   * NODE_CAPTURE_TIMEOUT_MS (#205).
+   */
+  const int64_t budget_end_us = esp_timer_get_time() + (int64_t)CAPTURE_BUDGET_MS * 1000;
+
+  /*
+   * The previous held frame goes first, before the resolution changes.
+   *
+   * With fb_count = 2 a held frame leaves exactly one buffer for the DMA, so
+   * the drain inside camsensor_set_resolution() could not return until the
+   * in-flight frame finished - a frame period added to every alternation
+   * between a preview and a photograph, inside the budget above.
+   */
+  if (s_fb != NULL) {
+    camsensor_release(s_fb);
+    s_fb = NULL;
+  }
+
   const cJSON *res = cJSON_GetObjectItem(req, "resolution");
   if (cJSON_IsString(res) && camsensor_set_resolution(res->valuestring) != ESP_OK) {
     send_nack(NL_CMD_CAPTURE, seq, "INVALID_ARGUMENT", "Unsupported resolution");
@@ -485,12 +511,6 @@ static void handle_capture(uint32_t seq, cJSON *req) {
   if (cJSON_IsNumber(quality) && camsensor_set_quality(quality->valueint) != ESP_OK) {
     send_nack(NL_CMD_CAPTURE, seq, "INVALID_ARGUMENT", "Quality not accepted");
     return;
-  }
-
-  // A new capture implicitly releases the previous held frame.
-  if (s_fb != NULL) {
-    camsensor_release(s_fb);
-    s_fb = NULL;
   }
 
   s_state = NL_STATE_EXPOSING;
@@ -520,7 +540,7 @@ static void handle_capture(uint32_t seq, cJSON *req) {
   int64_t sync_edge_us;
   sync_snapshot(&sync_seq, &sync_edge_us, NULL, NULL);
   const int64_t cmd_us = esp_timer_get_time();
-  camera_fb_t *fb = camsensor_capture(&duration_ms, &timing);
+  camera_fb_t *fb = camsensor_capture_by(budget_end_us, &duration_ms, &timing);
   /*
    * A preview that comes back photograph-sized is the frame the sensor was
    * exposing when the mode changed: camsensor_set_resolution drains the
@@ -531,7 +551,7 @@ static void handle_capture(uint32_t seq, cJSON *req) {
   if (preview && fb != NULL && fb->len > NL_PREVIEW_STALE_BYTES) {
     ESP_LOGI(TAG, "preview frame is %u B, the photograph's size; taking the next", (unsigned)fb->len);
     camsensor_release(fb);
-    fb = camsensor_capture(&duration_ms, &timing);
+    fb = camsensor_capture_by(budget_end_us, &duration_ms, &timing);
   }
   /*
    * A photograph must be armed AFTER the command that asked for it, and encoded
@@ -583,23 +603,27 @@ static void handle_capture(uint32_t seq, cJSON *req) {
      * which is the state that made a camera read offline on the NEXT capture.
      *
      * A retry count cannot bound this because it does not know what a fetch
-     * costs. A deadline can. CAPTURE_BUDGET_MS is the whole freshness
-     * sequence; the P4's 4000 ms has to cover that plus the CRC over the JPEG
-     * and the cJSON print, measured at a few hundred milliseconds for 240 KB
-     * at -O2, so 3000 leaves ~1000 ms of the product path's budget for the
-     * reply and the wire. The retry cap stays as a second bound for the case
-     * where fetches are fast and the sensor simply never produces a fresh
+     * costs. A deadline can - and it has to be one deadline for the whole
+     * handler, not one for this loop. It was the latter until #205: the first
+     * fetch and the mode-change drain both sat outside it and both could block
+     * for the driver's 4000 ms, so the worst case was two to three times the
+     * figure this comment claimed. budget_end_us is taken at the top of
+     * handle_capture() and every fetch is bounded by it.
+     *
+     * The P4's 4000 ms has to cover that plus the CRC over the JPEG and the
+     * cJSON print, so 3000 leaves ~1000 ms of the product path's budget for
+     * the reply and the wire. The retry cap stays as a second bound for the
+     * case where fetches are fast and the sensor simply never produces a fresh
      * frame.
      *
      * Do not raise the P4 side to make room here: the audit that found this
      * requires a node-side p99 before that number moves.
      */
-    const int64_t deadline_us = cmd_us + (int64_t)CAPTURE_BUDGET_MS * 1000;
     while (fb != NULL && timing.frame_start_us <= must_start_after) {
       if (freshness_retries >= FRESHNESS_RETRIES_MAX) break;
-      if (esp_timer_get_time() >= deadline_us) break;
+      if (esp_timer_get_time() >= budget_end_us) break;
       camsensor_release(fb);
-      fb = camsensor_capture(&duration_ms, &timing);
+      fb = camsensor_capture_by(budget_end_us, &duration_ms, &timing);
       freshness_retries++;
     }
     /*

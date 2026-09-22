@@ -124,6 +124,23 @@ typedef struct {
 camera_fb_t *camsensor_capture(uint32_t *duration_ms, camsensor_timing_t *timing);
 
 /**
+ * The same fetch, but it gives up at `deadline_us` instead of at the driver's.
+ *
+ * esp_camera_fb_get() blocks for up to 4000 ms, which is the entire budget the
+ * P4 allows for a whole CAPTURE (capture.c, NODE_CAPTURE_TIMEOUT_MS). One
+ * fetch could therefore use all of it and a retry could use it again, so the
+ * node went on working on a photograph the body had already failed - and then
+ * answered into a request nobody was listening to (#205).
+ *
+ * Waits for the driver to queue a frame rather than blocking inside it, in
+ * 5 ms steps, so a sensor that has stopped producing frames costs the deadline
+ * rather than four seconds. Returns NULL when the deadline passes first; the
+ * timing fields are still filled, so the reply can say how long it waited.
+ */
+camera_fb_t *camsensor_capture_by(int64_t deadline_us, uint32_t *duration_ms,
+                                  camsensor_timing_t *timing);
+
+/**
  * Whether `fb` is a whole JPEG: JPEG pixel format, plausible length, SOI at
  * the front and EOI at the back.
  *
