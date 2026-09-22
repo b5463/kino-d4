@@ -59,8 +59,7 @@ Action rows at the foot of STATUS: **Restart the cameras** (always) and **Measur
 | `Card full. Delete photos or change the card.` | Shutter with no room. |
 | `No lens answered. Try a restart.` | No camera node answered the probe. |
 | `The lenses did not wake. Try a restart.` | The camera bank did not come back after a cycle. |
-| `Card error. Photo not saved.` | The capture folder could not be made. |
-| `Card error. Photo saved without its notes.` | Frames on the card, META.JSON failed. |
+| `Card error. Photo not saved.` | The capture folder could not be made, or META.JSON would not commit and the half-made folder was removed. Both end with nothing on the card, so both say so; the log and the KDP reply separate the causes. |
 
 ## Working banners
 
