@@ -2116,8 +2116,18 @@ static void handle_storage_bench(uint32_t seq, const cJSON *req) {
   const uint32_t block_kb = cJSON_IsNumber(jblock) ? (uint32_t)jblock->valuedouble : 0;
   const uint32_t passes = cJSON_IsNumber(jpasses) ? (uint32_t)jpasses->valuedouble : 0;
 
+  /* The card as well as the cameras, for the same reason the self-test takes
+   * it: the card watcher writes its own files on a card that has just
+   * mounted, and a megabyte of bench traffic across that is two measurements
+   * of each other (#210). */
+  if (!storage_acquire(STORAGE_USER_UI, 3000)) {
+    capture_unlock();
+    send_nack(KDP_CMD_STORAGE_BENCH, seq, "BUSY", "The card is busy");
+    return;
+  }
   storage_bench_result_t r;
   storage_bench(size_kb, block_kb, passes, &r);
+  storage_release(STORAGE_USER_UI);
   capture_unlock();
 
   if (!r.ok) {
@@ -2171,8 +2181,24 @@ static void handle_storage_self_test(uint32_t seq) {
     send_nack(KDP_CMD_STORAGE_SELF_TEST, seq, "BUSY", "A capture or soak run is active");
     return;
   }
+  /*
+   * And the card itself, which capture_lock() says nothing about.
+   *
+   * storage_watch.c runs this same self-test on a card that has just mounted,
+   * under storage_acquire(); this path only excluded captures. Run the Studio
+   * test inside that window and both tasks write, verify and unlink the one
+   * fixed path through one shared static buffer - and the loser reports
+   * VERIFY_FAILED on a healthy card, latches s_write_test to "fail", and the
+   * camera tells its owner the card cannot hold a photograph (#210).
+   */
+  if (!storage_acquire(STORAGE_USER_UI, 3000)) {
+    capture_unlock();
+    send_nack(KDP_CMD_STORAGE_SELF_TEST, seq, "BUSY", "The card is busy");
+    return;
+  }
   storage_selftest_result_t result;
   storage_self_test(&result);
+  storage_release(STORAGE_USER_UI);
   capture_unlock();
 
   if (result.ok) {
