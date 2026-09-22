@@ -205,10 +205,13 @@ static void conditions_scan(const camlink_info_t *cams) {
     }
   }
 
+#ifdef KINO_RADIO
   {
     /* A Roll joined and nowhere to send to: the build has no compiled API
      * base and Studio has not set network.apiBase. Without this row every
-     * upload parked FAILED and the ROLL screen said "Online". */
+     * upload parked FAILED and the ROLL screen said "Online". Radio builds
+     * only: a body without a route to the C6 uploads over USB-C, and
+     * roll_http.h has no API base on it to ask about. */
     roll_state_t roll;
     char base[160];
     if (roll_state_get(&roll) && !roll_http_api_base(base, sizeof base)) {
@@ -219,6 +222,7 @@ static void conditions_scan(const camlink_info_t *cams) {
       snprintf(c->detail, sizeof c->detail, "Set the Roll server in Studio. Photos stay on the card.");
     }
   }
+#endif
 
   if (clock_source() != CLOCK_UNSET && !clock_offset_known()) {
     cond_t *c = &found[n++];
