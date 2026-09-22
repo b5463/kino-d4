@@ -572,7 +572,22 @@ void clock_set_offset(int m) { (void)m; }
 esp_err_t storage_capture_trash(const char *id) { (void)id; return ESP_OK; }
 esp_err_t storage_capture_untrash(const char *id) { (void)id; return ESP_OK; }
 void storage_trash_purge(void) {}
-bool roll_http_api_base(char *out, size_t cap) { if (cap) out[0] = '\0'; return true; }
+/*
+ * Whether this body has a Roll server to upload to.
+ *
+ * The stub used to write an empty string and return true, which is a state no
+ * camera can be in: the real one returns false when there is no compiled
+ * default and Studio has set no `network.apiBase`. Returning true meant the
+ * condition behind it - "Uploads have no server", the row 0.4.59 added after a
+ * soak parked 34 uploads for exactly this reason (#198) - could never draw
+ * here, even once the radio flag was on.
+ */
+static bool g_roll_server = true;
+bool roll_http_api_base(char *out, size_t cap) {
+  if (!g_roll_server) return false;
+  snprintf(out, cap, "https://kino.acronym.sk/api");
+  return true;
+}
 int64_t clock_now_ms(void) { return 1790006498000LL; } /* 2026-09-21T16:01Z */
 bool gallery_deleting(void) { return false; }
 void gallery_delete_progress(int *done, int *total) {
@@ -1313,6 +1328,26 @@ int main(int argc, char **argv) {
   g_queue.server_state = UPLOAD_SERVER_REACHABLE;
   g_queue.last_upload_ms = esp_timer_get_time() / 1000 - 8000;
   SHOT(SCR_ROLL, "roll_active");
+
+  /*
+   * A Roll with nowhere to send it (#198).
+   *
+   * The body has joined a Roll and has no server to upload to, so every
+   * upload parks FAILED while ROLL says Online. It is the one screen state
+   * that only exists in the radio build, which is why this renderer compiles
+   * as one; before #203 it could not be drawn here at all.
+   */
+  {
+    g_roll_server = false;
+    upload_queue_report_t saved = g_queue;
+    g_queue.failed = 34;
+    g_queue.pending = 0;
+    g_queue.uploading = 0;
+    SHOT(SCR_STATUS, "status_roll_no_server");
+    SHOT(SCR_ROLL, "roll_no_server");
+    g_queue = saved;
+    g_roll_server = true;
+  }
 
   /* Online and working: five landed in this burst, one in flight, three
    * behind it - a bar with something to say. */
