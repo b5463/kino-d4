@@ -87,6 +87,14 @@ KINO has no published release yet. Changes intended for the first release collec
   deadline taken at the top of the handler, and the held frame is released
   before the resolution changes so the drain is not waiting on the last free
   buffer.
+- **Firmware 0.4.59: the cover watcher has a switch (#169).** `lid_set_acting()`
+  was defined, declared and called from nowhere, so the watcher could only ever
+  observe and the sleep-on-cover-close behind it could not happen on any body.
+  It now reads `body.coverWatch` at boot and on every accepted SET_CONFIG. The
+  default is still false, for the reason `lid.h` gives - the two thresholds are
+  unmeasured and the mistake this feature makes is putting the camera to sleep
+  in the middle of a party - but measuring them and trying the result no longer
+  needs a reflash.
 - **Firmware 0.4.59: uploads with nowhere to go are said (#198).** A body with a Roll joined but no Roll server - no compiled API base and no `network.apiBase` from Studio - parked every upload as FAILED while ROLL said Online. STATUS now carries "Uploads have no server. Set the Roll server in Studio. Photos stay on the card." Found on the 0.4.58 release soak: 40 captures, 34 uploads parked for that one reason.
 - **Twin: a viewfinder pane that stops receiving frames stops being live.**
   The firmware shim marked a pane live for ever once its buffer pointer had
