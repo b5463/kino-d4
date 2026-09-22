@@ -46,6 +46,7 @@
 #include "kdp/packet.h"
 #include "kdp/protocol.h"
 #include "klog.h"
+#include "lid.h"
 #include "meta.h"
 #include "net_link.h"
 #include "ui.h"
@@ -1202,8 +1203,9 @@ static void handle_set_config(uint32_t seq, const cJSON *req) {
     send_nack(KDP_CMD_SET_CONFIG, seq, "BAD_REQUEST", "Config could not be merged");
     return;
   }
-  /* Studio can turn the bench channel on and off without a reflash. */
+  /* Studio can turn these on and off without a reflash. */
   klog_set_telemetry(config_bool("body.log.telemetry", false));
+  lid_set_acting(config_bool("body.coverWatch", false));
   klog("P4", "config set rev %lu", (unsigned long)config_revision());
   send_json(KDP_CMD_SET_CONFIG, seq, config_envelope());
 }
