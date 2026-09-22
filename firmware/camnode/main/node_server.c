@@ -124,7 +124,10 @@ static uint32_t s_baud = NL_DEFAULT_BAUD;
 static int64_t s_baud_revert_us;
 /* Larger than any preview-sized JPEG this sensor makes (a 320x240 frame at the
  * finder's quality is 2-8 KB), smaller than any photograph (90 KB up). */
-#define NL_PREVIEW_STALE_BYTES (32 * 1024)
+/* The body refuses anything larger, so a frame above this is one neither end
+ * can use: take the next one. One definition, in the header both ends read
+ * (#208). */
+#define NL_PREVIEW_STALE_BYTES NL_PREVIEW_MAX_BYTES
 
 void node_server_set_state(const char *state) { s_state = state; }
 

@@ -12,6 +12,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "node_link/node_link.h"
 #include "freertos/task.h"
 #include "klog.h"
 #include "power.h"
@@ -62,9 +63,16 @@ static const char *TAG = "viewfinder";
 #define VF_QUALITY_NORMAL VF_QUALITY
 #define VF_QUALITY_HIGH 18
 
-/* A QVGA JPEG at this quality measures a few KB; this is generous headroom so
- * a busy frame is never truncated into a decode failure. */
-#define VF_MAX_JPEG (24 * 1024)
+/*
+ * A QVGA JPEG at this quality measures a few KB; this is generous headroom so
+ * a busy frame is never truncated into a decode failure.
+ *
+ * The same number the node uses to decide a frame is too big to be a preview
+ * at all (#208). They were 24 KB here and 32 KB there, which left a band where
+ * the node kept a frame and this end dropped it - the pane blinking on a
+ * camera that was working, which is what the node's guard exists to prevent.
+ */
+#define VF_MAX_JPEG NL_PREVIEW_MAX_BYTES
 
 /* Older than this and a pane stops claiming to be live. */
 #define VF_STALE_MS 2000

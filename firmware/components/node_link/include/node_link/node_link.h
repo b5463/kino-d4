@@ -20,6 +20,21 @@
  * recovered by a retry either way, the faster line with retries beats the
  * slower line without them.
  */
+/*
+ * The largest preview frame the link will carry, and both ends mean it.
+ *
+ * This was two numbers that disagreed (#208): the node treated anything above
+ * 32 KB as a photograph-sized leftover and took the next frame, while the body
+ * refused anything above 24 KB by size. A 320x240 frame of a detailed scene at
+ * the highest preview quality lands between the two, so the node kept it and
+ * the body dropped it - the pane blinked on a camera that was working.
+ *
+ * One number, at the larger value, so there is no band where a frame is
+ * acceptable at one end and not the other. The body's buffer is in PSRAM, so
+ * the difference costs 8 KB a channel on a body with megabytes to spare.
+ */
+#define NL_PREVIEW_MAX_BYTES (32 * 1024)
+
 #define NL_DEFAULT_BAUD 921600
 
 /*

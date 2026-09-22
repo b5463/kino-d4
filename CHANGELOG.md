@@ -96,6 +96,15 @@ KINO has no published release yet. Changes intended for the first release collec
   and timeouts at every rate over 24 captures and six switches in both
   directions. Shutter-to-ready goes from 3716 ms to 1755 ms. The FIFO headroom
   argument against 3 Mbaud did not survive contact with the bench.
+- **Firmware 0.4.59: one number for the largest preview frame (#208).** The node
+  treated anything above 32 KB as a photograph-sized leftover and took the next
+  frame; the body refused anything above 24 KB by size. A 320x240 frame of a
+  detailed scene at the highest preview quality lands between the two, so the
+  node kept it and the body dropped it, and the pane blinked on a camera that
+  was working - which is the symptom the node's guard exists to prevent. The
+  ceiling is `NL_PREVIEW_MAX_BYTES` in the header both ends read, at the larger
+  value, so there is no band where a frame is acceptable at one end and not the
+  other. The body's buffer is in PSRAM, so matching costs 8 KB a channel.
 - **Firmware 0.4.59: uploads with nowhere to go are said (#198).** A body with a Roll joined but no Roll server - no compiled API base and no `network.apiBase` from Studio - parked every upload as FAILED while ROLL said Online. STATUS now carries "Uploads have no server. Set the Roll server in Studio. Photos stay on the card." Found on the 0.4.58 release soak: 40 captures, 34 uploads parked for that one reason.
 - **Twin: a viewfinder pane that stops receiving frames stops being live.**
   The firmware shim marked a pane live for ever once its buffer pointer had
