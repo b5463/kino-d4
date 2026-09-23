@@ -149,7 +149,7 @@ Per signal, with the XIAO end:
 
 Accounting: 12 exposed GPIOs, 11 signals. The eleven are `CAM1_TX`/`CAM1_RX`, `CAM2_TX`/`CAM2_RX`, `CAM3_TX`/`CAM3_RX`, `CAM4_TX`/`CAM4_RX`, `SYNC_OUT`, `CAM_PWR_EN` and `BTN_SHUTTER`. `GPIO35` is the one spare. The shutter pin is assigned since ECN-0003, which took `GPIO28` from `FLASH_EN`; D4-V1 has no built-in flash and drives no flash enable line. Still unassigned, with no header pin left for them: `BTN_FN`, the mode slide, and the per-camera power-switch control pins — §Camera power switching describes that channel hardware.
 
-None of the eleven touches an occupied peripheral: SD slot 0 is GPIO39–44, the C6 SDIO slot 1 is GPIO14–19 with `EN` on GPIO54, I²S is 9–13 and 48, the internal I²C is 7/8, backlight is 23, USB is 24–27, and the console is 37/38. All five P4 UARTs route TX/RX through the GPIO matrix, so there is no IOMUX constraint on these choices. Baud stays 921600, UART numbers stay 1–4.
+None of the eleven touches an occupied peripheral: SD slot 0 is GPIO39–44, the C6 SDIO slot 1 is GPIO14–19 with `EN` on GPIO54, I²S is 9–13 and 48, the internal I²C is 7/8, backlight is 23, USB is 24–27, and the console is 37/38. All five P4 UARTs route TX/RX through the GPIO matrix, so there is no IOMUX constraint on these choices. UART numbers stay 1–4. A node powers on at 921600 and the body drives all four to 3 Mbaud once it has found them (#228).
 
 ### How the map was got wrong twice
 

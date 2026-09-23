@@ -122,6 +122,35 @@ KINO has no published release yet. Changes intended for the first release collec
   said nothing. The pipeline now reports whether it came up, a part-built one
   refuses instead of swallowing, and the shutter says "The cameras did not
   start. Restart the camera" rather than inventing a reason.
+- **Firmware 0.4.59: the camera link runs at 3 Mbaud by default, and finds its
+  nodes wherever they are (#221, #228).** #218 measured the rates and left the
+  default at 921600; this is the decision. Once the body has found its nodes it
+  drives all four channels to 3000000. Measured on KD4-D121BC, same scene: a
+  four-camera capture goes from 4237 ms to 1642 ms, each link from 86.7 KB/s to
+  276 KB/s.
+  `NL_DEFAULT_BAUD` does not move and is a different thing: a node powers on at
+  921600 and both ends fall back to it when a switch fails, so that path has to
+  work with no negotiation behind it. `NL_BAUD_PREFERRED` is the new rate, and
+  `body.linkBaud` still overrides it; a stored value that is not a rate a node
+  accepts means the preferred rate and says so once, rather than being handed to
+  every channel to refuse.
+  All four together on purpose. A capture ends when its slowest link ends, so
+  one camera left at 921600 makes the whole shutter as slow as it was and the
+  other three gain nothing. A channel whose node answers and will not hold the
+  rate puts all four back on the default and logs it; a channel with nothing
+  fitted answers at no rate at all and is not a failure.
+  The nodes do not share the body's reset, so after a restart the body's UARTs
+  are at 921600 while the nodes are wherever they were left, and nothing
+  recovers that on its own - a node's revert arms only when a switch happens, so
+  one sitting at 3 Mbaud has no deadline running. `camlink_resync_baud_ch()`
+  tries the intended rate first, which is one HELLO on every boot where nothing
+  moved, and otherwise walks the other supported rates at a 250 ms probe and
+  moves the node it finds. Bench: a body reset comes back with all four at
+  3 Mbaud, and a node stranded at another rate is found and moved 1.1 s after
+  the first timeout.
+  `SET_LINK_BAUD` takes `persist`, default true. `scripts/kino-baud-ramp.mjs`
+  sends `persist: false` throughout, including in its own tidy-up, so walking
+  the rates changes the wire and never what the body comes up at.
 - **Firmware 0.4.59: the camera link can change speed (#218).** Measured on the
   bench, a four-camera capture moves 686 KB in a 2.75 s transfer window with
   every link holding 86.5 to 86.9 KB/s, which is 96% of a 921600-baud wire. The

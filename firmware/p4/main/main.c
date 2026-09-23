@@ -86,6 +86,67 @@ static uint32_t next_boot_count(void) {
   return count;
 }
 
+/*
+ * The rate to drive the link to, from the config, checked against the rates a
+ * node will actually accept.
+ *
+ * A value that is not one of them - a typo, a stale key, a zero left behind by
+ * something trying to clear it - would otherwise be handed to
+ * camlink_resync_baud_ch(), which would ask every node for a rate each one
+ * refuses and then put them all back. Anything unrecognised means the
+ * preferred rate, and says so once.
+ */
+static uint32_t link_baud_from_config(void) {
+  static const uint32_t supported[NL_BAUD_SUPPORTED_N] = NL_BAUD_SUPPORTED_LIST;
+  const uint32_t want = (uint32_t)config_int("body.linkBaud", NL_BAUD_PREFERRED);
+  for (int i = 0; i < NL_BAUD_SUPPORTED_N; i++) {
+    if (supported[i] == want) return want;
+  }
+  klog("P4", "body.linkBaud %lu is not a rate a node takes; using %d", (unsigned long)want,
+       NL_BAUD_PREFERRED);
+  return NL_BAUD_PREFERRED;
+}
+
+/*
+ * Bring every channel to `want`, or leave them all on the default.
+ *
+ * All four together on purpose. A capture ends when its slowest link ends, so
+ * one camera stuck at 921600 makes the whole shutter as slow as it was and the
+ * other three gain nothing - a mixed link is all cost and no benefit, and a
+ * state nobody can read at a glance.
+ *
+ * A channel with nothing fitted answers at no rate at all and is not a
+ * failure; a channel whose node is found and will not move is. The first of
+ * those stops the sweep, because a body that cannot hold the rate should find
+ * that out in one channel's time rather than four.
+ *
+ * Returns false when a capture owns the cameras, so the next sweep tries again
+ * rather than leaving the link half-set.
+ */
+static bool settle_link_baud(uint32_t want) {
+  bool demote = false;
+  for (int cam = 0; cam < CAMLINK_CAMS; cam++) {
+    if (!capture_probe_begin(cam)) return false;
+    const esp_err_t err = camlink_resync_baud_ch(cam, want);
+    capture_probe_end(cam);
+    if (err == ESP_ERR_NOT_FOUND) continue; /* nothing fitted on this channel */
+    if (err != ESP_OK) {
+      demote = true;
+      break;
+    }
+  }
+  if (!demote) return true;
+
+  klog("P4", "a camera would not hold %lu baud; all four back to %d", (unsigned long)want,
+       NL_DEFAULT_BAUD);
+  for (int cam = 0; cam < CAMLINK_CAMS; cam++) {
+    if (!capture_probe_begin(cam)) continue;
+    camlink_resync_baud_ch(cam, NL_DEFAULT_BAUD);
+    capture_probe_end(cam);
+  }
+  return true;
+}
+
 // Keep CAM1 identity fresh: probe every 2 s while offline, every 10 s while
 // online. GET_CAMERA_INFO reads the cached result instead of blocking.
 /**
@@ -107,7 +168,7 @@ static void cam_probe_task(void *arg) {
   (void)arg;
   bool was_online[CAMLINK_CAMS] = {false};
   /*
-   * The link's rate, settled once per boot, per channel.
+   * The link's rate, settled once per boot, for all four channels.
    *
    * The nodes do not share the body's reset, so after a restart the body's
    * UARTs are back at NL_DEFAULT_BAUD and the nodes are wherever they were
@@ -117,12 +178,15 @@ static void cam_probe_task(void *arg) {
    * camlink_resync_baud_ch() handles both - it tries the intended rate first,
    * which is one HELLO on every boot where nothing moved.
    *
+   * All four in one go rather than per channel, because the rate is only
+   * worth having if every link takes it (settle_link_baud).
+   *
    * Here rather than in app_main() because a body with no nodes fitted pays
    * three extra probes per channel, and that belongs in the background sweep
    * rather than in front of the splash.
    */
-  bool baud_settled[CAMLINK_CAMS] = {false};
-  const uint32_t link_baud = (uint32_t)config_int("body.linkBaud", NL_DEFAULT_BAUD);
+  bool baud_settled = false;
+  const uint32_t link_baud = link_baud_from_config();
   for (;;) {
     /*
      * Maintenance, one bounded transaction at a time, and never in the
@@ -147,6 +211,9 @@ static void cam_probe_task(void *arg) {
      * shutter press lands in the gap and maintenance stands aside; a deferred
      * sweep simply comes back.
      */
+    /* The rate, before anything asks a node a question at the wrong one. */
+    if (!baud_settled) baud_settled = settle_link_baud(link_baud);
+
     int online_count = 0;
     bool deferred = false;
     for (int cam = 0; cam < CAMLINK_CAMS; cam++) {
@@ -159,20 +226,8 @@ static void cam_probe_task(void *arg) {
        * A node that is present answers in a few milliseconds; one that has
        * stopped answering costs one 3000 ms transaction before it is marked
        * offline, and that is the longest a capture can ever wait here. */
-      if (!baud_settled[cam] && link_baud != camlink_baud_ch(cam)) {
-        baud_settled[cam] = true;
-        camlink_resync_baud_ch(cam, link_baud);
-      }
       const uint32_t probe_ms = was_online[cam] ? 3000u : OFFLINE_PROBE_MS;
-      bool online = camlink_hello_ch_timeout(cam, probe_ms) == ESP_OK;
-      /* Silence on the first sweep is the other half: the stored rate may be
-       * the default while this node is still somewhere else, which is what a
-       * bench leaves behind when it changes the rate without storing it. */
-      if (!online && !baud_settled[cam]) {
-        baud_settled[cam] = true;
-        online = camlink_resync_baud_ch(cam, link_baud) == ESP_OK;
-      }
-      baud_settled[cam] = true;
+      const bool online = camlink_hello_ch_timeout(cam, probe_ms) == ESP_OK;
       capture_probe_end(cam);
       if (online) {
         online_count++;
