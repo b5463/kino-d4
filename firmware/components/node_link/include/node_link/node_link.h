@@ -52,6 +52,29 @@
   { 921600, 1500000, 2000000, 3000000 }
 
 /*
+ * The rate the body drives the link to, once it has found its nodes.
+ *
+ * Not NL_DEFAULT_BAUD, which is a different thing and does not move: a node
+ * powers on at that rate and both ends fall back to it when a switch fails,
+ * so it has to work with no negotiation behind it.
+ *
+ * 3 Mbaud, measured on KD4-D121BC across 24 captures and six switches in both
+ * directions with no CRC failure, resync or timeout: a four-camera capture
+ * takes 1755 ms against 3716 ms at 921600, because the cost of a shutter is
+ * the largest JPEG divided by the line rate (#218).
+ *
+ * What it spends is interrupt headroom. The body's receive FIFO is 128 bytes
+ * with its threshold at 32, so it has about 1.0 ms to service a full buffer at
+ * 921600 and about 0.32 ms at this rate. Anything that blanks interrupts for
+ * longer than that loses bytes mid-transfer, which is why #158 moved card
+ * writes out of the transfer window. A body that cannot hold it puts all four
+ * channels back on the default at boot and says so.
+ *
+ * `body.linkBaud` overrides this.
+ */
+#define NL_BAUD_PREFERRED 3000000
+
+/*
  * How long a provisional baud lasts without a clean frame.
  *
  * Long enough for the body to finish its own switch and get a HELLO across at

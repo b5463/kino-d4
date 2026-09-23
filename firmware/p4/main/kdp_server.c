@@ -835,8 +835,26 @@ static void handle_capabilities(uint32_t seq) {
   cJSON_AddBoolToObject(caps, "rollUpload", false);
 
   cJSON *limits = cJSON_AddObjectToObject(json, "limits");
-  cJSON_AddNumberToObject(limits, "maxUartBaud", NL_DEFAULT_BAUD);
-  cJSON_AddNumberToObject(limits, "currentUartBaud", NL_DEFAULT_BAUD);
+  /*
+   * Both of these were NL_DEFAULT_BAUD, which made the pair meaningless: the
+   * maximum was reported as the lowest supported rate, and the current rate
+   * was a constant that stopped being true the moment SET_LINK_BAUD ran.
+   *
+   * The maximum is the largest rate a node accepts. The current rate is what
+   * cam1's channel is on - the link is settled all four together, so one
+   * channel speaks for the set, and a body with nothing fitted reports the
+   * default, which is where an unprobed channel sits.
+   */
+  {
+    static const uint32_t supported[NL_BAUD_SUPPORTED_N] = NL_BAUD_SUPPORTED_LIST;
+    uint32_t max_baud = 0;
+    for (int i = 0; i < NL_BAUD_SUPPORTED_N; i++) {
+      if (supported[i] > max_baud) max_baud = supported[i];
+    }
+    const uint32_t now = camlink_baud_ch(0);
+    cJSON_AddNumberToObject(limits, "maxUartBaud", (double)max_baud);
+    cJSON_AddNumberToObject(limits, "currentUartBaud", (double)(now ? now : NL_DEFAULT_BAUD));
+  }
   cJSON_AddStringToObject(limits, "maxResolution", "2048x1536");
   cJSON_AddNumberToObject(limits, "maxGalleryPageSize", 100);
 
@@ -3013,7 +3031,15 @@ static void handle_set_link_baud(uint32_t seq, cJSON *req) {
    * not one to come back to after a restart. cam_probe_task() reads this at
    * boot and brings the nodes to it (#221).
    */
-  if (all_ok && only < 0) {
+  /*
+   * A bench that walks the rates should not change what this body comes up
+   * at. `persist` defaults to true, because a person asking for a rate
+   * usually means it; kino-baud-ramp.mjs passes false so its own tidy-up at
+   * the end does not quietly demote the body it was measuring.
+   */
+  const cJSON *persist = cJSON_GetObjectItem(req, "persist");
+  const bool store_it = !cJSON_IsBool(persist) || cJSON_IsTrue(persist);
+  if (all_ok && only < 0 && store_it) {
     cJSON *store = cJSON_CreateObject();
     cJSON *body_obj = store != NULL ? cJSON_CreateObject() : NULL;
     if (body_obj != NULL) {

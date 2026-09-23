@@ -10,8 +10,10 @@
 //   npx tsx scripts/kino-baud-ramp.mjs --port COM8
 //   npx tsx scripts/kino-baud-ramp.mjs --port COM8 --rates 921600,1500000
 //
-// It always ends by putting the link back on 921600, including after a
+// It always ends by putting the wire back on 921600, including after a
 // failure, so a bench body is never left somewhere it cannot be reached.
+// Every switch here is persist:false, so `body.linkBaud` is untouched and the
+// body comes up at whatever it came up at before the ramp ran.
 import { SerialPort } from 'serialport';
 import {
   FrameDecoder, decodeJson, encodeFrame, encodeJson, nextSeq,
@@ -93,7 +95,9 @@ function deltaCounters(before, after) {
 }
 
 async function setBaud(baud) {
-  const r = await request(Cmd.SET_LINK_BAUD, { baud }, 30000);
+  // persist:false throughout. A bench that walks the rates must not change
+  // what the body comes up at, including with its own tidy-up at the end.
+  const r = await request(Cmd.SET_LINK_BAUD, { baud, persist: false }, 30000);
   if (!r.ok) return { ok: false, why: r.body?.message ?? r.body?.code ?? 'refused' };
   const cams = r.body?.cams ?? [];
   const bad = cams.filter((c) => !c.ok);
