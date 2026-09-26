@@ -1,7 +1,7 @@
 {
   "schema": "kino.version-manifest",
   "manifestVersion": 1,
-  "updated": "2026-09-20",
+  "updated": "2026-09-26",
   "software": [
     {
       "name": "kino-workspace",
@@ -11,7 +11,7 @@
     },
     {
       "name": "kino-studio",
-      "version": "0.9.1",
+      "version": "0.10.0",
       "package": "apps/studio/package.json",
       "tagPrefix": "kino-studio-v"
     },

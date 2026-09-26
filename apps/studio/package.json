@@ -1,9 +1,9 @@
 {
   "name": "@kino/studio",
   "private": true,
-  "version": "0.9.1",
+  "version": "0.10.0",
   "license": "MIT",
-  "description": "KINO Studio - local browser-based programmer and configuration utility for the KINO four-lens camera",
+  "description": "KINO Studio - the connected KINO on your computer: what the next shutter press does, your photos, and a Roll for an event",
   "type": "module",
   "scripts": {
     "dev": "vite",
