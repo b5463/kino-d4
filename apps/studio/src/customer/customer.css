@@ -1,0 +1,597 @@
+/* KINO Studio, customer surface.
+
+   Paper and ink. The front of the camera drawn large enough that its cells
+   are controls; words where the controls are; one accent with one job at a
+   time. No panels, cards, bevels, lamps, gradients, icons or shadows.
+   Scoped to .customer so the Service stylesheet never meets it.
+
+   Typeface: IBM Plex Sans, the grotesk the repository already licenses.
+   Sizes 40 / 20 / 15 / 14 / 13 and nothing else. */
+
+.customer {
+  --paper: #fbfaf7;
+  --ink: #141311;
+  --ink-45: #8a8985;
+  --ink-25: #c3c2bd;
+  --ink-8: #e9e8e3;
+  --accent: #e0472b;
+  --warning: #b4251a;
+  --face: 'IBM Plex Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --gutter: 64px;
+  --content: 1232px;
+  /* Things arrive, they do not float. */
+  --settle: 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --travel: 320ms cubic-bezier(0.3, 1.1, 0.35, 1.08);
+
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--face);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body:has(> #root > .customer) {
+  background: #fbfaf7;
+}
+
+/* Resets at zero specificity so a component class always wins. */
+:where(.customer) *,
+:where(.customer) *::before,
+:where(.customer) *::after {
+  box-sizing: border-box;
+}
+
+:where(.customer) :is(h1, h2, h3, p, ul, ol, li, figure, figcaption, dl, dd, dt) {
+  margin: 0;
+  padding: 0;
+  font-weight: inherit;
+  font-size: inherit;
+}
+
+:where(.customer) :is(ul, ol) {
+  list-style: none;
+}
+
+:where(.customer) :is(button, input, select) {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  border-radius: 0;
+}
+
+:where(.customer) button {
+  cursor: pointer;
+  text-align: left;
+}
+
+:where(.customer) button:disabled {
+  cursor: default;
+}
+
+:where(.customer) a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:where(.customer) a:hover,
+:where(.customer) .c-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Keyboard focus: a clear ring outside the control, never on mouse click. */
+:where(.customer) :focus {
+  outline: none;
+}
+
+:where(.customer) :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.customer .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- page: status line, the page, the nav on the last line ---- */
+
+.c-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  max-width: calc(var(--content) + var(--gutter) * 2);
+  padding: 0 var(--gutter);
+}
+
+.c-status {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  height: 56px;
+  padding-top: 30px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.c-status-see {
+  font-weight: 500;
+}
+
+.c-status-see:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.c-attention {
+  padding: 8px 0 16px;
+  max-width: 720px;
+}
+
+.c-attention li {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 6px 0;
+}
+
+.c-attention button {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.c-attention button:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.c-main {
+  flex: 1 0 auto;
+}
+
+.c-nav {
+  display: flex;
+  align-items: baseline;
+  gap: 32px;
+  padding: 24px 0 18px;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.c-nav button {
+  color: var(--ink-45);
+}
+
+.c-nav button[aria-current='page'] {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.c-nav button:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.c-nav .c-nav-kino {
+  margin-left: auto;
+}
+
+.c-nav button:disabled {
+  color: var(--ink-25);
+  text-decoration: none;
+}
+
+/* ---- type ---- */
+
+.c-40 {
+  font-size: 40px;
+  font-weight: 500;
+  line-height: 1.1;
+}
+
+.c-20 {
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.c-15 {
+  font-size: 15px;
+}
+
+.c-13 {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.c-grey {
+  color: var(--ink-45);
+}
+
+.c-quiet {
+  font-size: 15px;
+  color: var(--ink-45);
+  max-width: 560px;
+}
+
+/* ---- words as controls: at rest a state, on interaction the options ---- */
+
+.c-word {
+  color: var(--ink);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.c-word--quiet {
+  color: var(--ink-45);
+  font-weight: 400;
+}
+
+.c-word:hover,
+.c-word--quiet:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.c-word[aria-checked='true'],
+.c-word[aria-pressed='true'] {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.c-word:disabled {
+  color: var(--ink-25);
+  text-decoration: none;
+}
+
+/* "Off · On": a word pair, the active one ink. */
+.c-pair {
+  display: inline-flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.c-pair .c-dot {
+  color: var(--ink-25);
+}
+
+/* The word at the end of a line that changed: Saved / KINO adjusted this. */
+.c-mark {
+  font-size: 13px;
+  color: var(--ink-45);
+  white-space: nowrap;
+}
+
+.c-mark button {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  margin-left: 6px;
+}
+
+/* ---- button: ink rectangle, paper text; outline for the second action ---- */
+
+.c-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0 24px;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 2px;
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.c-button:disabled {
+  opacity: 0.4;
+}
+
+.c-button--outline {
+  background: none;
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  font-weight: 400;
+}
+
+.c-button--warning {
+  background: var(--warning);
+}
+
+/* ---- text field: a hairline under the text ---- */
+
+.c-field {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--ink-25);
+  font-size: 15px;
+}
+
+.c-field:focus {
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 5px;
+  outline: none;
+}
+
+.c-field::placeholder {
+  color: var(--ink-45);
+  opacity: 1;
+}
+
+.c-field-label {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-45);
+  margin-bottom: 2px;
+}
+
+/* ---- slider: a hairline, a centre tick, an ink dot ---- */
+
+.c-slider {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  width: 160px;
+  height: 24px;
+}
+
+.c-slider::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 12px;
+  height: 1px;
+  background: var(--ink-25);
+}
+
+.c-slider::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  width: 1px;
+  height: 5px;
+  background: var(--ink);
+}
+
+.c-slider input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 24px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.c-slider input::-webkit-slider-runnable-track {
+  height: 24px;
+  background: transparent;
+}
+
+.c-slider input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--ink);
+  border: 0;
+}
+
+.c-slider input::-moz-range-track {
+  height: 24px;
+  background: transparent;
+}
+
+.c-slider input::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ink);
+  border: 0;
+}
+
+.c-slider-ends {
+  display: flex;
+  justify-content: space-between;
+  width: 160px;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--ink-45);
+}
+
+.c-slider-tip {
+  position: absolute;
+  top: -16px;
+  font-size: 13px;
+  color: var(--ink);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+/* ---- the front of KINO ---- */
+
+.c-front {
+  position: relative;
+}
+
+.c-front.is-faint {
+  opacity: 0.5;
+}
+
+.c-front-svg {
+  display: block;
+  overflow: visible;
+}
+
+.c-front-slab,
+.c-front-bar {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.25;
+}
+
+.c-front-bore {
+  fill: none;
+  stroke: var(--ink-45);
+  stroke-width: 1;
+}
+
+.c-front-cover {
+  transition: transform var(--settle);
+}
+
+.c-front-cover.is-cut {
+  transition: none;
+}
+
+.c-front-cover rect:first-child {
+  fill: var(--paper);
+  stroke: var(--ink);
+  stroke-width: 1;
+}
+
+.c-front-mark {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1;
+  stroke-linejoin: round;
+  opacity: 0.4;
+}
+
+.c-front-ridge {
+  fill: none;
+  stroke: var(--ink-25);
+  stroke-width: 1;
+}
+
+.c-front-identity {
+  fill: var(--ink-45);
+  font-family: var(--face);
+  font-weight: 400;
+}
+
+.c-front-usb {
+  fill: var(--ink);
+  opacity: 0.08;
+}
+
+.c-front-cells .c-cell {
+  position: absolute;
+  border: 1.25px solid var(--ink);
+  border-radius: 50%;
+  background: none;
+  padding: 0;
+}
+
+button.c-cell:hover {
+  border-width: 1.75px;
+}
+
+.c-cell.is-wiggle,
+.c-cell.is-drag {
+  border: 2px solid var(--accent);
+}
+
+.c-cell.is-selected {
+  border: 2px solid var(--ink);
+}
+
+button.c-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.c-cell-hint {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  transform: translateX(-50%);
+  font-size: 13px;
+  color: var(--ink-45);
+  white-space: nowrap;
+}
+
+/* ---- dialog: paper on a dimmed page, no title bar ---- */
+
+.c-dialog {
+  border: 0;
+  padding: 36px 40px;
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  background: #fbfaf7;
+  color: #141311;
+  border-radius: 2px;
+  font-family: var(--face);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.c-dialog::backdrop {
+  background: rgb(20 19 17 / 0.5);
+}
+
+.c-dialog-actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.c-dialog .c-button--outline {
+  color: #141311;
+  border-color: #141311;
+}
+
+/* ---- reduced motion: cut to the end state ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .customer *,
+  .customer *::before,
+  .customer *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .customer {
+    --gutter: 24px;
+  }
+}
+
+@media (max-width: 600px) {
+  .customer {
+    --gutter: 16px;
+  }
+}

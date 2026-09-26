@@ -1,0 +1,362 @@
+/* KINO Studio customer surface: Shoot. The mode words, the front of the
+   camera, the result beside it, the state line under it, the Quad editor on
+   its lens axis, the Looks column under the photo. Depends on customer.css. */
+
+.c-shoot {
+  position: relative;
+}
+
+.c-modes {
+  display: flex;
+  align-items: baseline;
+  gap: 32px;
+  margin-top: 24px;
+  font-size: 40px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.c-mode {
+  color: var(--ink-45);
+}
+
+.c-mode[aria-pressed='true'] {
+  color: var(--ink);
+  cursor: default;
+}
+
+.c-mode:not([aria-pressed='true']):hover {
+  text-decoration: underline;
+  text-underline-offset: 6px;
+  text-decoration-thickness: 2px;
+}
+
+.c-mode:disabled {
+  color: var(--ink-25);
+  text-decoration: none;
+}
+
+/* The stage: the body on the left, the result on the right, one grid row.
+   The right column keeps flowing under the photo so the Looks column can
+   grow the page instead of overlapping anything. */
+.c-stage {
+  display: grid;
+  grid-template-columns: var(--body-w) minmax(0, 1fr);
+  column-gap: 56px;
+  margin-top: 24px;
+  align-items: start;
+}
+
+.c-stage.is-stacked {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 32px;
+}
+
+.c-stage-left {
+  position: relative;
+}
+
+.c-stage-right {
+  position: relative;
+  min-width: 0;
+}
+
+.c-result {
+  width: var(--result-w);
+  max-width: 100%;
+}
+
+.c-result img,
+.c-result .c-result-blank {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.c-result .c-result-blank {
+  background: none;
+}
+
+.c-result button {
+  display: block;
+  width: 100%;
+  padding: 0;
+}
+
+.c-result-caption {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--ink-45);
+}
+
+/* The line under the body: at rest three words, on interaction the options. */
+.c-under {
+  position: relative;
+  margin-top: 36px;
+  min-height: 84px;
+  font-size: 15px;
+}
+
+.c-stateline {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 40px;
+  min-height: 24px;
+  padding-left: var(--bar-x);
+}
+
+.c-stateline .c-mark {
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+/* The feel scale spans the four lenses, Dreamy under the left cell's outer
+   edge, Hyper under the right cell's outer edge. */
+.c-scale {
+  position: absolute;
+  left: var(--scale-x);
+  width: var(--scale-w);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.c-inline-looks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 28px;
+  align-items: baseline;
+}
+
+/* More: three quiet lines, label grey, value ink. */
+.c-more {
+  margin-top: 12px;
+  padding-left: var(--bar-x);
+}
+
+.c-more-row {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  height: 28px;
+}
+
+.c-more-row .c-more-label {
+  flex: 0 0 150px;
+  color: var(--ink-45);
+}
+
+.c-more-row select {
+  border-bottom: 1px solid var(--ink-25);
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+/* Quad: the set name at the body's left edge, the look names on the lens
+   axes, one editor under the selected axis with a leader from the body. */
+.c-quad-line {
+  position: relative;
+  height: 24px;
+}
+
+.c-quad-set {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  gap: 28px;
+  align-items: baseline;
+  white-space: nowrap;
+}
+
+.c-quad-name {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  color: var(--ink);
+  line-height: 1.45;
+}
+
+.c-quad-name.is-editing {
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.1;
+  top: -2px;
+}
+
+.c-quad-name.is-hidden {
+  visibility: hidden;
+}
+
+.c-leader {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 24px;
+  background: var(--ink);
+  pointer-events: none;
+}
+
+.c-quad-editor {
+  position: absolute;
+  top: 34px;
+  width: 160px;
+}
+
+.c-quad-editor .c-slider {
+  margin-top: 6px;
+}
+
+.c-quad-colour {
+  margin-top: 8px;
+}
+
+.c-quad-editor .c-mark {
+  display: block;
+  margin-top: 6px;
+}
+
+.c-quad-lookrow {
+  position: absolute;
+  top: 0;
+  left: calc(var(--editor-x) + 180px);
+  white-space: nowrap;
+}
+
+.c-travel {
+  position: absolute;
+  z-index: 2;
+  font-size: 15px;
+  line-height: 1.45;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: transform var(--travel);
+}
+
+.c-travel.is-cut {
+  transition: none;
+}
+
+/* The Looks column under the photo: an open list, not a box. */
+.c-looks {
+  margin-top: 36px;
+  width: var(--result-w);
+  max-width: 100%;
+}
+
+.c-looks-head {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.c-looks-head .c-button {
+  height: 40px;
+  min-width: 200px;
+}
+
+.c-looks-group {
+  margin: 24px 0 4px;
+  font-size: 13px;
+  color: var(--ink-45);
+}
+
+.c-look {
+  display: block;
+  width: 100%;
+  padding: 7px 0;
+  line-height: 1.3;
+}
+
+.c-look-name {
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.c-look:hover .c-look-name,
+.c-look.is-hovered .c-look-name {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.c-look[aria-pressed='true'] .c-look-name {
+  font-weight: 500;
+}
+
+.c-look-character {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-45);
+}
+
+.c-looks-adjust {
+  margin-top: 8px;
+}
+
+.c-adjust-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 36px;
+}
+
+.c-adjust-row .c-adjust-label {
+  flex: 0 0 90px;
+  color: var(--ink-45);
+}
+
+.c-adjust-name {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin: 12px 0 8px;
+}
+
+.c-adjust-name .c-field {
+  max-width: 260px;
+  font-size: 16px;
+}
+
+.c-overflow {
+  position: relative;
+  display: inline-block;
+}
+
+.c-overflow-menu {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 3;
+  margin-top: 6px;
+  padding: 8px 0;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  min-width: 200px;
+}
+
+.c-overflow-menu button {
+  display: block;
+  width: 100%;
+  padding: 6px 16px;
+  white-space: nowrap;
+}
+
+.c-overflow-menu button:hover,
+.c-overflow-menu button:focus-visible {
+  background: var(--ink-8);
+  outline: none;
+}
+
+.c-overflow-menu button.is-warning {
+  color: var(--warning);
+}
+
+@media (max-width: 1200px) {
+  .c-stage {
+    column-gap: 40px;
+  }
+}
