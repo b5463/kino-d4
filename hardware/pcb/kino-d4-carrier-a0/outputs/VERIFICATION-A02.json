@@ -1,7 +1,7 @@
 {
   "board": "KINO_D4_Carrier_A0_2.kicad_pcb",
-  "board_sha256": "32620e6ee14bb3fb8ee4c3be78270abb4a31c88d19ba63f48688d722a451bf73",
-  "netlist_sha256": "00f0573c5a3b6e6a47923226e8aab9809cb04db51fd8c5a4355ff7a09cb511c1",
+  "board_sha256": "b65808f0afb24e879eadea4616584435258b00ff3411574323ae4ebbf2194626",
+  "netlist_sha256": "211c00fe688ccaca4ddee8a5957c791db28ccbd9f0a6348a695ddf9a445143c8",
   "schematic_to_pcb_match": true,
   "physical_pads_compared": 896,
   "firmware_header_map_match": true,
@@ -13,17 +13,17 @@
   ],
   "erc_violations": 0,
   "drc_violations_by_type": {
-    "via_dangling": 6,
-    "track_dangling": 3
+    "via_dangling": 15,
+    "track_dangling": 4
   },
-  "unconnected_items": 105,
+  "unconnected_items": 195,
   "manufacturing_ready": false,
   "physical_fit_verified": false,
   "note": "Geometry, connectivity and data-transfer checks only. Power integrity, battery and stack qualification remain open.",
   "camera_pitch_mm": 22.0,
   "outer_camera_span_mm": 66.0,
-  "front_footprints": 77,
-  "rear_footprints": 173,
-  "track_segments": 1705,
-  "vias": 466
+  "front_footprints": 73,
+  "rear_footprints": 177,
+  "track_segments": 1188,
+  "vias": 361
 }

@@ -4,7 +4,7 @@
 
 Open [KINO_D4_Carrier_A0_2.kicad_pcb](KINO_D4_Carrier_A0_2.kicad_pcb) with its matching project settings. This is the current working board. The supplied [ODD JOBS standard](ODD-JOBS-STANDARD.txt) governs release; the [current review](A02-REVIEW.md) still rejects ordering.
 
-The board has 250 footprints: 77 on the front and 173 on the back. The four XIAO sockets keep 22 mm pitch and a 66 mm outer span, with 15.24 mm row centres and 2.54 mm pin pitch. The outline is 117.01 × 69.41 mm. Four 2.2 mm holes target the P4 inner inserts on 61.9 × 54.8 mm centres, with a drawing-derived absolute offset. These XY checks do not validate the assembled enclosure or connector stack.
+The board has 250 footprints: 73 on the front and 177 on the back. The front carries the four XIAO sockets, the J600 pogo field, J1100, J1000 and low SMD parts only, so the socketed XIAOs are the tallest parts on it; every cable connector and pin header (J100, J101, J102, J201-J501, J601, J800, J900-J904, J1300) is on the back, the P4 side. The four XIAO sockets keep 22 mm pitch and a 66 mm outer span, with 15.24 mm row centres and 2.54 mm pin pitch. The outline is 117.01 × 69.41 mm. Four 2.2 mm holes target the P4 inner inserts on 61.9 × 54.8 mm centres, with a drawing-derived absolute offset. These XY checks do not validate the assembled enclosure or connector stack.
 
 The [14-sheet schematic](KINO_D4_Carrier_A0.kicad_sch) is the current electrical capture. Historical A0 and A0.1 boards are preserved but no longer match it. Do not use them for fabrication or combine their reports with A0.2.
 
@@ -21,13 +21,13 @@ The [14-sheet schematic](KINO_D4_Carrier_A0.kicad_sch) is the current electrical
 | [Mounting template](outputs/P4-MOUNTING-TEMPLATE-1TO1.pdf) / [mechanical evidence](MECHANICAL.md) | Print at 100 %; stack and enclosure still unqualified |
 | [Printed labels](outputs/A02-PRINTED-LABELS.json) / [assembly references](outputs/A02-ASSEMBLY-LABELS.json) / [unplaced references](outputs/A02-ASSEMBLY-LABELS-UNFINISHED.json) | Label positions; parts without a clear silk position within 8 mm |
 
-**Routing status, 2 October 2026:** 105 connections unrouted (182 at the 30 September review), no clearance or short violations; the only DRC items are lane-end vias awaiting their last hop and two deliberate CHG_TS stubs. The SYNC bus now runs at the buffers (In2, y 41.05) instead of across the top of the camera row, camera EN/FAULT_N use In2 lanes north of the headers, and U600 is turned 180 degrees. Still to route: the I2C bus, the camera header-socket GPIO, P4_BUS_EN, the PAC1954 Kelvin pairs, the J600 test legs and the expander pocket clean-up. Figures in [A02-REVIEW.md](A02-REVIEW.md) predate this pass.
+**Routing status, 2 October 2026:** 195 connections unrouted after the external connections moved to the back (105 before the move, 182 at the 30 September review). No clearance, short, courtyard or silkscreen violations; the remaining DRC items are dangling lane ends and stubs awaiting the router. The SYNC bus now runs at the buffers (In2, y 41.05) instead of across the top of the camera row, camera EN/FAULT_N use In2 lanes north of the headers, and U600 is turned 180 degrees. Still to route: the I2C bus, the camera header-socket GPIO, P4_BUS_EN, the PAC1954 Kelvin pairs, the J600 test legs and the expander pocket clean-up. Figures in [A02-REVIEW.md](A02-REVIEW.md) predate this pass.
 
 Prototype references are on silkscreen (ODD JOBS rule 177) where a clear position exists within 8 mm of the part. The rest stay on Fab at the part centre and are listed in the unplaced file. Connector, camera and product labels use 1.0 mm text with a 0.15 mm stroke.
 
 ## Circuitry
 
-- **Cameras:** four socketed XIAO ESP32-S3 Sense boards with UART/sync isolation buffers, individual current-limited supplies, current monitoring and removable USB-service power links. D8/D9/D10 are shared with the Sense SD interface, and D2 is strap-sensitive.
+- **Cameras:** four socketed XIAO ESP32-S3 Sense boards with UART/sync isolation buffers, individual current-limited supplies, current monitoring and 0 ohm USB-service power links (JP200-JP500, Vishay CRCW12060000Z0EAHP, desolder before node USB). D8/D9/D10 are shared with the Sense SD interface, and D2 is strap-sensitive.
 - **P4 link:** the 26-pin P4 connection is a keyed IDC **cable** interface, kept until Guition supplies a JP1 datum for a board-to-board mate. The UART/sync/shutter header map is unchanged; GPIO35/JP1-15 stays unconnected.
 - **Power:** USB-C PD sink (STUSB4500), 1S charger (BQ25798), fuel gauge (BQ27441-G1), 5 V boost (TPS61288), 3.3 V buck and a hardware power controller.
   - The charger charges whenever VBUS is valid (CE low), inside a 1-60 °C window set by the pack's 103AT-2 thermistor.
@@ -35,6 +35,7 @@ Prototype references are on silkscreen (ODD JOBS rule 177) where a clear positio
   - Input current is clamped to 0.15-0.41 A until firmware reads the PD contract.
 - **Pack entry:** J1100 (JST VH, `- NTC +`) sits on the bottom edge beside the charger. From the pack, F1100 (7 A) and RS700 (5 mΩ) form a 12 mm chain on the front.
 - **Sensors and controls:** IMU, backed-up RTC, board-temperature sensor, remote shutter, cover sensor, function button, haptic driver and expansion/service connectors.
+- **Power links:** JP200-JP500 and JP1200 are 0 ohm links on the front (CRCW1206-HP, 10 A), replacing the 2.54 mm headers and shunts: flat, reachable with the carrier on the P4, rated for the current. Desolder to open.
 - **Test field:** J600 is an asymmetric 12-pad **sense/test** field, not a power-injection connector. Do not drive the enable nodes against the expander.
 - **Flash provision:** J601/R605 are DNP provisions for an **external flash driver**. There is no FLASH_EN GPIO or flash-energy supply.
 
@@ -72,6 +73,13 @@ Change scripts, in the order they were applied:
   8. `place_a02_u600.py place`, `rip`: U600 turned 180 degrees, C601 beside pin 24; `drop_dangling.py`; router.
   9. `place_a02_brand.py`: maker mark moved onto clear pour below J901.
   10. `tidy_routes.py`, run last.
+- **External connections to the back, 2 October 2026:**
+  1. `place_a02_j100.py place`, `rip`, `add`: J100 on the back in its outline; P4_5V redrawn at 1.2 mm.
+  2. `place_a02_backside.py flip`, then `free_spot.py` for J902 and J904, `tofront`, `rip`: headers and JST connectors to the back; the haptic driver cluster, Q1300, R1300, R1301 and R1304 to the front in their place.
+  3. `fp_a02_link_1206.py`, `circuit.py` change, `regenerate_capture.py`, netlist / ERC / PDF, `place_a02_links.py`: JP links become 0 ohm links on the front.
+  4. `route_a02_p4_feed.py rip`, `add`: P4_5V_ISO as a 2.0 mm In2 run with three vias per layer change.
+  5. `clear_a02_backside.py move`, `rip`; `drop_dangling.py`: courtyard and copper conflicts cleared, J601 0.65 mm north.
+  6. `place_a02_labels.py`, `assembly_labels.py --prototype-silk`: connector labels on the back silkscreen.
 
 Each routing script removes and redraws only the copper it owns. `tidy_routes.py` reshapes unlocked copper, so a hand script re-run after it no longer recognises its own routes: re-run hand scripts from a board saved before the tidy. In this KiCad build a `Remove()` leaves the Python bindings unreliable for the rest of the process, so the newer scripts remove, add and verify in separate runs. Helpers:
 - `free_spot.py`: collision-checked placement of one part.

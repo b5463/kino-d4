@@ -598,7 +598,7 @@
     "footprint": "KINO_A0:XIAO_Socket_15.24mm",
     "mpn": "Wurth Elektronik 61300711821",
     "source": "https://www.we-online.com/components/products/datasheet/61300711821.pdf",
-    "note": "Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.",
+    "note": "Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.",
     "dnp": false,
     "at": [
       25.505000000000003,
@@ -673,25 +673,25 @@
   {
     "sheet": "02_camera1",
     "ref": "JP200",
-    "value": "REMOVE FOR NODE USB",
+    "value": "0R LINK - REMOVE FOR NODE USB",
     "nets": {
       "1": "CAM1_5V_ISO",
       "2": "CAM1_5V"
     },
     "pins": {
       "1": {
-        "name": "CAM1_5V_ISO",
+        "name": "1",
         "type": "passive"
       },
       "2": {
-        "name": "CAM1_5V",
+        "name": "2",
         "type": "passive"
       }
     },
-    "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
-    "mpn": "Wurth Elektronik 61300211121 + shunt 60900213421",
-    "source": "https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf",
-    "note": "Fit removable shunt during camera operation, remove before USB cable insertion.",
+    "footprint": "KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP",
+    "mpn": "Vishay CRCW12060000Z0EAHP",
+    "source": "https://www.vishay.com/docs/20043/crcwhpe3.pdf",
+    "note": "0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.",
     "dnp": false,
     "at": null
   },
@@ -1071,7 +1071,7 @@
     "footprint": "Diode_SMD:D_SMA",
     "mpn": "Diodes Incorporated B340A-13-F",
     "source": "https://www.diodes.com/datasheet/download/B340A.pdf",
-    "note": "Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.",
+    "note": "Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.",
     "dnp": false,
     "at": null
   },
@@ -1271,7 +1271,7 @@
     "footprint": "KINO_A0:XIAO_Socket_15.24mm",
     "mpn": "Wurth Elektronik 61300711821",
     "source": "https://www.we-online.com/components/products/datasheet/61300711821.pdf",
-    "note": "Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.",
+    "note": "Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.",
     "dnp": false,
     "at": [
       47.505,
@@ -1346,25 +1346,25 @@
   {
     "sheet": "03_camera2",
     "ref": "JP300",
-    "value": "REMOVE FOR NODE USB",
+    "value": "0R LINK - REMOVE FOR NODE USB",
     "nets": {
       "1": "CAM2_5V_ISO",
       "2": "CAM2_5V"
     },
     "pins": {
       "1": {
-        "name": "CAM2_5V_ISO",
+        "name": "1",
         "type": "passive"
       },
       "2": {
-        "name": "CAM2_5V",
+        "name": "2",
         "type": "passive"
       }
     },
-    "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
-    "mpn": "Wurth Elektronik 61300211121 + shunt 60900213421",
-    "source": "https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf",
-    "note": "Fit removable shunt during camera operation, remove before USB cable insertion.",
+    "footprint": "KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP",
+    "mpn": "Vishay CRCW12060000Z0EAHP",
+    "source": "https://www.vishay.com/docs/20043/crcwhpe3.pdf",
+    "note": "0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.",
     "dnp": false,
     "at": null
   },
@@ -1744,7 +1744,7 @@
     "footprint": "Diode_SMD:D_SMA",
     "mpn": "Diodes Incorporated B340A-13-F",
     "source": "https://www.diodes.com/datasheet/download/B340A.pdf",
-    "note": "Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.",
+    "note": "Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.",
     "dnp": false,
     "at": null
   },
@@ -1944,7 +1944,7 @@
     "footprint": "KINO_A0:XIAO_Socket_15.24mm",
     "mpn": "Wurth Elektronik 61300711821",
     "source": "https://www.we-online.com/components/products/datasheet/61300711821.pdf",
-    "note": "Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.",
+    "note": "Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.",
     "dnp": false,
     "at": [
       69.505,
@@ -2019,25 +2019,25 @@
   {
     "sheet": "04_camera3",
     "ref": "JP400",
-    "value": "REMOVE FOR NODE USB",
+    "value": "0R LINK - REMOVE FOR NODE USB",
     "nets": {
       "1": "CAM3_5V_ISO",
       "2": "CAM3_5V"
     },
     "pins": {
       "1": {
-        "name": "CAM3_5V_ISO",
+        "name": "1",
         "type": "passive"
       },
       "2": {
-        "name": "CAM3_5V",
+        "name": "2",
         "type": "passive"
       }
     },
-    "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
-    "mpn": "Wurth Elektronik 61300211121 + shunt 60900213421",
-    "source": "https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf",
-    "note": "Fit removable shunt during camera operation, remove before USB cable insertion.",
+    "footprint": "KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP",
+    "mpn": "Vishay CRCW12060000Z0EAHP",
+    "source": "https://www.vishay.com/docs/20043/crcwhpe3.pdf",
+    "note": "0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.",
     "dnp": false,
     "at": null
   },
@@ -2417,7 +2417,7 @@
     "footprint": "Diode_SMD:D_SMA",
     "mpn": "Diodes Incorporated B340A-13-F",
     "source": "https://www.diodes.com/datasheet/download/B340A.pdf",
-    "note": "Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.",
+    "note": "Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.",
     "dnp": false,
     "at": null
   },
@@ -2617,7 +2617,7 @@
     "footprint": "KINO_A0:XIAO_Socket_15.24mm",
     "mpn": "Wurth Elektronik 61300711821",
     "source": "https://www.we-online.com/components/products/datasheet/61300711821.pdf",
-    "note": "Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.",
+    "note": "Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.",
     "dnp": false,
     "at": [
       91.505,
@@ -2692,25 +2692,25 @@
   {
     "sheet": "05_camera4",
     "ref": "JP500",
-    "value": "REMOVE FOR NODE USB",
+    "value": "0R LINK - REMOVE FOR NODE USB",
     "nets": {
       "1": "CAM4_5V_ISO",
       "2": "CAM4_5V"
     },
     "pins": {
       "1": {
-        "name": "CAM4_5V_ISO",
+        "name": "1",
         "type": "passive"
       },
       "2": {
-        "name": "CAM4_5V",
+        "name": "2",
         "type": "passive"
       }
     },
-    "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
-    "mpn": "Wurth Elektronik 61300211121 + shunt 60900213421",
-    "source": "https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf",
-    "note": "Fit removable shunt during camera operation, remove before USB cable insertion.",
+    "footprint": "KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP",
+    "mpn": "Vishay CRCW12060000Z0EAHP",
+    "source": "https://www.vishay.com/docs/20043/crcwhpe3.pdf",
+    "note": "0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.",
     "dnp": false,
     "at": null
   },
@@ -3090,7 +3090,7 @@
     "footprint": "Diode_SMD:D_SMA",
     "mpn": "Diodes Incorporated B340A-13-F",
     "source": "https://www.diodes.com/datasheet/download/B340A.pdf",
-    "note": "Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.",
+    "note": "Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.",
     "dnp": false,
     "at": null
   },
@@ -7681,25 +7681,25 @@
   {
     "sheet": "12_boost",
     "ref": "JP1200",
-    "value": "REMOVE FOR P4 USB SERVICE",
+    "value": "0R LINK - REMOVE FOR P4 USB SERVICE",
     "nets": {
       "1": "P4_5V_ISO",
       "2": "P4_5V"
     },
     "pins": {
       "1": {
-        "name": "P4_5V_ISO",
+        "name": "1",
         "type": "passive"
       },
       "2": {
-        "name": "P4_5V",
+        "name": "2",
         "type": "passive"
       }
     },
-    "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
-    "mpn": "Wurth Elektronik 61300211121 + shunt 60900213421",
-    "source": "https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf",
-    "note": "Reverse isolation diode plus manual disconnect. Verify Guition external supply and USB topology before simultaneous connection.",
+    "footprint": "KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP",
+    "mpn": "Vishay CRCW12060000Z0EAHP",
+    "source": "https://www.vishay.com/docs/20043/crcwhpe3.pdf",
+    "note": "Reverse isolation diode plus manual disconnect (0 ohm link, desolder for P4 USB service). Verify Guition external supply and USB topology before simultaneous connection.",
     "dnp": false,
     "at": null
   },

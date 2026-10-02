@@ -43,3 +43,12 @@ J1100 (JST B3P-VH, vertical, through-hole) moved to the bottom edge, front face,
 
 Tallest carrier parts for the stack-height map (manufacturer maximums): L1200 Coilcraft XAL7070 7.0 mm on the back face (facing the P4), L1100 TDK SPM6530 3.0 mm on the back, J1100 JST VH on the front, XIAO sockets Wurth 61300711821 8.5 mm insulator on the front plus the XIAO header body.
 
+## Face assignment (2 October 2026)
+
+The socketed XIAOs must be the tallest parts on the front so the cameras seat firmly in the case. Every cable connector and pin header is therefore on the back, the P4 side: J100 (26-way IDC to the P4), J101 (C6 service), J201-J501 (camera GPIO breakouts), J102, J601, J800, J900-J904 and J1300 (JST GH). The JP power links are 0 ohm links on the front instead of 2.54 mm headers. The front keeps the XIAO sockets, the J600 pogo field, J1100, J1000 and low SMD parts.
+
+Consequences for the stack, still to be checked in CAD:
+- The carrier-to-P4 spacers must clear the IDC box header and its ribbon bend, the 2.54 mm headers (Wurth WR-PHD, 6.0 mm pins above the insulator) and the JST GH housings with their plugged cables, as well as L1200 (7.0 mm).
+- J101 and the camera GPIO headers are reachable only with the carrier off the P4 (bring-up and development use).
+- J1100 (JST VH) and J1000 (USB-C) stay on the front; confirm J1100 plus its plug stays below the installed XIAO stack.
+

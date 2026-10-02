@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <export version="E">
   <design>
-    <source>C:\Users\AlexanderMoravcik\Desktop\kino d4\hardware\pcb\kino-d4-carrier-a0\KINO_D4_Carrier_A0.kicad_sch</source>
-    <date>2026-09-30T20:55:56</date>
+    <source>/Users/moravcik/Library/Application Support/Claude/scratch-workspaces/fd95d868-fd9f-42b4-ab0f-1fa3f0ecd399/883b8d98-75ff-4844-b199-4b97bf4e807f/scratch-2026-10-02-a94d7d/kino-d4/hardware/pcb/kino-d4-carrier-a0/KINO_D4_Carrier_A0.kicad_sch</source>
+    <date>2026-10-02T22:47:29</date>
     <tool>Eeschema 10.0.6</tool>
     <sheet number="1" name="/" tstamps="/">
       <title_block>
@@ -768,13 +768,13 @@
       <footprint>Diode_SMD:D_SMA</footprint>
       <datasheet>https://www.diodes.com/datasheet/download/B340A.pdf</datasheet>
       <fields>
-        <field name="Design note">Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.</field>
+        <field name="Design note">Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.</field>
         <field name="Footprint">Diode_SMD:D_SMA</field>
         <field name="Datasheet">https://www.diodes.com/datasheet/download/B340A.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="D200" description=""/>
-      <property name="Design note" value="Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper."/>
+      <property name="Design note" value="Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link."/>
       <property name="Sheetname" value="Camera 1 socket, power and signal isolation"/>
       <property name="Sheetfile" value="02_camera1.kicad_sch"/>
       <sheetpath names="/Camera 1 socket, power and signal isolation/" tstamps="/85cf253e-4e5d-5c4f-ad53-79f9c57e0e61/"/>
@@ -793,13 +793,13 @@
       <footprint>KINO_A0:XIAO_Socket_15.24mm</footprint>
       <datasheet>https://www.we-online.com/components/products/datasheet/61300711821.pdf</datasheet>
       <fields>
-        <field name="Design note">Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.</field>
+        <field name="Design note">Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.</field>
         <field name="Footprint">KINO_A0:XIAO_Socket_15.24mm</field>
         <field name="Datasheet">https://www.we-online.com/components/products/datasheet/61300711821.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="J200" description=""/>
-      <property name="Design note" value="Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service."/>
+      <property name="Design note" value="Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service."/>
       <property name="Sheetname" value="Camera 1 socket, power and signal isolation"/>
       <property name="Sheetfile" value="02_camera1.kicad_sch"/>
       <sheetpath names="/Camera 1 socket, power and signal isolation/" tstamps="/85cf253e-4e5d-5c4f-ad53-79f9c57e0e61/"/>
@@ -859,17 +859,17 @@
       </units>
     </comp>
     <comp ref="JP200">
-      <value>REMOVE FOR NODE USB</value>
-      <footprint>Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</footprint>
-      <datasheet>https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</datasheet>
+      <value>0R LINK - REMOVE FOR NODE USB</value>
+      <footprint>KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP</footprint>
+      <datasheet>https://www.vishay.com/docs/20043/crcwhpe3.pdf</datasheet>
       <fields>
-        <field name="Design note">Fit removable shunt during camera operation, remove before USB cable insertion.</field>
-        <field name="Footprint">Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</field>
-        <field name="Datasheet">https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</field>
+        <field name="Design note">0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.</field>
+        <field name="Footprint">KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP</field>
+        <field name="Datasheet">https://www.vishay.com/docs/20043/crcwhpe3.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="JP200" description=""/>
-      <property name="Design note" value="Fit removable shunt during camera operation, remove before USB cable insertion."/>
+      <property name="Design note" value="0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there."/>
       <property name="Sheetname" value="Camera 1 socket, power and signal isolation"/>
       <property name="Sheetfile" value="02_camera1.kicad_sch"/>
       <sheetpath names="/Camera 1 socket, power and signal isolation/" tstamps="/85cf253e-4e5d-5c4f-ad53-79f9c57e0e61/"/>
@@ -1300,13 +1300,13 @@
       <footprint>Diode_SMD:D_SMA</footprint>
       <datasheet>https://www.diodes.com/datasheet/download/B340A.pdf</datasheet>
       <fields>
-        <field name="Design note">Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.</field>
+        <field name="Design note">Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.</field>
         <field name="Footprint">Diode_SMD:D_SMA</field>
         <field name="Datasheet">https://www.diodes.com/datasheet/download/B340A.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="D300" description=""/>
-      <property name="Design note" value="Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper."/>
+      <property name="Design note" value="Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link."/>
       <property name="Sheetname" value="Camera 2 socket, power and signal isolation"/>
       <property name="Sheetfile" value="03_camera2.kicad_sch"/>
       <sheetpath names="/Camera 2 socket, power and signal isolation/" tstamps="/01cb1596-bc85-5258-a6b1-63b00310773b/"/>
@@ -1325,13 +1325,13 @@
       <footprint>KINO_A0:XIAO_Socket_15.24mm</footprint>
       <datasheet>https://www.we-online.com/components/products/datasheet/61300711821.pdf</datasheet>
       <fields>
-        <field name="Design note">Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.</field>
+        <field name="Design note">Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.</field>
         <field name="Footprint">KINO_A0:XIAO_Socket_15.24mm</field>
         <field name="Datasheet">https://www.we-online.com/components/products/datasheet/61300711821.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="J300" description=""/>
-      <property name="Design note" value="Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service."/>
+      <property name="Design note" value="Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service."/>
       <property name="Sheetname" value="Camera 2 socket, power and signal isolation"/>
       <property name="Sheetfile" value="03_camera2.kicad_sch"/>
       <sheetpath names="/Camera 2 socket, power and signal isolation/" tstamps="/01cb1596-bc85-5258-a6b1-63b00310773b/"/>
@@ -1391,17 +1391,17 @@
       </units>
     </comp>
     <comp ref="JP300">
-      <value>REMOVE FOR NODE USB</value>
-      <footprint>Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</footprint>
-      <datasheet>https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</datasheet>
+      <value>0R LINK - REMOVE FOR NODE USB</value>
+      <footprint>KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP</footprint>
+      <datasheet>https://www.vishay.com/docs/20043/crcwhpe3.pdf</datasheet>
       <fields>
-        <field name="Design note">Fit removable shunt during camera operation, remove before USB cable insertion.</field>
-        <field name="Footprint">Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</field>
-        <field name="Datasheet">https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</field>
+        <field name="Design note">0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.</field>
+        <field name="Footprint">KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP</field>
+        <field name="Datasheet">https://www.vishay.com/docs/20043/crcwhpe3.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="JP300" description=""/>
-      <property name="Design note" value="Fit removable shunt during camera operation, remove before USB cable insertion."/>
+      <property name="Design note" value="0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there."/>
       <property name="Sheetname" value="Camera 2 socket, power and signal isolation"/>
       <property name="Sheetfile" value="03_camera2.kicad_sch"/>
       <sheetpath names="/Camera 2 socket, power and signal isolation/" tstamps="/01cb1596-bc85-5258-a6b1-63b00310773b/"/>
@@ -1832,13 +1832,13 @@
       <footprint>Diode_SMD:D_SMA</footprint>
       <datasheet>https://www.diodes.com/datasheet/download/B340A.pdf</datasheet>
       <fields>
-        <field name="Design note">Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.</field>
+        <field name="Design note">Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.</field>
         <field name="Footprint">Diode_SMD:D_SMA</field>
         <field name="Datasheet">https://www.diodes.com/datasheet/download/B340A.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="D400" description=""/>
-      <property name="Design note" value="Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper."/>
+      <property name="Design note" value="Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link."/>
       <property name="Sheetname" value="Camera 3 socket, power and signal isolation"/>
       <property name="Sheetfile" value="04_camera3.kicad_sch"/>
       <sheetpath names="/Camera 3 socket, power and signal isolation/" tstamps="/0165745c-ce23-53bc-854b-83df2fc1e887/"/>
@@ -1857,13 +1857,13 @@
       <footprint>KINO_A0:XIAO_Socket_15.24mm</footprint>
       <datasheet>https://www.we-online.com/components/products/datasheet/61300711821.pdf</datasheet>
       <fields>
-        <field name="Design note">Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.</field>
+        <field name="Design note">Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.</field>
         <field name="Footprint">KINO_A0:XIAO_Socket_15.24mm</field>
         <field name="Datasheet">https://www.we-online.com/components/products/datasheet/61300711821.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="J400" description=""/>
-      <property name="Design note" value="Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service."/>
+      <property name="Design note" value="Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service."/>
       <property name="Sheetname" value="Camera 3 socket, power and signal isolation"/>
       <property name="Sheetfile" value="04_camera3.kicad_sch"/>
       <sheetpath names="/Camera 3 socket, power and signal isolation/" tstamps="/0165745c-ce23-53bc-854b-83df2fc1e887/"/>
@@ -1923,17 +1923,17 @@
       </units>
     </comp>
     <comp ref="JP400">
-      <value>REMOVE FOR NODE USB</value>
-      <footprint>Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</footprint>
-      <datasheet>https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</datasheet>
+      <value>0R LINK - REMOVE FOR NODE USB</value>
+      <footprint>KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP</footprint>
+      <datasheet>https://www.vishay.com/docs/20043/crcwhpe3.pdf</datasheet>
       <fields>
-        <field name="Design note">Fit removable shunt during camera operation, remove before USB cable insertion.</field>
-        <field name="Footprint">Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</field>
-        <field name="Datasheet">https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</field>
+        <field name="Design note">0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.</field>
+        <field name="Footprint">KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP</field>
+        <field name="Datasheet">https://www.vishay.com/docs/20043/crcwhpe3.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="JP400" description=""/>
-      <property name="Design note" value="Fit removable shunt during camera operation, remove before USB cable insertion."/>
+      <property name="Design note" value="0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there."/>
       <property name="Sheetname" value="Camera 3 socket, power and signal isolation"/>
       <property name="Sheetfile" value="04_camera3.kicad_sch"/>
       <sheetpath names="/Camera 3 socket, power and signal isolation/" tstamps="/0165745c-ce23-53bc-854b-83df2fc1e887/"/>
@@ -2364,13 +2364,13 @@
       <footprint>Diode_SMD:D_SMA</footprint>
       <datasheet>https://www.diodes.com/datasheet/download/B340A.pdf</datasheet>
       <fields>
-        <field name="Design note">Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.</field>
+        <field name="Design note">Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.</field>
         <field name="Footprint">Diode_SMD:D_SMA</field>
         <field name="Datasheet">https://www.diodes.com/datasheet/download/B340A.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="D500" description=""/>
-      <property name="Design note" value="Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper."/>
+      <property name="Design note" value="Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link."/>
       <property name="Sheetname" value="Camera 4 socket, power and signal isolation"/>
       <property name="Sheetfile" value="05_camera4.kicad_sch"/>
       <sheetpath names="/Camera 4 socket, power and signal isolation/" tstamps="/98c561ab-7625-5940-bd5e-29e85052e268/"/>
@@ -2389,13 +2389,13 @@
       <footprint>KINO_A0:XIAO_Socket_15.24mm</footprint>
       <datasheet>https://www.we-online.com/components/products/datasheet/61300711821.pdf</datasheet>
       <fields>
-        <field name="Design note">Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.</field>
+        <field name="Design note">Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.</field>
         <field name="Footprint">KINO_A0:XIAO_Socket_15.24mm</field>
         <field name="Datasheet">https://www.we-online.com/components/products/datasheet/61300711821.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="J500" description=""/>
-      <property name="Design note" value="Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service."/>
+      <property name="Design note" value="Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service."/>
       <property name="Sheetname" value="Camera 4 socket, power and signal isolation"/>
       <property name="Sheetfile" value="05_camera4.kicad_sch"/>
       <sheetpath names="/Camera 4 socket, power and signal isolation/" tstamps="/98c561ab-7625-5940-bd5e-29e85052e268/"/>
@@ -2455,17 +2455,17 @@
       </units>
     </comp>
     <comp ref="JP500">
-      <value>REMOVE FOR NODE USB</value>
-      <footprint>Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</footprint>
-      <datasheet>https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</datasheet>
+      <value>0R LINK - REMOVE FOR NODE USB</value>
+      <footprint>KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP</footprint>
+      <datasheet>https://www.vishay.com/docs/20043/crcwhpe3.pdf</datasheet>
       <fields>
-        <field name="Design note">Fit removable shunt during camera operation, remove before USB cable insertion.</field>
-        <field name="Footprint">Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</field>
-        <field name="Datasheet">https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</field>
+        <field name="Design note">0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.</field>
+        <field name="Footprint">KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP</field>
+        <field name="Datasheet">https://www.vishay.com/docs/20043/crcwhpe3.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="JP500" description=""/>
-      <property name="Design note" value="Fit removable shunt during camera operation, remove before USB cable insertion."/>
+      <property name="Design note" value="0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there."/>
       <property name="Sheetname" value="Camera 4 socket, power and signal isolation"/>
       <property name="Sheetfile" value="05_camera4.kicad_sch"/>
       <sheetpath names="/Camera 4 socket, power and signal isolation/" tstamps="/98c561ab-7625-5940-bd5e-29e85052e268/"/>
@@ -6072,17 +6072,17 @@
       </units>
     </comp>
     <comp ref="JP1200">
-      <value>REMOVE FOR P4 USB SERVICE</value>
-      <footprint>Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</footprint>
-      <datasheet>https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</datasheet>
+      <value>0R LINK - REMOVE FOR P4 USB SERVICE</value>
+      <footprint>KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP</footprint>
+      <datasheet>https://www.vishay.com/docs/20043/crcwhpe3.pdf</datasheet>
       <fields>
-        <field name="Design note">Reverse isolation diode plus manual disconnect. Verify Guition external supply and USB topology before simultaneous connection.</field>
-        <field name="Footprint">Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</field>
-        <field name="Datasheet">https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</field>
+        <field name="Design note">Reverse isolation diode plus manual disconnect (0 ohm link, desolder for P4 USB service). Verify Guition external supply and USB topology before simultaneous connection.</field>
+        <field name="Footprint">KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP</field>
+        <field name="Datasheet">https://www.vishay.com/docs/20043/crcwhpe3.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="JP1200" description=""/>
-      <property name="Design note" value="Reverse isolation diode plus manual disconnect. Verify Guition external supply and USB topology before simultaneous connection."/>
+      <property name="Design note" value="Reverse isolation diode plus manual disconnect (0 ohm link, desolder for P4 USB service). Verify Guition external supply and USB topology before simultaneous connection."/>
       <property name="Sheetname" value="5V boost and main load disconnect"/>
       <property name="Sheetfile" value="12_boost.kicad_sch"/>
       <sheetpath names="/5V boost and main load disconnect/" tstamps="/7b9b6bc4-2c97-56ef-abdc-8792495ea361/"/>
@@ -8524,73 +8524,73 @@
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="JP1200">
-      <docs>https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</docs>
+      <docs>https://www.vishay.com/docs/20043/crcwhpe3.pdf</docs>
       <fields>
         <field name="Reference">JP</field>
-        <field name="Value">REMOVE FOR P4 USB SERVICE</field>
-        <field name="Footprint">Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</field>
-        <field name="Datasheet">https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</field>
+        <field name="Value">0R LINK - REMOVE FOR P4 USB SERVICE</field>
+        <field name="Footprint">KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP</field>
+        <field name="Datasheet">https://www.vishay.com/docs/20043/crcwhpe3.pdf</field>
         <field name="Description"/>
       </fields>
       <pins>
-        <pin num="1" name="P4_5V_ISO" type="passive"/>
-        <pin num="2" name="P4_5V" type="passive"/>
+        <pin num="1" name="1" type="passive"/>
+        <pin num="2" name="2" type="passive"/>
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="JP200">
-      <docs>https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</docs>
+      <docs>https://www.vishay.com/docs/20043/crcwhpe3.pdf</docs>
       <fields>
         <field name="Reference">JP</field>
-        <field name="Value">REMOVE FOR NODE USB</field>
-        <field name="Footprint">Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</field>
-        <field name="Datasheet">https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</field>
+        <field name="Value">0R LINK - REMOVE FOR NODE USB</field>
+        <field name="Footprint">KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP</field>
+        <field name="Datasheet">https://www.vishay.com/docs/20043/crcwhpe3.pdf</field>
         <field name="Description"/>
       </fields>
       <pins>
-        <pin num="1" name="CAM1_5V_ISO" type="passive"/>
-        <pin num="2" name="CAM1_5V" type="passive"/>
+        <pin num="1" name="1" type="passive"/>
+        <pin num="2" name="2" type="passive"/>
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="JP300">
-      <docs>https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</docs>
+      <docs>https://www.vishay.com/docs/20043/crcwhpe3.pdf</docs>
       <fields>
         <field name="Reference">JP</field>
-        <field name="Value">REMOVE FOR NODE USB</field>
-        <field name="Footprint">Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</field>
-        <field name="Datasheet">https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</field>
+        <field name="Value">0R LINK - REMOVE FOR NODE USB</field>
+        <field name="Footprint">KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP</field>
+        <field name="Datasheet">https://www.vishay.com/docs/20043/crcwhpe3.pdf</field>
         <field name="Description"/>
       </fields>
       <pins>
-        <pin num="1" name="CAM2_5V_ISO" type="passive"/>
-        <pin num="2" name="CAM2_5V" type="passive"/>
+        <pin num="1" name="1" type="passive"/>
+        <pin num="2" name="2" type="passive"/>
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="JP400">
-      <docs>https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</docs>
+      <docs>https://www.vishay.com/docs/20043/crcwhpe3.pdf</docs>
       <fields>
         <field name="Reference">JP</field>
-        <field name="Value">REMOVE FOR NODE USB</field>
-        <field name="Footprint">Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</field>
-        <field name="Datasheet">https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</field>
+        <field name="Value">0R LINK - REMOVE FOR NODE USB</field>
+        <field name="Footprint">KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP</field>
+        <field name="Datasheet">https://www.vishay.com/docs/20043/crcwhpe3.pdf</field>
         <field name="Description"/>
       </fields>
       <pins>
-        <pin num="1" name="CAM3_5V_ISO" type="passive"/>
-        <pin num="2" name="CAM3_5V" type="passive"/>
+        <pin num="1" name="1" type="passive"/>
+        <pin num="2" name="2" type="passive"/>
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="JP500">
-      <docs>https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</docs>
+      <docs>https://www.vishay.com/docs/20043/crcwhpe3.pdf</docs>
       <fields>
         <field name="Reference">JP</field>
-        <field name="Value">REMOVE FOR NODE USB</field>
-        <field name="Footprint">Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</field>
-        <field name="Datasheet">https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf</field>
+        <field name="Value">0R LINK - REMOVE FOR NODE USB</field>
+        <field name="Footprint">KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP</field>
+        <field name="Datasheet">https://www.vishay.com/docs/20043/crcwhpe3.pdf</field>
         <field name="Description"/>
       </fields>
       <pins>
-        <pin num="1" name="CAM4_5V_ISO" type="passive"/>
-        <pin num="2" name="CAM4_5V" type="passive"/>
+        <pin num="1" name="1" type="passive"/>
+        <pin num="2" name="2" type="passive"/>
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="L1100">
@@ -10688,12 +10688,12 @@
       <node ref="C203" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="C204" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="J200" pin="14" pinfunction="CAM1_5V_14" pintype="passive"/>
-      <node ref="JP200" pin="2" pinfunction="CAM1_5V_2" pintype="passive"/>
+      <node ref="JP200" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="TP200" pin="1" pinfunction="CAM1_5V_1" pintype="passive"/>
     </net>
     <net code="19" name="CAM1_5V_ISO" class="Default">
       <node ref="D200" pin="1" pinfunction="K_1" pintype="passive"/>
-      <node ref="JP200" pin="1" pinfunction="CAM1_5V_ISO_1" pintype="passive"/>
+      <node ref="JP200" pin="1" pinfunction="1_1" pintype="passive"/>
     </net>
     <net code="20" name="CAM1_D0" class="Default">
       <node ref="J200" pin="1" pinfunction="CAM1_D0_1" pintype="passive"/>
@@ -10792,12 +10792,12 @@
       <node ref="C303" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="C304" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="J300" pin="14" pinfunction="CAM2_5V_14" pintype="passive"/>
-      <node ref="JP300" pin="2" pinfunction="CAM2_5V_2" pintype="passive"/>
+      <node ref="JP300" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="TP300" pin="1" pinfunction="CAM2_5V_1" pintype="passive"/>
     </net>
     <net code="42" name="CAM2_5V_ISO" class="Default">
       <node ref="D300" pin="1" pinfunction="K_1" pintype="passive"/>
-      <node ref="JP300" pin="1" pinfunction="CAM2_5V_ISO_1" pintype="passive"/>
+      <node ref="JP300" pin="1" pinfunction="1_1" pintype="passive"/>
     </net>
     <net code="43" name="CAM2_D0" class="Default">
       <node ref="J300" pin="1" pinfunction="CAM2_D0_1" pintype="passive"/>
@@ -10896,12 +10896,12 @@
       <node ref="C403" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="C404" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="J400" pin="14" pinfunction="CAM3_5V_14" pintype="passive"/>
-      <node ref="JP400" pin="2" pinfunction="CAM3_5V_2" pintype="passive"/>
+      <node ref="JP400" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="TP400" pin="1" pinfunction="CAM3_5V_1" pintype="passive"/>
     </net>
     <net code="65" name="CAM3_5V_ISO" class="Default">
       <node ref="D400" pin="1" pinfunction="K_1" pintype="passive"/>
-      <node ref="JP400" pin="1" pinfunction="CAM3_5V_ISO_1" pintype="passive"/>
+      <node ref="JP400" pin="1" pinfunction="1_1" pintype="passive"/>
     </net>
     <net code="66" name="CAM3_D0" class="Default">
       <node ref="J400" pin="1" pinfunction="CAM3_D0_1" pintype="passive"/>
@@ -11000,12 +11000,12 @@
       <node ref="C503" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="C504" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="J500" pin="14" pinfunction="CAM4_5V_14" pintype="passive"/>
-      <node ref="JP500" pin="2" pinfunction="CAM4_5V_2" pintype="passive"/>
+      <node ref="JP500" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="TP500" pin="1" pinfunction="CAM4_5V_1" pintype="passive"/>
     </net>
     <net code="88" name="CAM4_5V_ISO" class="Default">
       <node ref="D500" pin="1" pinfunction="K_1" pintype="passive"/>
-      <node ref="JP500" pin="1" pinfunction="CAM4_5V_ISO_1" pintype="passive"/>
+      <node ref="JP500" pin="1" pinfunction="1_1" pintype="passive"/>
     </net>
     <net code="89" name="CAM4_D0" class="Default">
       <node ref="J500" pin="1" pinfunction="CAM4_D0_1" pintype="passive"/>
@@ -11553,12 +11553,12 @@
     <net code="146" name="P4_5V" class="Default">
       <node ref="J100" pin="2" pinfunction="P4_5V_2" pintype="passive"/>
       <node ref="J100" pin="4" pinfunction="P4_5V_4" pintype="passive"/>
-      <node ref="JP1200" pin="2" pinfunction="P4_5V_2" pintype="passive"/>
+      <node ref="JP1200" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="TP102" pin="1" pinfunction="P4_5V_1" pintype="passive"/>
     </net>
     <net code="147" name="P4_5V_ISO" class="Default">
       <node ref="D1200" pin="1" pinfunction="K_1" pintype="passive"/>
-      <node ref="JP1200" pin="1" pinfunction="P4_5V_ISO_1" pintype="passive"/>
+      <node ref="JP1200" pin="1" pinfunction="1_1" pintype="passive"/>
     </net>
     <net code="148" name="P4_BUS_EN" class="Default">
       <node ref="R100" pin="2" pinfunction="2_2" pintype="passive"/>

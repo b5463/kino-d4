@@ -13,9 +13,9 @@ F100,PTC 100mA - select,Bel Fuse 0ZCJ0010FF2E,Fuse:Fuse_1206_3216Metric,False,EN
 TP100,P4_3V3_TEST,P4_3V3_TEST,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
 TP101,SYNC_MASTER,SYNC_MASTER,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
 TP102,P4_5V,P4_5V,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
-J200,XIAO ESP32-S3 Sense socket,Wurth Elektronik 61300711821,KINO_A0:XIAO_Socket_15.24mm,False,ENGINEERING_DRAFT,Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.,https://www.we-online.com/components/products/datasheet/61300711821.pdf
+J200,XIAO ESP32-S3 Sense socket,Wurth Elektronik 61300711821,KINO_A0:XIAO_Socket_15.24mm,False,ENGINEERING_DRAFT,Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.,https://www.we-online.com/components/products/datasheet/61300711821.pdf
 J201,GPIO breakout - SD/strap restrictions,Wurth Elektronik 61301021121,Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical,False,ENGINEERING_DRAFT,,https://www.we-online.com/components/products/datasheet/61301021121.pdf
-JP200,REMOVE FOR NODE USB,Wurth Elektronik 61300211121 + shunt 60900213421,Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical,False,ENGINEERING_DRAFT,"Fit removable shunt during camera operation, remove before USB cable insertion.",https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf
+JP200,0R LINK - REMOVE FOR NODE USB,Vishay CRCW12060000Z0EAHP,KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP,False,ENGINEERING_DRAFT,"0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.",https://www.vishay.com/docs/20043/crcwhpe3.pdf
 U200,TXU0304PWR,TXU0304PWR,Package_SO:TSSOP-14_4.4x5mm_P0.65mm,False,ENGINEERING_DRAFT,,https://www.ti.com/lit/ds/symlink/txu0304.pdf
 R200,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
 R201,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
@@ -27,15 +27,15 @@ R203,25.5k 1%,RC0603FR-0725K5L,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_
 R204,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
 R205,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
 RS200,0.020 1% 0.5W,Vishay Dale WSLP1206R0200FEA,Resistor_SMD:R_1206_3216Metric,False,ENGINEERING_DRAFT,Kelvin sense required; exact current-sense resistor MPN pending.,https://www.vishay.com/docs/30122/wslp.pdf
-D200,SS34,Diodes Incorporated B340A-13-F,Diode_SMD:D_SMA,False,ENGINEERING_DRAFT,Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.,https://www.diodes.com/datasheet/download/B340A.pdf
+D200,SS34,Diodes Incorporated B340A-13-F,Diode_SMD:D_SMA,False,ENGINEERING_DRAFT,Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.,https://www.diodes.com/datasheet/download/B340A.pdf
 C202,1u 16V,Samsung Electro-Mechanics CL10A105KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN
 C203,22u 10V,Samsung Electro-Mechanics CL21A226MAQNNNE,Capacitor_SMD:C_0805_2012Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN
 C204,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
 TP200,CAM1_5V,CAM1_5V,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
 TP201,CAM1_SYNC,CAM1_SYNC,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
-J300,XIAO ESP32-S3 Sense socket,Wurth Elektronik 61300711821,KINO_A0:XIAO_Socket_15.24mm,False,ENGINEERING_DRAFT,Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.,https://www.we-online.com/components/products/datasheet/61300711821.pdf
+J300,XIAO ESP32-S3 Sense socket,Wurth Elektronik 61300711821,KINO_A0:XIAO_Socket_15.24mm,False,ENGINEERING_DRAFT,Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.,https://www.we-online.com/components/products/datasheet/61300711821.pdf
 J301,GPIO breakout - SD/strap restrictions,Wurth Elektronik 61301021121,Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical,False,ENGINEERING_DRAFT,,https://www.we-online.com/components/products/datasheet/61301021121.pdf
-JP300,REMOVE FOR NODE USB,Wurth Elektronik 61300211121 + shunt 60900213421,Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical,False,ENGINEERING_DRAFT,"Fit removable shunt during camera operation, remove before USB cable insertion.",https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf
+JP300,0R LINK - REMOVE FOR NODE USB,Vishay CRCW12060000Z0EAHP,KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP,False,ENGINEERING_DRAFT,"0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.",https://www.vishay.com/docs/20043/crcwhpe3.pdf
 U300,TXU0304PWR,TXU0304PWR,Package_SO:TSSOP-14_4.4x5mm_P0.65mm,False,ENGINEERING_DRAFT,,https://www.ti.com/lit/ds/symlink/txu0304.pdf
 R300,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
 R301,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
@@ -47,15 +47,15 @@ R303,25.5k 1%,RC0603FR-0725K5L,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_
 R304,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
 R305,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
 RS300,0.020 1% 0.5W,Vishay Dale WSLP1206R0200FEA,Resistor_SMD:R_1206_3216Metric,False,ENGINEERING_DRAFT,Kelvin sense required; exact current-sense resistor MPN pending.,https://www.vishay.com/docs/30122/wslp.pdf
-D300,SS34,Diodes Incorporated B340A-13-F,Diode_SMD:D_SMA,False,ENGINEERING_DRAFT,Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.,https://www.diodes.com/datasheet/download/B340A.pdf
+D300,SS34,Diodes Incorporated B340A-13-F,Diode_SMD:D_SMA,False,ENGINEERING_DRAFT,Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.,https://www.diodes.com/datasheet/download/B340A.pdf
 C302,1u 16V,Samsung Electro-Mechanics CL10A105KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN
 C303,22u 10V,Samsung Electro-Mechanics CL21A226MAQNNNE,Capacitor_SMD:C_0805_2012Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN
 C304,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
 TP300,CAM2_5V,CAM2_5V,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
 TP301,CAM2_SYNC,CAM2_SYNC,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
-J400,XIAO ESP32-S3 Sense socket,Wurth Elektronik 61300711821,KINO_A0:XIAO_Socket_15.24mm,False,ENGINEERING_DRAFT,Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.,https://www.we-online.com/components/products/datasheet/61300711821.pdf
+J400,XIAO ESP32-S3 Sense socket,Wurth Elektronik 61300711821,KINO_A0:XIAO_Socket_15.24mm,False,ENGINEERING_DRAFT,Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.,https://www.we-online.com/components/products/datasheet/61300711821.pdf
 J401,GPIO breakout - SD/strap restrictions,Wurth Elektronik 61301021121,Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical,False,ENGINEERING_DRAFT,,https://www.we-online.com/components/products/datasheet/61301021121.pdf
-JP400,REMOVE FOR NODE USB,Wurth Elektronik 61300211121 + shunt 60900213421,Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical,False,ENGINEERING_DRAFT,"Fit removable shunt during camera operation, remove before USB cable insertion.",https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf
+JP400,0R LINK - REMOVE FOR NODE USB,Vishay CRCW12060000Z0EAHP,KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP,False,ENGINEERING_DRAFT,"0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.",https://www.vishay.com/docs/20043/crcwhpe3.pdf
 U400,TXU0304PWR,TXU0304PWR,Package_SO:TSSOP-14_4.4x5mm_P0.65mm,False,ENGINEERING_DRAFT,,https://www.ti.com/lit/ds/symlink/txu0304.pdf
 R400,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
 R401,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
@@ -67,15 +67,15 @@ R403,25.5k 1%,RC0603FR-0725K5L,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_
 R404,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
 R405,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
 RS400,0.020 1% 0.5W,Vishay Dale WSLP1206R0200FEA,Resistor_SMD:R_1206_3216Metric,False,ENGINEERING_DRAFT,Kelvin sense required; exact current-sense resistor MPN pending.,https://www.vishay.com/docs/30122/wslp.pdf
-D400,SS34,Diodes Incorporated B340A-13-F,Diode_SMD:D_SMA,False,ENGINEERING_DRAFT,Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.,https://www.diodes.com/datasheet/download/B340A.pdf
+D400,SS34,Diodes Incorporated B340A-13-F,Diode_SMD:D_SMA,False,ENGINEERING_DRAFT,Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.,https://www.diodes.com/datasheet/download/B340A.pdf
 C402,1u 16V,Samsung Electro-Mechanics CL10A105KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN
 C403,22u 10V,Samsung Electro-Mechanics CL21A226MAQNNNE,Capacitor_SMD:C_0805_2012Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN
 C404,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
 TP400,CAM3_5V,CAM3_5V,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
 TP401,CAM3_SYNC,CAM3_SYNC,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
-J500,XIAO ESP32-S3 Sense socket,Wurth Elektronik 61300711821,KINO_A0:XIAO_Socket_15.24mm,False,ENGINEERING_DRAFT,Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.,https://www.we-online.com/components/products/datasheet/61300711821.pdf
+J500,XIAO ESP32-S3 Sense socket,Wurth Elektronik 61300711821,KINO_A0:XIAO_Socket_15.24mm,False,ENGINEERING_DRAFT,Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.,https://www.we-online.com/components/products/datasheet/61300711821.pdf
 J501,GPIO breakout - SD/strap restrictions,Wurth Elektronik 61301021121,Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical,False,ENGINEERING_DRAFT,,https://www.we-online.com/components/products/datasheet/61301021121.pdf
-JP500,REMOVE FOR NODE USB,Wurth Elektronik 61300211121 + shunt 60900213421,Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical,False,ENGINEERING_DRAFT,"Fit removable shunt during camera operation, remove before USB cable insertion.",https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf
+JP500,0R LINK - REMOVE FOR NODE USB,Vishay CRCW12060000Z0EAHP,KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP,False,ENGINEERING_DRAFT,"0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.",https://www.vishay.com/docs/20043/crcwhpe3.pdf
 U500,TXU0304PWR,TXU0304PWR,Package_SO:TSSOP-14_4.4x5mm_P0.65mm,False,ENGINEERING_DRAFT,,https://www.ti.com/lit/ds/symlink/txu0304.pdf
 R500,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
 R501,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
@@ -87,7 +87,7 @@ R503,25.5k 1%,RC0603FR-0725K5L,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_
 R504,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
 R505,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
 RS500,0.020 1% 0.5W,Vishay Dale WSLP1206R0200FEA,Resistor_SMD:R_1206_3216Metric,False,ENGINEERING_DRAFT,Kelvin sense required; exact current-sense resistor MPN pending.,https://www.vishay.com/docs/30122/wslp.pdf
-D500,SS34,Diodes Incorporated B340A-13-F,Diode_SMD:D_SMA,False,ENGINEERING_DRAFT,Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.,https://www.diodes.com/datasheet/download/B340A.pdf
+D500,SS34,Diodes Incorporated B340A-13-F,Diode_SMD:D_SMA,False,ENGINEERING_DRAFT,Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.,https://www.diodes.com/datasheet/download/B340A.pdf
 C502,1u 16V,Samsung Electro-Mechanics CL10A105KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN
 C503,22u 10V,Samsung Electro-Mechanics CL21A226MAQNNNE,Capacitor_SMD:C_0805_2012Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN
 C504,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
@@ -229,7 +229,7 @@ L1201,2.2uH 1.5A,Taiyo Yuden LSXND3030QKT2R2MNG,Inductor_SMD:L_Taiyo-Yuden_NR-30
 C1212,10u,Samsung Electro-Mechanics CL21A106KAYNNNE,Capacitor_SMD:C_0805_2012Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A106KAYNNN
 C1213,22u,Samsung Electro-Mechanics CL21A226MAQNNNE,Capacitor_SMD:C_0805_2012Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN
 D1200,SS34,Diodes Incorporated B340A-13-F,Diode_SMD:D_SMA,False,ENGINEERING_DRAFT,,https://www.diodes.com/datasheet/download/B340A.pdf
-JP1200,REMOVE FOR P4 USB SERVICE,Wurth Elektronik 61300211121 + shunt 60900213421,Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical,False,ENGINEERING_DRAFT,Reverse isolation diode plus manual disconnect. Verify Guition external supply and USB topology before simultaneous connection.,https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf
+JP1200,0R LINK - REMOVE FOR P4 USB SERVICE,Vishay CRCW12060000Z0EAHP,KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP,False,ENGINEERING_DRAFT,"Reverse isolation diode plus manual disconnect (0 ohm link, desolder for P4 USB service). Verify Guition external supply and USB topology before simultaneous connection.",https://www.vishay.com/docs/20043/crcwhpe3.pdf
 TP1200,SYS_5V,SYS_5V,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
 TP1201,MB_3V3,MB_3V3,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
 TP1202,GND,GND,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,

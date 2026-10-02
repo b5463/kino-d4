@@ -735,19 +735,19 @@
         "JP500",
         "JP1200"
       ],
-      "value": "REMOVE FOR NODE USB / REMOVE FOR P4 USB SERVICE",
-      "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
-      "manufacturer": "Wurth Elektronik",
-      "mpn": "61300211121 + shunt 60900213421",
-      "ratings": "Header: WR-PHD 1x02, 2.54 mm, gold, 3 A, 6.0 mm pin. Shunt: WR-PHD jumper with test point, 2.54 mm, gold, 3 A, 25 cycles. One shunt per header (5 total).",
-      "datasheet": "https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf",
-      "lcsc": "C2915055 (header); C6823945 (shunt)",
+      "value": "0R LINK - REMOVE FOR NODE USB / REMOVE FOR P4 USB SERVICE",
+      "footprint": "KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP",
+      "manufacturer": "Vishay",
+      "mpn": "CRCW12060000Z0EAHP",
+      "ratings": "0 ohm jumper, CRCW1206-HP e3: Imax 10 A, <= 5 mOhm (Vishay doc 20043 rev 17-Mar-2026, p2). Camera link ~1 A = 10 %; JP1200 at an assumed 3 A = 30 %, 45 mW. -55..+155 C, AEC-Q200.",
+      "datasheet": "https://www.vishay.com/docs/20043/crcwhpe3.pdf",
+      "lcsc": "C844862",
       "jlc_class": "extended",
-      "second_source": "Any 1x02 2.54 mm header and 2.54 mm shunt rated >=3 A",
-      "reason": "Shunt has a grip tab for pulling before USB service. 3 A covers a camera node (~1 A).",
-      "footprint_change": null,
+      "second_source": "JP200-JP500 only: Vishay CRCW12060000Z0EA (CRCW1206 e3 jumper, Imax 3.5 A, <= 20 mOhm, doc 20035 rev 14-Apr-2026; LCSC C190124). JP1200 needs a jumper rated >= 4 A: standard 1206 jumpers (3.5 A) are not a substitute there.",
+      "reason": "Replaces the 2.54 mm header and shunt (ODD JOBS 109-110, 162): flat on the front so the XIAOs stay the tallest parts, reachable with the carrier on the P4, rated for the current. Land redrawn to the Vishay reflow pattern (G 1.50, Y 1.05, X 1.80, Z 3.60 mm, doc 20043 p9).",
+      "footprint_change": "2.54 mm 1x02 header -> KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP (pads at the old pin pitch, 2.55 mm)",
       "flags": [
-        "JP1200 carries the P4 5 V feed; P4 current is not known here. Confirm it stays under 3 A."
+        "JP1200 carries the P4 5 V feed; P4 current is not known here. Confirm it stays under 3 A (30 % of the 10 A rating)."
       ]
     },
     {

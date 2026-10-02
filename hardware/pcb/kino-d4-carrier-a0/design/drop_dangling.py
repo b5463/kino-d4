@@ -21,6 +21,7 @@ for v in drc['violations']:
 b = pcb.LoadBoard(str(TARGET))
 removed = []
 for t in list(b.GetTracks()):
+    if t.IsLocked(): continue                     # deliberate copper (fixed routes, lane ends) stays
     kind = 'Via' if isinstance(t, pcb.PCB_VIA) else 'Track'
     pos = t.GetPosition() if kind == 'Via' else t.GetStart()
     for k, net, x, y in wanted:

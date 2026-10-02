@@ -81,13 +81,14 @@ switchpins={1:('IN','power_in'),2:('GND','power_in'),3:('EN','input'),4:('FAULT_
 for n in range(1,5):
     sh=f'0{n+1}_camera{n}'
     sheet(sh,f'Camera {n} socket, power and signal isolation',
-          'Remove camera power jumper BEFORE connecting node USB. Row centres 15.24 mm from official Seeed PCB/footprint. Optical datum remains to be verified.')
+          'Remove the camera power link (0 ohm, JP) BEFORE connecting node USB. Row centres 15.24 mm from official Seeed PCB/footprint. Optical datum remains to be verified.')
     base=200+100*(n-1)
     local=lambda s:f'CAM{n}_{s}'
     nets={1:local('D0'),2:local('SYNC'),3:local('D2_STRAP'),4:local('D3'),5:local('D4'),6:local('D5'),7:local('TX'),8:local('RX'),9:local('D8_SD'),10:local('D9_SD'),11:local('D10_SD'),12:local('3V3'),13:'GND',14:local('5V')}
-    con(sh,f'J{base}','XIAO ESP32-S3 Sense socket',nets,'KINO_A0:XIAO_Socket_15.24mm',at=CAMERA_CENTRES[n-1],note='Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.')
+    con(sh,f'J{base}','XIAO ESP32-S3 Sense socket',nets,'KINO_A0:XIAO_Socket_15.24mm',at=CAMERA_CENTRES[n-1],note='Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.')
     con(sh,f'J{base+1}','GPIO breakout - SD/strap restrictions',{1:'GND',2:local('3V3'),3:local('D0'),4:local('D2_STRAP'),5:local('D3'),6:local('D4'),7:local('D5'),8:local('D8_SD'),9:local('D9_SD'),10:local('D10_SD')},'Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical')
-    con(sh,f'JP{base}','REMOVE FOR NODE USB',{1:local('5V_ISO'),2:local('5V')},'Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical',note='Fit removable shunt during camera operation, remove before USB cable insertion.')
+    passive(sh,f'JP{base}','0R LINK - REMOVE FOR NODE USB',local('5V_ISO'),local('5V'),kind='R',footprint='KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP',
+            note='0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.')
     add(sh,f'U{base}','TXU0304PWR',{1:'MB_3V3',2:f'P4_TX{n}',3:'SYNC_MASTER',4:'GND',5:local('RX_RETURN'),6:None,7:'GND',8:'P4_BUS_EN',9:None,10:local('TX'),11:None,12:local('SYNC_BUF'),13:local('RX_BUF'),14:local('3V3')},pin_defs=txupins,footprint='Package_SO:TSSOP-14_4.4x5mm_P0.65mm',source='https://www.ti.com/lit/ds/symlink/txu0304.pdf')
     for i,(a,b) in enumerate([(local('RX_BUF'),local('RX')),(local('SYNC_BUF'),local('SYNC')),(local('RX_RETURN'),f'P4_RX{n}')]):res(sh,f'R{base+i}',a,b,'33')
     cap(sh,f'C{base}','MB_3V3');cap(sh,f'C{base+1}',local('3V3'))
@@ -96,7 +97,7 @@ for n in range(1,5):
     res(sh,f'R{base+4}',local('FAULT_N'),'MB_3V3','10k')
     res(sh,f'R{base+5}',local('EN'),'GND','100k')
     res(sh,f'RS{base}','SYS_5V',local('SHUNT_OUT'),'0.020 1% 0.5W',size='1206',note='Kelvin sense required; exact current-sense resistor MPN pending.')
-    passive(sh,f'D{base}','SS34',local('5V_ISO'),local('SW5V'),kind='D',note='Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.')
+    passive(sh,f'D{base}','SS34',local('5V_ISO'),local('SW5V'),kind='D',note='Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.')
     cap(sh,f'C{base+2}',local('SHUNT_OUT'),'1u 16V')
     cap(sh,f'C{base+3}',local('5V'),'22u 10V',size='0805')
     cap(sh,f'C{base+4}',local('5V'))
@@ -211,7 +212,7 @@ add('12_boost','U1201','TPS62162DSGR',{1:'GND',2:'SYS_5V',3:'SYS_5V',4:'GND',5:'
 passive('12_boost','L1201','2.2uH 1.5A','BUCK_SW','MB_3V3',kind='L',footprint='Inductor_SMD:L_Taiyo-Yuden_NR-30xx',mpn='TBD-2u2-1A')
 cap('12_boost','C1212','SYS_5V','10u',size='0805');cap('12_boost','C1213','MB_3V3','22u',size='0805')
 passive('12_boost','D1200','SS34','P4_5V_ISO','SYS_5V',kind='D')
-con('12_boost','JP1200','REMOVE FOR P4 USB SERVICE',{1:'P4_5V_ISO',2:'P4_5V'},'Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical',note='Reverse isolation diode plus manual disconnect. Verify Guition external supply and USB topology before simultaneous connection.')
+passive('12_boost','JP1200','0R LINK - REMOVE FOR P4 USB SERVICE','P4_5V_ISO','P4_5V',kind='R',footprint='KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP',note='Reverse isolation diode plus manual disconnect (0 ohm link, desolder for P4 USB service). Verify Guition external supply and USB topology before simultaneous connection.')
 tp('12_boost','TP1200','SYS_5V');tp('12_boost','TP1201','MB_3V3');tp('12_boost','TP1202','GND')
 
 sheet('13_power_button','Hardware on/off and user indication','Power controller TS8 pin map checked against manufacturer package drawing; EN is pin 7. KILL is pulled high until software requests shutdown. Long-hold target remains provisional.')
