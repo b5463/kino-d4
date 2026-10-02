@@ -448,9 +448,11 @@ def main():
         conns.sort(key=lambda c: (rank.get(c[0]['net'], len(rank)), prio(c)))
     routes, failed = [], []
     def save(r, f): (CACHE / os.environ.get('GR_OUT', 'grid-routes.json')).write_text(json.dumps({'routes': r, 'failed': f}, indent=1))
+    skip = set(filter(None, os.environ.get('GR_SKIP_REF', '').split(',')))   # GR_SKIP_REF=U700: leave that part's pads for designed routes
     for a, b in conns:
         net = a['net']
         if only and net not in only: continue
+        if a.get('ref') in skip or b.get('ref') in skip: continue
         done = None
         for w in width_for(net, (a, b)):
             for keep in (True, False):

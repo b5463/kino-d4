@@ -1,7 +1,7 @@
 {
     "$schema": "https://schemas.kicad.org/drc.v1.json",
     "coordinate_units": "mm",
-    "date": "2026-10-02T23:09:51",
+    "date": "2026-10-03T00:46:11",
     "ignored_checks": [
         {
             "description": "Footprint has no courtyard defined",
@@ -566,12 +566,12 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Zone [GND] on B.Cu, priority 0",
+                    "description": "Zone [GND] on F.Cu, priority 0",
                     "pos": {
                         "x": 50.5,
                         "y": 50.5
                     },
-                    "uuid": "d43fbce7-48be-4ab1-8b09-210ecbe3ccd2"
+                    "uuid": "a329db61-3dd1-4f8d-9bf2-c2fef4ff20b1"
                 },
                 {
                     "description": "Zone [GND] on B.Cu, priority 0",
@@ -658,12 +658,12 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Pad 5 [MB_3V3] of U901 on B.Cu",
+                    "description": "Track [MB_3V3] on B.Cu, length 1.6125 mm",
                     "pos": {
-                        "x": 67.5875,
-                        "y": 64.95
+                        "x": 72.6425,
+                        "y": 89.95
                     },
-                    "uuid": "f01c8c19-a2c9-412a-88fd-b38b6364abc7"
+                    "uuid": "286ae225-d311-424c-9a71-66c16248c898"
                 },
                 {
                     "description": "Pad 2 [MB_3V3] of R204 on B.Cu",
@@ -681,20 +681,20 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Track [MB_3V3] on B.Cu, length 1.6125 mm",
-                    "pos": {
-                        "x": 72.6425,
-                        "y": 89.95
-                    },
-                    "uuid": "286ae225-d311-424c-9a71-66c16248c898"
-                },
-                {
                     "description": "Pad 2 [MB_3V3] of R204 on B.Cu",
                     "pos": {
                         "x": 79.255,
                         "y": 70.475
                     },
                     "uuid": "23f56636-bb60-4c59-a162-d6f1f6f9722f"
+                },
+                {
+                    "description": "Pad 5 [MB_3V3] of U901 on B.Cu",
+                    "pos": {
+                        "x": 67.5875,
+                        "y": 64.95
+                    },
+                    "uuid": "f01c8c19-a2c9-412a-88fd-b38b6364abc7"
                 }
             ],
             "severity": "error",
@@ -750,20 +750,20 @@
             "description": "Missing connection between items",
             "items": [
                 {
+                    "description": "Track [MB_3V3] on B.Cu, length 0.9192 mm",
+                    "pos": {
+                        "x": 123.9,
+                        "y": 61.3
+                    },
+                    "uuid": "d2765f98-556f-45bc-90f9-8e87e25d9fc9"
+                },
+                {
                     "description": "Pad 2 [MB_3V3] of R404 on B.Cu",
                     "pos": {
                         "x": 123.255,
                         "y": 70.475
                     },
                     "uuid": "e0ce025e-23ba-425b-9e59-db03d10b2688"
-                },
-                {
-                    "description": "Track [MB_3V3] on B.Cu, length 0.9192 mm",
-                    "pos": {
-                        "x": 123.9,
-                        "y": 61.3
-                    },
-                    "uuid": "82cf93e2-8c00-46f4-a976-c69b42229a80"
                 }
             ],
             "severity": "error",
@@ -772,6 +772,37 @@
         {
             "description": "Missing connection between items",
             "items": [
+                {
+                    "description": "Track [MB_3V3] on F.Cu, length 1.4142 mm",
+                    "pos": {
+                        "x": 143.3,
+                        "y": 60.1
+                    },
+                    "uuid": "7d05dfbb-c3ee-4fb3-93a1-8beb303d684f"
+                },
+                {
+                    "description": "Track [MB_3V3] on B.Cu, length 1.2000 mm",
+                    "pos": {
+                        "x": 145.25,
+                        "y": 61.4625
+                    },
+                    "uuid": "081dc3ec-29f7-428a-b905-0ff36f3c1a07"
+                }
+            ],
+            "severity": "error",
+            "type": "unconnected_items"
+        },
+        {
+            "description": "Missing connection between items",
+            "items": [
+                {
+                    "description": "Track [MB_3V3] on B.Cu, length 1.2000 mm",
+                    "pos": {
+                        "x": 145.25,
+                        "y": 61.4625
+                    },
+                    "uuid": "081dc3ec-29f7-428a-b905-0ff36f3c1a07"
+                },
                 {
                     "description": "Pad 2 [MB_3V3] of R504 on B.Cu",
                     "pos": {
@@ -779,14 +810,6 @@
                         "y": 70.475
                     },
                     "uuid": "29833c04-60bb-4f27-8de9-5d0fa55ea00e"
-                },
-                {
-                    "description": "Track [MB_3V3] on F.Cu, length 0.6500 mm",
-                    "pos": {
-                        "x": 144.3,
-                        "y": 61.1
-                    },
-                    "uuid": "57d19910-ea17-436a-8d25-c85158fcb95c"
                 }
             ],
             "severity": "error",
@@ -795,14 +818,6 @@
         {
             "description": "Missing connection between items",
             "items": [
-                {
-                    "description": "Pad 2 [MB_3V3] of R906 on F.Cu",
-                    "pos": {
-                        "x": 155.325,
-                        "y": 65.25
-                    },
-                    "uuid": "8840d864-4002-4a87-9798-d3895635c66f"
-                },
                 {
                     "description": "Via [MB_3V3] on F.Cu - B.Cu",
                     "pos": {
@@ -810,44 +825,6 @@
                         "y": 62.05
                     },
                     "uuid": "d466d432-fafe-4b6f-abe6-f55a33cfe5be"
-                }
-            ],
-            "severity": "error",
-            "type": "unconnected_items"
-        },
-        {
-            "description": "Missing connection between items",
-            "items": [
-                {
-                    "description": "Pad 6 [MB_3V3] of U900 on F.Cu",
-                    "pos": {
-                        "x": 155.85,
-                        "y": 71.0
-                    },
-                    "uuid": "40726146-bba9-4dbc-ac84-ffa3c730db09"
-                },
-                {
-                    "description": "Pad 10 [MB_3V3] of U900 on F.Cu",
-                    "pos": {
-                        "x": 155.85,
-                        "y": 73.0
-                    },
-                    "uuid": "589b2ed7-dc85-457d-8354-b6558806f4ca"
-                }
-            ],
-            "severity": "error",
-            "type": "unconnected_items"
-        },
-        {
-            "description": "Missing connection between items",
-            "items": [
-                {
-                    "description": "Pad 6 [MB_3V3] of U900 on F.Cu",
-                    "pos": {
-                        "x": 155.85,
-                        "y": 71.0
-                    },
-                    "uuid": "40726146-bba9-4dbc-ac84-ffa3c730db09"
                 },
                 {
                     "description": "Pad 2 [MB_3V3] of R906 on F.Cu",
@@ -865,13 +842,28 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Track [MB_3V3] on B.Cu, length 1.8031 mm",
+                    "description": "Pad 2 [MB_3V3] of R906 on F.Cu",
                     "pos": {
-                        "x": 157.225,
-                        "y": 76.525
+                        "x": 155.325,
+                        "y": 65.25
                     },
-                    "uuid": "c7f28b3c-dee1-4f80-85ec-c372c2771550"
+                    "uuid": "8840d864-4002-4a87-9798-d3895635c66f"
                 },
+                {
+                    "description": "Pad 6 [MB_3V3] of U900 on F.Cu",
+                    "pos": {
+                        "x": 155.85,
+                        "y": 71.0
+                    },
+                    "uuid": "40726146-bba9-4dbc-ac84-ffa3c730db09"
+                }
+            ],
+            "severity": "error",
+            "type": "unconnected_items"
+        },
+        {
+            "description": "Missing connection between items",
+            "items": [
                 {
                     "description": "Pad 10 [MB_3V3] of U900 on F.Cu",
                     "pos": {
@@ -879,6 +871,37 @@
                         "y": 73.0
                     },
                     "uuid": "589b2ed7-dc85-457d-8354-b6558806f4ca"
+                },
+                {
+                    "description": "Pad 6 [MB_3V3] of U900 on F.Cu",
+                    "pos": {
+                        "x": 155.85,
+                        "y": 71.0
+                    },
+                    "uuid": "40726146-bba9-4dbc-ac84-ffa3c730db09"
+                }
+            ],
+            "severity": "error",
+            "type": "unconnected_items"
+        },
+        {
+            "description": "Missing connection between items",
+            "items": [
+                {
+                    "description": "Pad 10 [MB_3V3] of U900 on F.Cu",
+                    "pos": {
+                        "x": 155.85,
+                        "y": 73.0
+                    },
+                    "uuid": "589b2ed7-dc85-457d-8354-b6558806f4ca"
+                },
+                {
+                    "description": "Track [MB_3V3] on B.Cu, length 1.8031 mm",
+                    "pos": {
+                        "x": 157.225,
+                        "y": 76.525
+                    },
+                    "uuid": "c7f28b3c-dee1-4f80-85ec-c372c2771550"
                 }
             ],
             "severity": "error",
@@ -1210,12 +1233,12 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Track [CAM2_3V3] on F.Cu, length 1.8880 mm",
+                    "description": "Track [CAM2_3V3] on F.Cu, length 3.2810 mm",
                     "pos": {
-                        "x": 104.14,
+                        "x": 105.125,
                         "y": 82.165
                     },
-                    "uuid": "cfa1229f-0156-4726-9564-1a960b937ad3"
+                    "uuid": "33ffe5b5-330c-4013-9549-ca22e68c8b98"
                 },
                 {
                     "description": "PTH pad 2 [CAM2_3V3] of J301",
@@ -1670,12 +1693,12 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Track [CAM3_3V3] on F.Cu, length 0.9850 mm",
+                    "description": "Track [CAM3_3V3] on F.Cu, length 3.2810 mm",
                     "pos": {
                         "x": 124.805,
-                        "y": 83.5
+                        "y": 84.485
                     },
-                    "uuid": "ab7b0e8a-3781-4ce6-aaae-1a233c3cb6f3"
+                    "uuid": "033aa5a5-80bd-45c9-966b-01d14a87c7d8"
                 },
                 {
                     "description": "PTH pad 2 [CAM3_3V3] of J401",
@@ -1716,20 +1739,20 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Pad 2 [SYS_5V] of J600 on F.Cu",
+                    "description": "Pad 13 [SYS_5V] of U700 on B.Cu",
                     "pos": {
-                        "x": 68.54,
-                        "y": 99.0
+                        "x": 146.75,
+                        "y": 61.4625
                     },
-                    "uuid": "0e0ec16c-0d68-49ba-ad8e-740693b718d5"
+                    "uuid": "9faf317c-97ed-431f-a94d-330d56a0df9a"
                 },
                 {
-                    "description": "Track [SYS_5V] on B.Cu, length 0.7672 mm",
+                    "description": "Pad 11 [SYS_5V] of U700 on B.Cu",
                     "pos": {
-                        "x": 73.5,
-                        "y": 70.4575
+                        "x": 147.4625,
+                        "y": 60.25
                     },
-                    "uuid": "49b85b61-786c-4d38-872d-9487adec3ba1"
+                    "uuid": "6d39cca4-29c6-4d28-87f2-5dd26e5cda92"
                 }
             ],
             "severity": "error",
@@ -1739,20 +1762,20 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Track [SYS_5V] on B.Cu, length 0.7672 mm",
+                    "description": "Pad 13 [SYS_5V] of U700 on B.Cu",
                     "pos": {
-                        "x": 73.5,
-                        "y": 70.4575
+                        "x": 146.75,
+                        "y": 61.4625
                     },
-                    "uuid": "49b85b61-786c-4d38-872d-9487adec3ba1"
+                    "uuid": "9faf317c-97ed-431f-a94d-330d56a0df9a"
                 },
                 {
-                    "description": "Via [SYS_5V] on F.Cu - B.Cu",
+                    "description": "Track [SYS_5V] on F.Cu, length 66.9000 mm",
                     "pos": {
-                        "x": 95.0,
-                        "y": 70.6
+                        "x": 73.59,
+                        "y": 69.4
                     },
-                    "uuid": "f85334a7-9a98-4909-a338-c766752e8718"
+                    "uuid": "6ac79b16-c07d-4dbf-9ffc-ca008a038ea9"
                 }
             ],
             "severity": "error",
@@ -1762,20 +1785,20 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Track [SYS_5V] on B.Cu, length 0.6370 mm",
+                    "description": "Pad 10 [SYS_5V] of U700 on B.Cu",
                     "pos": {
-                        "x": 90.2,
-                        "y": 104.25
+                        "x": 147.4625,
+                        "y": 59.75
                     },
-                    "uuid": "47e8a564-7bd0-487b-bf04-422f3b206312"
+                    "uuid": "0de7d80e-c1a6-494b-8589-60c2c4044fc0"
                 },
                 {
-                    "description": "Pad 2 [SYS_5V] of J600 on F.Cu",
+                    "description": "Pad 8 [SYS_5V] of U700 on B.Cu",
                     "pos": {
-                        "x": 68.54,
-                        "y": 99.0
+                        "x": 146.75,
+                        "y": 58.5375
                     },
-                    "uuid": "0e0ec16c-0d68-49ba-ad8e-740693b718d5"
+                    "uuid": "68ac3f95-4314-4e63-ba59-572722b29d51"
                 }
             ],
             "severity": "error",
@@ -1785,66 +1808,20 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Track [SYS_5V] on B.Cu, length 1.8500 mm",
+                    "description": "Pad 11 [SYS_5V] of U700 on B.Cu",
                     "pos": {
-                        "x": 92.05,
-                        "y": 104.25
+                        "x": 147.4625,
+                        "y": 60.25
                     },
-                    "uuid": "ebf40b5e-b91c-4ec1-9c5a-e5958962bc53"
+                    "uuid": "6d39cca4-29c6-4d28-87f2-5dd26e5cda92"
                 },
                 {
-                    "description": "Track [SYS_5V] on B.Cu, length 3.8650 mm",
+                    "description": "Pad 10 [SYS_5V] of U700 on B.Cu",
                     "pos": {
-                        "x": 103.233,
-                        "y": 106.267
+                        "x": 147.4625,
+                        "y": 59.75
                     },
-                    "uuid": "55f858cd-c310-4035-9061-c0c3141909b1"
-                }
-            ],
-            "severity": "error",
-            "type": "unconnected_items"
-        },
-        {
-            "description": "Missing connection between items",
-            "items": [
-                {
-                    "description": "Track [SYS_5V] on B.Cu, length 0.4243 mm",
-                    "pos": {
-                        "x": 118.3425,
-                        "y": 71.3
-                    },
-                    "uuid": "059f64fa-0f0f-4e1e-8e6c-a9ebdaed02b1"
-                },
-                {
-                    "description": "Track [SYS_5V] on B.Cu, length 0.5657 mm",
-                    "pos": {
-                        "x": 95.6425,
-                        "y": 70.6
-                    },
-                    "uuid": "621c35ff-c4eb-4c5a-adf4-803304a32084"
-                }
-            ],
-            "severity": "error",
-            "type": "unconnected_items"
-        },
-        {
-            "description": "Missing connection between items",
-            "items": [
-                {
-                    "description": "Track [SYS_5V] on B.Cu, length 0.4500 mm",
-                    "pos": {
-                        "x": 138.8,
-                        "y": 70.7
-                    },
-                    "uuid": "df2d209c-2a98-4857-b048-36633b151a53"
-                },
-                {
-                    "description": "Track [SYS_5V] on B.Cu, length 0.4243 mm",
-                    "pos": {
-                        "x": 118.3425,
-                        "y": 71.3
-                    },
-                    "uuid": "059f64fa-0f0f-4e1e-8e6c-a9ebdaed02b1"
+                    "uuid": "0de7d80e-c1a6-494b-8589-60c2c4044fc0"
                 }
             ],
             "severity": "error",
@@ -1877,20 +1854,20 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Track [SYNC_MASTER] on F.Cu, length 3.2400 mm",
-                    "pos": {
-                        "x": 67.1,
-                        "y": 100.44
-                    },
-                    "uuid": "8a231a34-75c3-4f5b-888d-6a9a89335106"
-                },
-                {
                     "description": "PTH pad 19 [SYNC_MASTER] of J100",
                     "pos": {
                         "x": 58.54,
                         "y": 90.86
                     },
                     "uuid": "b58942a0-9543-4254-b1d9-0a7f019f5a62"
+                },
+                {
+                    "description": "Track [SYNC_MASTER] on F.Cu, length 3.2400 mm",
+                    "pos": {
+                        "x": 67.1,
+                        "y": 100.44
+                    },
+                    "uuid": "8a231a34-75c3-4f5b-888d-6a9a89335106"
                 }
             ],
             "severity": "error",
@@ -2000,12 +1977,12 @@
                     "uuid": "03d1064c-038d-4e0b-b4c3-575219f694d2"
                 },
                 {
-                    "description": "Pad 9 [CAM2_EN] of J600 on F.Cu",
+                    "description": "Track [CAM2_EN] on F.Cu, length 5.8325 mm",
                     "pos": {
-                        "x": 71.08,
-                        "y": 101.54
+                        "x": 96.3675,
+                        "y": 72.4
                     },
-                    "uuid": "3f52c709-cb29-4b74-a134-f24566339186"
+                    "uuid": "d90c9346-4a68-4905-ade1-bd8371374206"
                 }
             ],
             "severity": "error",
@@ -2015,20 +1992,20 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Track [CAM2_EN] on F.Cu, length 5.8325 mm",
-                    "pos": {
-                        "x": 96.3675,
-                        "y": 72.4
-                    },
-                    "uuid": "d90c9346-4a68-4905-ade1-bd8371374206"
-                },
-                {
                     "description": "Pad 1 [CAM2_EN] of R305 on B.Cu",
                     "pos": {
                         "x": 93.755,
                         "y": 72.125
                     },
                     "uuid": "03d1064c-038d-4e0b-b4c3-575219f694d2"
+                },
+                {
+                    "description": "Pad 9 [CAM2_EN] of J600 on F.Cu",
+                    "pos": {
+                        "x": 71.08,
+                        "y": 101.54
+                    },
+                    "uuid": "3f52c709-cb29-4b74-a134-f24566339186"
                 }
             ],
             "severity": "error",
@@ -2391,12 +2368,12 @@
                     "uuid": "a87530d5-2d4b-42ed-b70f-4d6077ecbc06"
                 },
                 {
-                    "description": "Track [CAM1_D9_SD] on B.Cu, length 0.3500 mm",
+                    "description": "Track [CAM1_D9_SD] on In2.Cu, length 1.9799 mm",
                     "pos": {
                         "x": 82.5,
-                        "y": 70.95
+                        "y": 70.6
                     },
-                    "uuid": "723a4adf-ba1a-4c9c-99e4-c595571f2f8f"
+                    "uuid": "e9b5a140-b23b-4904-8c88-4460549f4968"
                 }
             ],
             "severity": "error",
@@ -2912,12 +2889,12 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Track [CAM4_3V3] on F.Cu, length 4.4500 mm",
+                    "description": "Track [CAM4_3V3] on F.Cu, length 3.2810 mm",
                     "pos": {
                         "x": 146.805,
-                        "y": 87.95
+                        "y": 84.485
                     },
-                    "uuid": "378e948b-890d-4004-9937-6ef26ff6c135"
+                    "uuid": "433f7386-f910-4fe0-af1d-91e487b0a6d7"
                 },
                 {
                     "description": "PTH pad 2 [CAM4_3V3] of J501",
@@ -2935,12 +2912,12 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Track [COVER_N] on B.Cu, length 1.3435 mm",
+                    "description": "Track [COVER_N] on B.Cu, length 2.1213 mm",
                     "pos": {
-                        "x": 153.5,
-                        "y": 71.225
+                        "x": 155.0,
+                        "y": 72.725
                     },
-                    "uuid": "533e061c-77b3-4ce3-a7a7-3bb1905a67b9"
+                    "uuid": "18a44fcf-dc1f-418d-92c5-1fc43c43074e"
                 },
                 {
                     "description": "Pad 13 [COVER_N] of U600 on B.Cu",
@@ -2966,12 +2943,12 @@
                     "uuid": "fed89669-e8b5-4bde-91f8-f5f4dd57650a"
                 },
                 {
-                    "description": "Track [COVER_N] on B.Cu, length 2.8250 mm",
+                    "description": "Track [COVER_N] on B.Cu, length 2.1213 mm",
                     "pos": {
                         "x": 155.0,
-                        "y": 74.1
+                        "y": 72.725
                     },
-                    "uuid": "305e7299-a372-4c3c-b218-f72e0e65567a"
+                    "uuid": "18a44fcf-dc1f-418d-92c5-1fc43c43074e"
                 }
             ],
             "severity": "error",
@@ -3156,6 +3133,29 @@
                         "y": 105.675
                     },
                     "uuid": "c53710b9-c44c-48bf-8bcd-aa87e32a78a5"
+                }
+            ],
+            "severity": "error",
+            "type": "unconnected_items"
+        },
+        {
+            "description": "Missing connection between items",
+            "items": [
+                {
+                    "description": "Track [IMU_INT] on F.Cu, length 4.8000 mm",
+                    "pos": {
+                        "x": 105.5,
+                        "y": 95.6
+                    },
+                    "uuid": "7fea13c5-6f05-421b-bcd0-7155253dd3be"
+                },
+                {
+                    "description": "Track [IMU_INT] on F.Cu, length 6.2225 mm",
+                    "pos": {
+                        "x": 102.4,
+                        "y": 61.6
+                    },
+                    "uuid": "43094212-0960-49b1-9bfe-a6f23e84b769"
                 }
             ],
             "severity": "error",
@@ -3633,12 +3633,12 @@
                     "uuid": "c5414d59-438c-4df9-ada2-32e42869f052"
                 },
                 {
-                    "description": "Track [CAM4_SHUNT_OUT] on B.Cu, length 1.1325 mm",
+                    "description": "Track [CAM4_SHUNT_OUT] on B.Cu, length 0.8026 mm",
                     "pos": {
-                        "x": 142.9675,
-                        "y": 72.1325
+                        "x": 142.4,
+                        "y": 71.5675
                     },
-                    "uuid": "c580ee25-954c-4839-822d-e23588cd933c"
+                    "uuid": "0416f0c6-4bc8-468c-b37b-c342c3d3575e"
                 }
             ],
             "severity": "error",
@@ -3702,12 +3702,12 @@
                     "uuid": "4608360c-7a18-47cf-975d-9c751d040bb5"
                 },
                 {
-                    "description": "Track [CAM1_SHUNT_OUT] on B.Cu, length 1.0854 mm",
+                    "description": "Track [CAM1_SHUNT_OUT] on B.Cu, length 0.5657 mm",
                     "pos": {
-                        "x": 76.2,
-                        "y": 70.2325
+                        "x": 76.97,
+                        "y": 71.0
                     },
-                    "uuid": "f5ef6c84-a2db-47bc-ab18-54328b766a8c"
+                    "uuid": "d3e8467d-b6ce-4f6a-a3b2-92c2724fc640"
                 }
             ],
             "severity": "error",
@@ -4556,10 +4556,10 @@
                 {
                     "description": "Via [SYS_5V] on F.Cu - B.Cu",
                     "pos": {
-                        "x": 95.0,
-                        "y": 70.6
+                        "x": 68.54,
+                        "y": 100.27
                     },
-                    "uuid": "f85334a7-9a98-4909-a338-c766752e8718"
+                    "uuid": "e4549151-320d-4964-9794-cf327085dc09"
                 }
             ],
             "severity": "warning",
@@ -4620,6 +4620,36 @@
                         "y": 63.45
                     },
                     "uuid": "96cea8be-de5b-40ea-b78e-5aef4c534fa9"
+                }
+            ],
+            "severity": "warning",
+            "type": "via_dangling"
+        },
+        {
+            "description": "Track has unconnected end",
+            "items": [
+                {
+                    "description": "Track [IMU_INT] on F.Cu, length 6.2225 mm",
+                    "pos": {
+                        "x": 102.4,
+                        "y": 61.6
+                    },
+                    "uuid": "43094212-0960-49b1-9bfe-a6f23e84b769"
+                }
+            ],
+            "severity": "warning",
+            "type": "track_dangling"
+        },
+        {
+            "description": "Via is not connected or connected on only one layer",
+            "items": [
+                {
+                    "description": "Via [IMU_INT] on F.Cu - B.Cu",
+                    "pos": {
+                        "x": 105.5,
+                        "y": 95.6
+                    },
+                    "uuid": "1ec4613a-07cd-4b9a-a682-e69f47c0dc72"
                 }
             ],
             "severity": "warning",

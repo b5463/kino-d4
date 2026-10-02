@@ -22,7 +22,7 @@ The [14-sheet schematic](KINO_D4_Carrier_A0.kicad_sch) is the current electrical
 | [Printed labels](outputs/A02-PRINTED-LABELS.json) / [assembly references](outputs/A02-ASSEMBLY-LABELS.json) / [unplaced references](outputs/A02-ASSEMBLY-LABELS-UNFINISHED.json) | Label positions; parts without a clear, unambiguous silk position beside the part |
 | [Silk text check](outputs/A02-SILK-TEXT.json) | `check_silk_text.py`: text over text, pads, part bodies or silk graphics, crowded or ambiguous references, reading direction |
 
-**Routing status, 2 October 2026:** 195 connections unrouted after the external connections moved to the back (105 before the move, 182 at the 30 September review). No clearance, short, courtyard or silkscreen violations; the remaining DRC items are dangling lane ends and stubs awaiting the router. The SYNC bus now runs at the buffers (In2, y 41.05) instead of across the top of the camera row, camera EN/FAULT_N use In2 lanes north of the headers, and U600 is turned 180 degrees. Still to route: the I2C bus, the camera header-socket GPIO, P4_BUS_EN, the PAC1954 Kelvin pairs, the J600 test legs and the expander pocket clean-up. Figures in [A02-REVIEW.md](A02-REVIEW.md) predate this pass.
+**Routing status, 2 October 2026:** 195 connections unrouted after the external connections moved to the back (105 before the move, 182 at the 30 September review). No clearance, short, courtyard or silkscreen violations; the remaining DRC items are dangling lane ends and stubs awaiting the router. The SYNC bus now runs at the buffers (In2, y 41.05) instead of across the top of the camera row, camera EN/FAULT_N use In2 lanes north of the headers, and U600 is turned 180 degrees. SYS_5V (3 October 2026) is routed as a tree: a 0.7 mm F trunk along y 19.4 over the four shunts (F, because the P4 bus already walls that band on F; In2 stays free for the header-to-socket GPIO to cross it), a 2.0 mm In2 riser between cameras 2 and 3 fed from Q1201 and, through a 1.4 mm In2 link, from D1200, three vias at every layer change, and branches to U1201 and J600. U700's four SENSE+ pins are left for separate Kelvin pairs. Still to route: the I2C bus, the camera header-socket GPIO, P4_BUS_EN, the PAC1954 Kelvin pairs, IMU_INT, the J600 test legs and the expander pocket clean-up. Figures in [A02-REVIEW.md](A02-REVIEW.md) predate this pass.
 
 Prototype references are on silkscreen (ODD JOBS rule 177) beside their own part: 0.15 mm clear of part outlines, 0.5 mm from other silk text, horizontal text left to right and vertical text bottom to top from its own side (rule 91), 1.0 mm text or 0.8 mm in dense areas. A spot more than 0.5 mm nearer another part is not used. On 2 October 2026, 213 of 250 references are on silk; no text overlaps another text, a pad, a part body or a silk graphic, and 16 labels sit marginally (at most 0.46 mm) nearer a neighbour. The other 37, in the camera and charger clusters, stay on Fab at the part centre and are listed in the unplaced file; they need part spacing, not smaller text. Connector, camera and product labels use 1.0 mm text with a 0.15 mm stroke.
 
@@ -81,13 +81,17 @@ Change scripts, in the order they were applied:
   4. `route_a02_p4_feed.py rip`, `add`: P4_5V_ISO as a 2.0 mm In2 run with three vias per layer change.
   5. `clear_a02_backside.py move`, `rip`; `drop_dangling.py`: courtyard and copper conflicts cleared, J601 0.65 mm north.
   6. `place_a02_labels.py`, `assembly_labels.py --prototype-silk`, `check_silk_text.py`: connector labels on the back silkscreen, references beside their parts, silk text check.
+- **SYS_5V, 3 October 2026:**
+  1. `route_a02_sys5v.py rip`, `add`, `link-rip`, `link-add`: trunk, drops, riser and feed; camera 1 SHUNT_OUT via, IMU_INT middle and the U700 SENSE+ tie removed for it.
+  2. `grid_router.py SYS_5V` with `GR_SKIP_REF=U700`, `apply_routes.py`, `tidy_routes.py`: U1201 and J600 branches.
+  3. `straighten_a02_j600.py`: the J600 branch as one straight run.
 
 Each routing script removes and redraws only the copper it owns. `tidy_routes.py` reshapes unlocked copper, so a hand script re-run after it no longer recognises its own routes: re-run hand scripts from a board saved before the tidy. In this KiCad build a `Remove()` leaves the Python bindings unreliable for the rest of the process, so the newer scripts remove, add and verify in separate runs. Helpers:
 - `free_spot.py`: collision-checked placement of one part.
 - `clean_dangling.py`: removes track stubs.
 - `drop_dangling.py`: removes exactly the items DRC reports as dangling; `--keep` spares named nets.
 - `gnd_islands.py` / `gnd_stitch.py`: list and stitch GND pour fragments with no via.
-- `grid_router.py`: `GR_ORDER=argv` routes the named nets in order, `GR_LIMIT` sets the search budget, `GR_DEBUG=<dir>` writes clear-cell masks, `GR_OUT` names the output.
+- `grid_router.py`: `GR_ORDER=argv` routes the named nets in order, `GR_LIMIT` sets the search budget, `GR_DEBUG=<dir>` writes clear-cell masks, `GR_OUT` names the output, `GR_SKIP_REF=U700,...` leaves those parts' pads for designed routes.
 - `regenerate_capture.py`: rebuilds schematic and BOM without touching the board.
 - `route_secondary.py`: Freerouting export/import with existing copper fixed.
 

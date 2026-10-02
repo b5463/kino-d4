@@ -82,14 +82,6 @@
       ]
     },
     {
-      "net": "CAM3_3V3",
-      "layer": "F.Cu",
-      "xy_mm": [
-        124.805,
-        83.5
-      ]
-    },
-    {
       "net": "CAM3_5V",
       "layer": "B.Cu",
       "xy_mm": [
@@ -109,24 +101,40 @@
       "net": "SYS_5V",
       "layer": "B.Cu",
       "xy_mm": [
-        139.1,
-        71.0
+        89.9,
+        105.35
       ]
     },
     {
       "net": "SYS_5V",
       "layer": "B.Cu",
       "xy_mm": [
-        139.1,
-        70.7
+        90.2,
+        105.35
       ]
     },
     {
       "net": "SYS_5V",
-      "layer": "B.Cu",
+      "layer": "In2.Cu",
       "xy_mm": [
-        138.8,
-        70.7
+        108.55,
+        94.5
+      ]
+    },
+    {
+      "net": "SYS_5V",
+      "layer": "In2.Cu",
+      "xy_mm": [
+        130.6,
+        94.5
+      ]
+    },
+    {
+      "net": "SYS_5V",
+      "layer": "In2.Cu",
+      "xy_mm": [
+        102.0,
+        113.0
       ]
     },
     {
@@ -134,14 +142,6 @@
       "layer": "F.Cu",
       "xy_mm": [
         80.805,
-        83.5
-      ]
-    },
-    {
-      "net": "CAM4_3V3",
-      "layer": "F.Cu",
-      "xy_mm": [
-        146.805,
         83.5
       ]
     },
@@ -279,9 +279,9 @@
       ]
     },
     "BOOST_COMP": {
-      "length_mm": 23.168,
+      "length_mm": 22.934,
       "width_length_mm": {
-        "0.2": 23.168
+        "0.2": 22.934
       },
       "via_count": 3,
       "layers": [
@@ -463,9 +463,9 @@
       ]
     },
     "CAM1_SHUNT_OUT": {
-      "length_mm": 13.454,
+      "length_mm": 11.767,
       "width_length_mm": {
-        "0.5": 13.454
+        "0.5": 11.767
       },
       "via_count": 2,
       "layers": [
@@ -505,9 +505,9 @@
       ]
     },
     "CAM2_3V3": {
-      "length_mm": 11.336,
+      "length_mm": 10.759,
       "width_length_mm": {
-        "0.25": 11.336
+        "0.25": 10.759
       },
       "via_count": 1,
       "layers": [
@@ -654,9 +654,9 @@
       ]
     },
     "CAM3_3V3": {
-      "length_mm": 11.336,
+      "length_mm": 10.759,
       "width_length_mm": {
-        "0.25": 11.336
+        "0.25": 10.759
       },
       "via_count": 1,
       "layers": [
@@ -821,9 +821,9 @@
       ]
     },
     "CAM4_3V3": {
-      "length_mm": 11.336,
+      "length_mm": 10.759,
       "width_length_mm": {
-        "0.25": 11.336
+        "0.25": 10.759
       },
       "via_count": 1,
       "layers": [
@@ -1186,7 +1186,7 @@
         "0.2": 2.7,
         "0.3": 1.95
       },
-      "via_count": 151,
+      "via_count": 150,
       "layers": [
         "B.Cu",
         "F.Cu"
@@ -1215,15 +1215,14 @@
       ]
     },
     "IMU_INT": {
-      "length_mm": 64.578,
+      "length_mm": 31.934,
       "width_length_mm": {
-        "0.15": 64.578
+        "0.15": 31.934
       },
-      "via_count": 4,
+      "via_count": 2,
       "layers": [
         "B.Cu",
-        "F.Cu",
-        "In2.Cu"
+        "F.Cu"
       ]
     },
     "MAIN_COMMON": {
@@ -1251,9 +1250,9 @@
       ]
     },
     "MB_3V3": {
-      "length_mm": 300.707,
+      "length_mm": 300.326,
       "width_length_mm": {
-        "0.3": 276.069,
+        "0.3": 275.688,
         "0.25": 13.356,
         "0.2": 9.332,
         "0.8": 1.95
@@ -1596,16 +1595,18 @@
       ]
     },
     "SYS_5V": {
-      "length_mm": 68.711,
+      "length_mm": 236.213,
       "width_length_mm": {
-        "0.8": 48.216,
-        "1.2": 8.312,
-        "0.4": 6.916,
-        "0.6": 2.417,
-        "0.2502": 0.5,
-        "0.25": 2.35
+        "0.8": 31.733,
+        "0.4": 27.477,
+        "1.2": 11.437,
+        "0.7": 66.9,
+        "2.0": 54.244,
+        "1.6": 1.5,
+        "0.25": 2.35,
+        "1.4": 40.572
       },
-      "via_count": 8,
+      "via_count": 26,
       "layers": [
         "B.Cu",
         "F.Cu",
@@ -1673,17 +1674,17 @@
     }
   },
   "track_segments_by_layer": {
-    "F.Cu": 401,
-    "B.Cu": 703,
-    "In2.Cu": 84
+    "F.Cu": 387,
+    "B.Cu": 693,
+    "In2.Cu": 95
   },
   "switching_nodes_with_layer_changes": [
     "CHG_SW1",
     "CHG_SW2"
   ],
   "drc_counts": {
-    "via_dangling": 15,
-    "track_dangling": 4
+    "via_dangling": 16,
+    "track_dangling": 5
   },
   "unconnected_items": 195,
   "order_verdict": "DO NOT ORDER",
