@@ -69,7 +69,7 @@ describe('session against M1B firmware', () => {
       wiggle: supports(s, 'wiggle'),
       quad: supports(s, 'quad'),
     }).map((item) => item.id);
-    expect(ids).toContain('overview');
+    expect(ids).toContain('shoot');
     expect(ids).toContain('updates');
     for (const hidden of ['gallery', 'wiggle', 'quad', 'roll'] as const) {
       expect(ids).not.toContain(hidden);

@@ -1,0 +1,34 @@
+# Carrier A0 source evidence
+
+Consulted 2026-09-29. Manufacturer documents establish component facts; they do not validate this assembled design.
+
+- **Guition geometry:** [official specification](https://www.guition.com/icms/upload/fb081940d6fc11f09850077a33e1404f/file/productmanager-productfile/5dfbe9a7c0fc44869270528bd2411b1e/Directory/JC4880P443C_I_W%20Specifications-EN-V1.0_1776241869964.pdf), pp. 4, 6, 7. [Guition structure drawing, vendor-package mirror](https://github.com/wegi1/ESP32P4-JC4880P443C-I-W/blob/main/3-Structure_Diagram/JC4880P443C_I_W_Y-%E6%A8%A1%E5%9E%8B.pdf). See MECHANICAL.md for the outer/inner mounting distinction and provisional offset.
+- **Guition circuitry:** [JC4880P443_V1.0.pdf, vendor-package mirror](https://github.com/wegi1/ESP32P4-JC4880P443C-I-W/blob/main/5-Schematic/JC4880P443_V1.0.pdf). One-sheet schematic with expand-IO, USB, IP5306 and TLV62569 circuits. Local measured ECN-0002/0003 and `firmware/p4/main/board_d4v1.h` remain authoritative for the connector GPIO assignments.
+- **XIAO footprint:** [official Seeed KiCad library archive](https://files.seeedstudio.com/wiki/XIAO-KiCad-Library/New_XIAO_Series_Footprints.zip), `XIAO-ESP32-S3-DIP.kicad_mod`. Through-hole rows at Ã‚Â±7.62 mm, pitch 2.54 mm. The additional SMD pads at Ã‚Â±8.455 mm do not define socket row spacing.
+- **XIAO native board:** [official Sense v1.5 schematic/PCB archive](https://files.seeedstudio.com/wiki/SeeedStudio-XIAO-ESP32S3/new-res/202003753_XIAO%20ESP32S3%20Sense_v1.5_SCH&PCB_260226.zip), downloaded via the [Seeed wiki](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/). U9 pad mapping corroborates 1Ã¢â‚¬â€œ7 = D0Ã¢â‚¬â€œD6, 8Ã¢â‚¬â€œ11 = D7Ã¢â‚¬â€œD10, 12 = 3V3, 13 = GND, 14 = VBUS. The carrier's socket footprint is independently drawn and rotated to show D0 upper-left and VBUS upper-right.
+- **XIAO dimensions:** [official DXF](https://files.seeedstudio.com/wiki/SeeedStudio-XIAO-ESP32S3/res/XIAO_ESP32S3_v1.1_Dimensioning.dxf). Connector fit and lens offsets still require assembled-part review.
+- **Power and isolation:** [TI TXU0304](https://www.ti.com/lit/ds/symlink/txu0304.pdf), [TPS2553](https://www.ti.com/lit/ds/symlink/tps2553.pdf), [BQ25798](https://www.ti.com/lit/ds/symlink/bq25798.pdf), [TPS61288](https://www.ti.com/lit/ds/symlink/tps61288.pdf), [STUSB4500](https://www.st.com/resource/en/datasheet/stusb4500.pdf), [LTC2955](https://www.analog.com/media/en/technical-documentation/data-sheets/2955fa.pdf). LTC2955 TS8 ordering: 1 ON, 2 KILL, 3 TMR, 4 GND, 5 PB, 6 VIN, 7 EN, 8 INT; do not read the two-column drawing as a sequential text list.
+- **Camera current monitor:** [Microchip PAC195x datasheet](https://ww1.microchip.com/downloads/en/DeviceDoc/PAC195X-Family-Data-Sheet-20006539B.pdf), [PAC1954 evaluation guide](https://ww1.microchip.com/downloads/aemDocuments/documents/MSLD/ProductDocuments/UserGuides/PAC1954-Evaluation-Board-User-Guide-DS50003119.pdf), Ã‚Â§4.6: grounded ADDRSEL gives 7-bit address `0x10`. PWRDN is active low.
+- **Sensors and controls:** [LSM6DSOX](https://www.st.com/resource/en/datasheet/lsm6dsox.pdf), [RV-3028-C7](https://www.microcrystal.com/fileadmin/Media/Products/RTC/Datasheet/RV-3028-C7.pdf), [TMP117](https://www.ti.com/lit/ds/symlink/tmp117.pdf), [DRV2605L](https://www.ti.com/lit/ds/symlink/drv2605l.pdf), [TCA9539](https://www.ti.com/lit/ds/symlink/tca9539.pdf).
+
+`outputs/BOM-DRAFT.csv` retains part-level sources and unresolved selections. Vendor originals stay in the local cache; they are not relabelled or redistributed under the KINO hardware licence. KiCad stock library content is embedded as part of the electronic design under its [library exception](https://www.kicad.org/libraries/license/).
+
+
+## A0.2 review, 30 September 2026
+
+- [TI BQ25798 Rev C](https://www.ti.com/lit/ds/symlink/bq25798.pdf), table 7-5: both VAC1 and VAC2 connect to VBUS in the selected single-input topology. Figure 8-21 informs the local charger switch crossover and bootstrap placement.
+- [GCT USB4105 drawing](https://gct.co/files/drawings/usb4105.pdf), B4 dated 18 December 2023: contact/locator datums and original land dimensions. The A0.2 four-pad trimming is a local deviation requiring assembly qualification, not a quoted vendor recommendation.
+- [JLCPCB capabilities](https://jlcpcb.com/capabilities/pcb-capabilities/) and [ordering instructions](https://jlcpcb.com/help/article/instructions-for-ordering): 1.0 mm minimum character height and 0.15 mm stroke used for printed functional labels. Smaller Fab-layer text is assembly documentation only. [PCBWay legend guidance](https://www.pcbway.com/helpcenter/design_instruction/How_to_make_my_silkscreen_clear_and_beautiful_on_PCB__.html) gives 0.8 mm / 0.15 mm; that does not waive the more conservative provisional JLC target.
+
+- Exact fallback-divider parts: [Yageo RC0603FR-0730K1L](https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0730K1L) and [RC0603FR-0710KL](https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL), 0603, 1%, 0.1 W. This is a dimensional/rating check, not live stock or whole-BOM qualification.
+
+## Power rework, design package 0.1.8
+
+- [TI BQ25798 Rev C](https://www.ti.com/lit/ds/symlink/bq25798.pdf): pin 13 CE must be pulled high or low; 7.3.4.3 ILIM_HIZ is sampled at POR / good-source detection and EN_EXTILIM releases the clamp; REG06 IINDPM and REG14 EN_EXTILIM reset only on REG_RST; table 7-2 1S defaults 4.2 V / 1 A; JEITA thresholds with 103AT (RT1 5.24k, RT2 30.31k); 8.4.1 PMID capacitor placement.
+- [TI BQ27441-G1 SLUSBH1C](https://www.ti.com/lit/ds/symlink/bq27441-g1.pdf): pin table (SRN 7, SRP 8, BAT 6, GPOUT 12 must not float, BIN 10k), high-side 10 mOhm pre-calibration, coulomb-counter input range +/-25 mV.
+- [TI TPS61288](https://www.ti.com/lit/ds/symlink/tps61288.pdf): ILIM 12-17.1 A, VREF 0.6 V, Gm 180 uS, KCOMP 13.5 A/V, 9.2.2.2 inductor rule, equations 12-14, RQQ0011A land pattern 4225610/A.
+- [Coilcraft XAL7070](https://www.coilcraft.com/getmedia/1ba55433-bcc8-4838-9b21-382f497e12e0/xal7070.pdf) (XAL7070-222: 6.33 mOhm max, Isat 19.6 A, land 1.92 x 6.50 mm at 4.82 mm) and [XAL1060](https://www.coilcraft.com/getmedia/8909f858-b441-4d60-acff-8b8ca36f9ede/xal1060.pdf) (TI table 9-2 part, too large for the board).
+- TDK SPM6530 catalogue, 20160825, pages 5-6: body 7.1 x 6.5 x 3.0 mm, land 1.85 x 3.4 mm with 3.7 mm gap, SPM6530T-1R0M120 7.81 mOhm max, Isat 14.1 A. The TDK site blocks automated downloads; a distributor-hosted copy of the TDK PDF was read.
+- [Nexperia PESD24VL1BA](https://assets.nexperia.com/documents/data-sheet/PESD24VL1BA.pdf): SOD323, VRWM 24 V, VBR 25.4 V min, 11 pF.
+- [Vishay WSLP](https://www.vishay.com/en/product/30122/): WSLP1206 1-50 mOhm, 1 W.
+- Part-level selections with datasheet links, LCSC numbers and open items: [design/part_selection.json](design/part_selection.json).

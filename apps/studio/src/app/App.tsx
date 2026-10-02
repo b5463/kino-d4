@@ -1,11 +1,11 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
-import { MenuBar } from '../components/MenuBar';
-import type { MenuSpec } from '../components/MenuBar';
-import { Toolbar } from '../components/Toolbar';
-import { StatusBar } from '../components/StatusBar';
-import { Sidebar, PAGE_LABEL, navItems } from '../components/Sidebar';
+import type { MenuCommand } from '../components/MenuBar';
+import { PAGE_LABEL } from '../components/Sidebar';
 import type { PageId } from '../components/Sidebar';
+import { Rail } from '../components/shell/Rail';
+import { TopBar } from '../components/shell/TopBar';
+import { Inspector } from '../components/shell/Inspector';
 import { ConnectHome } from '../components/ConnectHome';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Led } from '../components/Led';
@@ -18,7 +18,6 @@ import { useNavRequest } from '../state/navRequest';
 import { blockedBy } from '../state/deviceBusy';
 import { useDraftStore } from '../state/draftStore';
 import { connectSerial, disconnect, rebootAndReconnect, refreshAll } from './session';
-import { OverviewPage } from '../pages/Overview/OverviewPage';
 import { ShootPage } from '../pages/Shoot/ShootPage';
 import { WigglePage } from '../pages/Wiggle/WigglePage';
 import { QuadPage } from '../pages/Quad/QuadPage';
@@ -37,7 +36,7 @@ import { APP_VERSION } from './version';
  * These three carry the conformance suite, the bring-up worksheet, the timing
  * bench, the power-load ladder and — through `developer/powerLoad` — the whole
  * @kino/simulator-engine power model. None of it can be reached without
- * Tools › Developer Mode, and all of it used to be in the chunk every operator
+ * Developer Mode, and all of it used to be in the chunk every operator
  * downloads before the connect screen paints.
  */
 const DeveloperPage = lazy(() =>
@@ -52,7 +51,6 @@ const PAGE_KEY = 'kino-studio.page';
 export { APP_VERSION };
 
 const PAGES: Record<PageId, ComponentType> = {
-  overview: OverviewPage,
   shoot: ShootPage,
   wiggle: WigglePage,
   quad: QuadPage,
@@ -67,11 +65,19 @@ const PAGES: Record<PageId, ComponentType> = {
   bench: BenchPage,
 };
 
+/** Where the application lands: the section a camera is for. */
+const HOME_PAGE: PageId = 'shoot';
+
 function loadPage(): PageId {
   const saved = localStorage.getItem(PAGE_KEY);
-  return saved && saved in PAGES ? (saved as PageId) : 'overview';
+  return saved && saved in PAGES ? (saved as PageId) : HOME_PAGE;
 }
 
+/**
+ * The application frame: rail on the left, the open section in the middle,
+ * the inspector on the right. The camera's vital signs — what used to be the
+ * Overview section — live in the inspector beside every page.
+ */
 export function App() {
   const phase = useConnectionStore((s) => s.phase);
   const serialSupported = useConnectionStore((s) => s.serialSupported);
@@ -124,14 +130,14 @@ export function App() {
   const connected = phase === 'connected' || phase === 'maintenance';
 
   useEffect(() => {
-    if (!developerMode && (page === 'developer' || page === 'bringup' || page === 'bench')) setPage('overview');
+    if (!developerMode && (page === 'developer' || page === 'bringup' || page === 'bench')) setPage(HOME_PAGE);
   }, [developerMode, page]);
 
   // A remembered section is meaningless on a camera that cannot serve it —
   // the nav has no entry for it, so nothing could navigate back out. Only
   // while a session is live: on disconnect capabilities go null and every
-  // gate reads false, which used to rewrite the persisted section to
-  // Overview the moment the cable came out (issue #86).
+  // gate reads false, which used to rewrite the persisted section the moment
+  // the cable came out (issue #86).
   useEffect(() => {
     if (!inSession) return;
     if (
@@ -140,7 +146,7 @@ export function App() {
       (!wiggle && page === 'wiggle') ||
       (!quad && page === 'quad')
     ) {
-      setPage('overview');
+      setPage(HOME_PAGE);
     }
   }, [inSession, rollUpload, gallery, wiggle, quad, page]);
 
@@ -188,89 +194,48 @@ export function App() {
 
   const goto = (target: PageId) => setPage(target);
 
-  const runSelfTest = () => {
-    goto('overview');
-    emitUi('self-test');
-  };
+  // The self test lives in the inspector, beside every page: no navigation,
+  // the inspector opens its section on the same event.
+  const runSelfTest = () => emitUi('self-test');
 
-  const menus: MenuSpec[] = [
+  const overflow: MenuCommand[] = [
     {
-      label: 'File',
-      items: [
-        {
-          label: 'Back Up Camera…',
-          disabled: !connected,
-          action: () => {
-            goto('device');
-            emitUi('backup');
-          },
-        },
-        {
-          label: 'Restore From File…',
-          disabled: !connected,
-          action: () => {
-            goto('device');
-            emitUi('restore');
-          },
-        },
-        {
-          label: 'Disconnect',
-          disabled: !inSession || phase === 'updating' || phase === 'reconnecting',
-          separatorAbove: true,
-          action: () => void disconnect(),
-        },
-      ],
+      label: 'Back Up Camera…',
+      disabled: !connected,
+      action: () => {
+        goto('device');
+        emitUi('backup');
+      },
     },
     {
-      label: 'Camera',
-      items: [
-        { label: 'Connect Kino Camera…', disabled: inSession || !serialSupported, action: () => void connectSerial() },
-        { label: 'Run Self Test', disabled: !connected, separatorAbove: true, action: runSelfTest },
-        { label: 'Reboot Camera…', disabled: !connected, action: () => setRebootOpen(true) },
-        { label: 'Update Firmware…', disabled: !connected, separatorAbove: true, action: () => goto('updates') },
-      ],
+      label: 'Restore From File…',
+      disabled: !connected,
+      action: () => {
+        goto('device');
+        emitUi('restore');
+      },
     },
+    { label: 'Connect Kino Camera…', disabled: inSession || !serialSupported, separatorAbove: true, action: () => void connectSerial() },
     {
-      label: 'View',
-      items: [
-        ...navItems({ developerMode: false, rollUpload, gallery, wiggle, quad }).map((item) => ({
-          label: item.label,
-          // Same lock the sidebar holds while firmware is being written —
-          // the menu used to bypass it (issue #86).
-          disabled: !inSession || phase === 'updating',
-          checked: page === item.id,
-          action: () => goto(item.id),
-        })),
-        {
-          label: 'Compact Density',
-          separatorAbove: true,
-          checked: density === 'compact',
-          action: () => setDensity('compact'),
-        },
-        {
-          label: 'Comfortable Density',
-          checked: density === 'comfortable',
-          action: () => setDensity('comfortable'),
-        },
-      ],
+      label: 'Disconnect',
+      disabled: !inSession || phase === 'updating' || phase === 'reconnecting',
+      action: () => void disconnect(),
     },
-    {
-      label: 'Tools',
-      items: [
-        {
-          label: 'Developer Mode',
-          checked: developerMode,
-          action: () => setDeveloperMode(!developerMode),
-        },
-      ],
-    },
-    {
-      label: 'Help',
-      items: [{ label: 'About KINO Studio…', action: () => setAboutOpen(true) }],
-    },
+    { label: 'Run Self Test', disabled: !connected, separatorAbove: true, action: runSelfTest },
+    { label: 'Reboot Camera…', disabled: !connected, action: () => setRebootOpen(true) },
+    { label: 'Update Firmware…', disabled: !connected, action: () => goto('updates') },
+    { label: 'About KINO Studio…', separatorAbove: true, action: () => setAboutOpen(true) },
+  ];
+
+  const gear: MenuCommand[] = [
+    { label: 'Compact Density', checked: density === 'compact', action: () => setDensity('compact') },
+    { label: 'Comfortable Density', checked: density === 'comfortable', action: () => setDensity('comfortable') },
+    { label: 'Developer Mode', separatorAbove: true, checked: developerMode, action: () => setDeveloperMode(!developerMode) },
+    { label: 'About KINO Studio…', separatorAbove: true, action: () => setAboutOpen(true) },
   ];
 
   const Page = PAGES[page];
+  const title = inSession ? PAGE_LABEL[page] : offlineWorksheet && developerMode ? PAGE_LABEL[offlineWorksheet] : 'Connect';
 
   return (
     <div className="frame">
@@ -282,74 +247,83 @@ export function App() {
           workRef.current?.focus();
         }}
       >
-        SKIP TO {inSession ? PAGE_LABEL[page].toUpperCase() : 'CONNECT'}
+        SKIP TO {title.toUpperCase()}
       </a>
-      <MenuBar menus={menus} version={APP_VERSION} />
-      <Toolbar onNavigate={goto} onSelfTest={runSelfTest} onSync={sync} syncBusy={syncBusy} />
       {/* Section changes are a page change in every way except the URL, so
           they get announced like one. */}
       <p className="sr-only" role="status">
         {syncNote ?? (inSession ? `${PAGE_LABEL[page]} — KINO Studio` : '')}
       </p>
-      <div className="mainrow">
-        {inSession ? (
-          <Sidebar
-            page={page}
-            onNavigate={goto}
-            locked={phase === 'updating' ? 'Not while firmware is being written' : null}
-          />
-        ) : null}
-        <main className="workspace" id="work" tabIndex={-1} ref={workRef} aria-label={inSession ? PAGE_LABEL[page] : 'Connect'}>
-          {inSession ? (
-            <>
-              {phase === 'reconnecting' ? (
-                <div className="reconnectbar" role="status">
-                  <Led state="busy" label="" />
-                  KINO IS REBOOTING — RECONNECTING…
-                </div>
-              ) : null}
-              <div className="workspace-inner">
-                {/* One section failing is not the application failing: the
-                    shell, the connection and the menus stay up, and the
-                    boundary resets when you navigate somewhere else. */}
-                <ErrorBoundary
-                  what={PAGE_LABEL[page]}
-                  resetKey={page}
-                  action={
-                    <Button size="sm" onClick={() => goto('overview')}>
-                      GO TO OVERVIEW
+      <div className="shell">
+        <Rail
+          page={page}
+          onNavigate={goto}
+          inSession={inSession}
+          locked={phase === 'updating' ? 'Not while firmware is being written' : null}
+          gearItems={gear}
+          version={APP_VERSION}
+        />
+        <div className="shell-main">
+          <TopBar title={title} onSelfTest={runSelfTest} onSync={sync} syncBusy={syncBusy} overflow={overflow} />
+          {syncNote ? (
+            <p className="syncnote" role="status">
+              {syncNote}
+            </p>
+          ) : null}
+          <div className="shell-body">
+            <main className="workspace" id="work" tabIndex={-1} ref={workRef} aria-label={title}>
+              {inSession ? (
+                <>
+                  {phase === 'reconnecting' ? (
+                    <div className="reconnectbar" role="status">
+                      <Led state="busy" label="" />
+                      KINO IS REBOOTING — RECONNECTING…
+                    </div>
+                  ) : null}
+                  <div className="workspace-inner">
+                    {/* One section failing is not the application failing: the
+                        shell, the connection and the inspector stay up, and the
+                        boundary resets when you navigate somewhere else. */}
+                    <ErrorBoundary
+                      what={PAGE_LABEL[page]}
+                      resetKey={page}
+                      action={
+                        <Button size="sm" onClick={() => goto(HOME_PAGE)}>
+                          GO TO SHOOT
+                        </Button>
+                      }
+                    >
+                      <Suspense fallback={<p className="microlabel">LOADING {PAGE_LABEL[page].toUpperCase()}…</p>}>
+                        <Page />
+                      </Suspense>
+                    </ErrorBoundary>
+                  </div>
+                </>
+              ) : offlineWorksheet && developerMode ? (
+                <div className="workspace-inner">
+                  <p className="notice">
+                    <span>
+                      Offline worksheet — no camera connected. Anything that needs the device stays
+                      disabled.
+                    </span>
+                    <Button size="sm" variant="ghost" onClick={() => setOfflineWorksheet(null)}>
+                      BACK TO CONNECT
                     </Button>
-                  }
-                >
-                  <Suspense fallback={<p className="microlabel">LOADING {PAGE_LABEL[page].toUpperCase()}…</p>}>
-                    <Page />
-                  </Suspense>
-                </ErrorBoundary>
-              </div>
-            </>
-          ) : offlineWorksheet && developerMode ? (
-            <div className="workspace-inner">
-              <p className="notice">
-                <span>
-                  Offline worksheet — no camera connected. Anything that needs the device stays
-                  disabled.
-                </span>
-                <Button size="sm" variant="ghost" onClick={() => setOfflineWorksheet(null)}>
-                  BACK TO CONNECT
-                </Button>
-              </p>
-              <ErrorBoundary what="Offline worksheet" resetKey={offlineWorksheet}>
-                <Suspense fallback={<p className="microlabel">LOADING WORKSHEET…</p>}>
-                  {offlineWorksheet === 'bringup' ? <BringUpPage /> : <BenchPage />}
-                </Suspense>
-              </ErrorBoundary>
-            </div>
-          ) : (
-            <ConnectHome onWorksheet={developerMode ? setOfflineWorksheet : undefined} />
-          )}
-        </main>
+                  </p>
+                  <ErrorBoundary what="Offline worksheet" resetKey={offlineWorksheet}>
+                    <Suspense fallback={<p className="microlabel">LOADING WORKSHEET…</p>}>
+                      {offlineWorksheet === 'bringup' ? <BringUpPage /> : <BenchPage />}
+                    </Suspense>
+                  </ErrorBoundary>
+                </div>
+              ) : (
+                <ConnectHome onWorksheet={developerMode ? setOfflineWorksheet : undefined} />
+              )}
+            </main>
+            {inSession ? <Inspector /> : null}
+          </div>
+        </div>
       </div>
-      <StatusBar />
 
       <ConfirmDialog
         open={rebootOpen}

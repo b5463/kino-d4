@@ -1,0 +1,45 @@
+/* The Service band: the one permanent band in the product, so that a
+   screenshot of Service can never be mistaken for the customer app. Sits
+   above the engineering shell and takes nothing else from it. */
+
+.service-frame {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.service-frame > .frame {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.service-band {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 26px;
+  padding: 0 12px;
+  background: #b4251a;
+  color: #fff;
+  font: 600 11px/1 Tahoma, 'Segoe UI', sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.service-band-unit,
+.service-band-version {
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  opacity: 0.9;
+}
+
+.service-band-back {
+  margin-left: auto;
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-weight: 400;
+}

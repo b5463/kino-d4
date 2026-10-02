@@ -1,0 +1,146 @@
+(footprint "L_TDK_SPM6530"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "TDK SPM6530 metal power inductor, 7.1 x 6.5 x 3.0 mm. Land per TDK catalogue 20160825 p5.")
+	(property "Reference" "L**"
+		(at 0 0 0)
+		(layer "F.SilkS")
+		(uuid "4a794ff5-925a-4599-b62e-7af284b24794")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Value" "L_TDK_SPM6530"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "28493d60-628a-4ce2-bca2-bda6900c2827")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "7e479b34-bbb4-46d5-a28c-a966d04dd892")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "f4ea44cb-869a-40d8-acbc-7d3f4fe65c9b")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr smd)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_line
+		(start -4 -3.5)
+		(end 4 -3.5)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(layer "F.CrtYd")
+		(uuid "0c28b44d-df2f-4652-8119-57e02c40d1f7")
+	)
+	(fp_line
+		(start -4 3.5)
+		(end -4 -3.5)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(layer "F.CrtYd")
+		(uuid "f452dc4b-a3e5-4e57-8e6f-dc2a6170a1ea")
+	)
+	(fp_line
+		(start 4 -3.5)
+		(end 4 3.5)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(layer "F.CrtYd")
+		(uuid "fc67cc77-a46d-4199-ba86-82a060de39e1")
+	)
+	(fp_line
+		(start 4 3.5)
+		(end -4 3.5)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(layer "F.CrtYd")
+		(uuid "f018f7ea-d0f5-43f2-a116-3e6e3d8ef58b")
+	)
+	(fp_line
+		(start -3.55 -3.25)
+		(end 3.55 -3.25)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "3df39408-9d27-41a9-95b6-7c584efc3200")
+	)
+	(fp_line
+		(start -3.55 3.25)
+		(end -3.55 -3.25)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "d4547f18-be6f-4bc4-8e9b-5f751cee8fa4")
+	)
+	(fp_line
+		(start 3.55 -3.25)
+		(end 3.55 3.25)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "9a1623af-0a1f-498a-9141-f4f105181e08")
+	)
+	(fp_line
+		(start 3.55 3.25)
+		(end -3.55 3.25)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "4ae517f1-8ec4-4d42-b5d1-f4b4d176ae3e")
+	)
+	(pad "1" smd rect
+		(at -2.775 0)
+		(size 1.85 3.4)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(thermal_bridge_angle 45)
+		(uuid "164623dc-e282-43b8-b37d-10aa9b2cc96f")
+	)
+	(pad "2" smd rect
+		(at 2.775 0)
+		(size 1.85 3.4)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(thermal_bridge_angle 45)
+		(uuid "2a73e2fc-02bf-4009-a2f4-7c0c792939b1")
+	)
+	(embedded_fonts no)
+)

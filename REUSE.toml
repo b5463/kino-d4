@@ -72,6 +72,7 @@ path = [
   # these terms; the generator reads it at build time rather than embedding it
   # in CERN-OHL-S source.
   "hardware/cad/KINO_FIELD_BODY/brand/**",
+  "hardware/pcb/kino-d4-carrier-a0/brand/**",
   # The app icons are the D4 badge lifted out of the same wordmarks.
   "apps/studio/public/icon-*.png",
   "apps/twin/public/icon-*.png",

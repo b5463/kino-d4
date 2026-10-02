@@ -6,6 +6,40 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Changed
 
+- **Studio 0.10.0: the customer Studio, complete (#230).** Studio opens on a
+  customer shell under `apps/studio/src/customer/` with four sections, Shoot ·
+  Photos · Roll · KINO, as four words on the last line of the page. The front
+  of KINO is drawn from the released field body (`customer/physical/`:
+  131 × 90 mm, lens centres at 32.5 / 54.5 / 76.5 / 98.5 mm on Y 43, 22 mm
+  pitch, Ø18.4 cells, the bar, the sliding cover with the wordmark trace, the
+  serial line; design 0.1.4, a measured-fit fixture, not the production
+  enclosure; the USB-C position is drawn on No KINO only and is provisional)
+  at 5.5 px/mm, and its four cells are the controls. No KINO shows the cover
+  closed; recognition drops it 21.4 mm to the shooting position. Wiggle holds
+  the four frames of the last wigglegram in the cells with one accent ring
+  walking at the feel while the photograph beside the body snaps from the
+  same sequencer; the end cells set the direction; the line under the body is
+  the look, the feel and More. Quad holds each lens's frame through its look,
+  names on the lens axes, one editor under the selected axis (look, Darker ↔
+  Brighter, Colour · B&W), and the four set names travel to their lenses when
+  a set is chosen. Looks open as a list under the photograph; Adjust offers
+  Contrast, Colour, Warmth, Grain and Vignette and makes a built-in "(yours)"
+  on the first move. Photos groups the card by day, plays a wigglegram under
+  the pointer, opens one photo the page wide with Save (MP4, GIF, the four
+  photos), Send to Roll, Favourite and Delete, and can save new photos to a
+  folder as they land. Roll starts, joins (the server's six characters or the
+  camera's own slug), inverts while active and ends. KINO is a quiet list:
+  name, screen sleep, button sounds, brightness only on a body that dims,
+  Wi-Fi by name and password with the signal as one word, Update as one bar
+  and three sentences over the real per-target store, Match the lenses as a
+  guided run on the four cells, back up, restore, restart, reset, erase, Check
+  KINO. Attention is one line above the page that stays empty when nothing
+  matters. Every write goes through `applyConfigChecked` and the line says
+  "Saved", "KINO adjusted this." or offers a retry. The engineering surface
+  moved to `/service` under a permanent SERVICE band (`/legacy` and
+  `?legacy=1` still open it); the customer shell never links to it. The
+  review time offers 3 s and Until you tap because the firmware keeps 1–3 s
+  or hold. Time zone is not a setting: Studio sets the clock on connect.
 - **Firmware 0.4.59: the log ring keeps evidence instead of telemetry (#202, #207).**
   Measured on a bench body: 158 entries over 148 s, of which 121 were per-camera
   preview timings and 37 were cover brightness means. Not one line was anything

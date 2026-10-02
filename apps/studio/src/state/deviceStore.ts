@@ -55,7 +55,7 @@ export function pollAgeMs(poll: PollHealth, now: number): number | null {
 // Everything in this store is device-reported truth, refreshed by the
 // session poller or by explicit commands. Unsaved form drafts live in page
 // state, never here.
-interface DeviceState {
+export interface DeviceState {
   info: DeviceInfo | null;
   cameras: CameraInfo[];
   power: PowerStatus | null;

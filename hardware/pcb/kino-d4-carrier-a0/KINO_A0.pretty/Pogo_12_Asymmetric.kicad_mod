@@ -1,0 +1,205 @@
+(footprint "Pogo_12_Asymmetric"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "Twelve 1.5 mm surface probe lands; first pad offset 0.8 mm; no paste. Original KINO fixture pattern.")
+	(property "Reference" "J600"
+		(at 0 0 0)
+		(layer "F.SilkS")
+		(uuid "cf8d069b-d8b7-4c2d-9a41-fafcf41f7dd3")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Value" "Pogo_12_Asymmetric"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "6d307916-6d87-46df-bdf4-465782e6c337")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "5b87a598-fda2-4672-9962-9e5f31e6a830")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "4a76914c-2feb-4c87-bfb1-10262844a659")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr exclude_from_pos_files exclude_from_bom)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_line
+		(start -1.1 -1.9)
+		(end 13.8 -1.9)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(layer "F.CrtYd")
+		(uuid "c6dbbd50-b243-42ea-83d3-3da147916709")
+	)
+	(fp_line
+		(start -1.1 3.64)
+		(end -1.1 -1.9)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(layer "F.CrtYd")
+		(uuid "2d143d9e-6265-4b57-9618-cf0949d457d4")
+	)
+	(fp_line
+		(start 13.8 -1.9)
+		(end 13.8 3.64)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(layer "F.CrtYd")
+		(uuid "aacd94ba-dac7-4e40-a390-fd1a6be6a032")
+	)
+	(fp_line
+		(start 13.8 3.64)
+		(end -1.1 3.64)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(layer "F.CrtYd")
+		(uuid "bfde09cf-6c35-4ec4-ba55-ea96af4336cd")
+	)
+	(fp_line
+		(start -1.1 -1.9)
+		(end 13.8 -1.9)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "bfe3eed7-fd38-4886-b7a2-454565ff74ab")
+	)
+	(fp_line
+		(start -1.1 3.64)
+		(end -1.1 -1.9)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "1d5f14fa-4dcc-4d84-8838-c40e510d21e1")
+	)
+	(fp_line
+		(start 13.8 -1.9)
+		(end 13.8 3.64)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "b5968ba3-c6ba-4a89-bf88-a9ca5e218367")
+	)
+	(fp_line
+		(start 13.8 3.64)
+		(end -1.1 3.64)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "eb5daf19-1394-413d-8dab-97346dae3a22")
+	)
+	(pad "1" smd rect
+		(at 0 -0.8)
+		(size 1.5 1.5)
+		(layers "F.Cu" "F.Mask")
+		(thermal_bridge_angle 45)
+		(uuid "0b5fa86f-9325-472b-948a-e4e186ace510")
+	)
+	(pad "2" smd circle
+		(at 2.54 0)
+		(size 1.5 1.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "07e4c7d8-4daa-4b43-ae15-f935ad5edad2")
+	)
+	(pad "3" smd circle
+		(at 5.08 0)
+		(size 1.5 1.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "c55b76fd-30e1-4366-8cb0-f5ee8328fc39")
+	)
+	(pad "4" smd circle
+		(at 7.62 0)
+		(size 1.5 1.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "a0730484-9de5-4201-815d-e28ef6b2fee0")
+	)
+	(pad "5" smd circle
+		(at 10.16 0)
+		(size 1.5 1.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "05998d27-6353-4d80-9c9a-b4ab2902342b")
+	)
+	(pad "6" smd circle
+		(at 12.7 0)
+		(size 1.5 1.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "ba9dc1d1-6d05-42fb-9074-aacf2001d0ed")
+	)
+	(pad "7" smd circle
+		(at 0 2.54)
+		(size 1.5 1.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "d8ab647b-d18c-45d8-bedd-d0818a6b7127")
+	)
+	(pad "8" smd circle
+		(at 2.54 2.54)
+		(size 1.5 1.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "d799247b-abd3-439f-9e42-3fbbcb09e8b7")
+	)
+	(pad "9" smd circle
+		(at 5.08 2.54)
+		(size 1.5 1.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "1b4a5044-1278-4410-8f22-6cf533afb54c")
+	)
+	(pad "10" smd circle
+		(at 7.62 2.54)
+		(size 1.5 1.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "a30a39b9-6ec9-4af0-a8fb-21728790678a")
+	)
+	(pad "11" smd circle
+		(at 10.16 2.54)
+		(size 1.5 1.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "62b05c15-0ad6-4c2f-88a3-09a78e13d578")
+	)
+	(pad "12" smd circle
+		(at 12.7 2.54)
+		(size 1.5 1.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "24e93438-15d9-4fcf-a27f-77824afdc47a")
+	)
+	(embedded_fonts no)
+)

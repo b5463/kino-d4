@@ -201,6 +201,18 @@ export async function connectSerial(): Promise<void> {
 }
 
 /**
+ * Open a port the browser already granted — the one the customer picked
+ * earlier this session, re-exposed after a re-plug or a restart. No picker:
+ * `navigator.serial` raises `connect` for a granted port and the customer
+ * shell hands it here, which is what "plug it back in and it will carry on"
+ * means in practice.
+ */
+export async function connectSerialPort(port: SerialPort): Promise<void> {
+  if (!webSerialSupported()) return;
+  await connectWith(() => new SerialTransport(port), 'serial');
+}
+
+/**
  * KINO Twin §10 option 2: a Twin in another same-origin tab over
  * BroadcastTransport — or, given a relay URL (issue #29), a Twin in another
  * browser/container/machine over WebSocketTransport. Same

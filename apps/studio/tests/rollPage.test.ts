@@ -617,7 +617,6 @@ describe('(e) capability gating (02 §27)', () => {
       (i) => i.id,
     );
     expect(ids).toEqual([
-      'overview',
       'shoot',
       'wiggle',
       'quad',

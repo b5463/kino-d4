@@ -1,0 +1,80 @@
+# KINO D4 carrier A0.2
+
+**Engineering rework. Power paths routed, signal routing unfinished. DO NOT ORDER.**
+
+Open [KINO_D4_Carrier_A0_2.kicad_pcb](KINO_D4_Carrier_A0_2.kicad_pcb) with its matching project settings. This is the current working board. The supplied [ODD JOBS standard](ODD-JOBS-STANDARD.txt) governs release; the [current review](A02-REVIEW.md) still rejects ordering.
+
+The board has 250 footprints: 78 on the front and 172 on the back. The four XIAO sockets keep 22 mm pitch and a 66 mm outer span, with 15.24 mm row centres and 2.54 mm pin pitch. The outline is 117.01 × 69.41 mm. Four 2.2 mm holes target the P4 inner inserts on 61.9 × 54.8 mm centres, with a drawing-derived absolute offset. These XY checks do not validate the assembled enclosure or connector stack.
+
+The [14-sheet schematic](KINO_D4_Carrier_A0.kicad_sch) is the current electrical capture. Historical A0 and A0.1 boards are preserved but no longer match it. Do not use them for fabrication or combine their reports with A0.2.
+
+## Current review files
+
+| File | Purpose |
+|---|---|
+| [Assembly front](outputs/A02-ASSEMBLY-FRONT.svg) / [back](outputs/A02-ASSEMBLY-BACK.svg) | References, courtyards and outline; rear view mirrored |
+| [Front power detail](outputs/A02-POWER-FRONT.png) / [back power detail](outputs/A02-POWER-BACK.png) | Pack entry, charger and boost region |
+| [A0.2 verification](outputs/VERIFICATION-A02.json) / [routing audit](outputs/A02-ROUTING-AUDIT.json) | Counts, geometry and capture-transfer evidence, with board digest |
+| [Native DRC](outputs/DRC-A02.json) / [ERC](outputs/ERC-DRAFT.json) | Checker results; no implied manufacturing acceptance |
+| [Schematic PDF](outputs/SCHEMATIC-DRAFT.pdf) | 14-sheet capture |
+| [BOM](outputs/BOM-DRAFT.csv) / [part selection](design/part_selection.json) / [pin matrix](outputs/PIN_NET_MATRIX.csv) | Manufacturer parts checked against datasheets; battery pack still open |
+| [Mounting template](outputs/P4-MOUNTING-TEMPLATE-1TO1.pdf) / [mechanical evidence](MECHANICAL.md) | Print at 100 %; stack and enclosure still unqualified |
+| [Printed labels](outputs/A02-PRINTED-LABELS.json) / [assembly references](outputs/A02-ASSEMBLY-LABELS.json) / [unplaced references](outputs/A02-ASSEMBLY-LABELS-UNFINISHED.json) | Label positions; parts without a clear silk position within 8 mm |
+
+Prototype references are on silkscreen (ODD JOBS rule 177) where a clear position exists within 8 mm of the part. The rest stay on Fab at the part centre and are listed in the unplaced file. Connector, camera and product labels use 1.0 mm text with a 0.15 mm stroke.
+
+## Circuitry
+
+- **Cameras:** four socketed XIAO ESP32-S3 Sense boards with UART/sync isolation buffers, individual current-limited supplies, current monitoring and removable USB-service power links. D8/D9/D10 are shared with the Sense SD interface, and D2 is strap-sensitive.
+- **P4 link:** the 26-pin P4 connection is a keyed IDC **cable** interface, kept until Guition supplies a JP1 datum for a board-to-board mate. The UART/sync/shutter header map is unchanged; GPIO35/JP1-15 stays unconnected.
+- **Power:** USB-C PD sink (STUSB4500), 1S charger (BQ25798), fuel gauge (BQ27441-G1), 5 V boost (TPS61288), 3.3 V buck and a hardware power controller.
+  - The charger charges whenever VBUS is valid (CE low), inside a 1-60 °C window set by the pack's 103AT-2 thermistor.
+  - The gauge shunt is high side, with SRP on the pack side and SRN on the system side.
+  - Input current is clamped to 0.15-0.41 A until firmware reads the PD contract.
+- **Pack entry:** J1100 (JST VH, `- NTC +`) sits on the bottom edge beside the charger. From the pack, F1100 (7 A) and RS700 (5 mΩ) form a 12 mm chain on the front.
+- **Sensors and controls:** IMU, backed-up RTC, board-temperature sensor, remote shutter, cover sensor, function button, haptic driver and expansion/service connectors.
+- **Test field:** J600 is an asymmetric 12-pad **sense/test** field, not a power-injection connector. Do not drive the enable nodes against the expander.
+- **Flash provision:** J601/R605 are DNP provisions for an **external flash driver**. There is no FLASH_EN GPIO or flash-energy supply.
+
+I2C addresses: PAC1954 0x10, STUSB4500 0x28, TMP117 0x48, RV-3028 0x52, BQ27441 0x55, DRV2605L 0x5A, LSM6DSOX 0x6A, BQ25798 0x6B, TCA9539 0x74. P4 touch at 0x5D stays on the host side of the buffer. Existing firmware does not start the carrier's power controls, charger policy or gauge calibration.
+
+## Manufacturing and assembly status
+
+Provisional process: four layers, 1.6 mm, **1 oz outer and 1 oz inner copper** (the In2 boost feed needs it), black mask, white silk, ENIG, JLCPCB target. No Gerber, drill or placement files are released. Battery selection, retention and the assembled body are not built or verified. The XAL7070 boost inductor (7.0 mm) and the JST VH connector set the tallest parts; the stack-height map is open.
+
+The XIAOs use external antennas. Their antenna and cable clearance must be defined in the enclosure. Keep the P4 battery connector unused. USB/P4/carrier source coexistence still needs measurement; the removable power links are service provisions, not automatic backfeed protection.
+
+## Editing and regeneration
+
+The native A0.2 PCB is authoritative for placement and routing. `design/circuit.py` defines the capture and `design/mechanical.py` the envelope and datums. **Do not run the full build or placement seed against current work**: they reset placement and routing.
+
+Change scripts, in the order they were applied:
+- **Earlier A0.2 changes:** `rework.py`, `route_a02.py`, `spread_a02_*.py`, `refine_a02_placement.py`, `add_a02_interfaces.py`, `finish_a02.py`.
+- **Charger, thermistor and inductors (0.1.8):** `a02_power_rev.py`.
+- **Gauge, fuse and CC protection:** `a02_gauge_rev.py`.
+- **Pack entry:** `pack_placement.py`, then `route_pack_entry.py`.
+- **USB VBUS:** `route_usb_vbus.py`.
+- **PMID capacitors:** `route_pmid.py`.
+- **Boost supply:** `route_boost_input.py`.
+- **Inductor keepouts:** `switch_keepouts.py`.
+- **Residual DRC items:** `a02_drc_fixes.py`.
+- **Labels:** `pack_labels.py`, `assembly_labels.py --prototype-silk`.
+
+Each routing script removes and redraws only the copper it owns. Helpers:
+- `free_spot.py`: collision-checked placement of one part.
+- `clean_dangling.py`: removes track stubs.
+- `regenerate_capture.py`: rebuilds schematic and BOM without touching the board.
+- `route_secondary.py`: Freerouting export/import with existing copper fixed.
+
+Never import a router session exported from different component positions or nets.
+
+After circuit changes, regenerate the schematic, XML netlist, ERC and PDF. After board changes:
+1. Run DRC with `--refill-zones --save-board`.
+2. Run `verify.py --a02` and `routing_audit.py --a02`.
+3. Inspect the copper and silk visually.
+
+A passing checker does not validate power, thermal behaviour or physical fit.
+
+Implementation stays in [issue #232](https://github.com/b5463/kino-d4/issues/232) and [ECN-0007](../../changes/ECN-0007-four-xiao-carrier-proposal.md), design package 0.1.8. It is not a new physical release.
+
+The supplied ODD JOBS symbol and its traced contour remain reserved artwork, separate from CERN-OHL-S-2.0 hardware source. Stock KiCad footprints use the library electronic-design exception. Vendor design files are consulted, not redistributed. [Sources](SOURCES.md) records provenance. [A0.1 review](RELEASE-REVIEW.md) is kept as historical rejection evidence.

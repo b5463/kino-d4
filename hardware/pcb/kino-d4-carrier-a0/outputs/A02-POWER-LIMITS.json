@@ -1,0 +1,161 @@
+{
+  "source": "https://www.ti.com/lit/ds/symlink/bq25798.pdf",
+  "datasheet": "SLUSDV2C, June 2026; REGN table and section 7.3.4.3",
+  "regn_note": "4.6-5.0 V specified at 5 V VBUS; 4.8-5.2 V at 15 V VBUS, IREGN=20mA. Intermediate conditions require validation.",
+  "resistors_ohm": {
+    "R1104": 30100,
+    "R1105": 10000
+  },
+  "resistor_tolerance": 0.01,
+  "leakage_assumption_a": 1.5e-06,
+  "leakage_note": "Datasheet limit is tested at ILIM=4 V; used here as a conservative calculation assumption, not a new guaranteed test condition.",
+  "minimum_calculated_ilim_v": 1.1187946986427135,
+  "maximum_calculated_ilim_v": 1.3276386588636306,
+  "analog_command_range_a": [
+    0.1484933733033919,
+    0.4095483235795383
+  ],
+  "includes_adc_regulation_error": false,
+  "measured": false,
+  "former_453k_100k_ilim_v_at_regn_limits": [
+    0.8318264014466545,
+    0.9403254972875226
+  ],
+  "full_load_usb_operation_qualified": false,
+  "limitations": [
+    "Fallback for an appropriately rated source, not a complete USB source-current policy.",
+    "USB-A/BC1.2 detection is absent; do not assume universal legacy-source compatibility.",
+    "Do not disable external ILIM until a valid contract and hardware response to source loss are qualified.",
+    "CE/NTC and off-state charging remain unresolved."
+  ],
+  "corners": [
+    {
+      "regn_v": 4.6,
+      "top_ohm": 29799.0,
+      "bottom_ohm": 9900.0,
+      "leakage_a": -1.5e-06,
+      "ilim_v": 1.1359854114713217,
+      "analog_current_command_a": 0.16998176433915213
+    },
+    {
+      "regn_v": 4.6,
+      "top_ohm": 29799.0,
+      "bottom_ohm": 9900.0,
+      "leakage_a": 1.5e-06,
+      "ilim_v": 1.158278927680798,
+      "analog_current_command_a": 0.19784865960099762
+    },
+    {
+      "regn_v": 4.6,
+      "top_ohm": 29799.0,
+      "bottom_ohm": 10100.0,
+      "leakage_a": -1.5e-06,
+      "ilim_v": 1.1531252700568937,
+      "analog_current_command_a": 0.19140658757111711
+    },
+    {
+      "regn_v": 4.6,
+      "top_ohm": 29799.0,
+      "bottom_ohm": 10100.0,
+      "leakage_a": 1.5e-06,
+      "ilim_v": 1.1757551530113537,
+      "analog_current_command_a": 0.21969394126419212
+    },
+    {
+      "regn_v": 4.6,
+      "top_ohm": 30401.0,
+      "bottom_ohm": 9900.0,
+      "leakage_a": -1.5e-06,
+      "ilim_v": 1.1187946986427135,
+      "analog_current_command_a": 0.1484933733033919
+    },
+    {
+      "regn_v": 4.6,
+      "top_ohm": 30401.0,
+      "bottom_ohm": 9900.0,
+      "leakage_a": 1.5e-06,
+      "ilim_v": 1.141198849904469,
+      "analog_current_command_a": 0.1764985623805862
+    },
+    {
+      "regn_v": 4.6,
+      "top_ohm": 30401.0,
+      "bottom_ohm": 10100.0,
+      "leakage_a": -1.5e-06,
+      "ilim_v": 1.135760224438903,
+      "analog_current_command_a": 0.16970028054862862
+    },
+    {
+      "regn_v": 4.6,
+      "top_ohm": 30401.0,
+      "bottom_ohm": 10100.0,
+      "leakage_a": 1.5e-06,
+      "ilim_v": 1.158504114713217,
+      "analog_current_command_a": 0.19813014339152113
+    },
+    {
+      "regn_v": 5.2,
+      "top_ohm": 29799.0,
+      "bottom_ohm": 9900.0,
+      "leakage_a": -1.5e-06,
+      "ilim_v": 1.2856113466334165,
+      "analog_current_command_a": 0.3570141832917706
+    },
+    {
+      "regn_v": 5.2,
+      "top_ohm": 29799.0,
+      "bottom_ohm": 9900.0,
+      "leakage_a": 1.5e-06,
+      "ilim_v": 1.3079048628428929,
+      "analog_current_command_a": 0.3848810785536161
+    },
+    {
+      "regn_v": 5.2,
+      "top_ohm": 29799.0,
+      "bottom_ohm": 10100.0,
+      "leakage_a": -1.5e-06,
+      "ilim_v": 1.3050087759091706,
+      "analog_current_command_a": 0.3812609698864633
+    },
+    {
+      "regn_v": 5.2,
+      "top_ohm": 29799.0,
+      "bottom_ohm": 10100.0,
+      "leakage_a": 1.5e-06,
+      "ilim_v": 1.3276386588636306,
+      "analog_current_command_a": 0.4095483235795383
+    },
+    {
+      "regn_v": 5.2,
+      "top_ohm": 30401.0,
+      "bottom_ohm": 9900.0,
+      "leakage_a": -1.5e-06,
+      "ilim_v": 1.2661855822436168,
+      "analog_current_command_a": 0.33273197780452096
+    },
+    {
+      "regn_v": 5.2,
+      "top_ohm": 30401.0,
+      "bottom_ohm": 9900.0,
+      "leakage_a": 1.5e-06,
+      "ilim_v": 1.2885897335053722,
+      "analog_current_command_a": 0.36073716688171525
+    },
+    {
+      "regn_v": 5.2,
+      "top_ohm": 30401.0,
+      "bottom_ohm": 10100.0,
+      "leakage_a": -1.5e-06,
+      "ilim_v": 1.2853861596009977,
+      "analog_current_command_a": 0.3567326995012471
+    },
+    {
+      "regn_v": 5.2,
+      "top_ohm": 30401.0,
+      "bottom_ohm": 10100.0,
+      "leakage_a": 1.5e-06,
+      "ilim_v": 1.3081300498753117,
+      "analog_current_command_a": 0.3851625623441396
+    }
+  ]
+}

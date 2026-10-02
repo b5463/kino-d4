@@ -1,0 +1,1520 @@
+ODD JOBS PCB DESIGN STANDARD — V1.0
+1. ABSOLUTE BASELINE
+A board cannot be considered finished unless:
+- Schematic ERC passes.
+- PCB DRC passes.
+- No unrouted nets.
+- Every DRC/ERC warning is either fixed or explicitly justified.
+- Every component has a real manufacturer part number.
+- Every footprint has been checked against its component datasheet.
+- Every connector pinout has been manually verified.
+- Board has been checked in 3D.
+- Board has been checked against the actual enclosure.
+- Gerbers have been reviewed independently from the PCB editor.
+- Power-up behavior has been thought through.
+- Programming method exists.
+- Recovery method exists if firmware is broken.
+- Test points exist.
+- Revision is identifiable.
+- PCB can be assembled without guessing orientation.
+2. RF / ANTENNA
+This is especially important for ESP32 devices.
+Antenna placement
+Prefer:
+PCB
+─────────────────────────────┐
+                             │
+ electronics                 │
+                             │
+                   ESP32 ┌───┤
+                         │ANT│
+                         └───┤
+─────────────────────────────┘
+                             ↑
+                           EDGE
+
+The antenna should normally:
+- Sit at the edge of the PCB.
+- Preferably extend to or slightly beyond the main ground-plane boundary.
+- Never be buried in the middle of the PCB.
+- Never face directly into a large battery.
+- Never face into a large display.
+- Never sit beside a metal enclosure wall.
+- Never sit immediately beside a speaker magnet.
+- Never sit against a large cable bundle.
+- Never sit immediately adjacent to USB connectors or switching regulators.
+For module antennas such as ESP32-C3-MINI / ESP32-S3-WROOM:
+- Follow the Espressif recommended antenna placement.
+- Respect the complete antenna keep-out.
+- No copper beneath antenna.
+- No ground plane beneath antenna.
+- No tracks beneath antenna.
+- No vias beneath antenna.
+- No components beneath antenna.
+- Prefer no mechanical metal beneath antenna either.
+3. ANTENNA KEEP-OUT
+Create an actual PCB keep-out zone.
+Do not rely on remembering it.
+Keep out:
+- Top copper.
+- Inner copper.
+- Bottom copper.
+- Ground pours.
+- Tracks.
+- Vias.
+- Components.
+Also create a mechanical antenna keep-out inside the enclosure CAD.
+Avoid near the antenna:
+- screws
+- brass inserts
+- steel standoffs
+- metal buttons
+- battery cans
+- display frames
+- shield cans
+- large connectors
+Plastic enclosure walls are generally fine.
+But even plastic geometry should not tightly surround the antenna.
+4. RF ORIENTATION
+Try to keep antenna orientation consistent across ODD JOBS devices.
+If possible:
+DEVICE FRONT
+─────────────
+
+electronics electronics
+
+electronics     ANTENNA
+                    ↑
+                  edge
+
+This makes RF behavior more predictable between products.
+For handheld products like MAO:
+Avoid having the hand completely cover the antenna during normal use.
+Therefore antenna positioning should consider:
+- natural grip
+- hand placement
+- buttons
+- USB cable
+- charging orientation
+5. RF GROUND STITCHING
+Around the RF / digital area:
+Use ground stitching vias where appropriate.
+Typical pattern:
+GND VIA     GND VIA      GND VIA
+
+   •-----------•-----------•
+   |                       |
+   |      RF / MCU          |
+   |                       |
+   •-----------•-----------•
+
+Useful around:
+- PCB perimeter
+- RF feed lines
+- USB connectors
+- switching regulator boundaries
+- board sections carrying fast digital edges
+Do not blindly add vias underneath an antenna keep-out.
+6. RF VS NOISY CIRCUITS
+Keep noisy circuits physically separated from the antenna.
+Worst offenders:
+- switching regulators
+- inductors
+- USB high-speed signals
+- display SPI clocks
+- SD card clocks
+- external oscillators
+- motors
+- speaker amplifiers
+- LED PWM drivers
+Prefer layout such as:
+ANTENNA
+
+   ↓
+
+ESP32
+────────────
+
+digital
+
+────────────
+
+power / switching
+
+Rather than:
+ESP32 ANT
+    ↕
+DC/DC INDUCTOR
+
+7. SWITCHING REGULATORS
+Switching regulator layout must follow the manufacturer's reference layout as closely as practical.
+The critical current loop must be tiny.
+Typical:
+VIN
+ │
+CIN
+ │
+SW IC──INDUCTOR──COUT──LOAD
+
+Minimize area between:
+- input capacitor
+- regulator
+- switch node
+- inductor
+- output capacitor
+- ground return
+Do not route signal traces through the switching node area.
+8. SWITCH NODE
+The SW node is electrically ugly.
+Rules:
+- Keep copper area small.
+- Keep trace short.
+- Do not run underneath MCU.
+- Do not run beneath antenna.
+- Do not run beneath oscillator.
+- Do not run near analog signals.
+- Do not put test pads on it unless needed.
+- Avoid routing sensitive signals on another layer directly underneath it.
+9. INDUCTOR PLACEMENT
+Inductors should not sit near:
+- antenna
+- magnetometer
+- microphone
+- sensitive analog circuitry
+- oscillators
+Keep them reasonably separated from MCU crystal circuitry too.
+10. POWER ENTRY
+Any external power entry should be treated as hostile.
+Consider:
+- reverse polarity
+- ESD
+- transient suppression
+- short circuits
+- accidental wrong voltage
+- connector hot plugging
+Depending on device:
+- TVS
+- polyfuse
+- current limiting
+- reverse-polarity FET
+- input filter
+- bulk capacitor
+11. POWER RAILS
+Document every rail.
+Example:
+VBAT
+5V_SYS
+3V3_MAIN
+3V3_RF
+LCD_BL
+
+Avoid meaningless names like:
+VCC
+POWER
+SUPPLY
+
+unless genuinely appropriate.
+12. POWER DISTRIBUTION
+High-current devices should not receive power through tiny traces.
+Use:
+- wide traces
+- copper pours
+- planes
+Especially:
+- battery
+- USB 5 V
+- display backlight
+- speaker amp
+- flash LEDs
+- motors
+- servos
+13. CURRENT HEADROOM
+Don't design regulators at their absolute limit.
+Prefer roughly:
+continuous load < 70–80% regulator capability
+unless thermal calculations show otherwise.
+14. DECOUPLING
+Every digital IC power pin gets local decoupling.
+Default:
+VCC
+ │
+100 nF
+ │
+GND
+
+placed physically near the relevant power pin.
+Not:
+IC ───────────── 100nF
+
+but:
+IC─100nF
+
+Distance matters.
+15. BULK CAPACITANCE
+Provide bulk capacitance near significant transient loads.
+Examples:
+- ESP Wi-Fi radio
+- display
+- speaker amplifier
+- camera module
+- LED flash
+- motors
+16. CAPACITOR GROUND PATH
+A decoupling capacitor isn't useful if its ground connection travels across half the PCB.
+Prefer:
+IC VDD → capacitor → ground via → plane
+
+with extremely short connections.
+17. GROUND PLANE
+For four-layer ODD JOBS boards, strongly prefer something like:
+L1 Signals + components
+L2 GND
+L3 Power + slower signals
+L4 Signals + GND
+
+Keep L2 as close as possible to a continuous ground plane.
+Do not carve it unnecessarily.
+18. NEVER ROUTE ACROSS A GROUND SPLIT
+A fast trace crossing:
+GROUND     GAP       GROUND
+────────   X   ─────────
+       signal →
+
+forces return current to make a huge detour.
+Avoid this.
+Fast signals should have a continuous reference plane.
+19. RETURN PATHS
+Always ask:
+Where does the current return?
+
+Every signal forms a loop.
+Smaller loop:
+better EMI.
+Larger loop:
+worse EMI.
+20. VIA TRANSITIONS
+When a high-speed signal changes layers, provide a nearby ground stitching via if necessary so its return current can change reference layers cleanly.
+Especially useful for:
+- USB
+- fast SPI
+- clocks
+21. CLOCK LINES
+Clock traces should be:
+- short
+- direct
+- away from antennas
+- away from analog circuitry
+- away from board edges where possible
+Avoid unnecessary vias.
+22. CRYSTALS
+Crystal layouts are sacred.
+Crystal should be:
+- immediately beside MCU
+- traces very short
+- traces symmetrical where practical
+- isolated from noisy signals
+Avoid routing anything under the crystal region.
+23. USB D+ / D−
+Treat as differential pair.
+Requirements:
+- approximately matched length
+- consistent spacing
+- minimal vias
+- minimal stubs
+- continuous reference plane
+- correct differential impedance
+Typical USB 2.0 differential impedance:
+90 Ω differential
+based on actual stack-up.
+24. USB CONNECTOR PLACEMENT
+USB connector:
+- mechanically supported
+- sufficiently far from PCB edge according to footprint
+- correctly aligned with enclosure opening
+- shield properly grounded
+- ESD device extremely close to connector
+ESD protection should appear before the signals travel deep into the board.
+25. USB-C CC PINS
+For a USB-C device behaving as a USB sink/device, confirm proper CC resistors.
+Typical device:
+CC1 → 5.1k → GND
+CC2 → 5.1k → GND
+
+But always verify against the exact USB role/design.
+26. USB-C SHIELD
+Don't automatically connect shield poorly.
+Prefer a deliberate chassis/ground strategy.
+For small plastic products, this may simply connect appropriately to GND, possibly through an EMI strategy depending on design.
+27. SPI
+Fast SPI devices should remain close to MCU where practical.
+Especially:
+- LCD
+- SD card
+- camera
+- external flash
+Keep:
+- CLK short
+- signal lengths reasonable
+- ground reference continuous
+28. SD CARD
+SD card requires careful routing at higher clock speeds.
+Keep:
+- CLK particularly clean
+- short routing
+- strong ground reference
+Consider:
+- ESD protection
+- series damping resistor footprints
+For prototypes, adding optional resistor footprints can be useful.
+29. SERIES TERMINATION OPTION
+For fast digital lines, consider including optional footprints such as:
+MCU ─ 22R ─ CLK
+
+Typical experimentation values:
+- 0 Ω
+- 22 Ω
+- 33 Ω
+- 47 Ω
+Allows ringing to be tuned during bring-up.
+30. I2C
+Keep pull-ups appropriately sized.
+Don't automatically use 10k everywhere.
+Common values:
+- 2.2k
+- 4.7k
+- 10k
+depending on:
+- voltage
+- bus speed
+- capacitance
+31. UNUSED GPIO
+Never leave important boot/config pins ambiguous.
+Explicitly define:
+- pull-up
+- pull-down
+- NC
+if required.
+32. BOOT STRAP PINS
+ESP boot-strapping pins require special attention.
+Never attach peripherals that could accidentally change their level during reset without understanding the consequences.
+33. RESET
+Every ODD JOBS MCU board should have accessible reset capability.
+Either:
+- reset button
+- test pad
+- programmer pin
+Preferably more than one during prototypes.
+34. BOOT / DOWNLOAD MODE
+ESP boards should have an accessible way to enter bootloader mode.
+Even if normal flashing is automatic.
+Don't design a sealed device that becomes unrecoverable after firmware corruption.
+35. PROGRAMMING HEADER
+Provide documented access to:
+- power
+- GND
+- TX
+- RX
+- reset
+- boot
+or equivalent JTAG/SWD interface.
+Production versions can use test pads rather than headers.
+36. TEST PADS
+Every important rail:
+TP_5V
+TP_3V3
+TP_BAT
+TP_GND
+
+Important communications:
+TP_TX
+TP_RX
+TP_BOOT
+TP_RST
+
+Potentially:
+TP_SDA
+TP_SCL
+
+37. TEST PAD SIZE
+Don't make them microscopic just because they fit.
+For manual probing, something around:
+1–1.5 mm
+is much nicer.
+Production pogo pins can use smaller dedicated patterns.
+38. GROUND TEST PAD
+Always provide at least one easy ground probe location.
+Ideally several.
+Nothing is more annoying than trying to hook an oscilloscope ground onto a tiny capacitor.
+39. OSCILLOSCOPE ACCESS
+For critical high-speed or power rails, consider nearby:
+SIGNAL pad
+GND pad
+
+so a spring ground probe can be used.
+40. EXTERNAL CONNECTORS
+Any user-accessible connector should consider:
+- ESD
+- short circuit
+- misconnection
+- reverse insertion
+- mechanical strain
+41. CONNECTOR ORIENTATION
+Standardize connector direction within ODD JOBS.
+Example:
+If JST battery connectors always use:
+LEFT = +
+RIGHT = -
+
+maintain that standard wherever practical.
+42. CONNECTOR POLARITY
+Silkscreen:
++
+-
+
+Do not expect future-you to remember.
+43. CONNECTOR LABELS
+Label functional connectors:
+BAT
+USB
+SPK
+LCD
+CAM
+DBG
+
+Not:
+J3
+J4
+J7
+
+Reference designators can remain but shouldn't be the only identification.
+44. DO NOT ROUTE UNDER CONNECTOR LOCKING AREAS
+Mechanical connector tabs and shell contacts may interfere with traces/vias depending on connector design.
+Verify footprint mechanically.
+45. FLEX CABLES
+FPC connectors require particular attention.
+Verify:
+- top-contact vs bottom-contact
+- pin 1
+- cable orientation
+- cable bend direction
+- locking mechanism
+- enclosure clearance
+This is a very common PCB mistake.
+46. FPC ENTRY DIRECTION
+Model the cable physically in CAD.
+The connector may electrically fit perfectly and still require the flex cable to pass through the battery.
+47. CABLE BEND RADIUS
+Don't force FPC cables into immediate 180° folds.
+Allow reasonable bend space.
+48. BATTERY LOCATION
+Battery should not:
+- block antenna
+- crush components
+- press on sharp solder joints
+- contact hot regulators
+- contact speaker magnet unnecessarily
+49. LIPO PROTECTION
+Never assume a LiPo includes a protection PCB unless verified.
+Consider:
+- over-charge
+- over-discharge
+- over-current
+- short circuit
+- temperature monitoring
+50. BATTERY TEMPERATURE
+If charging significant Li-ion cells, consider NTC temperature monitoring.
+Especially in sealed devices.
+51. BATTERY CONNECTOR
+Mark polarity very visibly.
+Reverse polarity should ideally not destroy the entire board.
+52. BATTERY CABLE ROUTING
+Reserve physical space inside enclosure.
+Don't design a perfect PCB that only fits if wires magically pass through components.
+53. SPEAKERS
+Speaker amps create noise.
+Keep away from:
+- antenna
+- analog sensors
+- crystal
+- RF front-end
+Route speaker currents carefully.
+54. SPEAKER MAGNET
+Remember the actual speaker contains a magnet.
+Don't put:
+- magnetometers
+- Hall sensors
+nearby unless intentional.
+55. MICROPHONES
+Microphones need:
+- acoustic opening
+- mechanical alignment
+- noise isolation
+Keep away from:
+- inductors
+- high-frequency clocks
+- speaker outputs
+56. ANALOG SIGNALS
+Treat analog region separately from noisy digital sections.
+Avoid routing ADC lines near:
+- SPI clock
+- DC/DC
+- PWM
+- USB
+57. ADC INPUT FILTER
+Where useful:
+SIGNAL ─ R ─ ADC
+             │
+             C
+             │
+            GND
+
+Simple RC filters can dramatically improve noisy sensor readings.
+58. PWM
+PWM traces can generate EMI.
+Especially:
+- LED drivers
+- backlights
+- speakers
+- motors
+Keep them short and away from analog/RF.
+59. LEDS
+Don't forget current-limit resistors.
+Also consider:
+- maximum brightness
+- standby leakage
+- light bleeding through enclosure
+60. STATUS LED PLACEMENT
+Design with the enclosure.
+Don't put an LED behind:
+- battery
+- PCB
+- solid internal rib
+unless using a light pipe.
+61. DISPLAY
+Display placement needs:
+- exact active area
+- exact PCB opening
+- correct viewing orientation
+- connector access
+- cable bend allowance
+- backlight thermal considerations
+62. DISPLAY NOISE
+Displays can be noisy.
+Keep display data lines and backlight circuits away from RF antenna region.
+63. DISPLAY BACKLIGHT
+Backlight currents can be substantial.
+Do not feed display backlight through tiny signal traces.
+64. CAMERA
+Camera buses are sensitive and/or fast.
+Keep:
+- camera connector close to processor
+- clock routing clean
+- supply properly decoupled
+Keep camera flex away from antenna when possible.
+65. BUTTONS
+Buttons should include:
+- debounce strategy
+- defined pull-up/pull-down
+- ESD considerations if externally accessible
+66. ROTARY ENCODERS
+For MAO-type interfaces:
+- A/B channels require clean routing
+- add pull-ups appropriately
+- consider RC filtering
+- ensure mechanical orientation matches UI direction
+Rotating clockwise must produce clockwise behavior.
+Verify physically.
+67. HUMAN INTERFACE DIRECTION
+PCB orientation should match actual physical interaction.
+Check:
+- encoder direction
+- display rotation
+- button position
+- LED position
+Never assume software can cleanly fix every mechanical mistake.
+68. MOUNTING HOLES
+Keep copper away from screw holes unless intentionally grounded.
+Consider screw head diameter, not just drill diameter.
+Example:
+hole Ø2.5 mm
+screw head Ø5 mm
+
+Your keep-out needs to respect the second number too.
+69. METAL SCREWS
+Do not place a metal screw directly beside antenna.
+Or across sensitive RF areas.
+70. HEAT-SET INSERTS
+Model actual insert diameter and length.
+Keep electronics away from the hot installation region.
+A heat-set insert can melt or distort nearby PCB support geometry.
+71. PCB EDGE CLEARANCE
+Don't run copper directly to the edge unless intentional.
+Use manufacturer requirement, but generally maintain a healthy edge clearance.
+72. EDGE CONNECTORS
+USB, switches and ports must be located from mechanical datums.
+Not manually eyeballed from enclosure screenshots.
+Use defined coordinates.
+73. BOARD DATUM
+Establish:
+PCB origin = enclosure datum
+
+Where possible.
+It makes mechanical integration dramatically easier.
+74. COMPONENT HEIGHT
+Every footprint should ideally have correct 3D height.
+Particularly:
+- electrolytics
+- USB
+- JST
+- inductors
+- displays
+- buttons
+- speakers
+75. Z-HEIGHT MAP
+For tight devices, define zones such as:
+ZONE A: max 1.5 mm
+ZONE B: max 3 mm
+ZONE C: unrestricted
+
+according to enclosure.
+76. COMPONENT COURTYARD
+Respect courtyards.
+Don't pack components so tightly that assembly becomes impossible.
+77. REWORK ACCESS
+Prototype ODD JOBS boards should allow access to:
+- MCU
+- regulator
+- USB
+- programming interface
+- boot resistors
+Avoid burying every critical component underneath another module.
+78. HOT COMPONENTS
+Keep heat-generating components away from:
+- battery
+- plastic-sensitive regions
+- precision sensors
+79. THERMAL VIAS
+Use thermal vias under:
+- regulators
+- amplifiers
+- high-power ICs
+- exposed thermal pads
+when required.
+80. EXPOSED PAD
+Follow datasheet recommendations.
+Don't just make a giant thermal pad and flood it with solder paste.
+Use segmented paste apertures where appropriate.
+81. THERMAL RELIEF
+Use thermal relief for through-hole pads connected to planes unless high current requires otherwise.
+Otherwise hand soldering becomes miserable.
+82. VIA-IN-PAD
+Avoid unless fabrication process explicitly supports filled/capped vias.
+Otherwise solder gets sucked away.
+83. VIA TENTING
+Intentional.
+For tiny boards, tent unused vias where helpful.
+Especially near fine-pitch components.
+84. VIA SIZE
+Don't use cutting-edge tiny vias unnecessarily.
+ODD JOBS products should be economical to fabricate.
+Use normal manufacturing capability whenever possible.
+85. TRACE WIDTH
+Don't route everything at minimum fab width.
+If space exists, use larger traces.
+Example philosophy:
+signal → sensible
+power → wider
+battery → very wide / pour
+
+86. CLEARANCES
+Similarly:
+Don't use minimum clearance just because manufacturer supports it.
+Larger clearances improve yield.
+87. 45° ROUTING
+Prefer clean 45° routing where practical.
+Avoid unnecessarily chaotic tracks.
+Not primarily because 90° turns are electrically catastrophic—they usually aren't at these scales—but because disciplined routing improves:
+- readability
+- reviewability
+- consistency
+88. TRACE AESTHETICS
+ODD JOBS PCB layouts should visually make sense.
+No random:
+zig
+ zag
+  zig
+
+Use:
+- coherent paths
+- consistent spacing
+- logical buses
+A clean board is easier to debug.
+89. COMPONENT ALIGNMENT
+Where practical, align passives to common grids.
+Example:
+R R R R
+C C C C
+
+rather than random rotations.
+90. COMPONENT ROTATION
+Prefer a small set of orientations:
+- 0°
+- 90°
+- 180°
+- 270°
+Avoid arbitrary angles unless required mechanically.
+91. PASSIVE ORIENTATION
+Try to keep reference designators consistently readable.
+For example:
+- horizontal parts read left-to-right
+- vertical parts read bottom-to-top
+92. POLARITY MARKING
+Clearly mark:
+- diode cathodes
+- LED polarity
+- electrolytic polarity
+- pin 1
+- battery polarity
+93. PIN 1
+IC pin 1 should be unmistakable.
+Use:
+- dot
+- triangle
+- missing corner
+- silk marker
+Prefer at least two cues between footprint and silkscreen.
+94. SILKSCREEN
+Silkscreen should never:
+- overlap exposed pads
+- disappear under connectors unnecessarily
+- intersect component bodies in confusing ways
+95. SILKSCREEN SIZE
+Don't make microscopic labels.
+Anything intended to be human-readable should actually be readable.
+96. ODD JOBS MARK
+Every production board should include a small:
+ODD JOBS maker's mark
+Preferably on visible PCB surface.
+Not obnoxiously large.
+97. PRODUCT IDENTIFICATION
+Example:
+ODD JOBS
+MAO M1
+REV A
+
+or
+ODD JOBS
+KINO D4
+MAIN A1
+
+98. HARDWARE REVISION
+Every PCB revision changes visibly.
+Example:
+REV A
+REV B
+REV C
+
+Never ship two electrically different boards carrying identical revision marks.
+99. PCB VERSION VS PRODUCT VERSION
+Keep them separate.
+Example:
+PRODUCT: MAO M1.5
+PCB: MAIN REV B
+
+Firmware/product version ≠ hardware revision.
+100. DATE CODE
+Optional but useful:
+2026-09
+
+or manufacturing date encoded through PCB fabrication markings.
+101. SERIAL NUMBER AREA
+Leave space for:
+- QR
+- Data Matrix
+- label
+- laser marking
+for future production tracking.
+102. DEBUG IDENTIFICATION
+Prototype boards can visibly say:
+DEBUG
+UART
+BOOT
+RST
+3V3
+GND
+
+Production boards can make these more discreet.
+103. NO MYSTERY PADS
+If a test pad exists, name it.
+Avoid unexplained:
+TP23
+TP27
+
+when space allows functional labeling.
+104. UNUSED CONNECTOR PINS
+Explicitly indicate:
+NC
+
+where appropriate.
+Never leave designers guessing later.
+105. NET NAMING
+Use meaningful net names:
+LCD_SCLK
+LCD_MOSI
+ENC_A
+ENC_B
+AMP_EN
+CAM_PWDN
+
+Avoid:
+Net-(U2-Pad7)
+
+for important signals.
+106. GROUND NAMES
+Use clear ground domains only when genuinely needed.
+Don't create:
+DGND
+AGND
+PGND
+GND
+
+without understanding how they reconnect.
+Usually one solid GND plane is preferable.
+107. STAR GROUND
+Don't blindly use "star grounding".
+Modern mixed-signal boards often benefit more from a solid ground plane and deliberate current routing.
+108. FERRITE BEADS
+Don't sprinkle ferrite beads everywhere.
+Use them when you understand:
+- which noise you are filtering
+- expected current
+- impedance vs frequency
+109. ZERO-OHM RESISTORS
+Useful for:
+- configuration
+- board revisions
+- current measurement
+- alternative routing
+Use them intentionally.
+110. CURRENT MEASUREMENT
+On prototypes, consider:
+VBAT ─ 0R ─ SYS
+
+which can be removed to insert an ammeter.
+Very useful.
+111. POWER LEDs
+Be careful with permanent power LEDs in battery devices.
+A 1–2 mA indicator can materially affect standby battery life.
+112. QUIESCENT CURRENT
+Check:
+- regulator IQ
+- charger IQ
+- pull-ups
+- LEDs
+- level shifters
+- sensors
+Sleep power can be ruined by one forgotten peripheral.
+113. BACKPOWERING
+Ensure peripherals cannot power MCU through signal pins while main rail is off.
+Common source:
+USB UART
+sensor
+display
+external cable
+
+114. POWER SEQUENCING
+Check whether peripherals expect rails in specific order.
+Especially:
+- displays
+- cameras
+- high-end processors
+- memory
+115. ENABLE PINS
+Never leave regulator enable pins floating.
+Explicitly define their state.
+116. POWER-UP DEFAULTS
+Ask what every actuator does before firmware starts.
+Example:
+- speaker silent
+- LEDs off
+- motor off
+- flash off
+Hardware should fail safe.
+117. RESET STATE
+GPIO default state must not accidentally activate:
+- motor
+- speaker
+- flash
+- high-power LED
+- relay
+118. ESD
+Externally accessible electronics should consider ESD protection.
+Especially:
+- USB
+- buttons with conductive caps
+- external GPIO
+- audio jack
+- exposed metal contacts
+119. ESD COMPONENT LOCATION
+Protection should be near the physical entry point.
+Not:
+USB ───────────── ESD ─ MCU
+
+Prefer:
+USB ─ ESD ───────────── MCU
+
+120. TVS ROUTING
+The TVS path to ground must be short.
+Otherwise the protection device has reduced effectiveness.
+121. EMC THINKING
+Even for non-certified prototypes:
+Reduce emissions at the source.
+Use:
+- small current loops
+- continuous reference planes
+- short clocks
+- proper decoupling
+- edge-rate damping
+122. CROSSTALK
+Avoid long parallel runs between fast signals and sensitive lines.
+If unavoidable:
+increase spacing.
+123. 3W RULE
+Useful rough practice for sensitive fast traces:
+Spacing ≈ 3× trace width where practical.
+Not mandatory, but useful.
+124. ORTHOGONAL LAYERS
+If adjacent signal layers exist, prefer routing directions roughly orthogonal where practical.
+This reduces broadside coupling.
+125. PCB EDGE EMI
+Avoid long fast traces along the PCB perimeter.
+Board edges can radiate more easily.
+126. UNUSED COPPER
+Don't create weird isolated copper islands.
+Remove them or connect properly to ground.
+127. GROUND POUR ISLANDS
+KiCad/EDA should remove isolated ground islands.
+A floating copper island can behave like an antenna.
+128. GROUND VIA FENCE
+Useful around edges and noisy sections.
+But don't create arbitrary decorative via grids.
+Use them where they improve return paths/EMI.
+129. UNDER MCU
+Keep solid ground under MCU unless manufacturer's RF guidance says otherwise.
+130. UNDER ANTENNA
+Again:
+NO COPPER.
+Worth repeating.
+131. BOARD EDGE ANTENNA CLEARANCE
+Try not to place other conductors immediately alongside antenna on adjacent boards or daughterboards either.
+Mechanical design matters beyond the PCB itself.
+132. MULTIPLE PCBS
+When stacking boards:
+check:
+- antenna overlap
+- ground plane overlap
+- connector access
+- tall components
+- cable access
+- thermal zones
+133. DAUGHTERBOARDS
+Use mechanical alignment features.
+Don't rely entirely on a fragile connector to physically locate a board.
+134. BOARD-TO-BOARD CONNECTORS
+Verify mating height.
+Example:
+connector stack height
++ PCB thickness
++ enclosure tolerances
+
+135. TOLERANCES
+Don't CAD everything at exactly zero clearance.
+Include manufacturing tolerance.
+PCB dimensions, printed parts and connector positions all vary.
+136. ENCLOSURE CLEARANCE
+Typical philosophy:
+Provide real clearance around board perimeter rather than having enclosure walls exactly touch PCB.
+137. SCREW TOLERANCE
+Mounting hole should not equal screw nominal diameter exactly.
+Allow assembly tolerance.
+138. BUTTON TOLERANCE
+Physical button actuators need travel and alignment tolerance.
+A 0.2 mm enclosure offset should not make the device unusable.
+139. USB OPENING
+Don't model enclosure opening at exactly USB shell dimensions.
+Provide insertion tolerance.
+140. SMT ASSEMBLY
+Ensure pick-and-place nozzle can reach components.
+Avoid walls of tall parts surrounding tiny parts.
+141. FIDUCIALS
+For assembly:
+Consider:
+- global board fiducials
+- local fiducials for fine-pitch devices
+142. PANELIZATION
+If manufacturing volume boards:
+Think about:
+- rails
+- tooling holes
+- fiducials
+- mouse bites
+- V-score
+before placing sensitive components at board edges.
+143. BREAKAWAY TABS
+Don't put fragile connectors/components right beside mouse bites.
+Depanelization can damage them.
+144. COMPONENT EDGE DISTANCE
+Keep components sufficiently away from routed PCB edges.
+Particularly:
+- MLCCs
+which can crack due to board stress.
+145. MLCC FLEX CRACKING
+Avoid large ceramic capacitors immediately adjacent to:
+- mounting holes
+- board edge
+- connectors receiving mechanical force
+146. LARGE CAPACITORS
+Check DC bias derating.
+A nominal:
+10uF 6.3V ceramic
+
+may deliver far less actual capacitance at operating voltage.
+147. CAPACITOR VOLTAGE MARGIN
+Avoid using capacitors right at their voltage rating.
+Give reasonable headroom.
+148. RESISTOR POWER
+Check resistor dissipation.
+Particularly:
+- LED current resistors
+- power sensing
+- USB discharge resistors
+- regulator dividers
+149. INDUCTOR SATURATION
+Inductor rating must account for peak current.
+Not just average load.
+150. DIODE CURRENT
+Check:
+- forward current
+- reverse voltage
+- power dissipation
+151. CONNECTOR CURRENT
+PCB may support 5 A while connector only supports 2 A.
+System current rating = weakest link.
+152. TRACE CURRENT
+Use actual copper thickness and temperature rise calculations for major power paths.
+153. THERMAL SPREADING
+Use copper to move heat.
+But don't unintentionally heat:
+- battery
+- oscillator
+- temperature sensor
+154. TEMPERATURE SENSOR
+Don't place a temperature sensor beside regulator if you're trying to measure ambient air.
+155. SENSOR PLACEMENT
+Think physically.
+Examples:
+Light sensor:
+must see light.
+Temperature sensor:
+needs representative temperature.
+IMU:
+should have known board orientation.
+Microphone:
+needs acoustic path.
+156. IMU ORIENTATION
+Silkscreen an axis indicator if useful:
++X →
++Y ↑
+
+Makes firmware debugging much easier.
+157. PRODUCTION PROGRAMMING
+Design a jig interface now.
+Example pogo pattern:
+● 3V3
+● GND
+● TX
+● RX
+● BOOT
+● RST
+
+158. POGO PAD ARRANGEMENT
+Avoid perfectly symmetrical arrangements that can be connected backwards.
+Use one offset pad or missing position.
+159. FIXTURE DATUM
+Production jig should locate using:
+- tooling holes
+- board outline
+- dedicated locating holes
+not just pogo-pin pressure.
+160. FACTORY TEST
+Every ODD JOBS board should eventually support:
+1. power rail test
+2. current draw test
+3. MCU communication
+4. flash firmware
+5. radio test
+6. display test
+7. input test
+8. speaker/audio test
+9. peripheral test
+10. serial assignment
+161. FIRST POWER-UP
+Before MCU is populated or enabled where feasible:
+verify rails for shorts.
+Then current-limited bench power supply.
+Never immediately plug prototype into full-current LiPo.
+162. BRING-UP POINTS
+Design prototypes with places to cut/jumper.
+Useful:
+- 0R links
+- solder bridges
+- optional pull-ups
+- optional filters
+- optional termination
+163. SOLDER JUMPERS
+Clearly mark state:
+OPEN = USB
+CLOSED = BAT
+
+or similar.
+164. OPTIONAL COMPONENTS
+Use DNP appropriately.
+Don't delete useful tuning footprints simply to make schematic look cleaner.
+165. BOM AVAILABILITY
+Before locking board:
+Check component availability.
+Don't design around one unobtainable exotic IC.
+166. SECOND SOURCE
+For ordinary components:
+Prefer packages and values with multiple suppliers.
+Especially:
+- resistors
+- capacitors
+- connectors
+- regulators
+167. CONNECTOR STANDARDIZATION
+ODD JOBS should reuse a small family of connectors across products.
+For example:
+- battery
+- speaker
+- debug
+- auxiliary
+This reduces inventory and mistakes.
+168. FASTENER STANDARDIZATION
+Same philosophy:
+Prefer a small number of screw sizes and insert sizes.
+169. BOARD THICKNESS
+Standardize where practical.
+For example:
+1.6 mm general boards.
+Use thinner boards only where product geometry demands it.
+170. COPPER WEIGHT
+Standard:
+1 oz / 35 µm
+unless power requires more.
+171. SURFACE FINISH
+Choose deliberately.
+For fine pitch and polished production boards:
+ENIG is useful.
+For inexpensive prototypes:
+HASL may be fine.
+ODD JOBS visible boards may justify ENIG for appearance and flatness.
+172. PCB COLOR
+If visible and brand-relevant, standardize.
+Could be:
+black solder mask
+white silk
+ENIG
+
+but electrical/manufacturing quality always outranks aesthetics.
+173. BLACK SOLDER MASK
+Remember black solder mask can make inspection harder.
+For prototypes/debug boards, green often provides better visual inspection.
+Production may switch to brand color.
+174. NO FAKE TECH GRAPHICS
+Do not cover ODD JOBS boards in meaningless decorative traces and labels.
+PCB graphics should remain:
+- sparse
+- intentional
+- functional
+Maker's mark > fake cyberpunk text.
+175. HIDDEN DETAILS
+Small internal details are fine.
+Examples:
+ODD JOBS / MAO
+MADE FOR BAD IDEAS
+REV A
+
+But they should never reduce technical readability.
+176. PCB VISUAL HIERARCHY
+Visible production PCB:
+1. product identity
+2. connectors
+3. debug info
+4. regulatory / production info
+5. component refs
+177. COMPONENT REFERENCES
+Production versions can reduce silkscreen clutter if assembly files retain full references.
+Prototype revisions should keep them.
+178. MANUFACTURING NOTES
+Specify:
+- board thickness
+- copper weight
+- surface finish
+- solder mask
+- layer stack
+- impedance requirements
+Don't let critical parameters default silently.
+179. IMPEDANCE
+If board contains:
+- USB HS
+- RF feed
+- high-speed memory
+calculate impedance using actual manufacturer stack-up.
+Don't simply type:
+0.15 mm trace = 50Ω
+
+without stack-up.
+180. FAB HOUSE CAPABILITY
+Design comfortably inside fabrication capabilities.
+If they advertise:
+0.10 mm minimum
+
+don't use 0.10 mm everywhere unnecessarily.
+Use perhaps:
+0.15–0.20 mm
+
+when space permits.
+181. ASSEMBLY HOUSE CAPABILITY
+Same principle for:
+- QFN pitch
+- BGA
+- microvias
+- 0201 components
+- via-in-pad
+Don't use advanced processes unless product actually needs them.
+182. COMPONENT SIZE
+Default ODD JOBS preference:
+0603 where space permits for prototypes.
+Use 0402 when necessary.
+Avoid 0201 unless genuinely required.
+Why?
+Because 0603 is much easier to:
+- rework
+- probe
+- prototype
+- replace
+183. DESIGN FOR REPAIR
+Don't make critical components impossible to replace.
+Particularly:
+- regulators
+- USB ESD
+- connectors
+- flash memory
+184. DESIGN FOR FAILURE
+Ask:
+What is most likely to fail first?
+
+Usually:
+- USB connector
+- battery connector
+- button
+- cable
+- ESD component
+Make these serviceable where practical.
+185. NO UNDOCUMENTED HACKS
+If a bodge becomes permanent:
+update schematic and PCB revision.
+Don't let production rely on tribal knowledge.
+186. SCHEMATIC STRUCTURE
+Organize schematic into logical sections:
+POWER
+MCU
+RADIO
+DISPLAY
+INPUT
+AUDIO
+CONNECTORS
+DEBUG
+
+187. SIGNAL FLOW
+Prefer schematic left → right:
+input → processing → output
+
+Power:
+source → protection → regulation → load
+
+188. SCHEMATIC READABILITY
+Avoid giant tangled wire diagrams.
+Use named nets.
+But don't use so many labels that connectivity becomes impossible to visually understand.
+189. NOTES
+Place important notes directly on schematic.
+Example:
+GPIO9 MUST BE HIGH DURING BOOT
+
+Future designers will thank you.
+190. DATASHEET REFERENCES
+For unusual circuitry, include datasheet page/reference notes in project documentation.
+191. PCB REVIEW
+Before release, manually inspect:
+every single net class.
+Don't trust autorouter/DRC as proof of electrical correctness.
+192. CONNECTOR REVIEW
+Physically trace each connector:
+connector pin
+↓
+PCB pad
+↓
+net
+↓
+MCU/peripheral
+
+Pin reversals are one of the most common prototype failures.
+193. FOOTPRINT REVIEW
+Print the PCB 1:1 on paper if necessary.
+Place physical components over it.
+Very effective for unusual connectors.
+194. 3D REVIEW
+View:
+- top
+- bottom
+- side
+- exploded enclosure
+- transparent enclosure
+Look for:
+- collision
+- connector alignment
+- button alignment
+- antenna obstruction
+195. GERBER REVIEW
+Open exported files in a separate Gerber viewer.
+Inspect:
+- copper
+- drill
+- mask
+- paste
+- silk
+- board outline
+196. BOM REVIEW
+Check:
+- MPN
+- footprint
+- value
+- voltage rating
+- tolerance
+- package
+- stock
+197. ASSEMBLY REVIEW
+Confirm orientation for:
+- MCU
+- QFN
+- LEDs
+- diode
+- electrolytic
+- connectors
+198. ENCLOSURE REVIEW
+Confirm:
+- PCB mounting
+- antenna clearance
+- cable routing
+- thermal zones
+- USB insertion
+- speaker opening
+- button actuation
+- display window
+199. FIRMWARE REVIEW
+Before board release, verify GPIO assignments against firmware.
+Create one authoritative pin map.
+Example:
+Function	GPIO
+LCD_CS	7
+LCD_DC	8
+ENC_A	3
+ENC_B	4
+SPK_EN	10
+
+
+No duplicate accidental assignments.
+200. ODD JOBS GOLDEN RULE
+Before fabrication, somebody should be able to answer these five questions:
+Can it boot?
+Can it be flashed?
+Can it be recovered?
+Can it be measured?
+Can it physically fit?
+If any answer is uncertain:
+the PCB isn't finished.
+ODD JOBS RF rule in one picture
+For something like MAO, I would aim approximately for:
+          PCB EDGE
+─────────────────────────────
+                         ANT
+                     ┌───────┐
+                     │ ESP32 │
+                     └───────┘
+                        │
+                        │
+
+      encoder       digital
+
+                     MCU I/O
+
+      audio          display
+      amp            connector
+
+─────────────────────────────
+
+      POWER / CHARGER
+
+      DC/DC     INDUCTOR
+
+─────────────────────────────
+         USB-C / BAT
+
+Essentially:
+RF on one edge.
+Power/noisy crap on the opposite side.
+Digital in the middle.
+That's a very good mental model.
+ODD JOBS release gates
+I'd formally define four board statuses:
+EVT
+Engineering prototype.
+Can contain:
+- extra test pads
+- jumper options
+- large silkscreen
+- debug headers
+- 0603 components
+- optional termination
+DVT
+Design validation.
+Must have:
+- final mechanical geometry
+- final antenna placement
+- production connectors
+- proper ESD
+- production power architecture
+PVT
+Production validation.
+Must have:
+- test jig interface
+- serial programming
+- assembly optimization
+- production BOM
+- approved alternates
+- complete DFM
+PROD
+No unresolved:
+- electrical issues
+- DRC violations
+- mechanical issues
+- RF concerns
+- BOM issues
+- manufacturing hacks
+And for the ODD JOBS products specifically, I'd enforce one final rule:
+The PCB is part of the industrial design.
+
+Even if nobody normally sees it.
+That means MAO, KINO and future ODD JOBS boards should have the same design discipline: antenna always intentionally positioned, clear functional zoning, clean routing, consistent labeling, an ODD JOBS maker's mark, predictable debug interfaces, sensible component orientation, and no unexplained shit scattered across the board.

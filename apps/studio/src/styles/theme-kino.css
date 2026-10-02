@@ -1,0 +1,519 @@
+/* KINO register for Studio. The camera's own palette and faces
+   (firmware/p4/main/ui.c, "Palette"): a near-black green ground, one warm
+   card, one warm accent, one cool mint, Oxanium for caps and Inter for
+   sentences. Loaded after tokens.css, ui.css and pages.css; it retargets the
+   tokens and flattens what those sheets hard-coded (gradients, bevels, white
+   wells, glass lamps). Layout, density and behaviour are untouched. */
+
+:root {
+  /* chrome + surfaces */
+  --chrome-top: #151a17;
+  --chrome-bot: #151a17;
+  --panel: #151a17;        /* W_WINDOW */
+  --panel-inset: #1c241f;  /* W_ROW */
+  --canvas: #0b0d0c;       /* MZ_GROUND */
+  --well: #0e1210;         /* W_FACE */
+  --well-dark: #0b0d0c;
+
+  /* lines. No bevels: the highlight is the surface. */
+  --border-dark: #5c6c64;  /* W_KEYLINE, 3.4:1 on the face */
+  --border-mid: #27302b;   /* W_RULE */
+  --border-light: #27302b;
+  --line: #27302b;
+  --hilite: transparent;
+
+  /* text */
+  --text: #ede7dd;         /* W_TEXT, 5.2:1 on the face */
+  --text-mut: #a9b3ac;     /* 7.6:1 on the window */
+  --text-faint: #8a988f;   /* 5.0:1 on the window */
+  --text-inv: #2a140c;     /* W_SELTEXT, ink on the card and the accent */
+  --text-on-dark: #ede7dd;
+
+  /* brand + status. The old blue becomes the accent. */
+  --blue: #e8734a;         /* W_SEL / MZ_ACCENT */
+  --blue-dark: #c85b33;
+  --blue-hi: #e8a183;      /* MZ_CARD */
+  --green: #86d6b4;        /* MZ_MINT */
+  --green-dark: #86d6b4;
+  --orange: #e8a183;
+  --orange-dark: #e8a183;
+  --orange-border: #e8734a;
+  --yellow: #e8a183;
+  --red: #e06060;
+  --red-dark: #f08a8a;     /* text-weight red on dark */
+  --link: #e8a183;
+  --amber-dark: #e8a183;
+
+  --sel-top: #e8734a;
+  --sel-bot: #e8734a;
+
+  /* faces */
+  --sans: 'Inter', 'Segoe UI', Arial, sans-serif;
+  --caps: 'Oxanium', 'Bahnschrift', 'Arial Narrow', sans-serif;
+  --mono: 'Oxanium', 'Bahnschrift', 'Arial Narrow', sans-serif;
+
+  --r: 4px;
+  --pad: 12px;
+
+  --focus: #ede7dd;
+  --focus-ring: 0 0 0 1px #0b0d0c;
+
+  /* every gradient goes flat */
+  --grad-chrome: #151a17;
+  --grad-btn: #1c241f;
+  --grad-btn-hover: #27302b;
+  --grad-btn-down: #0e1210;
+  --grad-primary: #e8a183;
+  --grad-primary-hover: #f0b092;
+  --grad-red: #b93232;
+  --grad-head: #1c241f;
+  --grad-sel: #e8734a;
+  --grad-sidebar: #0e1210;
+  --grad-toolbar: #151a17;
+  --grad-status: #151a17;
+  --applybar-fill: #2a2016;
+}
+
+/* ---- density ---- */
+
+/* Body 13 px, labels 11 px, controls 26 px. Below the 4K steps only: from
+   1800 px ui.css scales these itself, and comfortable density (a class on
+   :root, more specific) still wins at every width. */
+@media (max-width: 1799.98px) {
+  :root {
+    --fs: 13px;
+    --fs-sm: 11px;
+    --ctl-h: 26px;
+    --ctl-h-sm: 24px;
+  }
+}
+
+/* ---- faces ---- */
+
+/* Anything set in caps is Oxanium, as on the camera. */
+.microlabel,
+.led-label,
+.panel-title,
+.pagehead h1,
+.nav-item,
+.btn,
+.tool-btn,
+.seg-opt,
+.toggle-state,
+.table th,
+.status-cam,
+.status-cell,
+.tool-device,
+.dialog-head,
+.applybar-label,
+.kino-button,
+.kino-panel-title,
+.kino-tab,
+.menubar-brand {
+  font-family: var(--caps);
+  letter-spacing: 0.06em;
+}
+
+.nav-item {
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.btn,
+.seg-opt,
+.tool-btn,
+.kino-button {
+  text-transform: uppercase;
+  text-shadow: none;
+}
+
+.pagehead h1 { font-size: 15px; letter-spacing: 0.08em; }
+.microlabel, .led-label, .table th { font-weight: 600; }
+
+/* Values keep their tabular figures in the caps face. */
+.val, .datarow dd, .slider-val, .table td, .unit, code {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- frame ---- */
+
+.menubar { border-bottom-color: var(--border-mid); }
+.menu-btn:hover,
+.menu-btn[aria-expanded='true'],
+.menu-item:hover:not(:disabled),
+.menu-item:focus:not(:disabled) {
+  color: var(--text-inv);
+}
+.menu-pop {
+  background: var(--panel);
+  border-color: var(--border-dark);
+  border-radius: var(--r);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 50%);
+}
+.menu-item:disabled,
+.tool-btn:disabled,
+.btn:disabled,
+.seg-opt:disabled,
+.toggle:disabled .toggle-state {
+  color: var(--text-faint);
+}
+.tool-btn:hover:not(:disabled),
+.tool-btn:active:not(:disabled) {
+  box-shadow: none;
+}
+.tool-device {
+  background: var(--panel-inset);
+  border-color: var(--border-mid);
+  border-radius: var(--r);
+  box-shadow: none;
+}
+.tool-sep { box-shadow: none; }
+
+/* The section head is a slim strip under the top bar, not a card: the name
+   in the camera's card colour, the readout beside it, one rule under both. */
+.pagehead {
+  min-height: 32px;
+  margin: 0 0 var(--pad);
+  padding: 0 0 6px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-mid);
+  border-radius: 0;
+  color: var(--text);
+  box-shadow: none;
+}
+.pagehead h1 { color: var(--blue-hi); }
+.pagehead h1 svg { display: none; }
+.pagehead .microlabel,
+.pagehead .dim,
+.pagehead .faint { color: var(--text-mut); }
+
+/* ---- sidebar ---- */
+
+.sidebar { box-shadow: none; }
+.nav-item {
+  border-radius: var(--r);
+  margin-bottom: 4px;
+  padding: 8px 10px;
+  background: var(--panel-inset);
+}
+.nav-item:hover { background: var(--border-mid); border-color: transparent; }
+.nav-item[aria-current='page'] {
+  background: var(--grad-sel);
+  border-color: transparent;
+  color: var(--text-inv);
+  box-shadow: none;
+}
+.nav-item[aria-current='page'] .nav-badge { background: var(--text-inv); color: var(--blue-hi); border-color: transparent; }
+.nav-badge { background: var(--blue-hi); color: var(--text-inv); border-color: transparent; }
+.conn-footer { box-shadow: none; }
+
+/* ---- status bar ---- */
+
+.statusbar { border-top-color: var(--border-mid); }
+.status-cell {
+  background: var(--panel-inset);
+  border-color: transparent;
+  border-radius: 6px;
+  box-shadow: none;
+}
+.status-cam .ok { color: var(--green); }
+.status-cam .bad { color: var(--red); }
+.status-cam .warn { color: var(--orange); }
+
+/* ---- lamps: flat squares, as the camera draws them ---- */
+
+.led-dot {
+  border: 0;
+  border-radius: 2px;
+  background: var(--text-faint);
+}
+.led-dot::after { display: none; }
+.led--ok .led-dot { background: var(--green); }
+.led--warn .led-dot { background: var(--orange); }
+.led--err .led-dot { background: var(--red); }
+.led--busy .led-dot { background: var(--blue); }
+.led--off .led-dot { background: var(--border-dark); }
+.kino-status-symbol { color: var(--text-faint); }
+
+/* ---- panels ---- */
+
+/* Flat: one hairline, 4 px corners, a 28 px head. No bevel, no shadow. */
+.panel,
+.kino-panel {
+  border: 1px solid var(--border-mid);
+  border-radius: 4px;
+  box-shadow: none;
+}
+.panel-head,
+.kino-panel-head {
+  min-height: 28px;
+  background: transparent;
+  border-bottom-color: var(--border-mid);
+  border-radius: 4px 4px 0 0;
+  box-shadow: none;
+  padding: 2px 10px;
+}
+.panel-title::before {
+  width: 6px;
+  height: 6px;
+  border: 0;
+  background: var(--blue);
+  border-radius: 1px;
+}
+.datarow {
+  min-height: 24px;
+  align-items: center;
+  padding: 2px 0;
+  border-bottom-style: solid;
+  border-bottom-color: var(--border-mid);
+}
+.field { border-bottom-style: solid; border-bottom-color: var(--border-mid); }
+
+/* ---- controls ---- */
+
+.btn,
+.kino-button {
+  border-color: transparent;
+  box-shadow: none;
+  border-radius: 4px;
+}
+.btn:hover:not(:disabled) { border-color: transparent; }
+.btn:active:not(:disabled) { box-shadow: none; }
+.btn:active:not(:disabled) > * { transform: none; }
+.btn:disabled { background: var(--panel-inset); border-color: transparent; }
+.btn--primary,
+.kino-button--primary {
+  color: var(--text-inv);
+  border-color: transparent;
+  text-shadow: none;
+  box-shadow: none;
+}
+.btn--primary:hover:not(:disabled) { border-color: transparent; }
+.btn--primary:active:not(:disabled) { background: #d08b6f; }
+.btn.btn--primary:disabled { background: #6b5347; border-color: transparent; color: var(--text-faint); }
+.btn--danger { color: var(--red-dark); }
+.btn--danger:hover:not(:disabled) { border-color: var(--red); }
+.btn--danger-solid { color: var(--text); text-shadow: none; border-color: transparent; }
+.btn--ghost { background: none; }
+.btn--ghost:hover:not(:disabled) { border-color: transparent; background: var(--panel-inset); }
+
+select.input,
+textarea.input,
+input[type='text'].input,
+input[type='number'].input {
+  background: var(--well);
+  border: 1px solid var(--border-mid);
+  border-radius: 6px;
+  box-shadow: none;
+}
+select.input:focus-visible,
+textarea.input:focus-visible,
+input.input:focus-visible { border-color: var(--border-dark); }
+
+/* Segments: the camera's joined pills; the pressed one is the accent. */
+.seg { background: var(--panel-inset); border-radius: 6px; padding: 3px; gap: 2px; }
+.seg-opt {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.seg-opt:first-child, .seg-opt:last-child { border-radius: 4px; }
+.seg-opt:hover { background: var(--border-mid); }
+.seg-opt[aria-pressed='true'],
+.seg-opt[aria-checked='true'] {
+  background: var(--grad-sel);
+  color: var(--text-inv);
+  box-shadow: none;
+  text-shadow: none;
+}
+.seg-opt:disabled { background: transparent; }
+.seg-opt:disabled[aria-pressed='true'],
+.seg-opt:disabled[aria-checked='true'] { background: #7a4a36; color: var(--text); }
+
+.toggle-track {
+  background: var(--border-mid);
+  border-color: transparent;
+  box-shadow: none;
+}
+.toggle-thumb { background: var(--text); border-color: transparent; }
+.toggle[aria-checked='true'] .toggle-track { background: var(--blue); border-color: transparent; }
+.toggle[aria-checked='true'] .toggle-thumb { background: var(--text-inv); }
+
+input[type='range']::-webkit-slider-runnable-track {
+  background: var(--border-mid);
+  border: 0;
+  height: 4px;
+  box-shadow: none;
+}
+input[type='range']::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--text);
+  border: 0;
+  box-shadow: none;
+}
+input[type='range']:hover::-webkit-slider-thumb { background: var(--blue-hi); border: 0; }
+input[type='range']::-moz-range-track { background: var(--border-mid); border: 0; height: 4px; }
+input[type='range']::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--text); border: 0; }
+input[type='range']:disabled::-webkit-slider-thumb { background: var(--text-faint); }
+
+/* ---- meters, tables ---- */
+
+.meter,
+.kino-progress {
+  background: var(--well);
+  border-color: transparent;
+  box-shadow: none;
+  border-radius: 3px;
+}
+.meter-fill, .kino-progress-fill { background: var(--blue); box-shadow: none; }
+.meter-fill--ok, .kino-progress-fill--ok { background: var(--green); }
+.meter-fill--warn, .kino-progress-fill--warn { background: var(--orange); }
+.meter-fill--err, .kino-progress-fill--err { background: var(--red); }
+
+.table, .kino-table { background: transparent; }
+.table th, .kino-table th { background: transparent; border: 0; border-bottom: 1px solid var(--border-dark); box-shadow: none; }
+.table td, .kino-table td { border-bottom-color: var(--border-mid); }
+.table tr:nth-child(even) td { background: var(--panel-inset); }
+
+/* ---- dialogs ---- */
+
+.overlay { background: rgb(0 0 0 / 55%); }
+.dialog {
+  border-color: var(--border-dark);
+  border-radius: var(--r);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 60%);
+}
+.dialog-head {
+  background: var(--blue-hi);
+  color: var(--text-inv);
+  text-shadow: none;
+  border-radius: var(--r) var(--r) 0 0;
+  padding: 8px 12px;
+  font-size: var(--fs);
+}
+.dialog-head--danger { background: var(--red); color: var(--text); }
+.dialog-body strong { color: var(--blue-hi); }
+
+/* ---- notices, ready bar, apply bar ---- */
+
+.notice { background: var(--panel-inset); border-color: transparent; border-radius: 6px; box-shadow: none; }
+.notice--err { border-color: var(--red); background: #2a1616; }
+.notice--ok { border-color: transparent; background: #14261f; }
+.notice--warn { border-color: transparent; background: #2a2016; }
+
+.readybar { background: var(--panel-inset); border-color: transparent; }
+.readybar--ok { border-color: transparent; background: #14261f; }
+.readybar--warn { border-color: transparent; background: #2a2016; }
+.readybar--err { border-color: var(--red); background: #2a1616; }
+
+/* Sticky at the foot of the workspace: flat, one accent hairline on top. */
+.applybar {
+  bottom: 0;
+  min-height: 40px;
+  padding: 6px 12px;
+  background: var(--panel-inset);
+  border: 0;
+  border-top: 1px solid var(--blue);
+  border-radius: 0;
+  box-shadow: none;
+}
+.applybar-label { color: var(--blue-hi); }
+.applybar-fields { color: var(--text-mut); }
+.applybar--saved { border-top-color: var(--green); background: #14261f; }
+.applybar--warn { border-top-color: var(--orange); background: #2a2016; }
+.applybar-error { background: #2a1616; border-color: var(--red); color: var(--red-dark); }
+
+/* ---- wells, scrollbars, selection ---- */
+
+.well { background: var(--well); border-color: var(--border-mid); box-shadow: none; border-radius: 6px; }
+.well--dark { color: var(--text); }
+::selection { background: var(--blue); color: var(--text-inv); }
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: var(--canvas); border: 0; }
+::-webkit-scrollbar-thumb { background: var(--border-mid); border: 3px solid var(--canvas); border-radius: 6px; box-shadow: none; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-dark); }
+.skiplink { background: var(--blue-hi); color: var(--text-inv); }
+
+/* ---- connect home ---- */
+
+/* The wordmark asset is ink on transparent; on the ground it is inverted to
+   the text tone rather than shipped twice. */
+.menubar-mark,
+.connect-mark { filter: invert(0.92) sepia(0.08); }
+.connect-card { border: 1px solid var(--border-mid); }
+.connect-card { border-color: transparent; border-radius: var(--r); box-shadow: none; padding: 30px 34px 26px; }
+.connect-cam {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--well);
+  box-shadow: inset 0 0 0 1.5px var(--border-dark);
+}
+.connect-cam::after { width: 14px; height: 14px; border: 0; background: var(--border-dark); }
+.connect-facts { border-top-color: var(--border-mid); }
+
+/* ---- pages.css hard codes ---- */
+
+/* The two modes as one segmented row: joined cells, the pressed one lit. */
+.modeselect {
+  gap: 0;
+  border: 1px solid var(--border-mid);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--panel);
+}
+.modecard { border: 0; border-radius: 0; background: var(--panel); box-shadow: none; padding: 10px 14px 9px; }
+.modecard + .modecard { border-left: 1px solid var(--border-mid); }
+.modecard:hover { background: var(--panel-inset); }
+.modecard[aria-pressed='true'] { background: var(--panel-inset); box-shadow: inset 0 2px 0 var(--blue); }
+.modecard[aria-pressed='true'] .modecard-name { color: var(--blue-hi); }
+.wigglecam { background: var(--well); border-color: var(--border-mid); }
+.recipe-item { background: var(--panel-inset); border-color: transparent; border-radius: 6px; }
+.recipe-item:hover { border-color: var(--border-dark); }
+.recipe-item[aria-pressed='true'] { background: var(--panel-inset); border-color: var(--blue-hi); box-shadow: inset 0 0 0 1px var(--blue-hi); }
+.tag--accent { background: var(--blue); border-color: transparent; color: var(--text-inv); }
+.fwrow { background: transparent; border-bottom-color: var(--border-mid); }
+.recovery .panel-head { background: #2a1616; border-bottom-color: var(--red); }
+.capturecard { background: var(--panel-inset); border-color: transparent; border-radius: 6px; }
+.inspector-strip button:not(.btn) { background: var(--well); border-color: var(--border-mid); }
+.logbody, .selftest-list, .timing-metric, .skew-metric { background: var(--well); }
+.timing-metric, .skew-metric { border-color: transparent; box-shadow: none; }
+.rollqr { border-color: transparent; border-radius: 6px; }
+.reconnectbar { background: var(--blue-hi); color: var(--text-inv); border-color: transparent; border-radius: 6px; }
+
+/* Plain inputs that never took the .input class. */
+input[type='text'],
+input[type='password'],
+input[type='url'],
+input[type='number'],
+input[type='search'],
+select,
+textarea {
+  background: var(--well);
+  color: var(--text);
+  border: 1px solid var(--border-mid);
+  border-radius: 6px;
+  color-scheme: dark;
+}
+input:disabled, select:disabled, textarea:disabled { color: var(--text-faint); }
+
+.fwrow:nth-child(even),
+.selftest-row:nth-child(even) { background: var(--panel-inset); }
+.selftest-row { border-bottom-color: var(--border-mid); }
+.logline .t { color: var(--text-faint); }
+.logline .src--pwr { color: var(--orange); }
+.logline .src--sd { color: var(--green); }
+.logline .src--proto { color: var(--text-mut); }
+.timing-metric--ok, .skew-metric--ok { border-color: transparent; background: #14261f; }
+.timing-metric--warn, .skew-metric--warn { border-color: transparent; background: #2a2016; }
+.timing-metric--err, .skew-metric--err { border-color: var(--red); background: #2a1616; }
+.logfilter:hover { background: var(--panel-inset); }

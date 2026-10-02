@@ -7,7 +7,6 @@ import { usePrefs } from '../state/prefs';
 import { dirtySections, useDraftStore } from '../state/draftStore';
 
 export type PageId =
-  | 'overview'
   | 'shoot'
   | 'wiggle'
   | 'quad'
@@ -27,9 +26,11 @@ export interface NavItem {
   icon: IconName;
 }
 
-/** 02 §3 order. Roll sits between Gallery and Device. */
+/**
+ * 02 §3 order. Roll sits between Gallery and Device. Overview is no longer a
+ * section: its content is the inspector column beside every page.
+ */
 const NAV: NavItem[] = [
-  { id: 'overview', label: 'Overview', icon: 'overview' },
   { id: 'shoot', label: 'Shoot', icon: 'shoot' },
   { id: 'wiggle', label: 'Wiggle', icon: 'wiggle' },
   { id: 'quad', label: 'Quad', icon: 'quad' },
@@ -76,7 +77,6 @@ export function navItems({
 
 /** Section titles, shared with the page head and the route announcement. */
 export const PAGE_LABEL: Record<PageId, string> = {
-  overview: 'Overview',
   shoot: 'Shoot',
   wiggle: 'Wiggle',
   quad: 'Quad',
