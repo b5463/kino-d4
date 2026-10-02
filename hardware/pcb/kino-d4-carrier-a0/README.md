@@ -86,6 +86,7 @@ Change scripts, in the order they were applied:
   2. `grid_router.py SYS_5V` with `GR_SKIP_REF=U700`, `apply_routes.py`, `tidy_routes.py`: U1201 and J600 branches.
   3. `straighten_a02_j600.py`: the J600 branch as one straight run.
 - **Signal pass, 3 October 2026:** `grid_router.py` over every open net except the camera header-socket GPIO, `GR_SKIP_REF=U700`; `apply_routes.py`; `tidy_routes.py`. 195 -> 114 unconnected; six routes at minimum clearance (RTC_BACKUP, P4_SCL, CHARGE_LED_A, CAM3_REQ, MOTOR_N, CAM1_EN) for review. Through-hole pads now also allow 45-degree exits in the router.
+- **Camera GPIO, 3 October 2026:** `route_a02_cam_gpio.py clear <k>` for k = 4, 3, 2, 1, DRC and `drop_dangling.py` until stable, then `add <k>`: the eight header-to-socket GPIO lines of each camera as one identical In2 fan-out (eight 1.27 mm lanes, 45-degree fans, no crossings). `plan <k>` reports what is in the way. The nets it opens (camera EN, SYNC, SHUNT_OUT, P4_BUS_EN, MB_3V3 pieces) go back to the grid router.
 
 Each routing script removes and redraws only the copper it owns. `tidy_routes.py` reshapes unlocked copper, so a hand script re-run after it no longer recognises its own routes: re-run hand scripts from a board saved before the tidy. In this KiCad build a `Remove()` leaves the Python bindings unreliable for the rest of the process, so the newer scripts remove, add and verify in separate runs. Helpers:
 - `free_spot.py`: collision-checked placement of one part.

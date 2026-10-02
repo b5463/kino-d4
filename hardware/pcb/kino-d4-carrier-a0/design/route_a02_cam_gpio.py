@@ -11,10 +11,23 @@ The same fan-out for every camera k (22 mm pitch):
          the right. 0.2 mm tracks.
 Header pin 2 (3V3) and the socket TX/RX pins are not part of the fan (routed separately).
 
-Before the lanes go in, everything in their way moves (phase 'clear'):
+Before the lanes go in, everything in their way goes (phase 'clear'):
   - GND stitching vias (no track attached) move to the nearest spot 0.2 mm clear of all copper
     of other nets, the lanes included, searching rings out to 2 mm;
-  - the per-camera EDITS below move signal vias to a lane midpoint and redraw their stubs.
+  - the SYS_5V drop via 0.45 mm east of the shunt's pad 1 (route_a02_sys5v.py before this
+    template) moves to the lane midpoint 0.825 mm east, its B bar with it;
+  - the two locked GND vias every camera block has in the lanes: the one for the TPS2553 GND
+    pin (x0 + 1.46, 24.5) goes, and the pin joins its input capacitor C(k)02's GND pad on B
+    instead (the pin carries only quiescent current; C(k)02 has its own via and the pour); the
+    one for C(k)03 (x0 - 3.48, 31.25) steps 0.23 mm east (0.2 mm clear of the D2 lane and of
+    P4_TX(k) on F), its stub ending at 45 degrees;
+  - unlocked copper of other nets that the lanes would touch (In2 tracks, vias) is removed; the
+    grid router re-routes those connections around the locked lanes afterwards. Camera 1's
+    SHUNT_OUT jog from route_a02_sys5v.py goes the same way.
+  Locked copper of any other net in the way stops the script. Older unlocked copper of the eight
+  GPIO nets themselves (partial routes from earlier passes) is removed too: each net joins only a
+  header pin and a socket pin, and the lane replaces it.
+Then drop_dangling.py, add <k>, and the grid router for the opened nets.
 Phases: plan <k> (report only), clear <k>, add <k>; each in its own process.
 """
 import math, sys
@@ -82,18 +95,74 @@ if PHASE == 'plan':
     import os; os._exit(0)
 
 if PHASE == 'clear':
-    moved = []
+    moved, doomed, stuck = [], [], []
+    x0 = 24.04 + 22.0 * (K - 1)
+    for t in tracks:                         # SYS_5V drop via 0.45 east of pad 1 -> lane midpoint
+        if t.GetNetname() != 'SYS_5V' or abs(mm(t.GetPosition().y if isinstance(t, pcb.PCB_VIA) else t.GetStart().y) - 19.4) > 0.01: continue
+        old, new = pt(50 + x0 + 0.45, 50 + 19.4), pt(50 + x0 + 0.825, 50 + 19.4)
+        if isinstance(t, pcb.PCB_VIA):
+            if (t.GetPosition() - old).EuclideanNorm() < 20000: t.SetPosition(new); moved.append(f'SYS_5V drop {x0 + 0.45:.2f}->{x0 + 0.825:.3f}')
+        elif t.GetLayer() == pcb.B_Cu:
+            for get, put in ((t.GetStart, t.SetStart), (t.GetEnd, t.SetEnd)):
+                if (get() - old).EuclideanNorm() < 20000: put(new)
+    fp = {f.GetReference(): f for f in b.GetFootprints()}
+    padc = lambda ref, n: next(q for q in fp[ref].Pads() if q.GetNumber() == n).GetPosition()
+    near_ = lambda p_, x, y: (p_ - pt(50 + x, 50 + y)).EuclideanNorm() < 20000
+    gnd_code = b.FindNet('GND').GetNetCode()
+    def gtrk(a, c):
+        t = pcb.PCB_TRACK(b); t.SetStart(a); t.SetEnd(c); t.SetWidth(pcb.FromMM(0.25)); t.SetLayer(pcb.B_Cu)
+        t.SetNetCode(gnd_code); t.SetLocked(True); b.Add(t)
+    for t in tracks:
+        if t.GetNetname() != 'GND': continue
+        if isinstance(t, pcb.PCB_VIA):
+            if near_(t.GetPosition(), x0 + 1.46, 24.5): doomed.append(t)
+            elif near_(t.GetPosition(), x0 - 3.48, 31.25): t.SetPosition(pt(50 + x0 - 3.25, 50 + 31.25)); moved.append(f'C{K + 1}03 GND via east')
+        elif t.GetLayer() == pcb.B_Cu:
+            ends_ = (t.GetStart(), t.GetEnd())
+            if any(near_(e, x0 + 1.46, 24.5) for e in ends_): doomed.append(t)
+            elif any(near_(e, x0 - 3.48, 31.25) for e in ends_):
+                for get, put in ((t.GetStart, t.SetStart), (t.GetEnd, t.SetEnd)):
+                    if near_(get(), x0 - 3.48, 31.25): put(pt(50 + x0 - 3.48, 50 + 31.48))
+                gtrk(pt(50 + x0 - 3.48, 50 + 31.48), pt(50 + x0 - 3.25, 50 + 31.25))
+    u, c = padc(f'U{K + 1}01', '2'), padc(f'C{K + 1}02', '2')      # TPS2553 GND pin -> C(k)02 GND pad
+    dy = abs(mm(u.y) - mm(c.y)); knee = pt(50 + mm(c.x) + dy, 50 + mm(u.y))
+    gtrk(u, knee); gtrk(knee, c)
     stitch = [t for t in tracks if isinstance(t, pcb.PCB_VIA) and t.GetNetname() == 'GND']
     attached = set()
     for t in tracks:
         if isinstance(t, pcb.PCB_VIA) or t.GetNetname() != 'GND': continue
         for v in stitch:
             if v.GetPosition() in (t.GetStart(), t.GetEnd()): attached.add(id(v))
+    all_vias = [t for t in tracks if isinstance(t, pcb.PCB_VIA)]
     def via_clear(v, at):
         s = pcb.SHAPE_CIRCLE(at, pcb.FromMM(0.3))
+        if any(o is not v and (o.GetPosition() - at).EuclideanNorm() < pcb.FromMM(0.6) for o in all_vias): return False   # hole to hole 0.25 mm, any net
         for net, ls in lane_shapes:
             if ls.Collide(s, pcb.FromMM(0.2)): return False
         return all(not foreign_hits('GND', s, l, 0.2) for l in LAYERS if l != pcb.In1_Cu)
+    lanes_all = [ls for _, ls in lane_shapes]
+    for net, _ in plan:                      # fan nets are two-pin: header and socket only
+        n_pads = sum(1 for f in b.GetFootprints() for q in f.Pads() if q.GetNetname() == net)
+        assert n_pads == 2, (net, n_pads, 'pads: not a two-pin net')
+    for t in tracks:                         # unlocked copper in the lanes' way
+        n = t.GetNetname()
+        if n in {net for net, _ in plan} and not isinstance(t, pcb.PCB_VIA) and t.GetLayer() != pcb.In2_Cu:
+            if not t.IsLocked(): doomed.append(t)
+            continue
+        if isinstance(t, pcb.PCB_VIA):
+            if n == 'GND' and id(t) not in attached: continue          # stitching: moved below
+            if any(t is d_ for d_ in doomed) or n == 'GND' and (near_(t.GetPosition(), x0 + 1.46, 24.5) or near_(t.GetPosition(), x0 - 3.25, 31.25)): continue
+            sh = t.GetEffectiveShape(pcb.In2_Cu)
+        elif t.GetLayer() == pcb.In2_Cu: sh = t.GetEffectiveShape(pcb.In2_Cu)
+        else: continue
+        own = {net for net, _ in plan}
+        if n in own:
+            if not t.IsLocked(): doomed.append(t)          # earlier partial route of a fan net
+            continue
+        if not any(ls.Collide(sh, pcb.FromMM(CLR) - 1) for ls in lanes_all): continue
+        if n == 'CAM1_SHUNT_OUT' or not t.IsLocked(): doomed.append(t)
+        else: stuck.append(describe(t))
+    assert not stuck, ('locked copper in the lanes', stuck)
     for v in stitch:
         if id(v) in attached: continue
         s = pcb.SHAPE_CIRCLE(v.GetPosition(), pcb.FromMM(0.3))
@@ -107,8 +176,10 @@ if PHASE == 'clear':
             if best: break
         assert best, ('no spot for stitching via', mm(home.x), mm(home.y))
         v.SetPosition(best); moved.append(f'({mm(home.x):.2f},{mm(home.y):.2f})->({mm(best.x):.2f},{mm(best.y):.2f})')
+    names = sorted({t.GetNetname() for t in doomed}); n = len(doomed)
+    for t in doomed: b.Remove(t)                 # last: Remove() invalidates the other proxies
     pcb.SaveBoard(str(TARGET), b)
-    print(f'camera {K} clear: {len(moved)} stitching vias moved', '; '.join(moved), flush=True)
+    print(f'camera {K} clear: moved', '; '.join(moved) or 'nothing', f'| removed {n} items on {names}', flush=True)
     import os; os._exit(0)
 
 if PHASE == 'add':
