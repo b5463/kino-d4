@@ -16,7 +16,7 @@
   "mounting_hole_diameter_mm": 2.2,
   "unconnected_items": 195,
   "drc_violation_count": 19,
-  "board_sha256": "b65808f0afb24e879eadea4616584435258b00ff3411574323ae4ebbf2194626",
+  "board_sha256": "d2563d1f033fd577210f43fb388ffac4d33d51fcd2db86741673a5703c204c33",
   "tracks": 1188,
   "vias": 361,
   "front_footprints": 73,
