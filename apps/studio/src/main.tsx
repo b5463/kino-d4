@@ -5,14 +5,13 @@ import type { ComponentType } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 /**
- * Two surfaces, one app.
+ * Three ways in, one app.
  *
- * The customer shell (`customer/`) is the default. Service — the menu bar,
- * the sidebar, every bench and worksheet — opens at `/service` (or
- * `?service=1`) and nowhere the customer shell links to. The older
- * `/legacy` and `?legacy=1` spellings still open it, so a bookmark or a
- * script written against them keeps working. Each surface loads its own
- * stylesheet; the customer page never inherits a bevel.
+ * The full Studio — rail, inspector, every page and bench — is the default,
+ * as it always was. `?service=1` (or `/service`, and the older `/legacy` and
+ * `?legacy=1` spellings) opens the same app under the red SERVICE band.
+ * `?customer=1` opens the customer-shell prototype from #230, which loads
+ * only its own stylesheets.
  */
 export function wantsService(pathname: string, search: string): boolean {
   const params = new URLSearchParams(search);
@@ -20,22 +19,46 @@ export function wantsService(pathname: string, search: string): boolean {
   return /\/(service|legacy)\/?$/.test(pathname);
 }
 
+export function wantsCustomer(search: string): boolean {
+  return new URLSearchParams(search).has('customer');
+}
+
 async function loadShell(): Promise<ComponentType> {
-  if (wantsService(window.location.pathname, window.location.search)) {
-    await Promise.all([
-      import('@kino/design-system/tokens.css'),
-      import('@kino/design-system/components.css'),
-      import('./styles/base.css'),
-      import('./styles/ui.css'),
-      import('./styles/pages.css'),
-      import('./styles/service.css'),
-    ]);
-    const [{ ServiceShell }, { applyDensityClass }] = await Promise.all([import('./app/ServiceShell'), import('./state/prefs')]);
-    applyDensityClass();
+  const { pathname, search } = window.location;
+  if (wantsCustomer(search) && !wantsService(pathname, search)) {
+    const { CustomerApp } = await import('./customer/CustomerApp');
+    return CustomerApp;
+  }
+  await Promise.all([
+    import('@fontsource/inter/400.css'),
+    import('@fontsource/inter/500.css'),
+    import('@fontsource/inter/700.css'),
+    import('@fontsource/oxanium/500.css'),
+    import('@fontsource/oxanium/600.css'),
+    import('@fontsource/oxanium/700.css'),
+  ]);
+  // In order, one at a time: the cascade is the order these land in the
+  // document, and the dev server injects each sheet as its module arrives.
+  // Under Promise.all that order was whichever fetch finished first, and
+  // theme-kino.css sometimes lost to the sheets it exists to override.
+  await import('@kino/design-system/tokens.css');
+  await import('@kino/design-system/components.css');
+  await import('./styles/base.css');
+  await import('./styles/ui.css');
+  await import('./styles/pages.css');
+  await import('./styles/service.css');
+  // The camera's register, on top of the era sheets: same layout, new skin.
+  await import('./styles/theme-kino.css');
+  // The frame: rail, top bar, workspace, inspector.
+  await import('./styles/shell.css');
+  const { applyDensityClass } = await import('./state/prefs');
+  applyDensityClass();
+  if (wantsService(pathname, search)) {
+    const { ServiceShell } = await import('./app/ServiceShell');
     return ServiceShell;
   }
-  const { CustomerApp } = await import('./customer/CustomerApp');
-  return CustomerApp;
+  const { App } = await import('./app/App');
+  return App;
 }
 
 if (typeof document !== 'undefined' && document.getElementById('root')) {

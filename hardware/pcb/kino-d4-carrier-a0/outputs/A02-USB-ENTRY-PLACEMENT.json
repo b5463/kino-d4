@@ -1,0 +1,378 @@
+{
+  "old_positions_mm": {
+    "U1000": [
+      108.75,
+      55.0
+    ],
+    "R1001": [
+      103.5,
+      56.0
+    ],
+    "C1000": [
+      108.75,
+      50.75
+    ],
+    "C1001": [
+      113.5,
+      55.0
+    ],
+    "C1002": [
+      113.5,
+      53.0
+    ],
+    "D1001": [
+      113.25,
+      50.5
+    ],
+    "D1002": [
+      104.0,
+      47.75
+    ],
+    "D1003": [
+      113.25,
+      47.25
+    ]
+  },
+  "new_positions_and_angles": {
+    "U1000": [
+      108.75,
+      54.4,
+      90
+    ],
+    "R1001": [
+      113.5,
+      54.5,
+      90
+    ],
+    "C1000": [
+      108.75,
+      50.3,
+      180
+    ],
+    "C1001": [
+      103.5,
+      55,
+      180
+    ],
+    "C1002": [
+      103.5,
+      57,
+      180
+    ],
+    "D1001": [
+      109,
+      59,
+      180
+    ],
+    "D1002": [
+      104,
+      59,
+      180
+    ],
+    "D1003": [
+      114,
+      59,
+      0
+    ]
+  },
+  "removed_local_routing": [
+    {
+      "net": "GND",
+      "uuid": "10905c88-b153-4439-8c6f-e77d8e6582f0"
+    },
+    {
+      "net": "GND",
+      "uuid": "12ca7c3a-1270-47fa-8a65-97e768ea2a4b"
+    },
+    {
+      "net": "GND",
+      "uuid": "1815fef1-8cad-4474-abc2-04a177332b05"
+    },
+    {
+      "net": "GND",
+      "uuid": "487812aa-3950-4313-a66e-3761ee360ac2"
+    },
+    {
+      "net": "GND",
+      "uuid": "5684c1e2-ff36-471f-9e93-4a790bbb3a5b"
+    },
+    {
+      "net": "GND",
+      "uuid": "6edf1ea2-4cd2-4ece-a025-551303840326"
+    },
+    {
+      "net": "GND",
+      "uuid": "736c1d78-8aed-472b-86d6-ed5634dfe89e"
+    },
+    {
+      "net": "GND",
+      "uuid": "9697b0ad-1a41-4c4b-8c62-69fa6c862eed"
+    },
+    {
+      "net": "GND",
+      "uuid": "a3f20252-2088-4d06-ba12-9d169b0e8ca8"
+    },
+    {
+      "net": "GND",
+      "uuid": "b8cf7337-0786-4d43-a453-93f299567f77"
+    },
+    {
+      "net": "USB_VBUS",
+      "uuid": "07e89e8d-07f9-4c50-a670-bcd3257cdc99"
+    },
+    {
+      "net": "USB_VBUS",
+      "uuid": "09359b5a-1286-45c1-aeb8-34d314c9b4d9"
+    },
+    {
+      "net": "USB_VBUS",
+      "uuid": "2520ff5a-e306-4bbc-a915-b00b6cc655d8"
+    },
+    {
+      "net": "USB_VBUS",
+      "uuid": "3525fb8a-5a75-45db-a14a-d8aa13d7bebe"
+    },
+    {
+      "net": "USB_VBUS",
+      "uuid": "4620f940-4ad3-4b6a-bffa-7a0902c3e277"
+    },
+    {
+      "net": "USB_VBUS",
+      "uuid": "66d7b919-a1d9-417b-b9a0-438dffa92614"
+    },
+    {
+      "net": "USB_VBUS",
+      "uuid": "6a27dcf3-2cad-42dc-bf1c-1aa76e12ec22"
+    },
+    {
+      "net": "USB_VBUS",
+      "uuid": "76672502-2a0e-4574-8246-5f4b993072ec"
+    },
+    {
+      "net": "USB_VBUS",
+      "uuid": "8b8b7144-f510-4488-8545-67398d331910"
+    },
+    {
+      "net": "USB_VBUS",
+      "uuid": "ac1db15a-bcd1-4f65-8c0a-92e3e980a282"
+    },
+    {
+      "net": "USB_VBUS",
+      "uuid": "cbb6cc67-f1df-4d19-bc06-b8e1aa6d0ba7"
+    },
+    {
+      "net": "USB_VBUS",
+      "uuid": "cfa0fd69-a421-42ca-baa2-213822b217ea"
+    },
+    {
+      "net": "USB_VBUS",
+      "uuid": "e2307214-a2ce-4d4f-bf35-40ea72c87e53"
+    },
+    {
+      "net": "USB_VBUS",
+      "uuid": "f2c2899c-8a3e-433b-a250-fc733d791e3e"
+    },
+    {
+      "net": "PD_GATE",
+      "uuid": "6a6b0cab-ced8-4793-88e3-14e78bee7725"
+    },
+    {
+      "net": "PD_GATE",
+      "uuid": "e9e8a16b-e0db-46ff-b2f2-66531e98bb47"
+    },
+    {
+      "net": "USB_CC2",
+      "uuid": "139577b8-3cc8-4fd3-b7fc-24d44b0f975d"
+    },
+    {
+      "net": "USB_CC2",
+      "uuid": "22a346e6-0561-42ef-bd8e-3b812d922bf1"
+    },
+    {
+      "net": "USB_CC2",
+      "uuid": "243ae724-eb25-4ff5-8d0e-571bddec6625"
+    },
+    {
+      "net": "USB_CC2",
+      "uuid": "2f1b7f7e-21e5-419e-aec3-50ddcb9c9d44"
+    },
+    {
+      "net": "USB_CC2",
+      "uuid": "3288d92c-c9e0-4a7c-8c67-4c8aa7255df5"
+    },
+    {
+      "net": "USB_CC2",
+      "uuid": "3e20404e-4673-47f3-b649-e4d677375ab2"
+    },
+    {
+      "net": "USB_CC2",
+      "uuid": "40c26fd0-07ab-4bdb-9649-28ed24300fb3"
+    },
+    {
+      "net": "USB_CC2",
+      "uuid": "4d0a13f2-57e1-4d25-a9b3-06dec7b0bc86"
+    },
+    {
+      "net": "USB_CC2",
+      "uuid": "51b27216-1a1d-40b5-873b-c58c912331e0"
+    },
+    {
+      "net": "USB_CC2",
+      "uuid": "718f32fc-7d26-4fcf-ac56-630c372041ff"
+    },
+    {
+      "net": "USB_CC2",
+      "uuid": "7d8e64b2-34fe-4b70-957f-3755ce1dbdac"
+    },
+    {
+      "net": "USB_CC2",
+      "uuid": "92d419b5-a3f6-4eb3-80db-0db00b8ecbe4"
+    },
+    {
+      "net": "USB_CC2",
+      "uuid": "b05c5465-d3a1-4e99-b01e-791821552ce9"
+    },
+    {
+      "net": "USB_CC2",
+      "uuid": "c1d9ecd7-aeac-40fa-8e68-dfe16c87c227"
+    },
+    {
+      "net": "USB_CC2",
+      "uuid": "cc3146aa-6691-4fa8-979c-f1a13ef85fb9"
+    },
+    {
+      "net": "USB_CC2",
+      "uuid": "d9b78789-8caf-4ec0-8528-81c5d08e9c91"
+    },
+    {
+      "net": "USB_CC1",
+      "uuid": "13911df4-b58b-4df4-8d03-72c931b993fe"
+    },
+    {
+      "net": "USB_CC1",
+      "uuid": "1e0a6d1a-7e30-4780-872d-60ed0801b59b"
+    },
+    {
+      "net": "USB_CC1",
+      "uuid": "38cc462f-38be-4cf6-bb86-5e1d86dbda47"
+    },
+    {
+      "net": "USB_CC1",
+      "uuid": "4ae9149a-ca95-4a2d-bcd0-db6b3dd7ba1b"
+    },
+    {
+      "net": "USB_CC1",
+      "uuid": "4ef3bf43-bec6-49c1-b423-85551d7e11a8"
+    },
+    {
+      "net": "USB_CC1",
+      "uuid": "695eca55-58c4-47bb-b59d-47e9bdf76845"
+    },
+    {
+      "net": "USB_CC1",
+      "uuid": "76eccaff-8542-4f5e-9fc2-243706d86218"
+    },
+    {
+      "net": "USB_CC1",
+      "uuid": "86d798cc-bbf6-41d7-baa2-c34970bb29b7"
+    },
+    {
+      "net": "PD_2V7",
+      "uuid": "09532b02-f9f0-4bce-9a19-d65392cdaca6"
+    },
+    {
+      "net": "PD_2V7",
+      "uuid": "42ee4a43-6cb8-4edf-85c6-b621719626f6"
+    },
+    {
+      "net": "PD_2V7",
+      "uuid": "52a6e20f-4695-4bef-ba5e-477c03e0a3a0"
+    },
+    {
+      "net": "PD_2V7",
+      "uuid": "5964a449-f4f7-4304-9d7e-37345c014924"
+    },
+    {
+      "net": "PD_2V7",
+      "uuid": "6d00d15e-0bba-48c4-92f4-442958c212f4"
+    },
+    {
+      "net": "PD_2V7",
+      "uuid": "99d4e472-91ea-4e8e-ba8a-431db5ab7ae6"
+    },
+    {
+      "net": "PD_2V7",
+      "uuid": "a5140739-69d0-4083-90da-92085183e422"
+    },
+    {
+      "net": "PD_2V7",
+      "uuid": "b5649ed7-2a03-48bf-8f91-94487fe9dcec"
+    },
+    {
+      "net": "PD_2V7",
+      "uuid": "c9a1e997-ccf5-4bfe-ad80-06b4edef6137"
+    },
+    {
+      "net": "PD_2V7",
+      "uuid": "f94d206e-7b4d-4e42-947e-990c1e37660e"
+    },
+    {
+      "net": "MB_3V3",
+      "uuid": "b7df1c42-d761-4117-84ea-5e1aa798c795"
+    },
+    {
+      "net": "PD_SINK_EN_N",
+      "uuid": "45aa7185-0a6e-4db9-a6a0-be617ebf065d"
+    },
+    {
+      "net": "PD_SINK_EN_N",
+      "uuid": "5396c9a8-896f-4957-abca-0571dc83fe19"
+    },
+    {
+      "net": "PD_SINK_EN_N",
+      "uuid": "a038fd4d-e8ac-465f-b6fa-6b0ba6487662"
+    },
+    {
+      "net": "PACK_NTC",
+      "uuid": "077c309c-5731-48ed-9c44-101400962b23"
+    },
+    {
+      "net": "PACK_NTC",
+      "uuid": "3ed806f4-798e-4133-aed6-718f5d4319b0"
+    },
+    {
+      "net": "PD_RESET",
+      "uuid": "0220bcea-4a39-48cf-ac2e-ca19e32d9c08"
+    },
+    {
+      "net": "PD_RESET",
+      "uuid": "02ee948c-229f-4e85-9229-31ddb4de97d5"
+    },
+    {
+      "net": "PD_RESET",
+      "uuid": "89a090d9-0084-46d4-9fb3-422ba55c855e"
+    },
+    {
+      "net": "PD_RESET",
+      "uuid": "9812836f-1e70-43a1-9753-07a661903f34"
+    },
+    {
+      "net": "PD_RESET",
+      "uuid": "99ac0763-a5c4-4203-9df1-a89ff7214734"
+    },
+    {
+      "net": "PD_RESET",
+      "uuid": "a60b5694-0aa1-40c9-a838-6941377fc23d"
+    },
+    {
+      "net": "PD_RESET",
+      "uuid": "ba377512-77da-45d4-9ca4-e44ace97ee77"
+    }
+  ],
+  "entry_clamps": [
+    "D1001",
+    "D1002",
+    "D1003"
+  ],
+  "note": "Placement correction only. Local protection routing must be completed and reviewed."
+}

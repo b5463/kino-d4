@@ -1,0 +1,617 @@
+/* The application frame: a 64 px rail on the left, a 40 px top bar, the
+   open section filling the middle, a resizable inspector on the right. Loaded
+   after theme-kino.css. Frame only — the pages keep ui.css and pages.css. */
+
+.frame {
+  min-width: 0;
+}
+
+.shell {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.shell-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.shell-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* ---- rail ---- */
+
+.rail {
+  width: 64px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--well);
+  border-right: 1px solid var(--border-mid);
+  user-select: none;
+}
+
+.rail-mark {
+  height: 40px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--border-mid);
+}
+
+.rail-mark svg {
+  display: block;
+  color: var(--text);
+}
+
+.rail-nav {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+  scrollbar-width: none;
+}
+
+.rail-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.rail-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 54px;
+  border: 0;
+  background: none;
+  color: var(--text-mut);
+  cursor: default;
+}
+
+.rail-item svg {
+  flex: none;
+}
+
+.rail-label {
+  font-family: var(--caps);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1;
+  max-width: 62px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* CALIBRATION is eleven letters in a 64 px column. */
+.rail-label--long {
+  font-size: 9px;
+  letter-spacing: 0.01em;
+}
+
+.rail-item:hover:not(:disabled) {
+  background: var(--panel-inset);
+  color: var(--text);
+}
+
+.rail-item[aria-current='page'] {
+  color: var(--blue);
+}
+
+.rail-item[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  background: var(--blue);
+}
+
+.rail-item:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+.rail-item:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Unsaved: a dot on the glyph, not a badge. */
+.rail-dot {
+  position: absolute;
+  top: 9px;
+  right: 17px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--blue);
+  box-shadow: 0 0 0 2px var(--well);
+}
+
+.rail-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 0 6px;
+  border-top: 1px solid var(--border-mid);
+}
+
+.rail-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding-bottom: 4px;
+}
+
+.rail-serial {
+  font-family: var(--caps);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-gear .topbtn {
+  width: 40px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+  color: var(--text-mut);
+}
+
+.rail-gear .topbtn:hover,
+.rail-gear .topbtn.is-open {
+  color: var(--text);
+}
+
+.rail-version {
+  font-family: var(--caps);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+/* ---- top bar ---- */
+
+.topbar {
+  height: 40px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border-mid);
+  user-select: none;
+}
+
+.topbar-title {
+  font-family: var(--caps);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.topbar-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 10px;
+  margin-right: 8px;
+  border-radius: 4px;
+  background: var(--panel-inset);
+  font-family: var(--caps);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.topbar-chip .led-label {
+  font-size: 10px;
+}
+
+.topbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text);
+  font-family: var(--caps);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.topbtn:hover:not(:disabled),
+.topbtn.is-open {
+  background: var(--panel-inset);
+}
+
+.topbtn:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+.topbtn.is-busy {
+  cursor: progress;
+}
+
+.syncnote {
+  flex: none;
+  padding: 5px 14px;
+  background: #2a2016;
+  border-bottom: 1px solid var(--border-mid);
+  color: var(--orange);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+/* Menus hang off their trigger. */
+.shellmenu {
+  position: relative;
+  display: flex;
+}
+
+.shellmenu-pop {
+  min-width: 220px;
+}
+
+.shellmenu--right .shellmenu-pop {
+  left: auto;
+  right: 0;
+  top: calc(100% + 2px);
+}
+
+.shellmenu--left .shellmenu-pop {
+  left: 0;
+  top: calc(100% + 2px);
+}
+
+.shellmenu--above .shellmenu-pop {
+  top: auto;
+  bottom: 0;
+  left: calc(100% + 6px);
+}
+
+/* ---- workspace ---- */
+
+.workspace {
+  padding: 12px 16px 64px;
+}
+
+.workspace-inner,
+.frame .workspace-inner {
+  max-width: none;
+  margin: 0;
+}
+
+/* Panels fill wide monitors instead of wrapping under a cap. */
+.panel-grid {
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+}
+
+/* ---- inspector ---- */
+
+.insp {
+  flex: none;
+  display: flex;
+  min-height: 0;
+  background: var(--well);
+  border-left: 1px solid var(--border-mid);
+  position: relative;
+}
+
+.insp-handle {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.insp-handle:hover,
+.insp-handle.is-dragging {
+  background: var(--blue);
+  box-shadow: 0 0 8px var(--blue);
+}
+
+.insp-handle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+}
+
+.insp-col {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.insp-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 0 4px 0 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border-mid);
+}
+
+.insp-head-title {
+  font-family: var(--caps);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+}
+
+.insp-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-mut);
+  cursor: default;
+}
+
+.insp-toggle:hover {
+  background: var(--panel-inset);
+  color: var(--text);
+}
+
+.insp--collapsed {
+  width: 28px;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 2px;
+}
+
+.insp-vlabel {
+  margin-top: 8px;
+  writing-mode: vertical-rl;
+  font-family: var(--caps);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--text-faint);
+}
+
+.insp-chev {
+  transition: transform var(--dur-state);
+}
+
+.insp-chev--shut {
+  transform: rotate(-90deg);
+}
+
+.insp-chev--left {
+  transform: rotate(90deg);
+}
+
+.insp-chev--right {
+  transform: rotate(-90deg);
+}
+
+.insp-sec {
+  border-bottom: 1px solid var(--border-mid);
+}
+
+.insp-sec-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--caps);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: default;
+}
+
+.insp-sec-head:hover {
+  background: var(--panel-inset);
+}
+
+.insp-sec-head:focus-visible {
+  outline-offset: -2px;
+}
+
+.insp-sec-head svg {
+  color: var(--text-faint);
+  flex: none;
+}
+
+.insp-sec-body {
+  padding: 8px 12px 10px;
+}
+
+.insp-sec-body .readybar {
+  margin: 0;
+  padding: 8px 10px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.insp-sec-body .readybar-state {
+  font-size: 13px;
+}
+
+.readybar-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  color: var(--text-mut);
+  display: grid;
+  gap: 2px;
+}
+
+.insp-sec-body .datarow {
+  max-width: none;
+  grid-template-columns: minmax(0, 11ch) minmax(0, 1fr);
+}
+
+.insp-cams {
+  display: grid;
+  gap: 8px;
+}
+
+.insp-cam {
+  padding: 6px 8px 8px;
+  background: var(--panel);
+  border-radius: 4px;
+}
+
+.insp-cam-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 4px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border-mid);
+}
+
+.insp-cam-pos {
+  font-family: var(--caps);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.insp-cam-id {
+  margin-left: 4px;
+  color: var(--text-faint);
+  font-weight: 500;
+}
+
+.insp-cam .datarow {
+  min-height: 22px;
+}
+
+.insp-cam-test {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  min-width: 0;
+}
+
+.insp-cam-test .microlabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insp-actions {
+  margin-bottom: 8px;
+}
+
+.selftest-list--narrow .selftest-row {
+  grid-template-columns: minmax(0, 1fr) 52px;
+}
+
+.selftest-list--narrow .selftest-row .dim {
+  grid-column: 1 / -1;
+  font-size: 10px;
+}
+
+.selftest-list--narrow .selftest-row .dim:empty {
+  display: none;
+}
+
+/* The skew verdict was laid out for a page; in a column it stacks. */
+.insp-sec-body .skew-verdict {
+  justify-items: stretch;
+}
+
+/* ---- density: 4K scaling keeps ui.css's steps; the rail and bar follow ---- */
+
+@media (min-width: 2600px) {
+  .rail { width: 72px; }
+  .rail-item { height: 60px; }
+  .rail-label { font-size: 11px; }
+  .topbar { height: 44px; }
+  .topbar-title { font-size: 14px; }
+  .topbtn,
+  .topbar-chip { font-size: 12px; }
+  .insp-sec-head { font-size: 12px; height: 30px; }
+}
+
+@media (min-width: 3400px) {
+  .rail { width: 84px; }
+  .rail-item { height: 68px; }
+  .rail-item svg { width: 24px; height: 24px; }
+  .rail-label { font-size: 12px; }
+  .topbar { height: 48px; }
+  .topbar-title { font-size: 15px; }
+  .topbtn,
+  .topbar-chip { font-size: 13px; }
+  .insp-sec-head { font-size: 13px; height: 32px; }
+}
+
+/* ---- service band lives above the shell ---- */
+
+.service-frame > .frame {
+  height: auto;
+}

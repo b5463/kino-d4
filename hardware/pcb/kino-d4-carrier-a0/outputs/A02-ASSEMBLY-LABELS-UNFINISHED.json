@@ -1,0 +1,19 @@
+{
+  "unplaced": [
+    "D1002",
+    "R1110",
+    "F1100",
+    "C1001",
+    "C1002",
+    "D1001",
+    "J1100",
+    "R1002",
+    "D1003",
+    "J200",
+    "J300",
+    "J400",
+    "J500",
+    "J1000"
+  ],
+  "reason": "no clear position within 8 mm per axis; reference kept on Fab at the part centre"
+}

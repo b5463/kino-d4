@@ -1,0 +1,251 @@
+Reference,Value,MPN_candidate,Footprint,DNP,Status,Design_note,Source
+J100,P4 JP1 - 26 pin IDC,Wurth Elektronik 61202621621,Connector_IDC:IDC-Header_2x13_P2.54mm_Vertical,False,ENGINEERING_DRAFT,1:1 electrical pin numbering; verify cable and mating views.,https://www.we-online.com/components/products/datasheet/61202621621.pdf
+J101,C6 service - 3V3 sense only,Wurth Elektronik 61300611121,Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical,False,ENGINEERING_DRAFT,,https://www.we-online.com/components/products/datasheet/61300611121.pdf
+U100,TCA9517ADGKR,TCA9517ADGKR,Package_SO:VSSOP-8_3x3mm_P0.65mm,False,ENGINEERING_DRAFT,B side is local. Do not cascade another B-side offset buffer on local bus.,https://www.ti.com/lit/ds/symlink/tca9517a.pdf
+R100,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
+R101,1M,RC0603FR-071ML,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071ML
+R102,4.7k,RC0603FR-074K7L,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-074K7L
+R103,4.7k,RC0603FR-074K7L,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-074K7L
+C100,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+R104,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+J102,3V3 I2C accessory,JST BM04B-GHS-TBT(LF)(SN),Connector_JST:JST_GH_BM04B-GHS-TBT_1x04-1MP_P1.25mm_Vertical,False,ENGINEERING_DRAFT,,https://www.jst-mfg.com/product/pdf/eng/eGH.pdf
+F100,PTC 100mA - select,Bel Fuse 0ZCJ0010FF2E,Fuse:Fuse_1206_3216Metric,False,ENGINEERING_DRAFT,Accessory protection and ESD review open.,https://www.belfuse.com/media/datasheets/products/circuit-protection/ds-cp-0zcj-series.pdf
+TP100,P4_3V3_TEST,P4_3V3_TEST,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+TP101,SYNC_MASTER,SYNC_MASTER,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+TP102,P4_5V,P4_5V,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+J200,XIAO ESP32-S3 Sense socket,Wurth Elektronik 61300711821,KINO_A0:XIAO_Socket_15.24mm,False,ENGINEERING_DRAFT,Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.,https://www.we-online.com/components/products/datasheet/61300711821.pdf
+J201,GPIO breakout - SD/strap restrictions,Wurth Elektronik 61301021121,Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical,False,ENGINEERING_DRAFT,,https://www.we-online.com/components/products/datasheet/61301021121.pdf
+JP200,REMOVE FOR NODE USB,Wurth Elektronik 61300211121 + shunt 60900213421,Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical,False,ENGINEERING_DRAFT,"Fit removable shunt during camera operation, remove before USB cable insertion.",https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf
+U200,TXU0304PWR,TXU0304PWR,Package_SO:TSSOP-14_4.4x5mm_P0.65mm,False,ENGINEERING_DRAFT,,https://www.ti.com/lit/ds/symlink/txu0304.pdf
+R200,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
+R201,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
+R202,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
+C200,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+C201,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+U201,TPS2553DBVR,TPS2553DBVR,Package_TO_SOT_SMD:SOT-23-6,False,ENGINEERING_DRAFT,,https://www.ti.com/lit/ds/symlink/tps2553.pdf
+R203,25.5k 1%,RC0603FR-0725K5L,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,Approx. 1A target; verify min/max and startup before release.,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0725K5L
+R204,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
+R205,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+RS200,0.020 1% 0.5W,Vishay Dale WSLP1206R0200FEA,Resistor_SMD:R_1206_3216Metric,False,ENGINEERING_DRAFT,Kelvin sense required; exact current-sense resistor MPN pending.,https://www.vishay.com/docs/30122/wslp.pdf
+D200,SS34,Diodes Incorporated B340A-13-F,Diode_SMD:D_SMA,False,ENGINEERING_DRAFT,Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.,https://www.diodes.com/datasheet/download/B340A.pdf
+C202,1u 16V,Samsung Electro-Mechanics CL10A105KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN
+C203,22u 10V,Samsung Electro-Mechanics CL21A226MAQNNNE,Capacitor_SMD:C_0805_2012Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN
+C204,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+TP200,CAM1_5V,CAM1_5V,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+TP201,CAM1_SYNC,CAM1_SYNC,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+J300,XIAO ESP32-S3 Sense socket,Wurth Elektronik 61300711821,KINO_A0:XIAO_Socket_15.24mm,False,ENGINEERING_DRAFT,Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.,https://www.we-online.com/components/products/datasheet/61300711821.pdf
+J301,GPIO breakout - SD/strap restrictions,Wurth Elektronik 61301021121,Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical,False,ENGINEERING_DRAFT,,https://www.we-online.com/components/products/datasheet/61301021121.pdf
+JP300,REMOVE FOR NODE USB,Wurth Elektronik 61300211121 + shunt 60900213421,Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical,False,ENGINEERING_DRAFT,"Fit removable shunt during camera operation, remove before USB cable insertion.",https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf
+U300,TXU0304PWR,TXU0304PWR,Package_SO:TSSOP-14_4.4x5mm_P0.65mm,False,ENGINEERING_DRAFT,,https://www.ti.com/lit/ds/symlink/txu0304.pdf
+R300,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
+R301,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
+R302,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
+C300,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+C301,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+U301,TPS2553DBVR,TPS2553DBVR,Package_TO_SOT_SMD:SOT-23-6,False,ENGINEERING_DRAFT,,https://www.ti.com/lit/ds/symlink/tps2553.pdf
+R303,25.5k 1%,RC0603FR-0725K5L,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,Approx. 1A target; verify min/max and startup before release.,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0725K5L
+R304,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
+R305,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+RS300,0.020 1% 0.5W,Vishay Dale WSLP1206R0200FEA,Resistor_SMD:R_1206_3216Metric,False,ENGINEERING_DRAFT,Kelvin sense required; exact current-sense resistor MPN pending.,https://www.vishay.com/docs/30122/wslp.pdf
+D300,SS34,Diodes Incorporated B340A-13-F,Diode_SMD:D_SMA,False,ENGINEERING_DRAFT,Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.,https://www.diodes.com/datasheet/download/B340A.pdf
+C302,1u 16V,Samsung Electro-Mechanics CL10A105KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN
+C303,22u 10V,Samsung Electro-Mechanics CL21A226MAQNNNE,Capacitor_SMD:C_0805_2012Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN
+C304,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+TP300,CAM2_5V,CAM2_5V,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+TP301,CAM2_SYNC,CAM2_SYNC,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+J400,XIAO ESP32-S3 Sense socket,Wurth Elektronik 61300711821,KINO_A0:XIAO_Socket_15.24mm,False,ENGINEERING_DRAFT,Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.,https://www.we-online.com/components/products/datasheet/61300711821.pdf
+J401,GPIO breakout - SD/strap restrictions,Wurth Elektronik 61301021121,Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical,False,ENGINEERING_DRAFT,,https://www.we-online.com/components/products/datasheet/61301021121.pdf
+JP400,REMOVE FOR NODE USB,Wurth Elektronik 61300211121 + shunt 60900213421,Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical,False,ENGINEERING_DRAFT,"Fit removable shunt during camera operation, remove before USB cable insertion.",https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf
+U400,TXU0304PWR,TXU0304PWR,Package_SO:TSSOP-14_4.4x5mm_P0.65mm,False,ENGINEERING_DRAFT,,https://www.ti.com/lit/ds/symlink/txu0304.pdf
+R400,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
+R401,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
+R402,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
+C400,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+C401,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+U401,TPS2553DBVR,TPS2553DBVR,Package_TO_SOT_SMD:SOT-23-6,False,ENGINEERING_DRAFT,,https://www.ti.com/lit/ds/symlink/tps2553.pdf
+R403,25.5k 1%,RC0603FR-0725K5L,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,Approx. 1A target; verify min/max and startup before release.,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0725K5L
+R404,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
+R405,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+RS400,0.020 1% 0.5W,Vishay Dale WSLP1206R0200FEA,Resistor_SMD:R_1206_3216Metric,False,ENGINEERING_DRAFT,Kelvin sense required; exact current-sense resistor MPN pending.,https://www.vishay.com/docs/30122/wslp.pdf
+D400,SS34,Diodes Incorporated B340A-13-F,Diode_SMD:D_SMA,False,ENGINEERING_DRAFT,Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.,https://www.diodes.com/datasheet/download/B340A.pdf
+C402,1u 16V,Samsung Electro-Mechanics CL10A105KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN
+C403,22u 10V,Samsung Electro-Mechanics CL21A226MAQNNNE,Capacitor_SMD:C_0805_2012Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN
+C404,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+TP400,CAM3_5V,CAM3_5V,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+TP401,CAM3_SYNC,CAM3_SYNC,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+J500,XIAO ESP32-S3 Sense socket,Wurth Elektronik 61300711821,KINO_A0:XIAO_Socket_15.24mm,False,ENGINEERING_DRAFT,Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via jumper for USB service.,https://www.we-online.com/components/products/datasheet/61300711821.pdf
+J501,GPIO breakout - SD/strap restrictions,Wurth Elektronik 61301021121,Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical,False,ENGINEERING_DRAFT,,https://www.we-online.com/components/products/datasheet/61301021121.pdf
+JP500,REMOVE FOR NODE USB,Wurth Elektronik 61300211121 + shunt 60900213421,Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical,False,ENGINEERING_DRAFT,"Fit removable shunt during camera operation, remove before USB cable insertion.",https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf
+U500,TXU0304PWR,TXU0304PWR,Package_SO:TSSOP-14_4.4x5mm_P0.65mm,False,ENGINEERING_DRAFT,,https://www.ti.com/lit/ds/symlink/txu0304.pdf
+R500,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
+R501,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
+R502,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
+C500,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+C501,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+U501,TPS2553DBVR,TPS2553DBVR,Package_TO_SOT_SMD:SOT-23-6,False,ENGINEERING_DRAFT,,https://www.ti.com/lit/ds/symlink/tps2553.pdf
+R503,25.5k 1%,RC0603FR-0725K5L,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,Approx. 1A target; verify min/max and startup before release.,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0725K5L
+R504,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
+R505,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+RS500,0.020 1% 0.5W,Vishay Dale WSLP1206R0200FEA,Resistor_SMD:R_1206_3216Metric,False,ENGINEERING_DRAFT,Kelvin sense required; exact current-sense resistor MPN pending.,https://www.vishay.com/docs/30122/wslp.pdf
+D500,SS34,Diodes Incorporated B340A-13-F,Diode_SMD:D_SMA,False,ENGINEERING_DRAFT,Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing jumper.,https://www.diodes.com/datasheet/download/B340A.pdf
+C502,1u 16V,Samsung Electro-Mechanics CL10A105KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN
+C503,22u 10V,Samsung Electro-Mechanics CL21A226MAQNNNE,Capacitor_SMD:C_0805_2012Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN
+C504,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+TP500,CAM4_5V,CAM4_5V,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+TP501,CAM4_SYNC,CAM4_SYNC,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+U600,TCA9539PWR,TCA9539PWR,Package_SO:TSSOP-24_4.4x7.8mm_P0.65mm,False,ENGINEERING_DRAFT,TCA9539 PW pin map verified against TI; address 0x74 candidate. P1.3 (pin 20) reads charger STAT; configure as INPUT only.,https://www.ti.com/lit/ds/symlink/tca9539.pdf
+R600,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
+C600,100n,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+C601,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+U601,SN74LVC08APWR,SN74LVC08APWR,Package_SO:TSSOP-14_4.4x5mm_P0.65mm,False,ENGINEERING_DRAFT,,https://www.ti.com/lit/ds/symlink/sn74lvc08a.pdf
+C602,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+R601,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+R602,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+R603,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+R604,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+J600,POGO TEST - SENSE ONLY,PCB feature - no fitted component,KINO_A0:Pogo_12_Asymmetric,False,ENGINEERING_DRAFT,"1.5mm ENIG pads, no paste. Pad 1 offset for fixture orientation. Measure enables; do not drive against U601. Rails are sense points, not a power injection connector.",
+J601,EXTERNAL FLASH LOGIC,JST BM05B-GHS-TBT(LF)(SN),Connector_JST:JST_GH_BM05B-GHS-TBT_1x05-1MP_P1.25mm_Vertical,True,ENGINEERING_DRAFT,Logic-only internal interface. External driver must arm via I2C and gate shared SYNC. No dedicated FLASH_EN is available in the retained P4 map. Flash load requires its own qualified supply; AUX_3V3 is behind the accessory PTC.,https://www.jst-mfg.com/product/pdf/eng/eGH.pdf
+R605,33,RC0603FR-0733RL,Resistor_SMD:R_0603_1608Metric,True,ENGINEERING_DRAFT,Fit with J601 only after external flash-driver timing/loading review.,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL
+U700,PAC1954T-E/4MX,PAC1954T-E/4MX,Package_DFN_QFN:VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm,False,ENGINEERING_DRAFT,ADDRSEL grounded gives 7-bit 0x10 (Microchip evaluation guide section 4.6). PWRDN high enables; SLOW low gives default sample rate.,https://ww1.microchip.com/downloads/en/DeviceDoc/PAC195X-Data-Sheet-20006539.pdf
+R700,0,RC0603JR-070RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603JR-070RL
+C700,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+C701,1u,Samsung Electro-Mechanics CL10A105KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN
+U701,BQ27441DRZR-G1A,BQ27441DRZR-G1A,Package_SON:Texas_S-PDSO-N12,False,ENGINEERING_DRAFT,"TI SLUSBH1C pin table: SRP (8) Kelvin to RS700 pack side, SRN (7) Kelvin to RS700 system side, BAT (6) Kelvin to pack positive. GPOUT must not float.",http://www.ti.com/lit/ds/symlink/bq27441-g1.pdf
+C702,470n,Samsung Electro-Mechanics CL10B474KA8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B474KA8NNN
+C703,1u 16V,Samsung CL10A105KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,"TI: 1 uF from BAT to VSS, close to the gauge.",
+R701,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,Embedded pack: BIN 10k to VSS per TI.,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
+R702,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,"TI: GPOUT must not float; 10k pull-up to the gauge VDD, which stays up with the camera off.",https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
+RS700,0.005 1% 1W,Vishay Dale WSLP1206R0050FEA,Resistor_SMD:R_1206_3216Metric,False,ENGINEERING_DRAFT,"High side after F1100. 4.4 A = 22 mV (gauge range 25 mV), 97 mW. Kelvin taps from the pad inner edges.",https://www.vishay.com/en/product/30122/
+U800,LSM6DSOXTR,LSM6DSOXTR,Package_LGA:LGA-14_3x2.5mm_P0.5mm_LayoutBorder3x4y,False,ENGINEERING_DRAFT,,https://www.st.com/resource/en/datasheet/lsm6dsox.pdf
+C800,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+C801,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+U801,RV-3028-C7,Micro Crystal RV-3028-C7 32.768kHz 1ppm TA QC,Package_SON:MicroCrystal_C7_SON-8_1.5x3.2mm_P0.9mm,False,ENGINEERING_DRAFT,,https://www.microcrystal.com/fileadmin/Media/Products/RTC/Datasheet/RV-3028-C7.pdf
+C802,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+R800,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
+J800,3V PRIMARY RTC BACKUP,JST BM02B-GHS-TBT(LF)(SN),Connector_JST:JST_GH_BM02B-GHS-TBT_1x02-1MP_P1.25mm_Vertical,False,ENGINEERING_DRAFT,Insulated remote backup cell holder; disable RTC trickle charging in hardware configuration/firmware.,https://www.jst-mfg.com/product/pdf/eng/eGH.pdf
+U802,TMP117AIDRVR,TMP117AIDRVR,Package_SON:WSON-6-1EP_2x2mm_P0.65mm_EP1x1.6mm,False,ENGINEERING_DRAFT,,https://www.ti.com/lit/ds/symlink/tmp117.pdf
+C803,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+U900,DRV2605LDGSR,DRV2605LDGSR,Package_SO:TSSOP-10_3x3mm_P0.5mm,False,ENGINEERING_DRAFT,,http://www.ti.com/lit/ds/symlink/drv2605l.pdf
+C900,1u,Samsung Electro-Mechanics CL10A105KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN
+C901,1u,Samsung Electro-Mechanics CL10A105KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN
+C902,10u,Samsung Electro-Mechanics CL21A106KAYNNNE,Capacitor_SMD:C_0805_2012Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A106KAYNNN
+R900,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+J900,HAPTIC MOTOR,JST BM02B-GHS-TBT(LF)(SN),Connector_JST:JST_GH_BM02B-GHS-TBT_1x02-1MP_P1.25mm_Vertical,False,ENGINEERING_DRAFT,Matched LRA/ERM selection and calibration open.,https://www.jst-mfg.com/product/pdf/eng/eGH.pdf
+J901,COVER HALL SENSOR,JST BM03B-GHS-TBT(LF)(SN),Connector_JST:JST_GH_BM03B-GHS-TBT_1x03-1MP_P1.25mm_Vertical,False,ENGINEERING_DRAFT,External 3.3V open-drain Hall sensor; select magnet/threshold and serviceable mount.,https://www.jst-mfg.com/product/pdf/eng/eGH.pdf
+R901,1k,RC0603FR-071KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071KL
+R902,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
+C903,10n,Samsung Electro-Mechanics CL10B103KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B103KB8NNN
+J902,LOCAL SHUTTER,JST BM02B-GHS-TBT(LF)(SN),Connector_JST:JST_GH_BM02B-GHS-TBT_1x02-1MP_P1.25mm_Vertical,False,ENGINEERING_DRAFT,,https://www.jst-mfg.com/product/pdf/eng/eGH.pdf
+J903,REMOTE DRY CONTACT,JST BM02B-GHS-TBT(LF)(SN),Connector_JST:JST_GH_BM02B-GHS-TBT_1x02-1MP_P1.25mm_Vertical,False,ENGINEERING_DRAFT,Internal locking connector to panel socket; choose jack with no insertion short.,https://www.jst-mfg.com/product/pdf/eng/eGH.pdf
+R903,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
+R904,47k,RC0603FR-0747KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0747KL
+C904,100n,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+U901,SN74LVC1G14DBVR,SN74LVC1G14DBVR,Package_TO_SOT_SMD:SOT-23-5,False,ENGINEERING_DRAFT,,https://www.ti.com/lit/ds/symlink/sn74lvc1g14.pdf
+C905,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+Q900,2N7002,"Nexperia 2N7002,215",Package_TO_SOT_SMD:SOT-23,False,ENGINEERING_DRAFT,,https://assets.nexperia.com/documents/data-sheet/2N7002.pdf
+R905,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+D900,PESD5V0S1BA,"Nexperia PESD5V0S1BA,115",Diode_SMD:D_SOD-323,False,ENGINEERING_DRAFT,Bidirectional ESD clamp candidate; verify surge rating and leakage.,https://assets.nexperia.com/documents/data-sheet/PESD5V0S1BA.pdf
+D901,PESD5V0S1BA,"Nexperia PESD5V0S1BA,115",Diode_SMD:D_SOD-323,False,ENGINEERING_DRAFT,Bidirectional ESD clamp candidate; verify surge rating and leakage.,https://assets.nexperia.com/documents/data-sheet/PESD5V0S1BA.pdf
+D902,PESD5V0S1BA,"Nexperia PESD5V0S1BA,115",Diode_SMD:D_SOD-323,False,ENGINEERING_DRAFT,Bidirectional ESD clamp candidate; verify surge rating and leakage.,https://assets.nexperia.com/documents/data-sheet/PESD5V0S1BA.pdf
+J904,FUNCTION BUTTON,JST BM02B-GHS-TBT(LF)(SN),Connector_JST:JST_GH_BM02B-GHS-TBT_1x02-1MP_P1.25mm_Vertical,False,ENGINEERING_DRAFT,,https://www.jst-mfg.com/product/pdf/eng/eGH.pdf
+R906,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
+J1000,USB4105-GF-A,GCT USB4105-GF-A,KINO_A0:USB_C_GCT_USB4105_KINO_GND0.05,False,ENGINEERING_DRAFT,"Power-only. A6/B6 A7/B7 data unconnected; PD only, no BC1.2 data detection. Land: GCT drawing B4, outer GND lands trimmed 0.05 mm (local deviation, A02-REVIEW).",https://gct.co/files/drawings/usb4105.pdf
+U1000,STUSB4500QTR,STUSB4500QTR,Package_DFN_QFN:QFN-24-1EP_4x4mm_P0.5mm_EP2.7x2.7mm,False,ENGINEERING_DRAFT,,https://www.st.com/resource/en/datasheet/stusb4500.pdf
+C1000,1u 35V,Samsung Electro-Mechanics CL21B105KBFNNNE,Capacitor_SMD:C_0805_2012Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21B105KBFNNN
+C1001,1u,Samsung Electro-Mechanics CL10A105KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN
+C1002,1u,Samsung Electro-Mechanics CL10A105KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN
+R1000,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+R1001,470,RC0603FR-07470RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07470RL
+R1002,1k,RC0603FR-071KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071KL
+Q1000,AO4407A,Alpha & Omega Semiconductor AO4407A,Package_SO:SOIC-8_3.9x4.9mm_P1.27mm,False,ENGINEERING_DRAFT,Verify exact AO4407A manufacturer and SO8 pinout before BOM release.,https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf
+Q1001,AO4407A,Alpha & Omega Semiconductor AO4407A,Package_SO:SOIC-8_3.9x4.9mm_P1.27mm,False,ENGINEERING_DRAFT,Verify exact AO4407A manufacturer and SO8 pinout before BOM release.,https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf
+R1003,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+R1004,1k,RC0603FR-071KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071KL
+D1000,BZT52C10,Diodes Incorporated BZT52C10-7-F,Diode_SMD:D_SOD-123,False,ENGINEERING_DRAFT,,https://www.diodes.com/assets/Datasheets/ds18004.pdf
+D1001,SMF12A,Vishay General Semiconductor SMF12A-E3-08,Diode_SMD:D_SOD-123F,False,ENGINEERING_DRAFT,,https://www.vishay.com/docs/85881/smf5v0atosmf58a.pdf
+D1002,PESD24VL1BA,"Nexperia PESD24VL1BA,115",Diode_SMD:D_SOD-323,False,ENGINEERING_DRAFT,"VRWM 24 V, VBR 25.4 V min, 11 pF. A 5 V part conducts if CC shorts to 9 V VBUS.",https://assets.nexperia.com/documents/data-sheet/PESD24VL1BA.pdf
+D1003,PESD24VL1BA,"Nexperia PESD24VL1BA,115",Diode_SMD:D_SOD-323,False,ENGINEERING_DRAFT,"VRWM 24 V, VBR 25.4 V min, 11 pF. A 5 V part conducts if CC shorts to 9 V VBUS.",https://assets.nexperia.com/documents/data-sheet/PESD24VL1BA.pdf
+TP1000,USB_VBUS,USB_VBUS,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+TP1001,PD_9V_OK_N,PD_9V_OK_N,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+J1100,PROTECTED 1S PACK / NTC,JST B3P-VH(LF)(SN),Connector_JST:JST_VH_B3P-VH_1x03_P3.96mm_Vertical,False,ENGINEERING_DRAFT,New rated harness required. Keying is not electronic reverse-polarity protection.,https://www.jst-mfg.com/product/pdf/eng/eVH.pdf
+F1100,7A fast 1206,Bourns SF-1206F700-2,Fuse:Fuse_1206_3216Metric,False,ENGINEERING_DRAFT,5 A planning current = 71 % of 7 A. Interrupt rating 50 A relies on the pack PCM clearing a hard short first.,Bourns SF-1206F series datasheet
+U1100,BQ25798RQMR,BQ25798RQMR,Package_DFN_QFN:Texas_RQM0029A_VQFN-29_4x4mm_P0.4mm,False,ENGINEERING_DRAFT,,https://www.ti.com/lit/ds/symlink/bq25798.pdf
+R1100,3.00k 1%,RC0603FR-073KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,"TI Table 7-1: 1S, 1.5MHz. Default 4.2V / 1A charge, hardware-disabled until qualified.",https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-073KL
+R1101,100,RC0603FR-07100RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100RL
+R1102,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,"TI pin 13: CE must be pulled high or low. LOW = charge whenever VBUS is valid and EN_CHG=1; firmware inhibits with EN_CHG, not this pin.",https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+R1110,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,True,ENGINEERING_DRAFT,BRING-UP ONLY: FIT = CHARGE INHIBIT. 10k over R1102 100k holds CE at 0.91 REGN.,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
+R1104,30.1k 1%,RC0603FR-0730K1L,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,Fallback only: 30.1k/10k keeps ILIM above restart at REGN 4.6-5.2V. Nominal command 184-371mA. Full-load PD policy remains required; not universal USB-A compliance.,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0730K1L
+R1105,10k 1%,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
+R1106,5.23k 1%,RC0603FR-075K23L,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,RT1. TI 5.24k for 103AT-2; E96 5.23k gives 0.97 C / 59.9 C (T1 73.3 % / T5 34.2 % of REGN).,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-075K23L
+R1107,30.1k 1%,RC0603FR-0730K1L,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,RT2. TI 30.31k; open NTC gives 85 % REGN = cold = charge suspended.,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0730K1L
+R1108,0,RC0603JR-070RL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,"NTC returns to pack negative = board GND; the gauge shunt is on the high side, so no TS offset.",https://www.yageogroup.com/component-documentation/download/specsheet/RC0603JR-070RL
+C1100,1n 50V,Samsung Electro-Mechanics CL10B102KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B102KB8NNN
+C1101,4.7u 10V,Samsung Electro-Mechanics CL21A475KAQNNNE,Capacitor_SMD:C_0805_2012Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A475KAQNNN
+C1102,47n 16V,Samsung Electro-Mechanics CL10B473KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B473KB8NNN
+C1103,47n 16V,Samsung Electro-Mechanics CL10B473KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B473KB8NNN
+L1100,1.0uH 14.1A Isat,SPM6530T-1R0M120,KINO_A0:L_TDK_SPM6530,False,ENGINEERING_DRAFT,"TI BQ25798 characterization part (L1 1 uH). 7.81 mOhm max, Isat 14.1 A (-20 %), Itemp 13 A (+40 C). Land 1.85 x 3.4 mm, gap 3.7 mm per TDK.",TDK SPM6530 catalog 20160825 p5-6
+C1104,10u 35V X7R,Samsung Electro-Mechanics CL31B106KBHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN
+C1105,10u 35V X7R,Samsung Electro-Mechanics CL31B106KBHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN
+C1106,100n 35V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+C1107,10u 35V X7R,Samsung Electro-Mechanics CL31B106KBHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN
+C1108,10u 35V X7R,Samsung Electro-Mechanics CL31B106KBHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN
+C1109,10u 35V X7R,Samsung Electro-Mechanics CL31B106KBHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN
+C1110,100n 35V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+C1111,10u 35V X7R,Samsung Electro-Mechanics CL31B106KBHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN
+C1112,10u 35V X7R,Samsung Electro-Mechanics CL31B106KBHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN
+C1113,10u 35V X7R,Samsung Electro-Mechanics CL31B106KBHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN
+C1114,10u 35V X7R,Samsung Electro-Mechanics CL31B106KBHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN
+C1115,10u 35V X7R,Samsung Electro-Mechanics CL31B106KBHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN
+C1116,100n 35V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+C1117,10u 35V X7R,Samsung Electro-Mechanics CL31B106KBHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN
+C1118,10u 35V X7R,Samsung Electro-Mechanics CL31B106KBHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN
+C1119,100n 35V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+R1109,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
+TP1100,CHARGE_STAT_N,CHARGE_STAT_N,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+TP1101,SYS_RAW,SYS_RAW,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+U1200,TPS61288LRQQR,TPS61288LRQQR,KINO_A0:TPS61288_RQQ0011A_DRAFT,False,ENGINEERING_DRAFT,Custom land pattern independently transcribed; fabrication review mandatory.,https://www.ti.com/lit/ds/symlink/tps61288.pdf
+L1200,2.2uH 19.6A Isat,XAL7070-222MEC,Inductor_SMD:L_Coilcraft_XAL7070-XXX,False,ENGINEERING_DRAFT,"Isat 19.6 A (-30 %) > TPS61288 ILIM 17.1 A max, per TI 9.2.2.2. 6.33 mOhm max, Irms 13.2 A (+20 C). Worst operating peak 6.1 A at 3.0 V in, 2.6 A out. Same family as TI table 9-2 XAL1060, which does not fit. 7.0 mm tall.",https://www.coilcraft.com/getmedia/1ba55433-bcc8-4838-9b21-382f497e12e0/xal7070.pdf
+R1200,110k 0.1%,RT0603BRD07110KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RT0603BRD07110KL
+R1201,15k 0.1%,RT0603BRD0715KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RT0603BRD0715KL
+R1202,20.5k 1%,RC0603FR-0720K5L,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,"RC per TI eq 12 at fc 8 kHz, Co_eff 72 uF, Vin 3.0 V. Bench loop measurement required.",https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0720K5L
+C1200,3.3n 50V,Samsung Electro-Mechanics CL10B332KB8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,CC per TI eq 13 at 2.6 A load.,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B332KB8NNN
+C1201,100p,Samsung Electro-Mechanics CL10C101JB8NNNC,Capacitor_SMD:C_0603_1608Metric,True,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10C101JB8NNN
+C1202,4.7u 16V,Samsung CL10A475KO8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,TI: VCC needs > 1.0 uF effective; 2.2 uF 0603 is about 1.0 uF at 5 V.,
+C1203,100n,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+C1204,22u 10V,Samsung Electro-Mechanics CL31A226KAHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31A226KAHNNN
+C1205,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+C1206,22u 10V,Samsung Electro-Mechanics CL31A226KAHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31A226KAHNNN
+C1207,22u 10V,Samsung Electro-Mechanics CL31A226KAHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31A226KAHNNN
+C1208,22u 10V,Samsung Electro-Mechanics CL31A226KAHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31A226KAHNNN
+C1209,22u 10V,Samsung Electro-Mechanics CL31A226KAHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31A226KAHNNN
+C1210,22u 10V,Samsung Electro-Mechanics CL31A226KAHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31A226KAHNNN
+C1211,22u 10V,Samsung Electro-Mechanics CL31A226KAHNNNE,Capacitor_SMD:C_1206_3216Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31A226KAHNNN
+Q1200,AO4407A,Alpha & Omega Semiconductor AO4407A,Package_SO:SOIC-8_3.9x4.9mm_P1.27mm,False,ENGINEERING_DRAFT,Verify exact AO4407A manufacturer and SO8 pinout before BOM release.,https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf
+Q1201,AO4407A,Alpha & Omega Semiconductor AO4407A,Package_SO:SOIC-8_3.9x4.9mm_P1.27mm,False,ENGINEERING_DRAFT,Verify exact AO4407A manufacturer and SO8 pinout before BOM release.,https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf
+R1203,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+Q1202,2N7002,"Nexperia 2N7002,215",Package_TO_SOT_SMD:SOT-23,False,ENGINEERING_DRAFT,,https://assets.nexperia.com/documents/data-sheet/2N7002.pdf
+U1201,TPS62162DSGR,TPS62162DSGR,Package_SON:Texas_DSG0008A_WSON-8-1EP_2x2mm_P0.5mm_EP0.9x1.6mm_ThermalVias,False,ENGINEERING_DRAFT,,http://www.ti.com/lit/ds/symlink/tps62160.pdf
+L1201,2.2uH 1.5A,Taiyo Yuden LSXND3030QKT2R2MNG,Inductor_SMD:L_Taiyo-Yuden_NR-30xx,False,ENGINEERING_DRAFT,,https://ds.yuden.co.jp/TYCOMPAS/ut/detail?pn=LSXND3030QKT2R2MNG&u=M
+C1212,10u,Samsung Electro-Mechanics CL21A106KAYNNNE,Capacitor_SMD:C_0805_2012Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A106KAYNNN
+C1213,22u,Samsung Electro-Mechanics CL21A226MAQNNNE,Capacitor_SMD:C_0805_2012Metric,False,ENGINEERING_DRAFT,,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN
+D1200,SS34,Diodes Incorporated B340A-13-F,Diode_SMD:D_SMA,False,ENGINEERING_DRAFT,,https://www.diodes.com/datasheet/download/B340A.pdf
+JP1200,REMOVE FOR P4 USB SERVICE,Wurth Elektronik 61300211121 + shunt 60900213421,Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical,False,ENGINEERING_DRAFT,Reverse isolation diode plus manual disconnect. Verify Guition external supply and USB topology before simultaneous connection.,https://www.we-online.com/components/products/datasheet/61300211121.pdf ; https://www.we-online.com/components/products/datasheet/60900213421.pdf
+TP1200,SYS_5V,SYS_5V,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+TP1201,MB_3V3,MB_3V3,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+TP1202,GND,GND,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
+U1300,LTC2955ITS8-1,Analog Devices LTC2955ITS8-1#TRMPBF,Package_TO_SOT_SMD:TSOT-23-8,False,ENGINEERING_DRAFT,"TS8 p2: 1 ON, 2 KILL, 3 TMR, 4 GND, 5 PB, 6 VIN, 7 EN, 8 INT. Enable drive/loading still requires review.",https://www.analog.com/media/en/technical-documentation/data-sheets/2955fa.pdf
+C1300,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
+C1301,1.5u 16V,Samsung CL10A155KO8NNNC,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,1.8 uF 0603 is not stocked by a major maker. Timer constant from the ADI data sheet still to confirm; about 7.9 s at 5.2 s/uF.,
+R1300,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+Q1300,2N7002,"Nexperia 2N7002,215",Package_TO_SOT_SMD:SOT-23,False,ENGINEERING_DRAFT,,https://assets.nexperia.com/documents/data-sheet/2N7002.pdf
+R1301,100k,RC0603FR-07100KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL
+R1302,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
+J1300,POWER PUSHBUTTON,JST BM02B-GHS-TBT(LF)(SN),Connector_JST:JST_GH_BM02B-GHS-TBT_1x02-1MP_P1.25mm_Vertical,False,ENGINEERING_DRAFT,,https://www.jst-mfg.com/product/pdf/eng/eGH.pdf
+R1303,2.2k,RC0603FR-072K2L,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-072K2L
+D1300,LED GREEN,Wurth Elektronik 150060VS75000,LED_SMD:LED_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.we-online.com/components/products/datasheet/150060VS75000.pdf
+R1304,2.2k,RC0603FR-072K2L,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-072K2L
+D1301,LED AMBER,Wurth Elektronik 150060AS75000,LED_SMD:LED_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.we-online.com/components/products/datasheet/150060AS75000.pdf
+H1,P4 M2 insert mount,P4 M2 insert mount,MountingHole:MountingHole_2.2mm_M2,False,ENGINEERING_DRAFT,"61.9 x 54.8 inner insert centres. Offset -9.3 mm is drawing-derived, pending physical fit. Extension spacers required for P4 component/header clearance.",
+H2,P4 M2 insert mount,P4 M2 insert mount,MountingHole:MountingHole_2.2mm_M2,False,ENGINEERING_DRAFT,"61.9 x 54.8 inner insert centres. Offset -9.3 mm is drawing-derived, pending physical fit. Extension spacers required for P4 component/header clearance.",
+H3,P4 M2 insert mount,P4 M2 insert mount,MountingHole:MountingHole_2.2mm_M2,False,ENGINEERING_DRAFT,"61.9 x 54.8 inner insert centres. Offset -9.3 mm is drawing-derived, pending physical fit. Extension spacers required for P4 component/header clearance.",
+H4,P4 M2 insert mount,P4 M2 insert mount,MountingHole:MountingHole_2.2mm_M2,False,ENGINEERING_DRAFT,"61.9 x 54.8 inner insert centres. Offset -9.3 mm is drawing-derived, pending physical fit. Extension spacers required for P4 component/header clearance.",

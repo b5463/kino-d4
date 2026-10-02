@@ -119,27 +119,10 @@ function ViewfinderPanel({ defaultCam }: { defaultCam: CamId }) {
     };
   }, [running, cam]);
 
+  // The hero of the section: the well spans the workspace, and the transport
+  // with the camera pick sit as a strip over its foot.
   return (
-    <Panel
-      title="VIEWFINDER"
-      actions={
-        <Button
-          variant={running ? 'default' : 'primary'}
-          size="sm"
-          disabled={unsupported || (!running && blocked !== null)}
-          title={
-            unsupported
-              ? 'This firmware has no host viewfinder'
-              : !running && blocked
-                ? `${blocked} is using the link`
-                : undefined
-          }
-          onClick={() => setRunning(!running)}
-        >
-          {running ? 'STOP' : 'START'}
-        </Button>
-      }
-    >
+    <section className="vf" aria-label="Viewfinder">
       {unsupported ? (
         <Unsupported
           feature="Viewfinder"
@@ -147,33 +130,48 @@ function ViewfinderPanel({ defaultCam }: { defaultCam: CamId }) {
           note="This firmware has no host viewfinder (CAMERA_PREVIEW). The camera's own screen still shows BODY VIEWFINDER below."
         />
       ) : null}
-      <div className="well well--dark" style={{ padding: 6, display: 'flex', justifyContent: 'center', minHeight: 180 }}>
+      <div className="well well--dark vf-well">
         {running ? (
-          <img ref={imgRef} alt={`Live view from ${cam.toUpperCase()}`} style={{ maxWidth: '100%', display: 'block' }} />
+          <img ref={imgRef} alt={`Live view from ${cam.toUpperCase()}`} />
         ) : (
-          <span className="faint mono" style={{ alignSelf: 'center', fontSize: 11 }}>
+          <span className="faint vf-idle">
             {blocked ? `LINK HELD BY ${blocked.toUpperCase()}` : 'VIEWFINDER STOPPED'}
           </span>
         )}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, gap: 12, flexWrap: 'wrap' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span className="microlabel">PREVIEW FROM</span>
-          <span className="seg" role="group" aria-label="Preview camera for this window">
-            {(['cam1', 'cam2', 'cam3', 'cam4'] as CamId[]).map((c) => (
-              <button key={c} type="button" className="seg-opt" aria-pressed={cam === c} onClick={() => setCam(c)}>
-                {c.toUpperCase()}
-              </button>
-            ))}
+        <div className="vf-bar">
+          <Button
+            variant={running ? 'default' : 'primary'}
+            size="sm"
+            disabled={unsupported || (!running && blocked !== null)}
+            title={
+              unsupported
+                ? 'This firmware has no host viewfinder'
+                : !running && blocked
+                  ? `${blocked} is using the link`
+                  : undefined
+            }
+            onClick={() => setRunning(!running)}
+          >
+            {running ? 'STOP' : 'START'}
+          </Button>
+          <span className="vf-bar-group">
+            <span className="microlabel">PREVIEW FROM</span>
+            <span className="seg" role="group" aria-label="Preview camera for this window">
+              {(['cam1', 'cam2', 'cam3', 'cam4'] as CamId[]).map((c) => (
+                <button key={c} type="button" className="seg-opt" aria-pressed={cam === c} onClick={() => setCam(c)}>
+                  {c.toUpperCase()}
+                </button>
+              ))}
+            </span>
           </span>
-        </span>
-        <span className="microlabel">{running ? `~${fpsActual} FPS · UART LIMITED` : '320×240 PREVIEW'}</span>
+          <span className="microlabel vf-bar-rate">{running ? `~${fpsActual} FPS · UART LIMITED` : '320×240 PREVIEW'}</span>
+        </div>
       </div>
-      <p className="dim" style={{ paddingTop: 6, marginBottom: 0 }}>
+      <p className="dim vf-note">
         This window only. The camera's own screen keeps using BODY VIEWFINDER below.
       </p>
       {err ? <p className="notice notice--err" style={{ marginTop: 8, marginBottom: 0 }}>{err}</p> : null}
-    </Panel>
+    </section>
   );
 }
 
@@ -296,6 +294,8 @@ export function ShootPage() {
         </span>
       </div>
 
+      <ViewfinderPanel defaultCam={config.shoot.viewfinder} />
+
       <div className="modeselect" role="group" aria-label="Shooting mode">
         {modeOptions.map((m) => (
           <button
@@ -327,89 +327,91 @@ export function ShootPage() {
       </div>
       {modeError ? <p className="notice notice--err">{modeError}</p> : null}
 
-      <ViewfinderPanel defaultCam={config.shoot.viewfinder} />
-
-      <Panel title="CAPTURE">
-        <SegField
-          label="FLASH POLICY"
-          value={draft.flashMode}
-          options={[
-            { value: 'auto', label: 'AUTO' },
-            { value: 'on', label: 'ON' },
-            { value: 'off', label: 'OFF' },
-          ]}
-          hint="Top level. OFF here means nothing fires in either mode. AUTO fires when the meter says the scene is dark."
-          onChange={(v) => patch((d) => ({ ...d, flashMode: v as ShootConfig['flashMode'] }))}
-        />
-        {!hasFlashHardware ? <FlashNotFittedNote /> : null}
-        <SegField
-          label="BODY VIEWFINDER"
-          value={draft.viewfinder}
-          options={[
-            { value: 'cam1', label: 'CAM1' },
-            { value: 'cam2', label: 'CAM2' },
-            { value: 'cam3', label: 'CAM3' },
-            { value: 'cam4', label: 'CAM4' },
-          ]}
-          hint="Which camera the KINO screen shows while composing. CAM2 is the metering camera."
-          onChange={(v) => patch((d) => ({ ...d, viewfinder: v as CamId }))}
-        />
-        <SegField
-          label="PREVIEW QUALITY"
-          value={draft.previewQuality}
-          options={[
-            { value: 'low', label: 'LOW' },
-            { value: 'normal', label: 'NORMAL' },
-            { value: 'high', label: 'HIGH' },
-          ]}
-          onChange={(v) => patch((d) => ({ ...d, previewQuality: v as ShootConfig['previewQuality'] }))}
-        />
-        <SegField
-          label="REVIEW AFTER SHOT"
-          value={String(draft.displayAfterShotS)}
-          options={[
-            { value: '0', label: 'OFF' },
-            { value: '1', label: '1 S' },
-            { value: '2', label: '2 S' },
-            { value: '3', label: '3 S' },
-            { value: '-1', label: 'HOLD' },
-          ]}
-          onChange={(v) => patch((d) => ({ ...d, displayAfterShotS: Number(v) }))}
-        />
-      </Panel>
-
-      <Panel
-        title="CAMERA SOUNDS"
-        actions={
-          <Button
-            size="sm"
-            busy={playBusy}
-            disabled={draft.shutterSound === 'silent' || draft.volume === 0}
-            onClick={() => void playShutter()}
+      <div className="shoot-grid">
+        <div>
+          <Panel title="CAPTURE">
+            <SegField
+              label="FLASH POLICY"
+              value={draft.flashMode}
+              options={[
+                { value: 'auto', label: 'AUTO' },
+                { value: 'on', label: 'ON' },
+                { value: 'off', label: 'OFF' },
+              ]}
+              hint="Top level. OFF here means nothing fires in either mode. AUTO fires when the meter says the scene is dark."
+              onChange={(v) => patch((d) => ({ ...d, flashMode: v as ShootConfig['flashMode'] }))}
+            />
+            {!hasFlashHardware ? <FlashNotFittedNote /> : null}
+            <SegField
+              label="BODY VIEWFINDER"
+              value={draft.viewfinder}
+              options={[
+                { value: 'cam1', label: 'CAM1' },
+                { value: 'cam2', label: 'CAM2' },
+                { value: 'cam3', label: 'CAM3' },
+                { value: 'cam4', label: 'CAM4' },
+              ]}
+              hint="Which camera the KINO screen shows while composing. CAM2 is the metering camera."
+              onChange={(v) => patch((d) => ({ ...d, viewfinder: v as CamId }))}
+            />
+            <SegField
+              label="PREVIEW QUALITY"
+              value={draft.previewQuality}
+              options={[
+                { value: 'low', label: 'LOW' },
+                { value: 'normal', label: 'NORMAL' },
+                { value: 'high', label: 'HIGH' },
+              ]}
+              onChange={(v) => patch((d) => ({ ...d, previewQuality: v as ShootConfig['previewQuality'] }))}
+            />
+            <SegField
+              label="REVIEW AFTER SHOT"
+              value={String(draft.displayAfterShotS)}
+              options={[
+                { value: '0', label: 'OFF' },
+                { value: '1', label: '1 S' },
+                { value: '2', label: '2 S' },
+                { value: '3', label: '3 S' },
+                { value: '-1', label: 'HOLD' },
+              ]}
+              onChange={(v) => patch((d) => ({ ...d, displayAfterShotS: Number(v) }))}
+            />
+          </Panel>
+          {supports(state, 'autofocus') ? <FocusPanel /> : null}
+        </div>
+    
+        <div>
+          <Panel
+            title="CAMERA SOUNDS"
+            actions={
+              <Button
+                size="sm"
+                busy={playBusy}
+                disabled={draft.shutterSound === 'silent' || draft.volume === 0}
+                onClick={() => void playShutter()}
+              >
+                PLAY
+              </Button>
+            }
           >
-            PLAY
-          </Button>
-        }
-      >
-        <SelectField
-          label="SHUTTER SOUND"
-          value={draft.shutterSound}
-          options={shutterOptions}
-          onChange={(v) => patch((d) => ({ ...d, shutterSound: v }))}
-        />
-        <SliderField
-          label="VOLUME"
-          value={draft.volume}
-          min={0}
-          max={10}
-          format={(v) => (v === 0 ? 'MUTE' : String(v))}
-          onChange={(volume) => patch((d) => ({ ...d, volume }))}
-        />
-      </Panel>
-
-      {supports(state, 'autofocus') ? <FocusPanel /> : null}
-
-      <CustomSoundsPanel />
+            <SelectField
+              label="SHUTTER SOUND"
+              value={draft.shutterSound}
+              options={shutterOptions}
+              onChange={(v) => patch((d) => ({ ...d, shutterSound: v }))}
+            />
+            <SliderField
+              label="VOLUME"
+              value={draft.volume}
+              min={0}
+              max={10}
+              format={(v) => (v === 0 ? 'MUTE' : String(v))}
+              onChange={(volume) => patch((d) => ({ ...d, volume }))}
+            />
+          </Panel>
+          <CustomSoundsPanel />
+        </div>
+      </div>
 
       <ApplyBar dirty={dirty} changeCount={changes} changedFields={changedFields} onApply={apply} onDiscard={discard} />
     </>
