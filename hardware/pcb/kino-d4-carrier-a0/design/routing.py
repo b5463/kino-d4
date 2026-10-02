@@ -7,6 +7,11 @@ Run with KiCad Python. This does not qualify power electronics or release CAM.
 import json, math, sys, re
 from functools import lru_cache
 from pathlib import Path
+import os,sys
+_WIN=Path('C:/Program Files/KiCad/10.0/share/kicad')
+_MAC=Path.home()/'Applications/KiCad/KiCad.app/Contents/SharedSupport'
+_KS=_WIN if _WIN.exists() else _MAC if _MAC.exists() else Path('/Applications/KiCad/KiCad.app/Contents/SharedSupport')
+STOCK_FP=_KS/'footprints'; STOCK_SYM=_KS/'symbols'   # stock KiCad libraries, Windows or macOS install
 import pcbnew as pcb
 from mechanical import WIDTH, HEIGHT, INSERT_CENTRES, CAMERA_CENTRES, LENS_OFFSET_Y
 
@@ -26,7 +31,7 @@ def restore_through_hole_mask(board):
     for f in board.GetFootprints():
         if not any(p.GetAttribute() in (pcb.PAD_ATTRIB_PTH,pcb.PAD_ATTRIB_NPTH) for p in f.Pads()):continue
         lib=str(f.GetFPID().GetLibNickname());name=str(f.GetFPID().GetLibItemName())
-        folder=ROOT/'KINO_A0.pretty' if lib=='KINO_A0' else Path('C:/Program Files/KiCad/10.0/share/kicad/footprints')/(lib+'.pretty')
+        folder=ROOT/'KINO_A0.pretty' if lib=='KINO_A0' else STOCK_FP/(lib+'.pretty')
         key=(lib,name)
         if key not in originals:originals[key]=pcb.FootprintLoad(str(folder),name)
         original=originals[key]

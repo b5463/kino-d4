@@ -7,6 +7,11 @@ import csv
 import json
 import math
 from pathlib import Path
+import os,sys
+_WIN=Path('C:/Program Files/KiCad/10.0/share/kicad')
+_MAC=Path.home()/'Applications/KiCad/KiCad.app/Contents/SharedSupport'
+_KS=_WIN if _WIN.exists() else _MAC if _MAC.exists() else Path('/Applications/KiCad/KiCad.app/Contents/SharedSupport')
+STOCK_FP=_KS/'footprints'; STOCK_SYM=_KS/'symbols'   # stock KiCad libraries, Windows or macOS install
 from uuid import uuid5, NAMESPACE_URL
 import pcbnew as pcb
 from circuit import PARTS, SHEETS
@@ -14,7 +19,7 @@ from mechanical import WIDTH, HEIGHT, INSERT_CENTRES, FASTENER_KEEP_OUT, pack
 
 ROOT=Path(__file__).resolve().parent.parent
 NAME='KINO_D4_Carrier_A0'
-FP_LIB=Path('C:/Program Files/KiCad/10.0/share/kicad/footprints')
+FP_LIB=STOCK_FP
 DATE='2026-09-30'
 ROOT_ID=str(uuid5(NAMESPACE_URL,NAME))
 

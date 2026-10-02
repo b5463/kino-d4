@@ -4,7 +4,7 @@
 
 Open [KINO_D4_Carrier_A0_2.kicad_pcb](KINO_D4_Carrier_A0_2.kicad_pcb) with its matching project settings. This is the current working board. The supplied [ODD JOBS standard](ODD-JOBS-STANDARD.txt) governs release; the [current review](A02-REVIEW.md) still rejects ordering.
 
-The board has 250 footprints: 78 on the front and 172 on the back. The four XIAO sockets keep 22 mm pitch and a 66 mm outer span, with 15.24 mm row centres and 2.54 mm pin pitch. The outline is 117.01 × 69.41 mm. Four 2.2 mm holes target the P4 inner inserts on 61.9 × 54.8 mm centres, with a drawing-derived absolute offset. These XY checks do not validate the assembled enclosure or connector stack.
+The board has 250 footprints: 77 on the front and 173 on the back. The four XIAO sockets keep 22 mm pitch and a 66 mm outer span, with 15.24 mm row centres and 2.54 mm pin pitch. The outline is 117.01 × 69.41 mm. Four 2.2 mm holes target the P4 inner inserts on 61.9 × 54.8 mm centres, with a drawing-derived absolute offset. These XY checks do not validate the assembled enclosure or connector stack.
 
 The [14-sheet schematic](KINO_D4_Carrier_A0.kicad_sch) is the current electrical capture. Historical A0 and A0.1 boards are preserved but no longer match it. Do not use them for fabrication or combine their reports with A0.2.
 
@@ -20,6 +20,8 @@ The [14-sheet schematic](KINO_D4_Carrier_A0.kicad_sch) is the current electrical
 | [BOM](outputs/BOM-DRAFT.csv) / [part selection](design/part_selection.json) / [pin matrix](outputs/PIN_NET_MATRIX.csv) | Manufacturer parts checked against datasheets; battery pack still open |
 | [Mounting template](outputs/P4-MOUNTING-TEMPLATE-1TO1.pdf) / [mechanical evidence](MECHANICAL.md) | Print at 100 %; stack and enclosure still unqualified |
 | [Printed labels](outputs/A02-PRINTED-LABELS.json) / [assembly references](outputs/A02-ASSEMBLY-LABELS.json) / [unplaced references](outputs/A02-ASSEMBLY-LABELS-UNFINISHED.json) | Label positions; parts without a clear silk position within 8 mm |
+
+**Routing status, 2 October 2026:** 105 connections unrouted (182 at the 30 September review), no clearance or short violations; the only DRC items are lane-end vias awaiting their last hop and two deliberate CHG_TS stubs. The SYNC bus now runs at the buffers (In2, y 41.05) instead of across the top of the camera row, camera EN/FAULT_N use In2 lanes north of the headers, and U600 is turned 180 degrees. Still to route: the I2C bus, the camera header-socket GPIO, P4_BUS_EN, the PAC1954 Kelvin pairs, the J600 test legs and the expander pocket clean-up. Figures in [A02-REVIEW.md](A02-REVIEW.md) predate this pass.
 
 Prototype references are on silkscreen (ODD JOBS rule 177) where a clear position exists within 8 mm of the part. The rest stay on Fab at the part centre and are listed in the unplaced file. Connector, camera and product labels use 1.0 mm text with a 0.15 mm stroke.
 
@@ -59,10 +61,24 @@ Change scripts, in the order they were applied:
 - **Inductor keepouts:** `switch_keepouts.py`.
 - **Residual DRC items:** `a02_drc_fixes.py`.
 - **Labels:** `pack_labels.py`, `assembly_labels.py --prototype-silk`.
+- **Routing pass, 2 October 2026:**
+  1. `route_a02_gaps.py` (charger VBUS corner, U800 supply, boost sense tap), `gnd_stitch.py`.
+  2. `grid_router.py` pass, `apply_routes.py`.
+  3. `route_a02_charger_escapes.py`: BQ25798 left-column escapes; moves C1119, C1103, C1100, R1104, R1105.
+  4. `tidy_a02_dangling.py`, `a02_pad_connections.py`.
+  5. `route_a02_sync_bus.py`: SYNC bus from y 19.4 to y 41.05 at the buffers.
+  6. `rip_camera_row.py`, then `grid_router.py` with `GR_ORDER=argv` (FAULT_N, EN, REQ, SHUNT_OUT, SYS_5V).
+  7. `route_a02_camera_bus.py remove`, `add`, `verify`: In2 control lanes north of the headers.
+  8. `place_a02_u600.py place`, `rip`: U600 turned 180 degrees, C601 beside pin 24; `drop_dangling.py`; router.
+  9. `place_a02_brand.py`: maker mark moved onto clear pour below J901.
+  10. `tidy_routes.py`, run last.
 
-Each routing script removes and redraws only the copper it owns. Helpers:
+Each routing script removes and redraws only the copper it owns. `tidy_routes.py` reshapes unlocked copper, so a hand script re-run after it no longer recognises its own routes: re-run hand scripts from a board saved before the tidy. In this KiCad build a `Remove()` leaves the Python bindings unreliable for the rest of the process, so the newer scripts remove, add and verify in separate runs. Helpers:
 - `free_spot.py`: collision-checked placement of one part.
 - `clean_dangling.py`: removes track stubs.
+- `drop_dangling.py`: removes exactly the items DRC reports as dangling; `--keep` spares named nets.
+- `gnd_islands.py` / `gnd_stitch.py`: list and stitch GND pour fragments with no via.
+- `grid_router.py`: `GR_ORDER=argv` routes the named nets in order, `GR_LIMIT` sets the search budget, `GR_DEBUG=<dir>` writes clear-cell masks, `GR_OUT` names the output.
 - `regenerate_capture.py`: rebuilds schematic and BOM without touching the board.
 - `route_secondary.py`: Freerouting export/import with existing copper fixed.
 

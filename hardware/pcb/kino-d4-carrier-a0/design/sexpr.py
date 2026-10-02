@@ -2,8 +2,13 @@
 import json
 import re
 from pathlib import Path
+import os,sys
+_WIN=Path('C:/Program Files/KiCad/10.0/share/kicad')
+_MAC=Path.home()/'Applications/KiCad/KiCad.app/Contents/SharedSupport'
+_KS=_WIN if _WIN.exists() else _MAC if _MAC.exists() else Path('/Applications/KiCad/KiCad.app/Contents/SharedSupport')
+STOCK_FP=_KS/'footprints'; STOCK_SYM=_KS/'symbols'   # stock KiCad libraries, Windows or macOS install
 
-LIB = Path('C:/Program Files/KiCad/10.0/share/kicad/symbols')
+LIB = STOCK_SYM
 
 def parse(text):
     tokens = re.findall(r'"(?:\\.|[^"\\])*"|[()]|[^\s()]+', text)

@@ -1,6 +1,6 @@
 {
   "board": "KINO_D4_Carrier_A0_2.kicad_pcb",
-  "board_sha256": "ae0a245b27d235713375f9de95a91cedcebe39fbc3b6a586ec7a8cf45c787b2e",
+  "board_sha256": "32620e6ee14bb3fb8ee4c3be78270abb4a31c88d19ba63f48688d722a451bf73",
   "netlist_sha256": "00f0573c5a3b6e6a47923226e8aab9809cb04db51fd8c5a4355ff7a09cb511c1",
   "schematic_to_pcb_match": true,
   "physical_pads_compared": 896,
@@ -12,15 +12,18 @@
     69.41
   ],
   "erc_violations": 0,
-  "drc_violations_by_type": {},
-  "unconnected_items": 182,
+  "drc_violations_by_type": {
+    "via_dangling": 6,
+    "track_dangling": 3
+  },
+  "unconnected_items": 105,
   "manufacturing_ready": false,
   "physical_fit_verified": false,
   "note": "Geometry, connectivity and data-transfer checks only. Power integrity, battery and stack qualification remain open.",
   "camera_pitch_mm": 22.0,
   "outer_camera_span_mm": 66.0,
-  "front_footprints": 78,
-  "rear_footprints": 172,
-  "track_segments": 1281,
-  "vias": 216
+  "front_footprints": 77,
+  "rear_footprints": 173,
+  "track_segments": 1705,
+  "vias": 466
 }

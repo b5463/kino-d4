@@ -13,9 +13,10 @@ the pad centre; an arm already carrying a track is taken. No 135-degree corners.
 track is square to it and at least 0.8 mm from any pad. No via in or beside an own pad.
 The output is a draft for DRC and manual review (ODD JOBS 191), not an approved layout.
 """
-import json, math, re, sys
+import json, math, os, re, sys
 from pathlib import Path
 import numpy as np
+DEBUG = os.environ.get('GR_DEBUG')      # directory for per-attempt clear-cell mask images (diagnosis only)
 from scipy.ndimage import distance_transform_edt
 from grid_kernel import _astar, _DX, _DY   # compiled search (numba)
 from grid_smooth import smooth_run
@@ -197,7 +198,7 @@ VIA_M = 0.45            # via centre to own pad edge: the 0.6 mm via ring stays 
 TRACK_JOIN = 6.0        # cost (cells) of ending on a track instead of a pad or via centre
 OWN_PEN = 2.0           # cost per cell of running over existing same-net copper (no overlapping tracks)
 NEAR_PEN, NEAR_BAND = 1.5, 3   # soft cost per cell within 0.15 mm beyond the clearance (no hugging)
-SEARCH_LIMIT, H_WEIGHT = 30_000_000, 2.0    # state pops per attempt; weighted A*: bend and via costs keep paths tidy
+SEARCH_LIMIT, H_WEIGHT = int(os.environ.get('GR_LIMIT', 30_000_000)), 2.0   # GR_LIMIT raises the budget for one long run    # state pops per attempt; weighted A*: bend and via costs keep paths tidy
 MIN_RUN = 6             # grid steps between two bends (0.30 mm straight, 0.42 mm diagonal): no micro-jogs
 pads_by_net = {}
 for p in dump['pads']:
@@ -293,6 +294,17 @@ def route(a, b, net, w, pad_mm, keep=True):
     global SMOOTH_CTX; SMOOTH_CTX = (ok, i0, j0)    # to_copper smooths the found path on these masks
     S = component(cells_of(a), n, i0, j0, i1, j1)
     G = component(cells_of(b), n, i0, j0, i1, j1) - S
+    if DEBUG:                            # GR_DEBUG=<dir>: clear-cell masks per layer, start green, goal red, via sites blue tint
+        for l in ROUTE:
+            im = np.zeros((j1 - j0, i1 - i0, 3), np.uint8); im[ok[l]] = (255, 255, 255); im[~ok[l]] = (60, 60, 60)
+            im[vok & ok[l]] = (210, 225, 255)
+            for (ll, y, x) in S:
+                if ll == l: im[y - j0, x - i0] = (0, 170, 0)
+            for (ll, y, x) in G:
+                if ll == l: im[y - j0, x - i0] = (220, 0, 0)
+            Image.fromarray(im).resize(((i1 - i0) * 3, (j1 - j0) * 3), Image.NEAREST).save(
+                f'{DEBUG}/{net}-{a.get("ref", a["kind"])}-{b.get("ref", b["kind"])}-w{w}-{"keep" if keep else "min"}-p{pad_mm}-{LAYERS[l]}.png')
+            print('  debug mask', net, LAYERS[l], 'window', round(x0 + i0 * RES, 2), round(y0 + j0 * RES, 2), round(x0 + i1 * RES, 2), round(y0 + j1 * RES, 2), flush=True)
     if not S or not G:
         why['r'] = f'no start/goal cells in window (S={len(S)}, G={len(G)})'; return None
     Sa = anchors(S, net, ROUTE, near, i0, j0, i1, j1); Ga = anchors(G, net, ROUTE, near, i0, j0, i1, j1)
@@ -431,8 +443,11 @@ def main():
         return (rank, math.hypot(c[0]['box'][0] - c[1]['box'][0], c[0]['box'][1] - c[1]['box'][1]))
     conns.sort(key=prio)
     only = sys.argv[1:] and set(sys.argv[1:])
+    if only and os.environ.get('GR_ORDER') == 'argv':   # route the named nets in the order given
+        rank = {n: i for i, n in enumerate(sys.argv[1:])}
+        conns.sort(key=lambda c: (rank.get(c[0]['net'], len(rank)), prio(c)))
     routes, failed = [], []
-    def save(r, f): (CACHE / 'grid-routes.json').write_text(json.dumps({'routes': r, 'failed': f}, indent=1))
+    def save(r, f): (CACHE / os.environ.get('GR_OUT', 'grid-routes.json')).write_text(json.dumps({'routes': r, 'failed': f}, indent=1))
     for a, b in conns:
         net = a['net']
         if only and net not in only: continue
@@ -447,7 +462,7 @@ def main():
             if done: break
         if done: routes.append(done); save(routes, failed); print('routed', net, done['width'], len(done['segments']), 'seg', len(done['vias']), 'via', '' if done['keepaway'] else 'MIN-CLEARANCE (review)', flush=True)
         else: failed.append(net); print('FAILED', net, a.get('ref', a['kind']), b.get('ref', b['kind']), why.get('r'), flush=True)
-    (CACHE / 'grid-routes.json').write_text(json.dumps({'routes': routes, 'failed': failed}, indent=1))
+    (CACHE / os.environ.get('GR_OUT', 'grid-routes.json')).write_text(json.dumps({'routes': routes, 'failed': failed}, indent=1))
     print(len(routes), 'routed,', len(failed), 'failed')
 
 
