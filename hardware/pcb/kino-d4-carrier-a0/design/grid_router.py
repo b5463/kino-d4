@@ -8,8 +8,8 @@ per net; a per-connection Euclidean distance field gives, for a track of width w
 centre keeps w/2 + 0.15 mm + 0.036 mm (raster allowance; obstacles mark every cell they touch) from foreign copper. Vias need the same on
 all four layers. A* runs over (cell, layer, direction) with 45-degree moves, a bend penalty, a via
 cost and a mild In2 penalty. Each finished route is rasterised before the next connection.
-Pad entry (ODD JOBS 87/88): inside a 0.35 mm margin a track runs only on the pad's centre lines and ends at
-the pad centre; an arm already carrying a track is taken. No 135-degree corners. A join onto an existing
+Pad entry (ODD JOBS 87/88): inside a 0.35 mm margin a track runs only on the pad's centre lines (and, for
+plated through-holes, its 45-degree diagonals) and ends at the pad centre; an arm already carrying a track is taken. No 135-degree corners. A join onto an existing
 track is square to it and at least 0.8 mm from any pad. No via in or beside an own pad.
 The output is a draft for DRC and manual review (ODD JOBS 191), not an approved layout.
 """
@@ -233,6 +233,9 @@ def pad_zones(net, l, i0, j0, i1, j1, arms_block):
             inside = boxm(0); R = boxm(ENTRY_M); near |= boxm(JOIN_M); vnear |= boxm(VIA_M)
         row = np.broadcast_to(rows == iy(p['y']), X.shape); col = np.broadcast_to(cols == ix(p['x']), X.shape)
         allowed = (row | col) & R
+        if p['kind'] == 'PTH':      # through-hole pins may also leave at 45 degrees: no SMD fillet, and a header's
+            di = cols - ix(p['x']); dj = rows - iy(p['y'])      # first row escapes between the second row's pins
+            allowed |= np.broadcast_to((di == dj) | (di == -dj), X.shape) & R
         if arms_block:              # an arm that already carries a track is taken: no second track, no Y
             for arm in (row & (X > p['x']), row & (X < p['x']), col & (Y > p['y']), col & (Y < p['y'])):
                 if (arm & R & ~inside & own).any(): allowed &= ~arm
