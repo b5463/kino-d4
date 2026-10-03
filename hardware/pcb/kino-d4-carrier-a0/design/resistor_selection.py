@@ -6,7 +6,7 @@ CODES={'10k':'FR-0710KL','1M':'FR-071ML','4.7k':'FR-074K7L',
        '100k':'FR-07100KL','33':'FR-0733RL','25.5k':'FR-0725K5L',
        '0':'JR-070RL','1k':'FR-071KL','47k':'FR-0747KL','470':'FR-07470RL',
        '3.00k':'FR-073KL','100':'FR-07100RL','5.23k':'FR-075K23L',
-       '30.1k':'FR-0730K1L','2.2k':'FR-072K2L','20.5k':'FR-0720K5L'}
+       '30.1k':'FR-0730K1L','2.2k':'FR-072K2L','20.5k':'FR-0720K5L','22k':'FR-0722KL'}
 
 def select(value,size):
     if size!='0603':return None

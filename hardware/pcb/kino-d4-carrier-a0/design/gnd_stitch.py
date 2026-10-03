@@ -53,10 +53,13 @@ def clear(x, y):
         seg = pcb.SEG(t.GetStart(), t.GetEnd())
         if seg.Distance(p) < t.GetWidth() / 2 + pcb.FromMM(0.3 + 0.2): return False
     for q in pads:                          # SMD lands and unconnected pads on either face
-        if q.GetNetCode() == code or q.GetAttribute() == pcb.PAD_ATTRIB_NPTH: continue
+        if q.GetAttribute() == pcb.PAD_ATTRIB_NPTH: continue
+        same = q.GetNetCode() == code
+        if same and q.GetAttribute() != pcb.PAD_ATTRIB_SMD: continue
         if (q.GetPosition() - p).EuclideanNorm() > pcb.FromMM(3): continue
+        gap = 0.1 if same else 0.2           # GND lands too: no via in or touching a pad (ODD JOBS 82)
         for layer in (pcb.F_Cu, pcb.B_Cu):
-            if q.IsOnLayer(layer) and q.GetEffectiveShape(layer).Collide(p, pcb.FromMM(0.3 + 0.2)): return False
+            if q.IsOnLayer(layer) and q.GetEffectiveShape(layer).Collide(p, pcb.FromMM(0.3 + gap)): return False
     return True
 
 added, skipped = [], []

@@ -123,6 +123,6 @@ status.update({'erc_passed':erc_count==0,'drc_passed':not drc['violations'] and 
                'mounting_pattern_mm':[61.9,54.8],'mounting_hole_diameter_mm':2.2})
 status.update({'unconnected_items':len(drc['unconnected_items']),'drc_violation_count':len(drc['violations']),
                'board_sha256':report['board_sha256']})
-if routed:status.update({'status':'TWO_FACE_ROUTING_REVIEW','board':boardname,'tracks':report['track_segments'],'vias':report['vias'],'front_footprints':report['front_footprints'],'rear_footprints':report['rear_footprints']})
+if routed:status.update({'status':__import__('release').STATUS if a02 else 'TWO_FACE_ROUTING_REVIEW','board':boardname,'tracks':report['track_segments'],'vias':report['vias'],'front_footprints':report['front_footprints'],'rear_footprints':report['rear_footprints']})
 (OUT/('A02-STATUS.json' if a02 else 'ROUTING_STATUS.json' if routed else 'BUILD_STATUS.json')).write_text(json.dumps(status,indent=2)+'\n')
 print(json.dumps(report,indent=2))

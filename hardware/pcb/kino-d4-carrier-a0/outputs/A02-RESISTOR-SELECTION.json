@@ -5,16 +5,16 @@
   "selected": [
     {
       "ref": "R100",
-      "value": "10k",
-      "mpn": "RC0603FR-0710KL",
-      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+      "value": "2.2k",
+      "mpn": "RC0603FR-072K2L",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-072K2L",
       "dnp": false
     },
     {
       "ref": "R101",
-      "value": "1M",
-      "mpn": "RC0603FR-071ML",
-      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071ML",
+      "value": "22k",
+      "mpn": "RC0603FR-0722KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0722KL",
       "dnp": false
     },
     {
@@ -29,6 +29,13 @@
       "value": "4.7k",
       "mpn": "RC0603FR-074K7L",
       "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-074K7L",
+      "dnp": false
+    },
+    {
+      "ref": "R105",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
       "dnp": false
     },
     {
@@ -249,13 +256,6 @@
       "dnp": true
     },
     {
-      "ref": "R700",
-      "value": "0",
-      "mpn": "RC0603JR-070RL",
-      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603JR-070RL",
-      "dnp": false
-    },
-    {
       "ref": "R701",
       "value": "10k",
       "mpn": "RC0603FR-0710KL",
@@ -355,9 +355,9 @@
     },
     {
       "ref": "R1004",
-      "value": "1k",
-      "mpn": "RC0603FR-071KL",
-      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071KL",
+      "value": "10k",
+      "mpn": "RC0603FR-0710KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
       "dnp": false
     },
     {
@@ -424,13 +424,6 @@
       "dnp": false
     },
     {
-      "ref": "R1109",
-      "value": "10k",
-      "mpn": "RC0603FR-0710KL",
-      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
-      "dnp": false
-    },
-    {
       "ref": "R1200",
       "value": "110k 0.1%",
       "mpn": "RT0603BRD07110KL",
@@ -453,6 +446,13 @@
     },
     {
       "ref": "R1203",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R1204",
       "value": "100k",
       "mpn": "RC0603FR-07100KL",
       "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
@@ -485,16 +485,9 @@
       "mpn": "RC0603FR-072K2L",
       "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-072K2L",
       "dnp": false
-    },
-    {
-      "ref": "R1304",
-      "value": "2.2k",
-      "mpn": "RC0603FR-072K2L",
-      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-072K2L",
-      "dnp": false
     }
   ],
-  "count": 70,
+  "count": 69,
   "limitations": [
     "Availability and assembly-house sourcing not checked.",
     "Circuit voltage/power derating and temperature remain to be qualified.",

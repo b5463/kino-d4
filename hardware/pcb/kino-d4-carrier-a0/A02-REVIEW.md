@@ -1,4 +1,6 @@
-# A0.2 engineering review - DO NOT ORDER
+# A0.2 engineering review (30 September 2026) - superseded
+
+> Superseded by the [A0.2 release review](A02-RELEASE.md) of 3 October 2026, which closes or re-rates every item below. The figures here (unrouted count, footprint count, Kelvin status) describe the 30 September board and are kept as history.
 
 30 September 2026, design package 0.1.8, reviewed against the [ODD JOBS standard](ODD-JOBS-STANDARD.txt). Pre-EVT. No manufacturing release or first-build success is claimed. [A0.1 review](RELEASE-REVIEW.md) is historical.
 
@@ -20,7 +22,7 @@ The verification records the board and netlist SHA-256. A report whose digest do
 
 Each change cites the manufacturer data it follows. These are design corrections, not measured results.
 
-**Charging with the camera off.** BQ25798 CE (pin 13) must be driven high or low (TI pin table). It was pulled high and only a transistor driven from the switched 3.3 V expander could enable charging, so an off camera never charged. CE is now pulled low through R1102. Firmware inhibits charging with EN_CHG. R1110 (10k to REGN, DNP) is a bring-up hardware inhibit. Expander P1.3 now reads charger STAT.
+**Charging with the camera off.** BQ25798 CE (pin 13) must be driven high or low (TI pin table). It was pulled high and only a transistor driven from the switched 3.3 V expander could enable charging, so an off camera never charged. CE is now pulled low through R1102. Firmware inhibits charging with EN_CHG. R1110 (10k to REGN, DNP) is a bring-up hardware inhibit. (Later: STAT is left open; firmware reads the charge state over I2C and expander P1.3 is unused.)
 
 **Battery temperature.** R1106 5.23k / R1107 30.1k with a 103AT-2 pack thermistor. TI specifies 5.24k / 30.31k. The E96 values give T1 0.97 °C and T5 59.9 °C, within 0.7 °C across 1 % corners. An open thermistor reads 85 % of REGN (cold) and a short reads 0 % (hot); both suspend charging.
 

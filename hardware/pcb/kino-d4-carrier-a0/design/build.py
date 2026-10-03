@@ -145,9 +145,9 @@ def schematics():
         (ROOT/(key+'.kicad_sch')).write_text('\n'.join(body),encoding='utf-8')
         symbols.extend(libsym(p,False) for p in parts)
     root=[sch_header(ROOT_ID,'KINO D4 - four-XIAO carrier A0')[:-1],'(lib_symbols '+supply_symbol()+')',
-          text('KINO D4 / CARRIER A0',20,15,3),
-          text('Component-level draft + initial placement. No routed copper. NOT FOR FABRICATION.',20,25,1.5),
-          text('Battery / NTC / USB coexistence / regulator compensation / final footprints and mechanical fit remain release gates.',20,32,1.15)]
+          text('KINO D4 / '+__import__('release').BOARD_REVISION,20,15,3),
+          text(__import__('release').VERDICT+' - see A02-RELEASE.md.',20,25,1.5),
+          text('Manual checks before ordering, bring-up tests and the release matrix: A02-RELEASE.md.',20,32,1.15)]
     for i,(key,info) in enumerate(SHEETS.items()):
         x,y=25+(i%3)*180,55+(i//3)*57
         root.append(f'''(sheet (at {x} {y}) (size 158 34) (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
@@ -179,7 +179,7 @@ def rect(fp,x1,y1,x2,y2,layer):
 def pad(fp,num,x,y,w,h,drill=None):
     p=pcb.PAD(fp);p.SetNumber(str(num));p.SetPosition(pt(x,y));p.SetSize(pt(w,h));p.SetShape(pcb.PAD_SHAPE_RECT)
     if drill:
-        p.SetAttribute(pcb.PAD_ATTRIB_PTH);p.SetDrillSize(pt(drill,drill));layers=pcb.LSET.AllCuMask();layers.AddLayer(pcb.F_Mask);layers.AddLayer(pcb.B_Mask);p.SetLayerSet(layers);p.SetShape(pcb.PAD_SHAPE_OVAL)
+        p.SetAttribute(pcb.PAD_ATTRIB_PTH);p.SetDrillSize(pt(drill,drill));p.SetLayerSet(pcb.PAD.PTHMask());p.SetShape(pcb.PAD_SHAPE_OVAL)   # PTHMask: *.Cu *.Mask (AddLayer on AllCuMask() lost the mask layers)
     else:
         p.SetAttribute(pcb.PAD_ATTRIB_SMD);layers=pcb.LSET()
         for layer in (pcb.F_Cu,pcb.F_Paste,pcb.F_Mask):layers.AddLayer(layer)
@@ -204,7 +204,10 @@ def custom_footprints():
     pad(fp,6,1.425,-.375,.575,.25)
     pad(fp,7,1.425,-.875,.575,.25);pad(fp,7,1.25,-1.10,.225,.70)
     for num,x in [(8,.75),(9,.25),(10,-.25),(11,-.75)]:pad(fp,num,x,-1.175,.25,.55)
-    rect(fp,-1.25,-1.5,1.25,1.5,pcb.F_Fab);rect(fp,-1.95,-1.75,1.95,1.75,pcb.F_CrtYd)
+    body=[(-1.0,-1.25),(1.5,-1.25),(1.5,1.25),(-1.5,1.25),(-1.5,-.75),(-1.0,-1.25)]   # 3.0 x 2.5 body, pin-1 chamfer
+    for a,c in zip(body,body[1:]):line(fp,a,c,pcb.F_Fab,.1)
+    dot=pcb.PCB_SHAPE(fp);dot.SetShape(pcb.SHAPE_T_CIRCLE);dot.SetStart(pt(-1.8,-1.5));dot.SetEnd(pt(-1.7,-1.5));dot.SetWidth(round(.1e6));dot.SetFilled(True);dot.SetLayer(pcb.F_SilkS);fp.Add(dot)
+    rect(fp,-1.95,-1.75,1.95,1.75,pcb.F_CrtYd)
     fp.SetFPID(pcb.LIB_ID('KINO_A0',fp.GetValue()));pcb.PCB_IO_MGR.FindPlugin(pcb.PCB_IO_MGR.KICAD_SEXP).FootprintSave(str(dest),fp)
     fp=pcb.FOOTPRINT(None);fp.SetReference('REF**');fp.SetValue('Inductor_6.5x6.5_DRAFT');fp.SetAttributes(pcb.FP_SMD)
     pad(fp,1,-2.5,0,2.0,6.0);pad(fp,2,2.5,0,2.0,6.0)
@@ -285,17 +288,25 @@ def pcb_design():
     pcb.SaveBoard(str(ROOT/(NAME+'.kicad_pcb')),board)
     return {'width_mm':width,'height_mm':height,'footprints':len(loaded),'nets':len(nets),'tracks':0,'status':'UNROUTED_ENGINEERING_DRAFT'}
 
+def _clean(name):
+    # True when that checker report in outputs/ lists no violations (and, for DRC, no unconnected items)
+    f=ROOT/'outputs'/name
+    if not f.exists():return False
+    d=json.loads(f.read_text())
+    if 'sheets' in d:return sum(len(x['violations']) for x in d['sheets'])==0
+    return not d['violations'] and not d.get('unconnected_items') and not d.get('schematic_parity')
 def outputs(summary,status_filename='BUILD_STATUS.json'):
     out=ROOT/'outputs';out.mkdir(exist_ok=True)
     (ROOT/'design/parts.json').write_text(json.dumps(PARTS,indent=2),encoding='utf-8')
     with (out/'BOM-DRAFT.csv').open('w',newline='',encoding='utf-8') as f:
         w=csv.writer(f);w.writerow(['Reference','Value','MPN_candidate','Footprint','DNP','Status','Design_note','Source'])
-        for p in PARTS:w.writerow([p['ref'],p['value'],p['mpn'],p['footprint'],p['dnp'],'ENGINEERING_DRAFT',p['note'],p['source']])
+        for p in PARTS:w.writerow([p['ref'],p['value'],p['mpn'],p['footprint'],p['dnp'],__import__('release').STATUS,p['note'],p['source']])
     with (out/'PIN_NET_MATRIX.csv').open('w',newline='',encoding='utf-8') as f:
         w=csv.writer(f);w.writerow(['Reference','Pin','Pin_name','Net','Sheet'])
         for p in PARTS:
             for n,v in p['nets'].items():w.writerow([p['ref'],n,p['pins'][n]['name'],v or 'NC',p['sheet']])
-    summary.update({'date':DATE,'components':len(PARTS),'sheets':len(SHEETS)+1,'fabrication_released':False,'erc_passed':False,'drc_passed':False})
+    summary.update({'date':DATE,'components':len(PARTS),'sheets':len(SHEETS)+1,'fabrication_released':__import__('release').ORDERABLE,
+                    'erc_passed':_clean('ERC-DRAFT.json'),'drc_passed':_clean('DRC-A02.json')})
     (out/status_filename).write_text(json.dumps(summary,indent=2)+'\n')
     pro={'meta':{'filename':NAME+'.kicad_pro','version':1},'board':{'design_settings':{'rules':{'min_clearance':0.2,'min_track_width':0.2,'min_via_diameter':0.6,'min_through_hole_diameter':0.3}}},'net_settings':{'classes':[{'name':'Default','clearance':0.2,'track_width':0.25,'via_diameter':0.6,'via_drill':0.3,'microvia_diameter':0.3,'microvia_drill':0.1,'diff_pair_width':0.2,'diff_pair_gap':0.25,'diff_pair_via_gap':0.25,'priority':2147483647}],'meta':{'version':4}},'schematic':{'drawing':{'default_line_thickness':6},'legacy_lib_dir':'','legacy_lib_list':[]}}
     if not (ROOT/(NAME+'.kicad_pro')).exists():(ROOT/(NAME+'.kicad_pro')).write_text(json.dumps(pro,indent=2))

@@ -1,8 +1,8 @@
 """Move the ODD JOBS maker mark and its product lines into the clear area below the COVER connector.
 
 apply_brand.py put the mark directly under J901, over the J901 tracks and three vias, so the
-silkscreen was clipped at the via openings. 7.2 mm lower, the symbol and the lines KINO D4 /
-A0.2 DRAFT / CARRIER REV 1 sit on unbroken pour between J901 and R1004 (ODD JOBS 96/97: mark
+silkscreen was clipped at the via openings. 7.2 mm lower, the symbol and the product lines (KINO D4 / CARRIER A0.2 / 2026-10 since mark_a02_release.py; were KINO D4 /
+A0.2 DRAFT / CARRIER REV 1) sit on unbroken pour between J901 and R1004 (ODD JOBS 96/97: mark
 above the product identity, visible, not over copper features). The symbol keeps 0.55 mm from the
 REMOTE_FILTER via above it, the caption 0.67 mm from the R1004 reference below. No copper changes. Re-running is harmless: the mark is moved
 to the recorded target, not by a fixed offset.
@@ -21,7 +21,7 @@ bb = symbol.GetBoundingBox()
 dx, dy = TOP_LEFT[0] - mm(bb.GetLeft()), TOP_LEFT[1] - mm(bb.GetTop())
 delta = pcb.VECTOR2I(pcb.FromMM(dx), pcb.FromMM(dy))
 group.Move(delta)
-rev = [d for d in b.GetDrawings() if isinstance(d, pcb.PCB_TEXT) and d.GetText() == 'CARRIER REV 1']
+rev = [d for d in b.GetDrawings() if isinstance(d, pcb.PCB_TEXT) and d.GetText() in ('CARRIER REV 1', '2026-10')]
 for t in rev: t.Move(delta)
 pcb.SaveBoard(str(TARGET), b)
 

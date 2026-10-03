@@ -1,10 +1,10 @@
 # KINO D4 carrier A0.2
 
-**Engineering rework. Fully routed (DRC clean, no open connections); not yet reviewed for release. DO NOT ORDER.**
+**Release candidate, 3 October 2026: READY FOR FABRICATION WITH SPECIFIC MANUAL CHECKS.** Fully routed; DRC, ERC and schematic parity clean. Do the checks listed in the [release review](A02-RELEASE.md) before ordering.
 
-Open [KINO_D4_Carrier_A0_2.kicad_pcb](KINO_D4_Carrier_A0_2.kicad_pcb) with its matching project settings. This is the current working board. The supplied [ODD JOBS standard](ODD-JOBS-STANDARD.txt) governs release; the [current review](A02-REVIEW.md) still rejects ordering.
+Open [KINO_D4_Carrier_A0_2.kicad_pcb](KINO_D4_Carrier_A0_2.kicad_pcb) with its matching project settings. This is the current working board. The supplied [ODD JOBS standard](ODD-JOBS-STANDARD.txt) governs release. The [release review](A02-RELEASE.md) holds the release matrix, the manual checks and the bring-up tests; the 30 September [engineering review](A02-REVIEW.md) is superseded history.
 
-The board has 248 footprints: 77 on the front and 171 on the back. The front carries the four XIAO sockets, the J600 pogo field, the TP100 and TP600-TP602 probe lands, J1100, J1000 and low SMD parts only, so the socketed XIAOs are the tallest parts on it; every cable connector and pin header (J100, J101, J102, J201-J501, J601, J800, J900-J904, J1300) is on the back, the P4 side. The four XIAO sockets keep 22 mm pitch and a 66 mm outer span, with 15.24 mm row centres and 2.54 mm pin pitch. The outline is 117.01 × 69.41 mm. Four 2.2 mm holes target the P4 inner inserts on 61.9 × 54.8 mm centres, with a drawing-derived absolute offset. These XY checks do not validate the assembled enclosure or connector stack.
+The board has 256 footprints: 80 on the front and 176 on the back, six of them board-only fiducials (three per face). The front carries the four XIAO sockets, the J600 pogo field, the TP100 and TP600-TP602 probe lands, J1100, J1000 and low SMD parts only, so the socketed XIAOs are the tallest parts on it; every cable connector and pin header (J100, J101, J102, J201-J501, J601, J800, J900-J904, J1300) is on the back, the P4 side. The four XIAO sockets keep 22 mm pitch and a 66 mm outer span, with 15.24 mm row centres and 2.54 mm pin pitch. The outline is 117.01 × 69.41 mm. Four 2.2 mm holes target the P4 inner inserts on 61.9 × 54.8 mm centres, with a drawing-derived absolute offset. These XY checks do not validate the assembled enclosure or connector stack.
 
 The [14-sheet schematic](KINO_D4_Carrier_A0.kicad_sch) is the current electrical capture. Historical A0 and A0.1 boards are preserved but no longer match it. Do not use them for fabrication or combine their reports with A0.2.
 
@@ -12,6 +12,8 @@ The [14-sheet schematic](KINO_D4_Carrier_A0.kicad_sch) is the current electrical
 
 | File | Purpose |
 |---|---|
+| [Release review](A02-RELEASE.md) | Release matrix (PASS / FAIL / MANUAL), resolved findings, manual checks before ordering, bring-up tests |
+| [Fab package](outputs/fab-a02/) | `fab_a02.py`: Gerbers with job file, Excellon drill, `KINO_D4_Carrier_A0_2-gerbers.zip`, placement file and grouped fab BOM |
 | [Assembly front](outputs/A02-ASSEMBLY-FRONT.svg) / [back](outputs/A02-ASSEMBLY-BACK.svg) | References, courtyards and outline; rear view mirrored |
 | [Front power detail](outputs/A02-POWER-FRONT.png) / [back power detail](outputs/A02-POWER-BACK.png) | Pack entry, charger and boost region |
 | [A0.2 verification](outputs/VERIFICATION-A02.json) / [routing audit](outputs/A02-ROUTING-AUDIT.json) | Counts, geometry and capture-transfer evidence, with board digest |
@@ -22,33 +24,37 @@ The [14-sheet schematic](KINO_D4_Carrier_A0.kicad_sch) is the current electrical
 | [Printed labels](outputs/A02-PRINTED-LABELS.json) / [assembly references](outputs/A02-ASSEMBLY-LABELS.json) / [unplaced references](outputs/A02-ASSEMBLY-LABELS-UNFINISHED.json) | Label positions; parts without a clear, unambiguous silk position beside the part |
 | [Silk text check](outputs/A02-SILK-TEXT.json) | `check_silk_text.py`: text over text, pads, part bodies or silk graphics, crowded or ambiguous references, reading direction |
 
-**Routing status, 3 October 2026:** every connection is routed. Native DRC (zones refilled, schematic parity on) reports no violations of any kind and no unconnected items; ERC reports none; `verify.py --a02` passes against a freshly exported netlist. The count fell from 182 open at the 30 September review, through 75 after the camera GPIO template and 41 after the expander and I2C work, to 0. 553 vias; 2314 track segments (F 773, In2 395, B 1146). `chamfer_a02_corners.py` took the right-angle bends the audit counts from 59 to 5; the five left are 0.1 mm wobbles inside 0.5-0.8 mm wide copper (SYS_5V and CHG_VBUS beside their vias, three Kelvin tap blobs on CAM1/CAM2_SHUNT_OUT) with no exposed corner. For review: CAM2_FAULT_N passes between the pads of R603 and of C701 (0603, 0.27 and 0.18 mm clear), CAM2_3V3 takes a long detour south of U300 (0.25 mm, router), and CAM_GLOBAL_EN and BOOST_ENABLE are long In2 runs (slow enables). The SYNC bus now runs at the buffers (In2, y 41.05) instead of across the top of the camera row, camera EN/FAULT_N use In2 lanes north of the headers, and U600 is turned 180 degrees. SYS_5V (3 October 2026) is routed as a tree: a 0.7 mm F trunk along y 19.4 over the four shunts (F, because the P4 bus already walls that band on F; In2 stays free for the header-to-socket GPIO to cross it), a 2.0 mm In2 riser between cameras 2 and 3 fed from Q1201 and, through a 1.4 mm In2 link, from D1200, three vias at every layer change, and branches to U1201 and J600. U700 (PAC1954) now sits on the front between the camera 2 and 3 headers, with Kelvin pairs from all four shunts. Figures in [A02-REVIEW.md](A02-REVIEW.md) predate this pass.
+**Routing status, 3 October 2026 (release pass):** every connection is routed. Native DRC (zones refilled, schematic parity on) reports no violations and no unconnected items; ERC reports none; `verify.py --a02` passes against a freshly exported netlist. 573 vias; 2385 track segments (F 786, In2 414, B 1185). The SYS_RAW battery-to-boost path is now a 3.4-3.9 mm back pour and a 4.6-5.2 mm In2 pour with 19 vias between them and six into L1200 (`power_a02_sys_raw.py`). Five 0.1 mm right-angle wobbles remain inside 0.5-0.8 mm copper (no exposed corner). CAM2_3V3 still takes the long route south of U300 (0.25 mm, light load); CAM_GLOBAL_EN and BOOST_ENABLE are long In2 runs, BOOST_ENABLE now held by R1204 (100k) at the boost end.
 
-Prototype references are on silkscreen (ODD JOBS rule 177) beside their own part: 0.15 mm clear of part outlines, 0.5 mm from other silk text, horizontal text left to right and vertical text bottom to top from its own side (rule 91), 1.0 mm text or 0.8 mm in dense areas. A spot more than 0.5 mm nearer another part is not used. On 3 October 2026, 220 of 248 references are on silk; no text overlaps another text, a pad, a part body or a silk graphic, and 12 labels sit marginally (at most 0.46 mm) nearer a neighbour. The other 28, in the camera and charger clusters, stay on Fab at the part centre and are listed in the unplaced file; they need part spacing, not smaller text. Connector, camera and product labels use 1.0 mm text with a 0.15 mm stroke.
+Prototype references are on silkscreen (ODD JOBS rule 177) beside their own part: 0.15 mm clear of part outlines, 0.5 mm from other silk text, horizontal text left to right and vertical text bottom to top from its own side (rule 91), 1.0 mm text or 0.8 mm in dense areas, 0.15 mm stroke. A spot more than 0.5 mm nearer another part is not used. After the release pass, 202 of 250 references are on silk; no text overlaps another text, a pad, a part body or a silk graphic (`check_silk_text.py`: 0 findings). The four camera circuits share one offset per role, or the whole group of four goes to Fab. 48 references in the camera, charger and boost clusters (and the DNP R1110) stay on Fab at the part centre and are listed in the unplaced file; they need part spacing, not smaller text. The fiducials keep their references on Fab. Connector, camera and product labels use 1.0 mm text with a 0.15 mm stroke.
 
 ## Circuitry
 
 - **Cameras:** four socketed XIAO ESP32-S3 Sense boards with UART/sync isolation buffers, individual current-limited supplies, current monitoring and 0 ohm USB-service power links (JP200-JP500, Vishay CRCW12060000Z0EAHP, desolder before node USB). D8/D9/D10 are shared with the Sense SD interface, and D2 is strap-sensitive.
+- **I2C buffer:** U100 (TCA9517) has the carrier bus on its A side, which drives a hard low; the B side's 0.45-0.6 V buffered low faces the P4 bus (P4 VIL 0.825 V). The STUSB4500 (VIL 0.35 V), BQ25798 (0.4 V) and DRV2605L (0.5 V) could not be guaranteed to read the buffered low. Keep the whole bus at 100 kHz (4.7k pull-ups, about 95-150 pF). R100/R101 (2.2k/22k) hold the buffer enable low when JP1 pin 1 is open.
 - **P4 link:** the 26-pin P4 connection is a keyed IDC **cable** interface, kept until Guition supplies a JP1 datum for a board-to-board mate. The UART/sync/shutter header map is unchanged; GPIO35/JP1-15 stays unconnected.
 - **Power:** USB-C PD sink (STUSB4500), 1S charger (BQ25798), fuel gauge (BQ27441-G1), 5 V boost (TPS61288), 3.3 V buck and a hardware power controller.
+  - The USB input survives an unprogrammed STUSB4500, which takes 20 V from a PD charger: D1001 is an SMF22A (22 V standoff), the PD switch FETs are AO4409 (-30 V), R1004 is 10k. Program the NVM for 9 V / 2 A with the 5 V fallback for normal use.
+  - The LTC2955-1 EN output is a 2 uA current source; R1204 (100k to SYS_RAW) is the pull-up ADI asks for, so the TPS61288 enable and the PMV16UN load-switch driver (Q1202) see a full logic high.
   - The charger charges whenever VBUS is valid (CE low), inside a 1-60 °C window set by the pack's 103AT-2 thermistor.
   - The gauge shunt is high side, with SRP on the pack side and SRN on the system side.
-  - Input current is clamped to 0.15-0.41 A until firmware reads the PD contract.
+  - Input current is clamped to 0.15-0.41 A until firmware reads the PD contract, so the board needs its battery to run the P4 and cameras from USB.
+  - Off, the board draws 28-46 uA through R1204 plus the controllers' quiescent current.
   - The charger's STAT pin is left open and there is no charge LED (STAT has no layout path out of the charger's power copper). Firmware reads the charge state from the BQ25798 status registers over I2C. The green power LED D1300 stays.
 - **Pack entry:** J1100 (JST VH, `- NTC +`) sits on the bottom edge beside the charger. From the pack, F1100 (7 A) and RS700 (5 mΩ) form a 12 mm chain on the front.
-- **Sensors and controls:** IMU, backed-up RTC, board-temperature sensor, remote shutter, cover sensor, function button, haptic driver and expansion/service connectors.
+- **Sensors and controls:** IMU, backed-up RTC, board-temperature sensor, remote shutter, cover sensor, function button (ESD clamp D903), haptic driver and expansion/service connectors. R105 holds SYNC_MASTER low through the P4's reset.
 - **Power links:** JP200-JP500 and JP1200 are 0 ohm links on the front (CRCW1206-HP, 10 A), replacing the 2.54 mm headers and shunts: flat, reachable with the carrier on the P4, rated for the current. Desolder to open.
 - **Test field:** J600 is an asymmetric 12-pad **sense/test** field, not a power-injection connector. Do not drive the enable nodes against the expander. Pads 9-11 are unconnected: CAM2_EN, CAM3_EN and CAM4_EN are probed at front lands TP600-TP602 beside their lines at the top of the board (CAM1_EN stays on pad 8). TP100 (P4 3V3 test) is a front land beside J100 pin 1.
 - **Expander map:** U600 (TCA9539) port 1, P1.0-P1.7 (pins 13-20): IMU_INT, RTC_INT_N, SOFT_KILL, unused, POWER_INT_N, FN_N, HAPTIC_EN, COVER_N. P1.3 is not connected; configure it as an input. Firmware must follow this map.
 - **Flash provision:** J601/R605 are DNP provisions for an **external flash driver**. There is no FLASH_EN GPIO or flash-energy supply.
 
-I2C addresses: PAC1954 0x10, STUSB4500 0x28, TMP117 0x48, RV-3028 0x52, BQ27441 0x55, DRV2605L 0x5A, LSM6DSOX 0x6A, BQ25798 0x6B, TCA9539 0x74. P4 touch at 0x5D stays on the host side of the buffer. Existing firmware does not start the carrier's power controls, charger policy or gauge calibration.
+I2C addresses: PAC1954 0x10, STUSB4500 0x28, TMP117 0x48, RV-3028 0x52, BQ27441 0x55, DRV2605L 0x5A, LSM6DSOX 0x6A, BQ25798 0x6B, TCA9539 0x74. P4 touch at 0x5D stays on the host side of the buffer. [`firmware/p4/main/kino_carrier_a02.h`](../../../firmware/p4/main/kino_carrier_a02.h) holds these addresses, the expander map, the PAC1954 channel map and the charger status field as constants. Existing firmware does not start the carrier's power controls, charger policy or gauge calibration.
 
 ## Manufacturing and assembly status
 
-Provisional process: four layers, 1.6 mm, **1 oz outer and 1 oz inner copper** (the In2 boost feed needs it), black mask, white silk, ENIG, JLCPCB target. No Gerber, drill or placement files are released. Battery selection, retention and the assembled body are not built or verified. The XAL7070 boost inductor (7.0 mm) and the JST VH connector set the tallest parts; the stack-height map is open.
+Process: four layers, 1.6 mm, **1 oz copper on all four layers** (set in the board stackup and the Gerber job file; inner 1 oz is not JLCPCB's default), black mask, white silk, ENIG, JLCPCB-class. `design/fab_a02.py` writes the [fab package](outputs/fab-a02/): Gerbers (silk clipped at mask openings) with the job file, Excellon drill (plated and non-plated apart) with maps, one zip for upload, the placement file (both sides, DNP and board-only items left out) and a fab BOM grouped by part number. Fab and assembly notes, the via-in-pad list and the order options are in the [release review](A02-RELEASE.md). Both faces are assembled: the bottom (P4 side) carries most SMD parts including the heavy XAL7070 boost inductor, the XIAO sockets and J1100 are through-hole on the front, the pin headers and J100 through-hole on the back.
 
-The XIAOs use external antennas. Their antenna and cable clearance must be defined in the enclosure. Keep the P4 battery connector unused. USB/P4/carrier source coexistence still needs measurement; the removable power links are service provisions, not automatic backfeed protection.
+Battery selection, retention and the assembled body are not built or verified. The XAL7070 boost inductor (7.0 mm) and the JST VH connector set the tallest parts on their faces. The XIAOs use external antennas; their antenna and cable clearance must be defined in the enclosure. Keep the P4 battery connector unused. USB/P4/carrier source coexistence still needs measurement; the removable power links are service provisions, not automatic backfeed protection.
 
 ## Editing and regeneration
 
@@ -119,6 +125,22 @@ Change scripts, in the order they were applied:
   4. `assembly_labels.py --prototype-silk`, `check_silk_text.py`; DRC; netlist / ERC / PDF re-exported; `verify.py --a02`, `routing_audit.py --a02`.
   CAM2_FAULT_N had no route the grid router could find within its budget; `GR_DEBUG` masks showed one corridor, which the hand script follows.
 
+- **Release pass, 3 October 2026** (hand scripts on `handroute.py` run `rip`, `place` where they have one, then `add`, as separate processes):
+  1. `place_a02_r603_c701.py` (CAM2_FAULT_N no longer passes between passive pads), `gnd_stitch.py` (no stitching via in or touching a GND pad), `fix_a02_via_in_pad.py`, `silk_a02_camera_labels.py`.
+  2. `add_a02_fiducials.py`: three fiducials per face, board-only, 1.0 mm pad clearance.
+  3. `circuit.py` changes, `regenerate_capture.py`, `release_a02_usb_pd.py` (TP1001 removed, U1000 pin 20 open), `sync_a02_values.py` (board values from the capture): D1001 SMF22A, R1004 10k, AO4409, PMV16UN, R100/R101, BOM text.
+  4. `route_a02_scl_l1200.py`: I2C_SCL out from under the L1200 corner on In2.
+  5. `fix_a02_socket_mask.py`: mask openings on the XIAO socket pads (the footprint generator had dropped them; `build.py` and the library are fixed too).
+  6. `fix_a02_via_webs.py`: vias out of and away from pads (CAM1_EN at U201, C901, CHG_PMID, CHG_BTST1, U701, a dead CAM3_5V_ISO via).
+  7. `swap_a02_u100.py`: the TCA9517 sides swapped, its four I2C connections redrawn; `gnd_stitch.py`.
+  8. `add_a02_release_parts.py`, `release_a02_parts_route.py`: R105, R1204, D903.
+  9. `power_a02_sys_raw.py` (`rip`, `add`, `pour`): SYS_RAW pours and stitching.
+  10. `fix_a02_u1200_marks.py`: U1200 body outline and pin-1 dot.
+  11. `mark_a02_release.py`: CARRIER A0.2 / 2026-10 lines, P4 JP1 label, S/N box.
+  12. Final review fixes: `fix_a02_peg_via.py` (GAUGE_1V8 via 0.52 mm from the J1000 peg), `assembly_test_pads.py` (outlines of removed test lands dropped), `sync_a02_values.py`, `silk_a02_widths.py` (legend lines and strokes to 0.15 mm), `fp_a02_pac1954.py` then `silk_a02_u700_mark.py` (U700 pin-1 triangle clear of C700), `assembly_labels.py --prototype-silk` (ambiguous camera groups and R1003/R1110 to Fab, C1105 above its part, 1 mm silk-free ring round the fiducials), `check_silk_text.py`.
+  13. DRC, netlist / ERC / PDF, `resistor_selection.py`, `verify.py --a02`, `routing_audit.py --a02`, `fab_a02.py`.
+  `design/release.py` holds the release state the output scripts print. `rework.py` and `route_a02.py seed` now refuse to run without `--rebuild`: both rebuild the board from earlier seeds.
+
 Each routing script removes and redraws only the copper it owns. `tidy_routes.py` reshapes unlocked copper, so a hand script re-run after it no longer recognises its own routes: re-run hand scripts from a board saved before the tidy. In this KiCad build a `Remove()` leaves the Python bindings unreliable for the rest of the process, so the newer scripts remove, add and verify in separate runs. Helpers:
 - `free_spot.py`: collision-checked placement of one part.
 - `gnd_pad_vias.py`: a GND via beside a named pad (straight or 45-degree stub), or `A>B` to tie a GND pin to a grounded pad of the same part.
@@ -141,6 +163,6 @@ After circuit changes, regenerate the schematic, XML netlist, ERC and PDF. After
 
 A passing checker does not validate power, thermal behaviour or physical fit.
 
-Implementation stays in [issue #232](https://github.com/b5463/kino-d4/issues/232) and [ECN-0007](../../changes/ECN-0007-four-xiao-carrier-proposal.md), design package 0.1.8. It is not a new physical release.
+Implementation stays in [issue #232](https://github.com/b5463/kino-d4/issues/232) and [ECN-0007](../../changes/ECN-0007-four-xiao-carrier-proposal.md), design package 0.1.8. The system power documents (`docs/audit/POWER_MODEL.md`, `docs/audit/HARDWARE_CONTRACT.md`) still describe the d4-v1 power path (SW6106 bank, 3 A harness); they change if this carrier is adopted.
 
 The supplied ODD JOBS symbol and its traced contour remain reserved artwork, separate from CERN-OHL-S-2.0 hardware source. Stock KiCad footprints use the library electronic-design exception. Vendor design files are consulted, not redistributed. [Sources](SOURCES.md) records provenance. [A0.1 review](RELEASE-REVIEW.md) is kept as historical rejection evidence.

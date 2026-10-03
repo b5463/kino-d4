@@ -14,6 +14,8 @@ TARGET=ROOT/(NAME+'.kicad_pcb')
 SEED=ROOT/'KINO_D4_Carrier_A0_Routed.kicad_pcb'
 
 def prepare():
+    # One-shot history: rebuilding from the Routed seed discards every A0.2 edit and the A0.2 project rules.
+    assert '--rebuild' in sys.argv or not TARGET.exists(), f'{TARGET.name} exists; pass --rebuild to start it again from the seed'
     # Removing many owned ZONE objects through this KiCad SWIG build can
     # invalidate the board. Strip only top-level routing objects before load.
     source=SEED.read_text()

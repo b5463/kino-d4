@@ -231,7 +231,7 @@ def setup_project(board):
     default=pro['net_settings']['classes'][0]
     default.update(clearance=.15,track_width=.2,via_diameter=.6,via_drill=.3)
     pro['net_settings']['classes']=[default]
-    power_nets=['USB_VBUS','CHG_VBUS','PD_COMMON_SOURCE','CHG_PMID','BAT_PROTECTED','PACK_PLUS','PACK_MINUS','SYS_RAW','BOOST_5V','MAIN_COMMON','SYS_5V','P4_5V_ISO','P4_5V']
+    power_nets=['USB_VBUS','CHG_VBUS','PD_COMMON_SOURCE','CHG_PMID','BAT_PROTECTED','PACK_PLUS','PACK_FUSED','SYS_RAW','BOOST_5V','MAIN_COMMON','SYS_5V','P4_5V_ISO','P4_5V']
     camera_nets=[f'CAM{i}_{n}' for i in range(1,5) for n in ['SHUNT_OUT','SW5V','5V_ISO','5V']]
     pro['net_settings']['netclass_patterns']=[]
     signal_nets=[n.GetNetname() for n in board.GetNetInfo().NetsByNetcode().values() if re.fullmatch(r'P4_(TX|RX)[1-4]|SYNC_MASTER|CAM[1-4]_(TX|RX|SYNC|RX_BUF|RX_RETURN|SYNC_BUF)',n.GetNetname())]

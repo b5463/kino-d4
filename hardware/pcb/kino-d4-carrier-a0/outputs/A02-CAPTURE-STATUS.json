@@ -1,10 +1,12 @@
 {
-  "status": "A02_ENGINEERING_DRAFT",
+  "status": "A02_RELEASE_CANDIDATE",
+  "verdict": "READY FOR FABRICATION WITH SPECIFIC MANUAL CHECKS",
+  "release_date": "2026-10-03",
   "board": "KINO_D4_Carrier_A0_2.kicad_pcb",
-  "components": 248,
+  "components": 250,
   "date": "2026-09-30",
   "sheets": 14,
   "fabrication_released": false,
-  "erc_passed": false,
-  "drc_passed": false
+  "erc_passed": true,
+  "drc_passed": true
 }

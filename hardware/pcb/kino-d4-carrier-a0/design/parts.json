@@ -198,12 +198,12 @@
     "value": "TCA9517ADGKR",
     "nets": {
       "1": "MB_3V3",
-      "2": "P4_SCL",
-      "3": "P4_SDA",
+      "2": "I2C_SCL",
+      "3": "I2C_SDA",
       "4": "GND",
       "5": "P4_BUS_EN",
-      "6": "I2C_SDA",
-      "7": "I2C_SCL",
+      "6": "P4_SDA",
+      "7": "P4_SCL",
       "8": "MB_3V3"
     },
     "pins": {
@@ -243,14 +243,14 @@
     "footprint": "Package_SO:VSSOP-8_3x3mm_P0.65mm",
     "mpn": "TCA9517ADGKR",
     "source": "https://www.ti.com/lit/ds/symlink/tca9517a.pdf",
-    "note": "B side is local. Do not cascade another B-side offset buffer on local bus.",
+    "note": "A side is local: its hard low suits the STUSB4500 (VIL 0.35 V), BQ25798 (0.4 V), DRV2605L and BQ27441. B side (buffered low 0.45-0.6 V) faces the P4 bus (P4 VIL 0.825 V). No other offset buffer or rise-time accelerator on the P4 bus.",
     "dnp": false,
     "at": null
   },
   {
     "sheet": "01_p4",
     "ref": "R100",
-    "value": "10k",
+    "value": "2.2k",
     "nets": {
       "1": "P4_3V3_SENSE",
       "2": "P4_BUS_EN"
@@ -266,16 +266,16 @@
       }
     },
     "footprint": "Resistor_SMD:R_0603_1608Metric",
-    "mpn": "RC0603FR-0710KL",
-    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
-    "note": "",
+    "mpn": "RC0603FR-072K2L",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-072K2L",
+    "note": "With R101: EN 3.0 V with the P4 on; 0.66 V worst case with JP1 pin 1 open against the TCA9517 EN pull-up (30 uA max), under its 0.99 V VIL and the TXU0304 OE 0.89 V VT- min.",
     "dnp": false,
     "at": null
   },
   {
     "sheet": "01_p4",
     "ref": "R101",
-    "value": "1M",
+    "value": "22k",
     "nets": {
       "1": "P4_BUS_EN",
       "2": "GND"
@@ -291,8 +291,8 @@
       }
     },
     "footprint": "Resistor_SMD:R_0603_1608Metric",
-    "mpn": "RC0603FR-071ML",
-    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071ML",
+    "mpn": "RC0603FR-0722KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0722KL",
     "note": "",
     "dnp": false,
     "at": null
@@ -349,8 +349,33 @@
   },
   {
     "sheet": "01_p4",
+    "ref": "R105",
+    "value": "100k",
+    "nets": {
+      "1": "SYNC_MASTER",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "P4 GPIO32 is Hi-Z from reset until firmware drives it; holds the shared sync (and the J601 flash option) low. ODD JOBS 116/117.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "01_p4",
     "ref": "C100",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "MB_3V3",
       "2": "GND"
@@ -435,7 +460,7 @@
   {
     "sheet": "01_p4",
     "ref": "F100",
-    "value": "PTC 100mA - select",
+    "value": "PTC 100mA",
     "nets": {
       "1": "MB_3V3",
       "2": "AUX_3V3"
@@ -471,7 +496,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "P4_3V3_TEST",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -491,7 +516,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "SYNC_MASTER",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -511,7 +536,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "P4_5V",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -596,7 +621,7 @@
       }
     },
     "footprint": "KINO_A0:XIAO_Socket_15.24mm",
-    "mpn": "Wurth Elektronik 61300711821",
+    "mpn": "2 x Wurth Elektronik 61300711821",
     "source": "https://www.we-online.com/components/products/datasheet/61300711821.pdf",
     "note": "Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.",
     "dnp": false,
@@ -858,7 +883,7 @@
   {
     "sheet": "02_camera1",
     "ref": "C200",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "MB_3V3",
       "2": "GND"
@@ -883,7 +908,7 @@
   {
     "sheet": "02_camera1",
     "ref": "C201",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "CAM1_3V3",
       "2": "GND"
@@ -1028,7 +1053,7 @@
   {
     "sheet": "02_camera1",
     "ref": "RS200",
-    "value": "0.020 1% 0.5W",
+    "value": "0.020 1% 1W",
     "nets": {
       "1": "SYS_5V",
       "2": "CAM1_SHUNT_OUT"
@@ -1046,7 +1071,7 @@
     "footprint": "Resistor_SMD:R_1206_3216Metric",
     "mpn": "Vishay Dale WSLP1206R0200FEA",
     "source": "https://www.vishay.com/docs/30122/wslp.pdf",
-    "note": "Kelvin sense required; exact current-sense resistor MPN pending.",
+    "note": "Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py).",
     "dnp": false,
     "at": null
   },
@@ -1078,7 +1103,7 @@
   {
     "sheet": "02_camera1",
     "ref": "C202",
-    "value": "1u 16V",
+    "value": "1u 50V",
     "nets": {
       "1": "CAM1_SHUNT_OUT",
       "2": "GND"
@@ -1128,7 +1153,7 @@
   {
     "sheet": "02_camera1",
     "ref": "C204",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "CAM1_5V",
       "2": "GND"
@@ -1164,7 +1189,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "CAM1_5V",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -1184,7 +1209,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "CAM1_SYNC",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -1269,7 +1294,7 @@
       }
     },
     "footprint": "KINO_A0:XIAO_Socket_15.24mm",
-    "mpn": "Wurth Elektronik 61300711821",
+    "mpn": "2 x Wurth Elektronik 61300711821",
     "source": "https://www.we-online.com/components/products/datasheet/61300711821.pdf",
     "note": "Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.",
     "dnp": false,
@@ -1531,7 +1556,7 @@
   {
     "sheet": "03_camera2",
     "ref": "C300",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "MB_3V3",
       "2": "GND"
@@ -1556,7 +1581,7 @@
   {
     "sheet": "03_camera2",
     "ref": "C301",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "CAM2_3V3",
       "2": "GND"
@@ -1701,7 +1726,7 @@
   {
     "sheet": "03_camera2",
     "ref": "RS300",
-    "value": "0.020 1% 0.5W",
+    "value": "0.020 1% 1W",
     "nets": {
       "1": "SYS_5V",
       "2": "CAM2_SHUNT_OUT"
@@ -1719,7 +1744,7 @@
     "footprint": "Resistor_SMD:R_1206_3216Metric",
     "mpn": "Vishay Dale WSLP1206R0200FEA",
     "source": "https://www.vishay.com/docs/30122/wslp.pdf",
-    "note": "Kelvin sense required; exact current-sense resistor MPN pending.",
+    "note": "Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py).",
     "dnp": false,
     "at": null
   },
@@ -1751,7 +1776,7 @@
   {
     "sheet": "03_camera2",
     "ref": "C302",
-    "value": "1u 16V",
+    "value": "1u 50V",
     "nets": {
       "1": "CAM2_SHUNT_OUT",
       "2": "GND"
@@ -1801,7 +1826,7 @@
   {
     "sheet": "03_camera2",
     "ref": "C304",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "CAM2_5V",
       "2": "GND"
@@ -1837,7 +1862,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "CAM2_5V",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -1857,7 +1882,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "CAM2_SYNC",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -1942,7 +1967,7 @@
       }
     },
     "footprint": "KINO_A0:XIAO_Socket_15.24mm",
-    "mpn": "Wurth Elektronik 61300711821",
+    "mpn": "2 x Wurth Elektronik 61300711821",
     "source": "https://www.we-online.com/components/products/datasheet/61300711821.pdf",
     "note": "Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.",
     "dnp": false,
@@ -2204,7 +2229,7 @@
   {
     "sheet": "04_camera3",
     "ref": "C400",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "MB_3V3",
       "2": "GND"
@@ -2229,7 +2254,7 @@
   {
     "sheet": "04_camera3",
     "ref": "C401",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "CAM3_3V3",
       "2": "GND"
@@ -2374,7 +2399,7 @@
   {
     "sheet": "04_camera3",
     "ref": "RS400",
-    "value": "0.020 1% 0.5W",
+    "value": "0.020 1% 1W",
     "nets": {
       "1": "SYS_5V",
       "2": "CAM3_SHUNT_OUT"
@@ -2392,7 +2417,7 @@
     "footprint": "Resistor_SMD:R_1206_3216Metric",
     "mpn": "Vishay Dale WSLP1206R0200FEA",
     "source": "https://www.vishay.com/docs/30122/wslp.pdf",
-    "note": "Kelvin sense required; exact current-sense resistor MPN pending.",
+    "note": "Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py).",
     "dnp": false,
     "at": null
   },
@@ -2424,7 +2449,7 @@
   {
     "sheet": "04_camera3",
     "ref": "C402",
-    "value": "1u 16V",
+    "value": "1u 50V",
     "nets": {
       "1": "CAM3_SHUNT_OUT",
       "2": "GND"
@@ -2474,7 +2499,7 @@
   {
     "sheet": "04_camera3",
     "ref": "C404",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "CAM3_5V",
       "2": "GND"
@@ -2510,7 +2535,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "CAM3_5V",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -2530,7 +2555,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "CAM3_SYNC",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -2615,7 +2640,7 @@
       }
     },
     "footprint": "KINO_A0:XIAO_Socket_15.24mm",
-    "mpn": "Wurth Elektronik 61300711821",
+    "mpn": "2 x Wurth Elektronik 61300711821",
     "source": "https://www.we-online.com/components/products/datasheet/61300711821.pdf",
     "note": "Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.",
     "dnp": false,
@@ -2877,7 +2902,7 @@
   {
     "sheet": "05_camera4",
     "ref": "C500",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "MB_3V3",
       "2": "GND"
@@ -2902,7 +2927,7 @@
   {
     "sheet": "05_camera4",
     "ref": "C501",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "CAM4_3V3",
       "2": "GND"
@@ -3047,7 +3072,7 @@
   {
     "sheet": "05_camera4",
     "ref": "RS500",
-    "value": "0.020 1% 0.5W",
+    "value": "0.020 1% 1W",
     "nets": {
       "1": "SYS_5V",
       "2": "CAM4_SHUNT_OUT"
@@ -3065,7 +3090,7 @@
     "footprint": "Resistor_SMD:R_1206_3216Metric",
     "mpn": "Vishay Dale WSLP1206R0200FEA",
     "source": "https://www.vishay.com/docs/30122/wslp.pdf",
-    "note": "Kelvin sense required; exact current-sense resistor MPN pending.",
+    "note": "Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py).",
     "dnp": false,
     "at": null
   },
@@ -3097,7 +3122,7 @@
   {
     "sheet": "05_camera4",
     "ref": "C502",
-    "value": "1u 16V",
+    "value": "1u 50V",
     "nets": {
       "1": "CAM4_SHUNT_OUT",
       "2": "GND"
@@ -3147,7 +3172,7 @@
   {
     "sheet": "05_camera4",
     "ref": "C504",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "CAM4_5V",
       "2": "GND"
@@ -3183,7 +3208,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "CAM4_5V",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -3203,7 +3228,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "CAM4_SYNC",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -3397,7 +3422,7 @@
   {
     "sheet": "06_control",
     "ref": "C601",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "MB_3V3",
       "2": "GND"
@@ -3507,7 +3532,7 @@
   {
     "sheet": "06_control",
     "ref": "C602",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "MB_3V3",
       "2": "GND"
@@ -3721,7 +3746,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "CAM2_EN",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -3741,7 +3766,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "CAM3_EN",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -3761,7 +3786,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "CAM4_EN",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -3938,7 +3963,7 @@
   {
     "sheet": "07_monitoring",
     "ref": "C700",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "MB_3V3",
       "2": "GND"
@@ -4093,7 +4118,7 @@
   {
     "sheet": "07_monitoring",
     "ref": "C703",
-    "value": "1u 16V",
+    "value": "1u 50V",
     "nets": {
       "1": "PACK_FUSED",
       "2": "GND"
@@ -4109,7 +4134,7 @@
       }
     },
     "footprint": "Capacitor_SMD:C_0603_1608Metric",
-    "mpn": "Samsung CL10A105KB8NNNC",
+    "mpn": "Samsung Electro-Mechanics CL10A105KB8NNNC",
     "source": "",
     "note": "TI: 1 uF from BAT to VSS, close to the gauge.",
     "dnp": false,
@@ -4184,7 +4209,7 @@
       }
     },
     "footprint": "Resistor_SMD:R_1206_3216Metric",
-    "mpn": "Vishay Dale WSLP1206R0050FEA",
+    "mpn": "Vishay Dale WSLP12065L000FEA",
     "source": "https://www.vishay.com/en/product/30122/",
     "note": "High side after F1100. 4.4 A = 22 mV (gauge range 25 mV), 97 mW. Kelvin taps from the pad inner edges.",
     "dnp": false,
@@ -4278,7 +4303,7 @@
   {
     "sheet": "08_sensors",
     "ref": "C800",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "MB_3V3",
       "2": "GND"
@@ -4303,7 +4328,7 @@
   {
     "sheet": "08_sensors",
     "ref": "C801",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "MB_3V3",
       "2": "GND"
@@ -4383,7 +4408,7 @@
   {
     "sheet": "08_sensors",
     "ref": "C802",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "MB_3V3",
       "2": "GND"
@@ -4508,7 +4533,7 @@
   {
     "sheet": "08_sensors",
     "ref": "C803",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "MB_3V3",
       "2": "GND"
@@ -4993,7 +5018,7 @@
   {
     "sheet": "09_controls",
     "ref": "C905",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "MB_3V3",
       "2": "GND"
@@ -5196,6 +5221,31 @@
     "at": null
   },
   {
+    "sheet": "09_controls",
+    "ref": "D903",
+    "value": "PESD5V0S1BA",
+    "nets": {
+      "1": "GND",
+      "2": "FN_N"
+    },
+    "pins": {
+      "1": {
+        "name": "K",
+        "type": "passive"
+      },
+      "2": {
+        "name": "A",
+        "type": "passive"
+      }
+    },
+    "footprint": "Diode_SMD:D_SOD-323",
+    "mpn": "Nexperia PESD5V0S1BA,115",
+    "source": "https://assets.nexperia.com/documents/data-sheet/PESD5V0S1BA.pdf",
+    "note": "Cased button line, same class as the shutter input (D902). Beside J904.",
+    "dnp": false,
+    "at": null
+  },
+  {
     "sheet": "10_usb_pd",
     "ref": "J1000",
     "value": "USB4105-GF-A",
@@ -5322,7 +5372,7 @@
       "17": null,
       "18": "PD_VBUS_SENSE",
       "19": null,
-      "20": "PD_9V_OK_N",
+      "20": null,
       "21": "PD_1V2",
       "22": "GND",
       "23": "PD_2V7",
@@ -5441,7 +5491,7 @@
   {
     "sheet": "10_usb_pd",
     "ref": "C1000",
-    "value": "1u 35V",
+    "value": "1u 50V",
     "nets": {
       "1": "USB_VBUS",
       "2": "GND"
@@ -5591,7 +5641,7 @@
   {
     "sheet": "10_usb_pd",
     "ref": "Q1000",
-    "value": "AO4407A",
+    "value": "AO4409",
     "nets": {
       "1": "PD_COMMON_SOURCE",
       "2": "PD_COMMON_SOURCE",
@@ -5637,16 +5687,16 @@
       }
     },
     "footprint": "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
-    "mpn": "Alpha & Omega Semiconductor AO4407A",
-    "source": "https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf",
-    "note": "Verify exact AO4407A manufacturer and SO8 pinout before BOM release.",
+    "mpn": "Alpha & Omega Semiconductor AO4409",
+    "source": "https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf",
+    "note": "AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V.",
     "dnp": false,
     "at": null
   },
   {
     "sheet": "10_usb_pd",
     "ref": "Q1001",
-    "value": "AO4407A",
+    "value": "AO4409",
     "nets": {
       "1": "PD_COMMON_SOURCE",
       "2": "PD_COMMON_SOURCE",
@@ -5692,9 +5742,9 @@
       }
     },
     "footprint": "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
-    "mpn": "Alpha & Omega Semiconductor AO4407A",
-    "source": "https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf",
-    "note": "Verify exact AO4407A manufacturer and SO8 pinout before BOM release.",
+    "mpn": "Alpha & Omega Semiconductor AO4409",
+    "source": "https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf",
+    "note": "AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V.",
     "dnp": false,
     "at": null
   },
@@ -5726,7 +5776,7 @@
   {
     "sheet": "10_usb_pd",
     "ref": "R1004",
-    "value": "1k",
+    "value": "10k",
     "nets": {
       "1": "PD_GATE",
       "2": "PD_SINK_EN_N"
@@ -5742,9 +5792,9 @@
       }
     },
     "footprint": "Resistor_SMD:R_0603_1608Metric",
-    "mpn": "RC0603FR-071KL",
-    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071KL",
-    "note": "",
+    "mpn": "RC0603FR-0710KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+    "note": "Above 10 V VBUS D1000 conducts through this resistor: 1.2 mA at 22 V, inside the 3 mA VBUS_EN_SNK test condition (ST reference: 22k). Gate at -4.55 V at 5 V VBUS.",
     "dnp": false,
     "at": null
   },
@@ -5776,7 +5826,7 @@
   {
     "sheet": "10_usb_pd",
     "ref": "D1001",
-    "value": "SMF12A",
+    "value": "SMF22A",
     "nets": {
       "1": "USB_VBUS",
       "2": "GND"
@@ -5792,9 +5842,9 @@
       }
     },
     "footprint": "Diode_SMD:D_SOD-123F",
-    "mpn": "Vishay General Semiconductor SMF12A-E3-08",
+    "mpn": "Vishay General Semiconductor SMF22A-E3-08",
     "source": "https://www.vishay.com/docs/85881/smf5v0atosmf58a.pdf",
-    "note": "",
+    "note": "VRWM 22 V: no conduction on a 20 V contract (unprogrammed STUSB4500 NVM). VBR 24.4-27 V, under the 28 V STUSB4500 and 30 V charger/FET ratings at low current.",
     "dnp": false,
     "at": null
   },
@@ -5862,27 +5912,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "USB_VBUS",
-    "source": "",
-    "note": "",
-    "dnp": false,
-    "at": null
-  },
-  {
-    "sheet": "10_usb_pd",
-    "ref": "TP1001",
-    "value": "PD_9V_OK_N",
-    "nets": {
-      "1": "PD_9V_OK_N"
-    },
-    "pins": {
-      "1": {
-        "name": "PD_9V_OK_N",
-        "type": "passive"
-      }
-    },
-    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "PD_9V_OK_N",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -6124,7 +6154,7 @@
     "footprint": "Resistor_SMD:R_0603_1608Metric",
     "mpn": "RC0603FR-073KL",
     "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-073KL",
-    "note": "TI Table 7-1: 1S, 1.5MHz. Default 4.2V / 1A charge, hardware-disabled until qualified.",
+    "note": "TI Table 7-1: 1S, 1.5MHz. POR default 4.2 V / 1 A; charging enabled in hardware (CE low). Inhibit with EN_CHG or by fitting R1110.",
     "dnp": false,
     "at": null
   },
@@ -6324,7 +6354,7 @@
     "footprint": "Resistor_SMD:R_0603_1608Metric",
     "mpn": "RC0603JR-070RL",
     "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603JR-070RL",
-    "note": "NTC returns to pack negative = board GND; the gauge shunt is on the high side, so no TS offset.",
+    "note": "0 ohm NTC link (bring-up): open it to measure the pack NTC alone; open = TS cold = charging suspended. NTC returns to board GND; the gauge shunt is high side, so no TS offset.",
     "dnp": false,
     "at": null
   },
@@ -6456,7 +6486,7 @@
   {
     "sheet": "11_charger",
     "ref": "C1104",
-    "value": "10u 35V X7R",
+    "value": "10u 50V X7R",
     "nets": {
       "1": "CHG_VBUS",
       "2": "GND"
@@ -6481,7 +6511,7 @@
   {
     "sheet": "11_charger",
     "ref": "C1105",
-    "value": "10u 35V X7R",
+    "value": "10u 50V X7R",
     "nets": {
       "1": "CHG_VBUS",
       "2": "GND"
@@ -6506,7 +6536,7 @@
   {
     "sheet": "11_charger",
     "ref": "C1106",
-    "value": "100n 35V",
+    "value": "100n 50V",
     "nets": {
       "1": "CHG_VBUS",
       "2": "GND"
@@ -6531,7 +6561,7 @@
   {
     "sheet": "11_charger",
     "ref": "C1107",
-    "value": "10u 35V X7R",
+    "value": "10u 50V X7R",
     "nets": {
       "1": "CHG_PMID",
       "2": "GND"
@@ -6556,7 +6586,7 @@
   {
     "sheet": "11_charger",
     "ref": "C1108",
-    "value": "10u 35V X7R",
+    "value": "10u 50V X7R",
     "nets": {
       "1": "CHG_PMID",
       "2": "GND"
@@ -6581,7 +6611,7 @@
   {
     "sheet": "11_charger",
     "ref": "C1109",
-    "value": "10u 35V X7R",
+    "value": "10u 50V X7R",
     "nets": {
       "1": "CHG_PMID",
       "2": "GND"
@@ -6606,7 +6636,7 @@
   {
     "sheet": "11_charger",
     "ref": "C1110",
-    "value": "100n 35V",
+    "value": "100n 50V",
     "nets": {
       "1": "CHG_PMID",
       "2": "GND"
@@ -6631,7 +6661,7 @@
   {
     "sheet": "11_charger",
     "ref": "C1111",
-    "value": "10u 35V X7R",
+    "value": "10u 50V X7R",
     "nets": {
       "1": "SYS_RAW",
       "2": "GND"
@@ -6656,7 +6686,7 @@
   {
     "sheet": "11_charger",
     "ref": "C1112",
-    "value": "10u 35V X7R",
+    "value": "10u 50V X7R",
     "nets": {
       "1": "SYS_RAW",
       "2": "GND"
@@ -6681,7 +6711,7 @@
   {
     "sheet": "11_charger",
     "ref": "C1113",
-    "value": "10u 35V X7R",
+    "value": "10u 50V X7R",
     "nets": {
       "1": "SYS_RAW",
       "2": "GND"
@@ -6706,7 +6736,7 @@
   {
     "sheet": "11_charger",
     "ref": "C1114",
-    "value": "10u 35V X7R",
+    "value": "10u 50V X7R",
     "nets": {
       "1": "SYS_RAW",
       "2": "GND"
@@ -6731,7 +6761,7 @@
   {
     "sheet": "11_charger",
     "ref": "C1115",
-    "value": "10u 35V X7R",
+    "value": "10u 50V X7R",
     "nets": {
       "1": "SYS_RAW",
       "2": "GND"
@@ -6756,7 +6786,7 @@
   {
     "sheet": "11_charger",
     "ref": "C1116",
-    "value": "100n 35V",
+    "value": "100n 50V",
     "nets": {
       "1": "SYS_RAW",
       "2": "GND"
@@ -6781,7 +6811,7 @@
   {
     "sheet": "11_charger",
     "ref": "C1117",
-    "value": "10u 35V X7R",
+    "value": "10u 50V X7R",
     "nets": {
       "1": "BAT_PROTECTED",
       "2": "GND"
@@ -6806,7 +6836,7 @@
   {
     "sheet": "11_charger",
     "ref": "C1118",
-    "value": "10u 35V X7R",
+    "value": "10u 50V X7R",
     "nets": {
       "1": "BAT_PROTECTED",
       "2": "GND"
@@ -6831,7 +6861,7 @@
   {
     "sheet": "11_charger",
     "ref": "C1119",
-    "value": "100n 35V",
+    "value": "100n 50V",
     "nets": {
       "1": "BAT_PROTECTED",
       "2": "GND"
@@ -6867,7 +6897,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "SYS_RAW",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -7089,7 +7119,7 @@
     "footprint": "Capacitor_SMD:C_0603_1608Metric",
     "mpn": "Samsung Electro-Mechanics CL10C101JB8NNNC",
     "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10C101JB8NNN",
-    "note": "",
+    "note": "TPS61288 optional CP (TI eq 14). DNP; fit only if the bench loop or COMP ripple needs the extra pole.",
     "dnp": true,
     "at": null
   },
@@ -7112,9 +7142,9 @@
       }
     },
     "footprint": "Capacitor_SMD:C_0603_1608Metric",
-    "mpn": "Samsung CL10A475KO8NNNC",
+    "mpn": "Samsung Electro-Mechanics CL10A475KO8NNNC",
     "source": "",
-    "note": "TI: VCC needs > 1.0 uF effective; 2.2 uF 0603 is about 1.0 uF at 5 V.",
+    "note": "TI: VCC needs > 1.0 uF effective; 2.2 uF 0603 is about 1.0 uF at 5 V, hence 4.7 uF.",
     "dnp": false,
     "at": null
   },
@@ -7171,7 +7201,7 @@
   {
     "sheet": "12_boost",
     "ref": "C1205",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "SYS_RAW",
       "2": "GND"
@@ -7346,7 +7376,7 @@
   {
     "sheet": "12_boost",
     "ref": "Q1200",
-    "value": "AO4407A",
+    "value": "AO4409",
     "nets": {
       "1": "MAIN_COMMON",
       "2": "MAIN_COMMON",
@@ -7392,16 +7422,16 @@
       }
     },
     "footprint": "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
-    "mpn": "Alpha & Omega Semiconductor AO4407A",
-    "source": "https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf",
-    "note": "Verify exact AO4407A manufacturer and SO8 pinout before BOM release.",
+    "mpn": "Alpha & Omega Semiconductor AO4409",
+    "source": "https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf",
+    "note": "AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V.",
     "dnp": false,
     "at": null
   },
   {
     "sheet": "12_boost",
     "ref": "Q1201",
-    "value": "AO4407A",
+    "value": "AO4409",
     "nets": {
       "1": "MAIN_COMMON",
       "2": "MAIN_COMMON",
@@ -7447,9 +7477,9 @@
       }
     },
     "footprint": "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
-    "mpn": "Alpha & Omega Semiconductor AO4407A",
-    "source": "https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf",
-    "note": "Verify exact AO4407A manufacturer and SO8 pinout before BOM release.",
+    "mpn": "Alpha & Omega Semiconductor AO4409",
+    "source": "https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf",
+    "note": "AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V.",
     "dnp": false,
     "at": null
   },
@@ -7481,7 +7511,7 @@
   {
     "sheet": "12_boost",
     "ref": "Q1202",
-    "value": "2N7002",
+    "value": "PMV16UN",
     "nets": {
       "1": "BOOST_ENABLE",
       "2": "GND",
@@ -7502,9 +7532,34 @@
       }
     },
     "footprint": "Package_TO_SOT_SMD:SOT-23",
-    "mpn": "Nexperia 2N7002,215",
-    "source": "https://assets.nexperia.com/documents/data-sheet/2N7002.pdf",
-    "note": "",
+    "mpn": "Nexperia PMV16UN",
+    "source": "https://assets.nexperia.com/documents/data-sheet/PMV16UN.pdf",
+    "note": "VGS(th) 0.4-1.0 V: fully on from BOOST_ENABLE at any SYS_RAW; a 2N7002 (up to 2.5 V) could drop out at low battery.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "R1204",
+    "value": "100k",
+    "nets": {
+      "1": "BOOST_ENABLE",
+      "2": "SYS_RAW"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "LTC2955-1 EN is a 1.2-2.8 uA current-source pull-up (ADI p13: add an external pull-up) and TPS61288 EN has an 850k-1.1M pull-down: worst case 1.02 V, under its 1.2 V VIH. This holds EN at about 2.7 V or more; off, the LTC2955 sinks 30-44 uA.",
     "dnp": false,
     "at": null
   },
@@ -7707,7 +7762,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "SYS_5V",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -7727,7 +7782,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "MB_3V3",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -7747,7 +7802,7 @@
       }
     },
     "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "GND",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "",
     "dnp": false,
@@ -7811,7 +7866,7 @@
   {
     "sheet": "13_power_button",
     "ref": "C1300",
-    "value": "100n 16V",
+    "value": "100n 50V",
     "nets": {
       "1": "SYS_RAW",
       "2": "GND"
@@ -7852,7 +7907,7 @@
       }
     },
     "footprint": "Capacitor_SMD:C_0603_1608Metric",
-    "mpn": "Samsung CL10A155KO8NNNC",
+    "mpn": "Samsung Electro-Mechanics CL10A155KO8NNNC",
     "source": "",
     "note": "1.8 uF 0603 is not stocked by a major maker. Timer constant from the ADI data sheet still to confirm; about 7.9 s at 5.2 s/uF.",
     "dnp": false,
@@ -8045,7 +8100,7 @@
     "nets": {},
     "pins": {},
     "footprint": "MountingHole:MountingHole_2.2mm_M2",
-    "mpn": "P4 M2 insert mount",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "61.9 x 54.8 inner insert centres. Offset -9.3 mm is drawing-derived, pending physical fit. Extension spacers required for P4 component/header clearance.",
     "dnp": false,
@@ -8061,7 +8116,7 @@
     "nets": {},
     "pins": {},
     "footprint": "MountingHole:MountingHole_2.2mm_M2",
-    "mpn": "P4 M2 insert mount",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "61.9 x 54.8 inner insert centres. Offset -9.3 mm is drawing-derived, pending physical fit. Extension spacers required for P4 component/header clearance.",
     "dnp": false,
@@ -8077,7 +8132,7 @@
     "nets": {},
     "pins": {},
     "footprint": "MountingHole:MountingHole_2.2mm_M2",
-    "mpn": "P4 M2 insert mount",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "61.9 x 54.8 inner insert centres. Offset -9.3 mm is drawing-derived, pending physical fit. Extension spacers required for P4 component/header clearance.",
     "dnp": false,
@@ -8093,7 +8148,7 @@
     "nets": {},
     "pins": {},
     "footprint": "MountingHole:MountingHole_2.2mm_M2",
-    "mpn": "P4 M2 insert mount",
+    "mpn": "PCB feature - no fitted component",
     "source": "",
     "note": "61.9 x 54.8 inner insert centres. Offset -9.3 mm is drawing-derived, pending physical fit. Extension spacers required for P4 component/header clearance.",
     "dnp": false,

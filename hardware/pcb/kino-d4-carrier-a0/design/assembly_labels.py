@@ -11,13 +11,14 @@ vertical. A candidate must keep
     separate words,
   - 0.5 mm inside the board edge.
 Of those, the nearest wins, with penalties for a label not at least 0.3 mm nearer its own part than
-any other part (ambiguous) and for text across the part's long axis; a spot more than 0.5 mm nearer
-another part is never used. Horizontal text reads left to
+any other part, for text across the part's long axis, and for sliding off the middle of
+the part's side (each label lines up with its own part: centred on it where the spot is clear, and
+centred spots are tried first); a spot not at least 0.1 mm nearer its own part than any other is never used: such references go to Fab. Horizontal text reads left to
 right; vertical text reads bottom to top from the side it is on (front 90 degrees, back 270 degrees
 mirrored, keep-upright off). 1.0 mm text first; 0.8 mm (the board minimum) where 1.0 mm finds no
 spot or only an ambiguous one. Parts with the fewest clear spots are labelled first. The four camera
-circuits share offsets where that leaves every one of them unambiguous. The XIAO sockets carry their
-reference between their pin rows. Values stay in the BOM and properties. Documentation geometry only, never copper.
+circuits share offsets where that leaves every one of them unambiguous. The XIAO socket references
+sit outside the sockets, where the fitted modules do not hide them. Values stay in the BOM and properties. Documentation geometry only, never copper.
 check_silk_text.py verifies the result.
 """
 import json, math, sys
@@ -28,13 +29,17 @@ from routing import pt, pos, rect, intersects
 from mechanical import WIDTH, HEIGHT, INSERT_CENTRES
 
 prototype = '--prototype-silk' in sys.argv
-SIZES = [(1.0, .15), (.8, .12)] if prototype else [(.8, .12)]
+SIZES = [(1.0, .15), (.8, .15)] if prototype else [(.8, .15)]   # 0.15 mm stroke: the fab's minimum legend line
 BODY_GAP, TEXT_GAP, EDGE, AMBIGUITY = .15, .25, .5, .3
+ALIGN = float(__import__('os').environ.get('LBL_ALIGN', .6))                     # score per mm a label sits off the middle of its part's side
 GAPS = [.25 * i for i in range(1, 17)]
 VERT = {'F': 90, 'B': 270}
-INSIDE_OK = {'J200', 'J300', 'J400', 'J500'}   # XIAO sockets: between the pin rows, read while the sockets are fitted
+INSIDE_OK = set()                # nothing inside a part outline: the XIAO socket references between the pin rows were hidden by the fitted modules
 
 b = pcb.LoadBoard(str(TARGET)); fs = {f.GetReference(): f for f in b.GetFootprints()}
+MARKS = {r for r in fs if r.startswith('FID')}  # fiducials: obstacles here, never labelled (add_a02_fiducials.py keeps them on Fab)
+FAB = {'R1003': 'every clear spot sits over C1102 or R1106 (R1106 itself on Fab), not beside R1003',
+       'R1110': 'DNP; its only spot is over R1102, a fitted part of another value'}
 side_of = lambda f: 'B' if f.IsFlipped() else 'F'
 grow = lambda q, m: (q[0] - m, q[1] - m, q[2] + m, q[3] + m)
 def box(r, m=0.): return (r.GetLeft() / 1e6 - 50 - m, r.GetTop() / 1e6 - 50 - m, r.GetRight() / 1e6 - 50 + m, r.GetBottom() / 1e6 - 50 + m)
@@ -51,6 +56,15 @@ class Bins:
         return next((n for k in s.keys(q) for n, o in s.d[k] if n != skip and intersects(q, o)), None)
     def near(s, q):
         return {n: o for k in s.keys(q) for n, o in s.d[k]}
+    def hits(s, q):
+        return {n for k in s.keys(q) for n, o in s.d[k] if intersects(q, o)}
+    def remove(s, name):
+        out = None
+        for k in s.d:
+            keep = [(n, o) for n, o in s.d[k] if n != name]
+            if len(keep) != len(s.d[k]): out = next(o for n, o in s.d[k] if n == name)
+            s.d[k] = keep
+        return out
 hard = {'F': Bins(), 'B': Bins()}       # part bodies, pads, through-holes, fasteners
 text = {'F': Bins(), 'B': Bins()}       # silkscreen texts and markings, each grown by TEXT_GAP
 bodies = {'F': Bins(), 'B': Bins()}     # bare part outlines, for the ambiguity test
@@ -69,6 +83,8 @@ for d in b.GetDrawings():
         text['B' if d.GetLayer() == pcb.B_SilkS else 'F'].add('board marking', tbox(d, TEXT_GAP) if isinstance(d, pcb.PCB_TEXT) else box(d.GetBoundingBox(), TEXT_GAP))
 for x, y in INSERT_CENTRES:
     for s in 'FB': hard[s].add('fastener', (x - 3.5, y - 3.5, x + 3.5, y + 3.5))
+for r in MARKS:                         # fiducials: no silk within 1 mm of the 2 mm mask opening
+    x, y = pos(fs[r]); hard[side_of(fs[r])].add(r + ' clear', (x - 2.05, y - 2.05, x + 2.05, y + 2.05))
 
 def style(f, size):
     t = f.Reference(); s = side_of(f)
@@ -90,11 +106,12 @@ def candidates(r, w, h):
                 c = (cx + kx * .25, cy + ky * .25)
                 if o[0] <= c[0] - w / 2 and c[0] + w / 2 <= o[2] and o[1] <= c[1] - h / 2 and c[1] + h / 2 <= o[3]: yield ('in', kx, ky), c, 0.
     kx, ky = int(((o[2] - o[0]) / 2 + w / 2) / .25), int(((o[3] - o[1]) / 2 + h / 2) / .25)
+    centred = lambda n: sorted(range(-n, n + 1), key=abs)    # 0, -1, 1, -2, 2 ...: aligned spots first
     for g in GAPS:
-        for k in range(-kx, kx + 1):
+        for k in centred(kx):
             yield ('S', g, k), (cx + k * .25, o[3] + g + h / 2), g
             yield ('N', g, k), (cx + k * .25, o[1] - g - h / 2), g
-        for k in range(-ky, ky + 1):
+        for k in centred(ky):
             yield ('W', g, k), (o[0] - g - w / 2, cy + k * .25), g
             yield ('E', g, k), (o[2] + g + w / 2, cy + k * .25), g
 def judge(r, s, w, h, c, vertical):
@@ -105,11 +122,18 @@ def judge(r, s, w, h, c, vertical):
     o = own_rect[r]; d_own = dist(q, o)
     d_other = min((dist(q, p) for n, p in bodies[s].near(grow(q, d_own + AMBIGUITY + .5)).items() if n != r), default=99.)
     amb = max(0., d_own + AMBIGUITY - d_other)
-    if amb > AMBIGUITY + .5: return None                   # clearly nearer another part: misleads the assembler
+    if amb > AMBIGUITY - .1: return None                   # never as near another part as its own (0.1 mm margin)
     pw, ph = o[2] - o[0], o[3] - o[1]
     want = True if ph > 1.3 * pw else False if pw > 1.3 * ph else None
     pen = (.15 if vertical else 0.) if want is None else (0. if want == vertical else .4)
-    return d_own + 4 * amb + pen, amb, d_own
+    return d_own + 4 * amb + pen + ALIGN * slide(o, q), amb, d_own
+def slide(o, q):
+    """How far the label's centre sits off the middle of the part side it is on (mm); a label that
+    also leaves the part's span costs double for the part beyond it."""
+    cx, cy = (o[0] + o[2]) / 2, (o[1] + o[3]) / 2; qx, qy = (q[0] + q[2]) / 2, (q[1] + q[3]) / 2
+    if q[3] <= o[1] or q[1] >= o[3]: d, half = abs(qx - cx), (o[2] - o[0]) / 2     # above or below the part
+    else: d, half = abs(qy - cy), (o[3] - o[1]) / 2                                 # beside it
+    return d + max(0., d - half)
 
 placed, unplaced, records = set(), [], []
 def commit(f, vertical, c, offs, j, how, size):
@@ -147,16 +171,30 @@ def place(refs, size, how='search', strict=False):
     return True
 
 # Explicit banks: rows of matching parts read as rows. Skipped where they no longer fit.
-banks = {**{f'C{1111 + i}': (84.5 - 3 * i, 51.3, True) for i in range(5)},
-         'C1117': (80.5, 54.65, False), 'C1118': (74.8, 54.65, False)}
-for r, (x, y, vertical) in banks.items():
-    f = fs[r]; s = side_of(f); style(f, SIZES[0]); w, h, ox, oy = shape(f, vertical)
+banks = {**{f'C{1111 + i}': (84.5 - 3 * i, 51.3, True, SIZES[0]) for i in range(5)},
+         'C1117': (80.5, 54.65, False, SIZES[0]), 'C1118': (74.8, 54.65, False, SIZES[0]),
+         'C1105': (99.5, 45.28, True, SIZES[-1])}      # above its own part: the 1.0 mm pass found only a spot 2.7 mm away
+for r, (x, y, vertical, size) in banks.items():
+    f = fs[r]; s = side_of(f); style(f, size); w, h, ox, oy = shape(f, vertical)
     j = judge(r, s, w, h, (x + ox, y + oy), vertical)
-    if j and j[1] == 0: commit(f, vertical, (x + ox, y + oy), (ox, oy), j, 'explicit bank', SIZES[0])
-# The four camera circuits share offsets where all four stay unambiguous.
-for stem, off in [('U', 0), ('U', 1), ('RS', 0), ('D', 0), *[(s, i) for s, n in [('C', 5), ('R', 6), ('TP', 2)] for i in range(n)]]:
+    if j and j[1] == 0: commit(f, vertical, (x + ox, y + oy), (ox, oy), j, 'explicit spot', size)
+# The four camera circuits use one convention: each group of four matching parts (one per camera)
+# takes the same offset from its own part, unambiguous where possible. A group that fits nowhere
+# together goes to Fab as a whole rather than half on silk; sockets, breakout headers, power links and test points
+# are always labelled, so they fall back to individual placement instead.
+GROUPS = [('J', 0), ('J', 1), ('JP', 0), ('U', 0), ('U', 1), ('RS', 0), ('D', 0),
+          *[(s, i) for s, n in [('C', 5), ('R', 6), ('TP', 2)] for i in range(n)]]
+MUST_LABEL = {('J', 0), ('J', 1), ('JP', 0), ('TP', 0), ('TP', 1)}
+grouped, fab_only = set(), set(FAB)
+unplaced.extend(sorted(FAB))
+for stem, off in GROUPS:
     refs = [stem + str(200 + 100 * i + off) for i in range(4)]
-    if all(r in fs and r not in placed for r in refs): place(refs, SIZES[0], 'camera group', strict=True)
+    if not all(r in fs and r not in placed for r in refs): continue
+    if any(place(refs, sz, 'camera group', strict=True) for sz in SIZES) or \
+       ((stem, off) in MUST_LABEL and any(place(refs, sz, 'camera group', strict=False) for sz in SIZES)):   # ambiguous groups go to Fab
+        grouped.update(refs); continue
+    if (stem, off) not in MUST_LABEL:
+        fab_only.update(refs); unplaced.extend(r for r in refs if r not in unplaced)
 def options(r, size):
     f = fs[r]; style(f, size); n = 0
     for vertical in (False, True):
@@ -164,17 +202,69 @@ def options(r, size):
         n += sum(1 for _, c, _ in candidates(r, w, h) if judge(r, side_of(f), w, h, c, vertical))
     return n
 for strict, size in [(True, s) for s in SIZES] + [(False, s) for s in SIZES]:   # unambiguous first, at either size
-    todo = [r for r in fs if r not in placed]
+    todo = [r for r in fs if r not in placed and r not in fab_only and r not in MARKS and r not in FAB]
     count = {r: options(r, size) for r in todo}
     for r in sorted(todo, key=lambda r: (count[r], pos(fs[r])[1], pos(fs[r])[0])):
         if r not in placed: place([r], size, strict=strict)
+# Repair: a reference with no clear spot may take an unambiguous one blocked by a single other label,
+# if that label has another spot no more ambiguous than its own (at either size). Repeats until
+# nothing more moves.
+def best_spot(r, size, max_amb=0.):
+    f = fs[r]; style(f, size); best = None
+    for vertical in (False, True):
+        shp = shape(f, vertical)
+        for key, c, g in candidates(r, shp[0], shp[1]):
+            if best and g > best[0]: break
+            j = judge(r, side_of(f), shp[0], shp[1], c, vertical)
+            if j and j[1] <= max_amb and (best is None or j[0] < best[0]): best = (j[0], vertical, shp, c, j, size)
+    return best
+def save(f):                             # copies: the bindings hand back live references to the text's own fields
+    t = f.Reference(); q, z = t.GetPosition(), t.GetTextSize()
+    return (pcb.VECTOR2I(q.x, q.y), t.GetTextAngle().AsDegrees(), pcb.VECTOR2I(z.x, z.y), int(t.GetTextThickness()), int(t.GetLayer()))
+def restore(f, st):
+    t = f.Reference(); t.SetPosition(st[0]); t.SetTextAngle(pcb.EDA_ANGLE(st[1], pcb.DEGREES_T))
+    t.SetTextSize(st[2]); t.SetTextThickness(st[3]); t.SetLayer(st[4])
+moved = True
+while moved:
+    moved = False
+    for r in list(unplaced):
+        if r in fab_only: continue
+        f = fs[r]; s = side_of(f); done = False
+        for size in SIZES:
+            for vertical in (False, True):
+                style(f, size); w, h, ox, oy = shape(f, vertical)
+                for key, c, g in candidates(r, w, h):
+                    q = (c[0] - w / 2, c[1] - h / 2, c[0] + w / 2, c[1] + h / 2)
+                    blk = text[s].hits(grow(q, TEXT_GAP))
+                    if len(blk) != 1 or not next(iter(blk)).endswith(' label'): continue
+                    x = next(iter(blk))[:-6]
+                    if x in grouped: continue                     # a camera group moves together or not at all
+                    fx = fs[x]; st = save(fx)
+                    old = text[s].remove(x + ' label')
+                    j = judge(r, s, w, h, c, vertical)
+                    if j is None or j[1] > 0: text[s].add(x + ' label', old); continue     # repaired labels are unambiguous
+                    text[s].add(r + ' label', grow(q, TEXT_GAP))
+                    x_amb = next((q_['ambiguity_mm'] for q_ in records if q_['reference'] == x), 0.)
+                    alt = next((a for sz in SIZES for a in [best_spot(x, sz, x_amb)] if a), None)   # and the moved one no worse
+                    text[s].remove(r + ' label')
+                    if alt is None:
+                        restore(fx, st); text[s].add(x + ' label', old); style(f, size); shape(f, vertical); continue
+                    style(f, size); shape(f, vertical)
+                    commit(f, vertical, c, (ox, oy), j, 'repair', size)
+                    records[:] = [q_ for q_ in records if q_['reference'] != x]
+                    _, xv, xs, xc, xj, xsz = alt
+                    style(fx, xsz); shape(fx, xv)
+                    commit(fx, xv, xc, xs[2:], xj, 'moved for ' + r, xsz)
+                    done = moved = True; break
+                if done: break
+            if done: break
 for r in unplaced:                       # recorded, not dropped: the assembly drawing keeps it at the part centre
     f = fs[r]; t = f.Reference(); style(f, SIZES[-1]); t.SetLayer(pcb.B_Fab if f.IsFlipped() else pcb.F_Fab)
     t.SetTextAngle(pcb.EDA_ANGLE(0, pcb.DEGREES_T)); t.SetPosition(f.GetPosition())
 unfinished = ROOT / 'outputs/A02-ASSEMBLY-LABELS-UNFINISHED.json'
 if unplaced: unfinished.write_text(json.dumps({'unplaced': unplaced, 'reason': 'no clear position beside the part; reference kept on Fab at the part centre'}, indent=2) + '\n')
 elif unfinished.exists(): unfinished.unlink()
-assert len(placed) + len(unplaced) == len(fs), (len(placed), len(unplaced), len(fs))
+assert len(placed) + len(unplaced) + len(MARKS) == len(fs), (len(placed), len(unplaced), len(fs))
 pcb.SaveBoard(str(TARGET), b)
 small = sum(1 for q in records if q['text_height_mm'] < SIZES[0][0])
 amb = [q['reference'] for q in records if q['ambiguity_mm'] > 0]

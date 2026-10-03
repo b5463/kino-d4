@@ -10,6 +10,8 @@ from rework import ROOT, CACHE, NAME, TARGET
 from routing import pt, pos, restore_through_hole_mask
 
 def seed():
+    # One-shot history: seeding overwrites the routed A0.2 board and its project rules.
+    assert '--rebuild' in sys.argv, 'seed rebuilds the A0.2 board from the placed cache; pass --rebuild to do that'
     b=pcb.LoadBoard(str(CACHE/'a02-placed.kicad_pcb'))
     assert not list(b.GetTracks())
     fs={f.GetReference():f for f in b.GetFootprints()}

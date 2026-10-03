@@ -1,12 +1,8 @@
 {
     "$schema": "https://schemas.kicad.org/drc.v1.json",
     "coordinate_units": "mm",
-    "date": "2026-10-03T12:14:27",
+    "date": "2026-10-03T16:30:25",
     "ignored_checks": [
-        {
-            "description": "Footprint has no courtyard defined",
-            "key": "missing_courtyard"
-        },
         {
             "description": "Track endpoint not centered on via",
             "key": "track_not_centered_on_via"

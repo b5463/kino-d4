@@ -67,6 +67,6 @@ result={'board':TARGET.name,'manufacturer_target':'JLCPCB','mask':'black','silks
  'switching_nodes_with_layer_changes':[n for n in ('BOOST_SW','CHG_SW1','CHG_SW2','BUCK_SW')
                                      if n in netstats and netstats[n]['via_count']],
  'drc_counts':dict(Counter(v['type'] for v in drc['violations'])),'unconnected_items':len(drc['unconnected_items']),
- 'order_verdict':'DO NOT ORDER','electrical_function_verified':False,'thermal_verified':False,'physical_stack_verified':False}
+ 'order_verdict':__import__('release').VERDICT,'orderable':__import__('release').ORDERABLE,'electrical_function_verified':False,'thermal_verified':False,'physical_stack_verified':False}
 (ROOT/('outputs/A02-ROUTING-AUDIT.json' if suffix=='A02' else 'outputs/ROUTING-AUDIT.json')).write_text(json.dumps(result,indent=2)+'\n')
 print(json.dumps({k:v for k,v in result.items() if k!='net_routing'},indent=2))

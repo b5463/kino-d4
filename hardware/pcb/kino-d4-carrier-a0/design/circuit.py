@@ -36,7 +36,7 @@ def passive(sh, ref, value, a, b, kind='R', size='0603', **kw):
     return add(sh,ref,value,{1:a,2:b},footprint=kw.pop('footprint',fp),
                pin_defs={1:(names[0],'passive'),2:(names[1],'passive')},**kw)
 
-def cap(sh,ref,net,value='100n 16V',gnd='GND',**kw): return passive(sh,ref,value,net,gnd,kind='C',**kw)
+def cap(sh,ref,net,value='100n 50V',gnd='GND',**kw): return passive(sh,ref,value,net,gnd,kind='C',**kw)
 def res(sh,ref,a,b,value='10k 1%',**kw):
     # Exact manufacturer spec sheets checked 2026-09-30; power shunts are
     # deliberately excluded. This selects parts, not circuit qualification.
@@ -49,29 +49,31 @@ def res(sh,ref,a,b,value='10k 1%',**kw):
 def con(sh,ref,value,nets,footprint=None,**kw):
     fp=footprint or f'Connector_JST:JST_GH_BM{len(nets):02d}B-GHS-TBT_1x{len(nets):02d}-1MP_P1.25mm_Vertical'
     return add(sh,ref,value,nets,footprint=fp,pin_defs={str(k):(str(v or 'NC'),'passive') for k,v in nets.items()},**kw)
-def tp(sh,ref,net): return con(sh,ref,net,{1:net},'TestPoint:TestPoint_Pad_D1.5mm')
-def fet(sh,ref,g,s,d,value='AO4407A'):
+def tp(sh,ref,net): return con(sh,ref,net,{1:net},'TestPoint:TestPoint_Pad_D1.5mm',mpn='PCB feature - no fitted component')
+def fet(sh,ref,g,s,d,value='AO4409'):
     return add(sh,ref,value,{1:s,2:s,3:s,4:g,5:d,6:d,7:d,8:d},footprint='Package_SO:SOIC-8_3.9x4.9mm_P1.27mm',
                pin_defs={i:(('G' if i==4 else 'S' if i<4 else 'D'),'input' if i==4 else 'passive') for i in range(1,9)},
-               note='Verify exact AO4407A manufacturer and SO8 pinout before BOM release.')
-def nfet(sh,ref,g,s,d):
-    return add(sh,ref,'2N7002',{1:g,2:s,3:d},footprint='Package_TO_SOT_SMD:SOT-23',
-               pin_defs={1:('G','input'),2:('S','passive'),3:('D','passive')})
+               mpn='Alpha & Omega AO4409',source='https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf',
+               note='AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V.')
+def nfet(sh,ref,g,s,d,value='2N7002',**kw):
+    return add(sh,ref,value,{1:g,2:s,3:d},footprint='Package_TO_SOT_SMD:SOT-23',
+               pin_defs={1:('G','input'),2:('S','passive'),3:('D','passive')},**kw)
 
 sheet('01_p4','P4 header and isolated control bus',
       'Measured ECN-0002/0003 map. JP1 pin 15 NC. 3V3 pins sense only. P4 USB power coexistence requires validation.')
 p4={1:'P4_3V3_SENSE',2:'P4_5V',3:'P4_3V3_TEST',4:'P4_5V',5:'GND',6:'GND',7:'P4_TX1',8:'P4_RX3',9:'P4_RX1',10:'CAM_GLOBAL_EN',11:'P4_TX2',12:'P4_TX4',13:'P4_RX2',14:'P4_RX4',15:None,16:'GND',17:'P4_TX3',18:'C6_3V3_TEST',19:'SYNC_MASTER',20:'C6_RX_SERVICE',21:'SHUTTER_N',22:'C6_TX_SERVICE',23:'P4_SDA',24:'C6_BOOT_SERVICE',25:'P4_SCL',26:'C6_EN_SERVICE'}
 con('01_p4','J100','P4 JP1 - 26 pin IDC',p4,'Connector_IDC:IDC-Header_2x13_P2.54mm_Vertical',at=(6,18),note='1:1 electrical pin numbering; verify cable and mating views.')
 con('01_p4','J101','C6 service - 3V3 sense only',{1:'GND',2:'C6_3V3_TEST',3:'C6_RX_SERVICE',4:'C6_TX_SERVICE',5:'C6_BOOT_SERVICE',6:'C6_EN_SERVICE'},'Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical')
-add('01_p4','U100','TCA9517ADGKR',{1:'MB_3V3',2:'P4_SCL',3:'P4_SDA',4:'GND',5:'P4_BUS_EN',6:'I2C_SDA',7:'I2C_SCL',8:'MB_3V3'},lib='Logic_LevelTranslator:TCA9517ADGK',note='B side is local. Do not cascade another B-side offset buffer on local bus.')
-res('01_p4','R100','P4_3V3_SENSE','P4_BUS_EN','10k')
-res('01_p4','R101','P4_BUS_EN','GND','1M')
+add('01_p4','U100','TCA9517ADGKR',{1:'MB_3V3',2:'I2C_SCL',3:'I2C_SDA',4:'GND',5:'P4_BUS_EN',6:'P4_SDA',7:'P4_SCL',8:'MB_3V3'},lib='Logic_LevelTranslator:TCA9517ADGK',note='A side is local: its hard low suits the STUSB4500 (VIL 0.35 V), BQ25798 (0.4 V), DRV2605L and BQ27441. B side (buffered low 0.45-0.6 V) faces the P4 bus (P4 VIL 0.825 V). No other offset buffer or rise-time accelerator on the P4 bus.')
+res('01_p4','R100','P4_3V3_SENSE','P4_BUS_EN','2.2k',note='With R101: EN 3.0 V with the P4 on; 0.66 V worst case with JP1 pin 1 open against the TCA9517 EN pull-up (30 uA max), under its 0.99 V VIL and the TXU0304 OE 0.89 V VT- min.')
+res('01_p4','R101','P4_BUS_EN','GND','22k')
 res('01_p4','R102','I2C_SDA','MB_3V3','4.7k')
 res('01_p4','R103','I2C_SCL','MB_3V3','4.7k')
+res('01_p4','R105','SYNC_MASTER','GND','100k',note='P4 GPIO32 is Hi-Z from reset until firmware drives it; holds the shared sync (and the J601 flash option) low. ODD JOBS 116/117.')
 cap('01_p4','C100','MB_3V3')
 res('01_p4','R104','CAM_GLOBAL_EN','GND','100k')
 con('01_p4','J102','3V3 I2C accessory',{1:'GND',2:'AUX_3V3',3:'I2C_SDA',4:'I2C_SCL'})
-passive('01_p4','F100','PTC 100mA - select','MB_3V3','AUX_3V3',kind='F',note='Accessory protection and ESD review open.')
+passive('01_p4','F100','PTC 100mA','MB_3V3','AUX_3V3',kind='F',note='Accessory protection and ESD review open.')
 tp('01_p4','TP100','P4_3V3_TEST')
 tp('01_p4','TP101','SYNC_MASTER')
 tp('01_p4','TP102','P4_5V')
@@ -96,9 +98,9 @@ for n in range(1,5):
     res(sh,f'R{base+3}',local('ILIM'),'GND','25.5k 1%',note='Approx. 1A target; verify min/max and startup before release.')
     res(sh,f'R{base+4}',local('FAULT_N'),'MB_3V3','10k')
     res(sh,f'R{base+5}',local('EN'),'GND','100k')
-    res(sh,f'RS{base}','SYS_5V',local('SHUNT_OUT'),'0.020 1% 0.5W',size='1206',note='Kelvin sense required; exact current-sense resistor MPN pending.')
+    res(sh,f'RS{base}','SYS_5V',local('SHUNT_OUT'),'0.020 1% 1W',size='1206',note='Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py).')
     passive(sh,f'D{base}','SS34',local('5V_ISO'),local('SW5V'),kind='D',note='Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.')
-    cap(sh,f'C{base+2}',local('SHUNT_OUT'),'1u 16V')
+    cap(sh,f'C{base+2}',local('SHUNT_OUT'),'1u 50V')
     cap(sh,f'C{base+3}',local('5V'),'22u 10V',size='0805')
     cap(sh,f'C{base+4}',local('5V'))
     tp(sh,f'TP{base}',local('5V'));tp(sh,f'TP{base+1}',local('SYNC'))
@@ -124,16 +126,16 @@ con('06_control','J601','EXTERNAL FLASH LOGIC',
 res('06_control','R605','SYNC_MASTER','FLASH_SYNC','33',dnp=True,
     note='Fit with J601 only after external flash-driver timing/loading review.')
 
-sheet('07_monitoring','Four camera currents and battery fuel gauge','PAC1954 grounded ADDRSEL: 7-bit address 0x10; calibrate shunts. BQ27441 HIGH-SIDE 5 mOhm (TI pins 7/8: SRP pack side, SRN system side). +/-25 mV range: 5 A = 25 mV. Gauge is factory-calibrated for 10 mOhm: firmware must write CC Gain for 5 mOhm.')
+sheet('07_monitoring','Four camera currents and battery fuel gauge','PAC1954 grounded ADDRSEL: 7-bit address 0x10; calibrate shunts. BQ27441 HIGH-SIDE 5 mOhm (TI pin 8 SRP pack side, pin 7 SRN system side). +/-25 mV range: 5 A = 25 mV. Gauge is factory-calibrated for 10 mOhm: firmware must write CC Gain for 5 mOhm.')
 add('07_monitoring','U700','PAC1954T-E/4MX',{1:'GND',2:'MB_3V3',3:'GND',4:'I2C_SCL',5:'I2C_SDA',6:'GND',7:'CAM3_SHUNT_OUT',8:'SYS_5V',9:'CAM4_SHUNT_OUT',10:'SYS_5V',11:'SYS_5V',12:'CAM1_SHUNT_OUT',13:'SYS_5V',14:'CAM2_SHUNT_OUT',15:None,16:'MB_3V3',17:'GND'},lib='Sensor_Energy:PAC1954x-x4MX',footprint='KINO_A0:VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm_Pin1Corner',note='ADDRSEL tied to GND (pin 6 to the exposed pad) gives 7-bit 0x10 (Microchip evaluation guide section 4.6); the only PAC1954 on the bus, so no strap resistor. PWRDN high enables; SLOW low gives default sample rate.')
 cap('07_monitoring','C700','MB_3V3');cap('07_monitoring','C701','MB_3V3','1u')
 add('07_monitoring','U701','BQ27441DRZR-G1A',{1:'I2C_SDA',2:'I2C_SCL',3:'GND',4:None,5:'GAUGE_1V8',6:'PACK_FUSED',7:'BAT_PROTECTED',8:'PACK_FUSED',9:None,10:'GAUGE_BIN',11:None,12:'GAUGE_GPOUT',13:'GND'},lib='Battery_Management:BQ27441-G1',note='TI SLUSBH1C pin table: SRP (8) Kelvin to RS700 pack side, SRN (7) Kelvin to RS700 system side, BAT (6) Kelvin to pack positive. GPOUT must not float.')
-cap('07_monitoring','C702','GAUGE_1V8','470n');cap('07_monitoring','C703','PACK_FUSED','1u 16V',note='TI: 1 uF from BAT to VSS, close to the gauge.')
+cap('07_monitoring','C702','GAUGE_1V8','470n');cap('07_monitoring','C703','PACK_FUSED','1u 50V',note='TI: 1 uF from BAT to VSS, close to the gauge.')
 res('07_monitoring','R701','GAUGE_BIN','GND','10k',note='Embedded pack: BIN 10k to VSS per TI.')
 res('07_monitoring','R702','GAUGE_GPOUT','GAUGE_1V8','10k',note='TI: GPOUT must not float; 10k pull-up to the gauge VDD, which stays up with the camera off.')
-res('07_monitoring','RS700','PACK_FUSED','BAT_PROTECTED','0.005 1% 1W',size='1206',mpn='WSLP1206R0050FEA',source='https://www.vishay.com/en/product/30122/',note='High side after F1100. 4.4 A = 22 mV (gauge range 25 mV), 97 mW. Kelvin taps from the pad inner edges.')
+res('07_monitoring','RS700','PACK_FUSED','BAT_PROTECTED','0.005 1% 1W',size='1206',mpn='WSLP12065L000FEA',source='https://www.vishay.com/en/product/30122/',note='High side after F1100. 4.4 A = 22 mV (gauge range 25 mV), 97 mW. Kelvin taps from the pad inner edges.')
 
-sheet('08_sensors','Motion, clock and board temperature','IMU mode 1; axes marked on PCB. RTC backup charging must stay disabled for primary cell. No always-on wake promise.')
+sheet('08_sensors','Motion, clock and board temperature','IMU mode 1; axes follow the LSM6DSOX pin-1 orientation (not marked on silk). RTC backup charging must stay disabled for primary cell. No always-on wake promise.')
 imupins={1:('SA0','input'),2:('SDX','input'),3:('SCX','input'),4:('INT1','output'),5:('VDDIO','power_in'),6:('GND','power_in'),7:('GND','passive'),8:('VDD','power_in'),9:('INT2','output'),10:('OCS_AUX','no_connect'),11:('SDO_AUX','no_connect'),12:('CS','input'),13:('SCL','input'),14:('SDA','bidirectional')}
 add('08_sensors','U800','LSM6DSOXTR',{1:'GND',2:'GND',3:'GND',4:'IMU_INT',5:'MB_3V3',6:'GND',7:'GND',8:'MB_3V3',9:None,10:None,11:None,12:'MB_3V3',13:'I2C_SCL',14:'I2C_SDA'},pin_defs=imupins,footprint='Package_LGA:LGA-14_3x2.5mm_P0.5mm_LayoutBorder3x4y',source='https://www.st.com/resource/en/datasheet/lsm6dsox.pdf')
 cap('08_sensors','C800','MB_3V3');cap('08_sensors','C801','MB_3V3')
@@ -161,25 +163,26 @@ res('09_controls','R905','REMOTE_ACTIVE','GND','100k')
 for i,net in enumerate(['REMOTE_CONTACT','COVER_RAW','SHUTTER_N']):
     passive('09_controls',f'D{900+i}','PESD5V0S1BA','GND',net,kind='D',footprint='Diode_SMD:D_SOD-323',note='Bidirectional ESD clamp candidate; verify surge rating and leakage.')
 con('09_controls','J904','FUNCTION BUTTON',{1:'FN_N',2:'GND'});res('09_controls','R906','FN_N','MB_3V3','10k')
+passive('09_controls','D903','PESD5V0S1BA','GND','FN_N',kind='D',footprint='Diode_SMD:D_SOD-323',note='Cased button line, same class as the shutter input (D902). Beside J904.')
 
-sheet('10_usb_pd','USB-C PD sink and protected input','Charge-only port. STUSB4500 NVM must be programmed for 5V fallback and 9V/2A. Protection and gate transient review OPEN.')
+sheet('10_usb_pd','USB-C PD sink and protected input','Charge-only port. Safe with the factory NVM (5/15/20 V PDOs, highest taken): TVS, FETs, gate network and charger are rated for a 20 V contract. Program the STUSB4500 NVM for 9V/2A with 5V fallback for normal use. Hot-plug transient at 20 V to be measured.')
 usb={p:('GND' if p in ('A1','A12','B1','B12','SH') else 'USB_VBUS' if p in ('A4','A9','B4','B9') else 'USB_CC1' if p=='A5' else 'USB_CC2' if p=='B5' else None) for p in pins(symbol('Connector:USB_C_Receptacle_USB2.0_16P'))}
 add('10_usb_pd','J1000','USB4105-GF-A',usb,lib='Connector:USB_C_Receptacle_USB2.0_16P',footprint='KINO_A0:USB_C_GCT_USB4105_KINO_GND0.05',at=(109,HEIGHT-4.2),note='Power-only. A6/B6 A7/B7 data unconnected; PD only, no BC1.2 data detection. Land: GCT drawing B4, outer GND lands trimmed 0.05 mm (local deviation, A02-REVIEW).')
-add('10_usb_pd','U1000','STUSB4500QTR',{1:'USB_CC1',2:'USB_CC1',3:None,4:'USB_CC2',5:'USB_CC2',6:'PD_RESET',7:'I2C_SCL',8:'I2C_SDA',9:'PD_DISCH',10:'GND',11:None,12:'GND',13:'GND',14:None,15:None,16:'PD_SINK_EN_N',17:None,18:'PD_VBUS_SENSE',19:None,20:'PD_9V_OK_N',21:'PD_1V2',22:'GND',23:'PD_2V7',24:'USB_VBUS',25:'GND'},lib='Interface_USB:STUSB4500QTR')
-cap('10_usb_pd','C1000','USB_VBUS','1u 35V',size='0805');cap('10_usb_pd','C1001','PD_1V2','1u');cap('10_usb_pd','C1002','PD_2V7','1u')
+add('10_usb_pd','U1000','STUSB4500QTR',{1:'USB_CC1',2:'USB_CC1',3:None,4:'USB_CC2',5:'USB_CC2',6:'PD_RESET',7:'I2C_SCL',8:'I2C_SDA',9:'PD_DISCH',10:'GND',11:None,12:'GND',13:'GND',14:None,15:None,16:'PD_SINK_EN_N',17:None,18:'PD_VBUS_SENSE',19:None,20:None,21:'PD_1V2',22:'GND',23:'PD_2V7',24:'USB_VBUS',25:'GND'},lib='Interface_USB:STUSB4500QTR')
+cap('10_usb_pd','C1000','USB_VBUS','1u 50V',size='0805');cap('10_usb_pd','C1001','PD_1V2','1u');cap('10_usb_pd','C1002','PD_2V7','1u')
 res('10_usb_pd','R1000','PD_RESET','GND','100k');res('10_usb_pd','R1001','USB_VBUS','PD_VBUS_SENSE','470');res('10_usb_pd','R1002','CHG_VBUS','PD_DISCH','1k')
 fet('10_usb_pd','Q1000','PD_GATE','PD_COMMON_SOURCE','USB_VBUS');fet('10_usb_pd','Q1001','PD_GATE','PD_COMMON_SOURCE','CHG_VBUS')
-res('10_usb_pd','R1003','PD_COMMON_SOURCE','PD_GATE','100k');res('10_usb_pd','R1004','PD_GATE','PD_SINK_EN_N','1k')
+res('10_usb_pd','R1003','PD_COMMON_SOURCE','PD_GATE','100k');res('10_usb_pd','R1004','PD_GATE','PD_SINK_EN_N','10k',note='Above 10 V VBUS D1000 conducts through this resistor: 1.2 mA at 22 V, inside the 3 mA VBUS_EN_SNK test condition (ST reference: 22k). Gate at -4.55 V at 5 V VBUS.')
 passive('10_usb_pd','D1000','BZT52C10','PD_COMMON_SOURCE','PD_GATE',kind='D',footprint='Diode_SMD:D_SOD-123')
-passive('10_usb_pd','D1001','SMF12A','USB_VBUS','GND',kind='D',footprint='Diode_SMD:D_SOD-123F')
+passive('10_usb_pd','D1001','SMF22A','USB_VBUS','GND',kind='D',footprint='Diode_SMD:D_SOD-123F',note='VRWM 22 V: no conduction on a 20 V contract (unprogrammed STUSB4500 NVM). VBR 24.4-27 V, under the 28 V STUSB4500 and 30 V charger/FET ratings at low current.')
 for i in (1,2):passive('10_usb_pd',f'D{1001+i}','PESD24VL1BA',f'USB_CC{i}','GND',kind='D',footprint='Diode_SMD:D_SOD-323',mpn='PESD24VL1BA,115',source='https://assets.nexperia.com/documents/data-sheet/PESD24VL1BA.pdf',note='VRWM 24 V, VBR 25.4 V min, 11 pF. A 5 V part conducts if CC shorts to 9 V VBUS.')
-tp('10_usb_pd','TP1000','USB_VBUS');tp('10_usb_pd','TP1001','PD_9V_OK_N')
+tp('10_usb_pd','TP1000','USB_VBUS')
 
 sheet('11_charger','1S charger and battery entry','CE pulled LOW: charges with the camera off, POR defaults 4.2 V / 1 A (PROG 3.00k, TI tables 7-1/7-2). 103AT-2 pack NTC, TS window 1-60 C (TI RT1 5.24k / RT2 30.31k). Open or shorted NTC suspends charge. Fit R1110 only to inhibit charging at bring-up. STAT (pin 1) is left open: the pin sits inside the charger power copper with no layout path out; firmware reads the charge state from the status registers over I2C.')
 con('11_charger','J1100','PROTECTED 1S PACK / NTC',{1:'PACK_PLUS',2:'PACK_NTC',3:'GND'},'Connector_JST:JST_VH_B3P-VH_1x03_P3.96mm_Vertical',note='New rated harness required. Keying is not electronic reverse-polarity protection.')
 passive('11_charger','F1100','7A fast 1206','PACK_PLUS','PACK_FUSED',kind='F',footprint='Fuse:Fuse_1206_3216Metric',mpn='SF-1206F700-2',source='Bourns SF-1206F series datasheet',note='5 A planning current = 71 % of 7 A. Interrupt rating 50 A relies on the pack PCM clearing a hard short first.')
 add('11_charger','U1100','BQ25798RQMR',{1:None,2:'CHG_VBUS',3:'CHG_VBUS',4:'CHG_BTST1',5:'CHG_REGN',6:None,7:None,8:'CHG_VBUS',9:'CHG_VBUS',10:'GND',11:'GND',12:None,13:'CHARGE_CE_N',14:'I2C_SCL',15:'I2C_SDA',16:'CHG_TS',17:'CHG_ILIM',18:'CHG_BATP',19:'CHG_BTST2',20:'CHG_PROG',21:None,22:'BAT_PROTECTED',23:'BAT_PROTECTED',24:'CHG_SDRV',25:'SYS_RAW',26:'CHG_SW2',27:'GND',28:'CHG_SW1',29:'CHG_PMID'},lib='Battery_Management:BQ25798')
-res('11_charger','R1100','CHG_PROG','GND','3.00k 1%',note='TI Table 7-1: 1S, 1.5MHz. Default 4.2V / 1A charge, hardware-disabled until qualified.')
+res('11_charger','R1100','CHG_PROG','GND','3.00k 1%',note='TI Table 7-1: 1S, 1.5MHz. POR default 4.2 V / 1 A; charging enabled in hardware (CE low). Inhibit with EN_CHG or by fitting R1110.')
 res('11_charger','R1101','BAT_PROTECTED','CHG_BATP','100')
 res('11_charger','R1102','CHARGE_CE_N','GND','100k',note='TI pin 13: CE must be pulled high or low. LOW = charge whenever VBUS is valid and EN_CHG=1; firmware inhibits with EN_CHG, not this pin.')
 res('11_charger','R1110','CHARGE_CE_N','CHG_REGN','10k',dnp=True,note='BRING-UP ONLY: FIT = CHARGE INHIBIT. 10k over R1102 100k holds CE at 0.91 REGN.')
@@ -187,14 +190,14 @@ res('11_charger','R1104','CHG_REGN','CHG_ILIM','30.1k 1%',mpn='RC0603FR-0730K1L'
 res('11_charger','R1105','CHG_ILIM','GND','10k 1%',mpn='RC0603FR-0710KL',source='https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL')
 res('11_charger','R1106','CHG_REGN','CHG_TS','5.23k 1%',note='RT1. TI 5.24k for 103AT-2; E96 5.23k gives 0.97 C / 59.9 C (T1 73.3 % / T5 34.2 % of REGN).')
 res('11_charger','R1107','CHG_TS','GND','30.1k 1%',note='RT2. TI 30.31k; open NTC gives 85 % REGN = cold = charge suspended.')
-res('11_charger','R1108','CHG_TS','PACK_NTC','0',note='NTC returns to pack negative = board GND; the gauge shunt is on the high side, so no TS offset.')
+res('11_charger','R1108','CHG_TS','PACK_NTC','0',note='0 ohm NTC link (bring-up): open it to measure the pack NTC alone; open = TS cold = charging suspended. NTC returns to board GND; the gauge shunt is high side, so no TS offset.')
 cap('11_charger','C1100','CHG_SDRV','1n 50V');cap('11_charger','C1101','CHG_REGN','4.7u 10V',size='0805')
 cap('11_charger','C1102','CHG_BTST1','47n 16V',gnd='CHG_SW1');cap('11_charger','C1103','CHG_BTST2','47n 16V',gnd='CHG_SW2')
 passive('11_charger','L1100','1.0uH 14.1A Isat','CHG_SW1','CHG_SW2',kind='L',footprint='KINO_A0:L_TDK_SPM6530',mpn='SPM6530T-1R0M120',source='TDK SPM6530 catalog 20160825 p5-6',note='TI BQ25798 characterization part (L1 1 uH). 7.81 mOhm max, Isat 14.1 A (-20 %), Itemp 13 A (+40 C). Land 1.85 x 3.4 mm, gap 3.7 mm per TDK.')
 ci=1104
 for net,count in [('CHG_VBUS',2),('CHG_PMID',3),('SYS_RAW',5),('BAT_PROTECTED',2)]:
-    for j in range(count): cap('11_charger',f'C{ci}',net,'10u 35V X7R',size='1206');ci+=1
-    cap('11_charger',f'C{ci}',net,'100n 35V');ci+=1
+    for j in range(count): cap('11_charger',f'C{ci}',net,'10u 50V X7R',size='1206');ci+=1
+    cap('11_charger',f'C{ci}',net,'100n 50V');ci+=1
 tp('11_charger','TP1101','SYS_RAW')
 
 sheet('12_boost','5V boost and main load disconnect','5V = 0.6*(1+110k/15k). L Isat 19.6 A > ILIM 17.1 A max (TI 9.2.2.2). Comp per TI eq 12-14: fc 8-16 kHz, PM > 68 deg over Co 50-110 uF, L +/-20 %, Vin 3.0-4.3 V. Calculated; measure loop on bench.')
@@ -203,14 +206,15 @@ add('12_boost','U1200','TPS61288LRQQR',{1:'BOOST_FB',2:'BOOST_COMP',3:'GND',4:'B
 passive('12_boost','L1200','2.2uH 19.6A Isat','SYS_RAW','BOOST_SW',kind='L',footprint='Inductor_SMD:L_Coilcraft_XAL7070-XXX',mpn='XAL7070-222MEC',source='https://www.coilcraft.com/getmedia/1ba55433-bcc8-4838-9b21-382f497e12e0/xal7070.pdf',note='Isat 19.6 A (-30 %) > TPS61288 ILIM 17.1 A max, per TI 9.2.2.2. 6.33 mOhm max, Irms 13.2 A (+20 C). Worst operating peak 6.1 A at 3.0 V in, 2.6 A out. Same family as TI table 9-2 XAL1060, which does not fit. 7.0 mm tall.')
 res('12_boost','R1200','BOOST_5V','BOOST_FB','110k 0.1%');res('12_boost','R1201','BOOST_FB','GND','15k 0.1%')
 res('12_boost','R1202','BOOST_COMP','BOOST_COMP_RC','20.5k 1%',note='RC per TI eq 12 at fc 8 kHz, Co_eff 72 uF, Vin 3.0 V. Bench loop measurement required.')
-cap('12_boost','C1200','BOOST_COMP_RC','3.3n 50V',note='CC per TI eq 13 at 2.6 A load.');cap('12_boost','C1201','BOOST_COMP','100p',dnp=True)
-cap('12_boost','C1202','BOOST_VCC','4.7u 16V',note='TI: VCC needs > 1.0 uF effective; 2.2 uF 0603 is about 1.0 uF at 5 V.');cap('12_boost','C1203','BOOST_BST','100n',gnd='BOOST_SW')
+cap('12_boost','C1200','BOOST_COMP_RC','3.3n 50V',note='CC per TI eq 13 at 2.6 A load.');cap('12_boost','C1201','BOOST_COMP','100p',dnp=True,note='TPS61288 optional CP (TI eq 14). DNP; fit only if the bench loop or COMP ripple needs the extra pole.')
+cap('12_boost','C1202','BOOST_VCC','4.7u 16V',note='TI: VCC needs > 1.0 uF effective; 2.2 uF 0603 is about 1.0 uF at 5 V, hence 4.7 uF.');cap('12_boost','C1203','BOOST_BST','100n',gnd='BOOST_SW')
 cap('12_boost','C1204','SYS_RAW','22u 10V',size='1206');cap('12_boost','C1205','SYS_RAW')
 for i in range(6):cap('12_boost',f'C{1206+i}','BOOST_5V','22u 10V',size='1206')
 fet('12_boost','Q1200','MAIN_GATE','MAIN_COMMON','BOOST_5V');fet('12_boost','Q1201','MAIN_GATE','MAIN_COMMON','SYS_5V')
-res('12_boost','R1203','MAIN_COMMON','MAIN_GATE','100k');nfet('12_boost','Q1202','BOOST_ENABLE','GND','MAIN_GATE')
+res('12_boost','R1203','MAIN_COMMON','MAIN_GATE','100k');nfet('12_boost','Q1202','BOOST_ENABLE','GND','MAIN_GATE',value='PMV16UN',mpn='Nexperia PMV16UN',source='https://assets.nexperia.com/documents/data-sheet/PMV16UN.pdf',note='VGS(th) 0.4-1.0 V: fully on from BOOST_ENABLE at any SYS_RAW; a 2N7002 (up to 2.5 V) could drop out at low battery.')
+res('12_boost','R1204','BOOST_ENABLE','SYS_RAW','100k',note='LTC2955-1 EN is a 1.2-2.8 uA current-source pull-up (ADI p13: add an external pull-up) and TPS61288 EN has an 850k-1.1M pull-down: worst case 1.02 V, under its 1.2 V VIH. This holds EN at about 2.7 V or more; off, the LTC2955 sinks 30-44 uA.')
 add('12_boost','U1201','TPS62162DSGR',{1:'GND',2:'SYS_5V',3:'SYS_5V',4:'GND',5:'GND',6:'MB_3V3',7:'BUCK_SW',8:None,9:'GND'},lib='Regulator_Switching:TPS62162DSG')
-passive('12_boost','L1201','2.2uH 1.5A','BUCK_SW','MB_3V3',kind='L',footprint='Inductor_SMD:L_Taiyo-Yuden_NR-30xx',mpn='TBD-2u2-1A')
+passive('12_boost','L1201','2.2uH 1.5A','BUCK_SW','MB_3V3',kind='L',footprint='Inductor_SMD:L_Taiyo-Yuden_NR-30xx',mpn='Taiyo Yuden LSXND3030QKT2R2MNG')
 cap('12_boost','C1212','SYS_5V','10u',size='0805');cap('12_boost','C1213','MB_3V3','22u',size='0805')
 passive('12_boost','D1200','SS34','P4_5V_ISO','SYS_5V',kind='D')
 passive('12_boost','JP1200','0R LINK - REMOVE FOR P4 USB SERVICE','P4_5V_ISO','P4_5V',kind='R',footprint='KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP',note='Reverse isolation diode plus manual disconnect (0 ohm link, desolder for P4 USB service). Verify Guition external supply and USB topology before simultaneous connection.')
@@ -228,7 +232,7 @@ passive('13_power_button','D1300','LED GREEN','GND','POWER_LED_A',kind='D',footp
 
 # Inner P4 brass inserts; do not substitute the outer case's 108 x 60 pattern.
 for i,(x,y) in enumerate(INSERT_CENTRES):
-    add('01_p4',f'H{i+1}','P4 M2 insert mount',{},pin_defs={},footprint='MountingHole:MountingHole_2.2mm_M2',at=(x,y),note='61.9 x 54.8 inner insert centres. Offset -9.3 mm is drawing-derived, pending physical fit. Extension spacers required for P4 component/header clearance.')
+    add('01_p4',f'H{i+1}','P4 M2 insert mount',{},pin_defs={},footprint='MountingHole:MountingHole_2.2mm_M2',at=(x,y),mpn='PCB feature - no fitted component',note='61.9 x 54.8 inner insert centres. Offset -9.3 mm is drawing-derived, pending physical fit. Extension spacers required for P4 component/header clearance.')
 
 import json as _json
 from pathlib import Path as _Path
@@ -241,8 +245,9 @@ for _s in _sel['selections']:
             _by_ref[_r]['mpn'] = _s['manufacturer'] + ' ' + _s['mpn']
             _by_ref[_r]['source'] = _s['datasheet']
 _MPN = {'D1002': 'Nexperia PESD24VL1BA,115', 'D1003': 'Nexperia PESD24VL1BA,115',
-        'C1202': 'Samsung CL10A475KO8NNNC', 'C703': 'Samsung CL10A105KB8NNNC', 'RS700': 'Vishay Dale WSLP1206R0050FEA',
-        'F1100': 'Bourns SF-1206F700-2', 'U1300': 'Analog Devices LTC2955ITS8-1#TRMPBF', 'C1301': 'Samsung CL10A155KO8NNNC'}
+        'C1202': 'Samsung Electro-Mechanics CL10A475KO8NNNC', 'C703': 'Samsung Electro-Mechanics CL10A105KB8NNNC', 'RS700': 'Vishay Dale WSLP12065L000FEA',
+        'F1100': 'Bourns SF-1206F700-2', 'U1300': 'Analog Devices LTC2955ITS8-1#TRMPBF', 'C1301': 'Samsung Electro-Mechanics CL10A155KO8NNNC'}
 for _r, _m in _MPN.items(): _by_ref[_r]['mpn'] = _m
+for _r in ('J200', 'J300', 'J400', 'J500'): _by_ref[_r]['mpn'] = '2 x ' + _by_ref[_r]['mpn']   # two 1x07 sockets per XIAO
 
 assert len({p['ref'] for p in PARTS}) == len(PARTS)

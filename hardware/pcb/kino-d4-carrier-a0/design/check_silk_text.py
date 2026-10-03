@@ -25,7 +25,7 @@ mm = lambda v: round(pcb.ToMM(v) - 50, 3)
 SILK = {pcb.F_SilkS: 'F', pcb.B_SilkS: 'B'}
 MASK = {'F': pcb.F_Mask, 'B': pcb.B_Mask}
 CRT = {'F': pcb.F_CrtYd, 'B': pcb.B_CrtYd}
-INSIDE_OK = {'J200', 'J300', 'J400', 'J500'}   # XIAO sockets: reference between the pin rows (assembly_labels.py)
+INSIDE_OK = set()                                # no reference inside its own part (assembly_labels.py keeps the XIAO socket references outside)
 
 def box(t):
     r = t.GetEffectiveTextShape().BBox()

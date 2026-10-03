@@ -1,7 +1,9 @@
 {
-  "status": "TWO_FACE_ROUTING_REVIEW",
+  "status": "A02_RELEASE_CANDIDATE",
+  "verdict": "READY FOR FABRICATION WITH SPECIFIC MANUAL CHECKS",
+  "release_date": "2026-10-03",
   "board": "KINO_D4_Carrier_A0_2.kicad_pcb",
-  "components": 248,
+  "components": 250,
   "date": "2026-09-30",
   "sheets": 14,
   "fabrication_released": false,
@@ -16,9 +18,9 @@
   "mounting_hole_diameter_mm": 2.2,
   "unconnected_items": 0,
   "drc_violation_count": 0,
-  "board_sha256": "d6fce31c8cf0bb3e8ca286397857e1ea32be862caf60933c32b1da1e6b5f1d21",
-  "tracks": 2368,
-  "vias": 553,
-  "front_footprints": 77,
-  "rear_footprints": 171
+  "board_sha256": "026840b406681c1f93c1dbe15f6ec896bab0e5ad43de85bf28348ffab3bfb81c",
+  "tracks": 2385,
+  "vias": 573,
+  "front_footprints": 80,
+  "rear_footprints": 176
 }

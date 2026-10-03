@@ -14,7 +14,7 @@ import pcbnew as pcb
 ROOT = Path(__file__).resolve().parent.parent
 NAME = 'VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm_Pin1Corner'
 AT, ROT = (58.75, 15.5), 90
-TRI = ((57.45, 17.32), (57.35, 17.77), (57.0, 17.42))       # board mm, pointing north-east at pin 1
+TRI = ((57.35, 17.22), (57.25, 17.67), (56.9, 17.32))       # board mm, pointing north-east at pin 1; 0.1 mm clear of C700's 0.15 mm silk
 STOCK_TRI = ((58.0, 17.62), (58.24, 17.95), (57.76, 17.95))  # where the stock triangle lands
 _KS = [Path.home() / 'Applications/KiCad/KiCad.app/Contents/SharedSupport/footprints',
        Path('/Applications/KiCad/KiCad.app/Contents/SharedSupport/footprints'),

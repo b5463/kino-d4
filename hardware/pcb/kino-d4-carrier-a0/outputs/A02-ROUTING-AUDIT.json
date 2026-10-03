@@ -26,6 +26,30 @@
   ],
   "right_angle_bends": [
     {
+      "net": "I2C_SCL",
+      "layer": "B.Cu",
+      "xy_mm": [
+        68.1,
+        98.325
+      ]
+    },
+    {
+      "net": "I2C_SCL",
+      "layer": "B.Cu",
+      "xy_mm": [
+        74.45,
+        96.7
+      ]
+    },
+    {
+      "net": "I2C_SCL",
+      "layer": "B.Cu",
+      "xy_mm": [
+        74.8,
+        96.7
+      ]
+    },
+    {
       "net": "SYS_5V",
       "layer": "B.Cu",
       "xy_mm": [
@@ -63,6 +87,38 @@
       "xy_mm": [
         95.35,
         75.75
+      ]
+    },
+    {
+      "net": "GAUGE_1V8",
+      "layer": "B.Cu",
+      "xy_mm": [
+        155.5,
+        113.45
+      ]
+    },
+    {
+      "net": "P4_SDA",
+      "layer": "F.Cu",
+      "xy_mm": [
+        63.85,
+        95.94
+      ]
+    },
+    {
+      "net": "P4_SCL",
+      "layer": "F.Cu",
+      "xy_mm": [
+        64.25,
+        99.95
+      ]
+    },
+    {
+      "net": "P4_SCL",
+      "layer": "F.Cu",
+      "xy_mm": [
+        64.25,
+        98.48
       ]
     }
   ],
@@ -145,11 +201,11 @@
       ]
     },
     "BOOST_ENABLE": {
-      "length_mm": 59.691,
+      "length_mm": 60.641,
       "width_length_mm": {
-        "0.2": 59.691
+        "0.2": 60.641
       },
-      "via_count": 6,
+      "via_count": 7,
       "layers": [
         "B.Cu",
         "F.Cu",
@@ -305,9 +361,9 @@
       ]
     },
     "CAM1_D2_STRAP": {
-      "length_mm": 16.914,
+      "length_mm": 17.13,
       "width_length_mm": {
-        "0.2": 16.914
+        "0.2": 17.13
       },
       "via_count": 0,
       "layers": [
@@ -365,9 +421,9 @@
       ]
     },
     "CAM1_EN": {
-      "length_mm": 102.027,
+      "length_mm": 102.799,
       "width_length_mm": {
-        "0.2": 102.027
+        "0.2": 102.799
       },
       "via_count": 6,
       "layers": [
@@ -760,15 +816,14 @@
       ]
     },
     "CAM3_5V_ISO": {
-      "length_mm": 28.855,
+      "length_mm": 28.288,
       "width_length_mm": {
-        "0.5": 28.855
+        "0.5": 28.288
       },
-      "via_count": 2,
+      "via_count": 1,
       "layers": [
         "B.Cu",
-        "F.Cu",
-        "In2.Cu"
+        "F.Cu"
       ]
     },
     "CAM3_D0": {
@@ -887,11 +942,11 @@
       ]
     },
     "CAM3_REQ": {
-      "length_mm": 48.79,
+      "length_mm": 41.543,
       "width_length_mm": {
-        "0.2": 48.79
+        "0.2": 41.543
       },
-      "via_count": 4,
+      "via_count": 3,
       "layers": [
         "B.Cu",
         "F.Cu",
@@ -1096,9 +1151,9 @@
       ]
     },
     "CAM4_EN": {
-      "length_mm": 37.744,
+      "length_mm": 37.724,
       "width_length_mm": {
-        "0.2": 37.744
+        "0.2": 37.724
       },
       "via_count": 3,
       "layers": [
@@ -1260,10 +1315,10 @@
       ]
     },
     "CHG_BTST1": {
-      "length_mm": 2.088,
+      "length_mm": 1.954,
       "width_length_mm": {
-        "0.25": 0.793,
-        "0.2": 1.295
+        "0.25": 0.8,
+        "0.2": 1.154
       },
       "via_count": 1,
       "layers": [
@@ -1293,13 +1348,13 @@
       ]
     },
     "CHG_PMID": {
-      "length_mm": 15.505,
+      "length_mm": 15.451,
       "width_length_mm": {
-        "0.8": 12.9,
+        "0.8": 12.846,
         "0.4": 1.98,
         "0.2": 0.625
       },
-      "via_count": 2,
+      "via_count": 1,
       "layers": [
         "B.Cu",
         "F.Cu"
@@ -1384,10 +1439,10 @@
       ]
     },
     "CHG_VBUS": {
-      "length_mm": 60.261,
+      "length_mm": 61.144,
       "width_length_mm": {
         "0.3": 10.505,
-        "0.2": 14.15,
+        "0.2": 15.033,
         "1.2": 33.5,
         "0.25": 0.857,
         "0.6": 1.25
@@ -1446,9 +1501,9 @@
       ]
     },
     "FN_N": {
-      "length_mm": 87.393,
+      "length_mm": 88.637,
       "width_length_mm": {
-        "0.2": 87.393
+        "0.2": 88.637
       },
       "via_count": 3,
       "layers": [
@@ -1460,8 +1515,8 @@
     "GAUGE_1V8": {
       "length_mm": 17.415,
       "width_length_mm": {
-        "0.2": 14.463,
-        "0.25": 2.952
+        "0.2": 14.301,
+        "0.25": 3.114
       },
       "via_count": 2,
       "layers": [
@@ -1490,25 +1545,25 @@
       ]
     },
     "GND": {
-      "length_mm": 86.353,
+      "length_mm": 88.973,
       "width_length_mm": {
-        "0.2": 9.187,
-        "0.25": 59.661,
+        "0.2": 5.313,
+        "0.25": 65.043,
         "0.8": 8.75,
-        "0.3": 8.055,
+        "0.3": 9.166,
         "0.6": 0.7
       },
-      "via_count": 144,
+      "via_count": 145,
       "layers": [
         "B.Cu",
         "F.Cu"
       ]
     },
     "HAPTIC_EN": {
-      "length_mm": 94.905,
+      "length_mm": 94.963,
       "width_length_mm": {
         "0.15": 75.461,
-        "0.2": 19.444
+        "0.2": 19.503
       },
       "via_count": 8,
       "layers": [
@@ -1529,11 +1584,11 @@
       ]
     },
     "I2C_SCL": {
-      "length_mm": 323.048,
+      "length_mm": 330.099,
       "width_length_mm": {
-        "0.2": 323.048
+        "0.2": 330.099
       },
-      "via_count": 17,
+      "via_count": 19,
       "layers": [
         "B.Cu",
         "F.Cu",
@@ -1541,9 +1596,9 @@
       ]
     },
     "I2C_SDA": {
-      "length_mm": 321.989,
+      "length_mm": 326.053,
       "width_length_mm": {
-        "0.2": 321.989
+        "0.2": 326.053
       },
       "via_count": 24,
       "layers": [
@@ -1589,9 +1644,9 @@
       ]
     },
     "MB_3V3": {
-      "length_mm": 460.017,
+      "length_mm": 460.727,
       "width_length_mm": {
-        "0.3": 406.155,
+        "0.3": 406.865,
         "0.25": 40.431,
         "0.2": 11.482,
         "0.8": 1.95
@@ -1734,25 +1789,27 @@
       ]
     },
     "P4_SCL": {
-      "length_mm": 8.681,
+      "length_mm": 14.716,
       "width_length_mm": {
-        "0.2": 8.681
+        "0.2": 14.716
       },
-      "via_count": 1,
+      "via_count": 2,
       "layers": [
         "B.Cu",
-        "F.Cu"
+        "F.Cu",
+        "In2.Cu"
       ]
     },
     "P4_SDA": {
-      "length_mm": 10.119,
+      "length_mm": 13.59,
       "width_length_mm": {
-        "0.2": 10.119
+        "0.2": 13.59
       },
-      "via_count": 1,
+      "via_count": 2,
       "layers": [
         "B.Cu",
-        "F.Cu"
+        "F.Cu",
+        "In2.Cu"
       ]
     },
     "P4_TX1": {
@@ -1851,18 +1908,6 @@
       "via_count": 0,
       "layers": [
         "F.Cu"
-      ]
-    },
-    "PD_9V_OK_N": {
-      "length_mm": 12.199,
-      "width_length_mm": {
-        "0.2": 12.199
-      },
-      "via_count": 2,
-      "layers": [
-        "B.Cu",
-        "F.Cu",
-        "In2.Cu"
       ]
     },
     "PD_COMMON_SOURCE": {
@@ -2064,9 +2109,9 @@
       ]
     },
     "SYNC_MASTER": {
-      "length_mm": 121.071,
+      "length_mm": 122.321,
       "width_length_mm": {
-        "0.2": 121.071
+        "0.2": 122.321
       },
       "via_count": 6,
       "layers": [
@@ -2096,20 +2141,20 @@
       ]
     },
     "SYS_RAW": {
-      "length_mm": 119.824,
+      "length_mm": 125.694,
       "width_length_mm": {
         "0.3": 44.3,
+        "0.25": 2.569,
+        "0.9": 7.17,
         "1.2": 33.007,
         "0.4": 9.94,
-        "0.9": 3.12,
         "0.9016": 0.955,
         "0.2": 0.65,
-        "0.25": 0.75,
         "1.5": 3.3,
         "0.6": 9.987,
         "3.0": 13.816
       },
-      "via_count": 12,
+      "via_count": 31,
       "layers": [
         "B.Cu",
         "F.Cu",
@@ -2157,9 +2202,9 @@
     }
   },
   "track_segments_by_layer": {
-    "F.Cu": 791,
-    "In2.Cu": 402,
-    "B.Cu": 1175
+    "F.Cu": 786,
+    "In2.Cu": 414,
+    "B.Cu": 1185
   },
   "switching_nodes_with_layer_changes": [
     "CHG_SW1",
@@ -2167,7 +2212,8 @@
   ],
   "drc_counts": {},
   "unconnected_items": 0,
-  "order_verdict": "DO NOT ORDER",
+  "order_verdict": "READY FOR FABRICATION WITH SPECIFIC MANUAL CHECKS",
+  "orderable": false,
   "electrical_function_verified": false,
   "thermal_verified": false,
   "physical_stack_verified": false

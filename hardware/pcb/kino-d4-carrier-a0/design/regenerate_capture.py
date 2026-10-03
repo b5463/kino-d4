@@ -2,5 +2,6 @@
 from build import schematics, outputs
 from rework import TARGET
 from circuit import PARTS
+import release
 schematics()
-outputs({'status': 'A02_ENGINEERING_DRAFT', 'board': TARGET.name, 'components': len(PARTS)}, 'A02-CAPTURE-STATUS.json')
+outputs({'status': release.STATUS, 'verdict': release.VERDICT, 'release_date': release.DATE, 'board': TARGET.name, 'components': len(PARTS)}, 'A02-CAPTURE-STATUS.json')

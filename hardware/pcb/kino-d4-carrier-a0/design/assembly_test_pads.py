@@ -1,7 +1,7 @@
 """Show actual test-land outlines on assembly layers without printing on copper.
 
 Board-level Fab graphics leave stock test-point library footprints unchanged.
-Regenerate these graphics if any test lands move.
+Regenerate these graphics if any test lands move; outlines of removed test lands are deleted.
 """
 import json
 import pcbnew as pcb
@@ -27,6 +27,10 @@ for f in b.GetFootprints():
         if g is None:g=pcb.PCB_SHAPE(b);b.Add(g)
         g.SetShape(shape);g.SetStart(a);g.SetEnd(c);g.SetLayer(layer);g.SetWidth(pcb.FromMM(.1))
         created[key]=str(g.m_Uuid.AsString())
+keep=set(created.values())
+stale=[d for d in b.GetDrawings() if isinstance(d,pcb.PCB_SHAPE) and d.GetLayer() in (pcb.F_Fab,pcb.B_Fab)
+       and d.GetShape() in (pcb.SHAPE_T_CIRCLE,pcb.SHAPE_T_RECT) and d.GetWidth()==pcb.FromMM(.1) and str(d.m_Uuid.AsString()) not in keep]
+for d in stale:b.Remove(d)                # outlines of removed test lands; last, Remove() invalidates the other proxies
 pcb.SaveBoard(str(TARGET),b)
 record.write_text(json.dumps(created,indent=2)+'\n')
-print('Test-land outlines added to assembly layers.')
+print('Test-land outlines on assembly layers:',len(created),'; stale removed:',len(stale))

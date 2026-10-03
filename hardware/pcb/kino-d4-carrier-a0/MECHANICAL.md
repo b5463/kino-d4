@@ -25,7 +25,7 @@ View the carrier from its component side with the P4 behind it. The origin is th
 | H3 | 18.255 | 62.105 |
 | H4 | 80.155 | 62.105 |
 
-Each hole is **2.2 mm NPTH for an M2 screw**, with a 7 mm diameter fastener allowance. Placement also excludes the enclosing 7 mm square. The four sockets have centres at X 24.5, 46.5, 68.5, 90.5 mm, Y 34.705 mm; these are board centres, not verified optical centres. Each socket's two rows are 15.24 mm apart, with 2.54 mm pin pitch.
+Each hole is **2.2 mm NPTH for an M2 screw**, with a 7 mm diameter fastener allowance. Placement also excludes the enclosing 7 mm square. The four sockets have centres at X 25.505, 47.505, 69.505, 91.505 mm, Y 34.705 mm (`mechanical.py` CAMERA_CENTRES: 22 mm pitch about the board centre); these are board centres, not verified optical centres. Each socket's two rows are 15.24 mm apart, with 2.54 mm pin pitch.
 
 The [1:1 template](outputs/P4-MOUNTING-TEMPLATE-1TO1.pdf) includes the outline, insert holes and a 100 mm scale bar. Its role is to check the drawing-derived offset and orientation against the purchased P4 before committing the board.
 

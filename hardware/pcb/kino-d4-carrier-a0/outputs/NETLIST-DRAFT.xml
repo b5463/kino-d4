@@ -2,7 +2,7 @@
 <export version="E">
   <design>
     <source>/Users/moravcik/Library/Application Support/Claude/scratch-workspaces/fd95d868-fd9f-42b4-ab0f-1fa3f0ecd399/883b8d98-75ff-4844-b199-4b97bf4e807f/scratch-2026-10-02-a94d7d/kino-d4/hardware/pcb/kino-d4-carrier-a0/KINO_D4_Carrier_A0.kicad_sch</source>
-    <date>2026-10-03T12:03:50</date>
+    <date>2026-10-03T16:30:16</date>
     <tool>Eeschema 10.0.6</tool>
     <sheet number="1" name="/" tstamps="/">
       <title_block>
@@ -259,7 +259,7 @@
   </design>
   <components>
     <comp ref="C100">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -284,7 +284,7 @@
       </units>
     </comp>
     <comp ref="F100">
-      <value>PTC 100mA - select</value>
+      <value>PTC 100mA</value>
       <footprint>Fuse:Fuse_1206_3216Metric</footprint>
       <datasheet>https://www.belfuse.com/media/datasheets/products/circuit-protection/ds-cp-0zcj-series.pdf</datasheet>
       <fields>
@@ -414,17 +414,17 @@
       </units>
     </comp>
     <comp ref="R100">
-      <value>10k</value>
+      <value>2.2k</value>
       <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
-      <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL</datasheet>
+      <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-072K2L</datasheet>
       <fields>
-        <field name="Design note"/>
+        <field name="Design note">With R101: EN 3.0 V with the P4 on; 0.66 V worst case with JP1 pin 1 open against the TCA9517 EN pull-up (30 uA max), under its 0.99 V VIL and the TXU0304 OE 0.89 V VT- min.</field>
         <field name="Footprint">Resistor_SMD:R_0603_1608Metric</field>
-        <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL</field>
+        <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-072K2L</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="R100" description=""/>
-      <property name="Design note" value=""/>
+      <property name="Design note" value="With R101: EN 3.0 V with the P4 on; 0.66 V worst case with JP1 pin 1 open against the TCA9517 EN pull-up (30 uA max), under its 0.99 V VIL and the TXU0304 OE 0.89 V VT- min."/>
       <property name="Sheetname" value="P4 header and isolated control bus"/>
       <property name="Sheetfile" value="01_p4.kicad_sch"/>
       <sheetpath names="/P4 header and isolated control bus/" tstamps="/ba6d9c1c-39b0-53a8-a75e-6466ca3ff27b/"/>
@@ -439,13 +439,13 @@
       </units>
     </comp>
     <comp ref="R101">
-      <value>1M</value>
+      <value>22k</value>
       <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
-      <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071ML</datasheet>
+      <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0722KL</datasheet>
       <fields>
         <field name="Design note"/>
         <field name="Footprint">Resistor_SMD:R_0603_1608Metric</field>
-        <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071ML</field>
+        <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0722KL</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="R101" description=""/>
@@ -538,6 +538,31 @@
         </unit>
       </units>
     </comp>
+    <comp ref="R105">
+      <value>100k</value>
+      <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
+      <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL</datasheet>
+      <fields>
+        <field name="Design note">P4 GPIO32 is Hi-Z from reset until firmware drives it; holds the shared sync (and the J601 flash option) low. ODD JOBS 116/117.</field>
+        <field name="Footprint">Resistor_SMD:R_0603_1608Metric</field>
+        <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL</field>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="KINO_A0" part="R105" description=""/>
+      <property name="Design note" value="P4 GPIO32 is Hi-Z from reset until firmware drives it; holds the shared sync (and the J601 flash option) low. ODD JOBS 116/117."/>
+      <property name="Sheetname" value="P4 header and isolated control bus"/>
+      <property name="Sheetfile" value="01_p4.kicad_sch"/>
+      <sheetpath names="/P4 header and isolated control bus/" tstamps="/ba6d9c1c-39b0-53a8-a75e-6466ca3ff27b/"/>
+      <tstamps>9b5a1a1a-0e1a-52e8-9efd-b966cc537a20</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
     <comp ref="TP100">
       <value>P4_3V3_TEST</value>
       <footprint>TestPoint:TestPoint_Pad_D1.5mm</footprint>
@@ -612,13 +637,13 @@
       <footprint>Package_SO:VSSOP-8_3x3mm_P0.65mm</footprint>
       <datasheet>https://www.ti.com/lit/ds/symlink/tca9517a.pdf</datasheet>
       <fields>
-        <field name="Design note">B side is local. Do not cascade another B-side offset buffer on local bus.</field>
+        <field name="Design note">A side is local: its hard low suits the STUSB4500 (VIL 0.35 V), BQ25798 (0.4 V), DRV2605L and BQ27441. B side (buffered low 0.45-0.6 V) faces the P4 bus (P4 VIL 0.825 V). No other offset buffer or rise-time accelerator on the P4 bus.</field>
         <field name="Footprint">Package_SO:VSSOP-8_3x3mm_P0.65mm</field>
         <field name="Datasheet">https://www.ti.com/lit/ds/symlink/tca9517a.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="U100" description=""/>
-      <property name="Design note" value="B side is local. Do not cascade another B-side offset buffer on local bus."/>
+      <property name="Design note" value="A side is local: its hard low suits the STUSB4500 (VIL 0.35 V), BQ25798 (0.4 V), DRV2605L and BQ27441. B side (buffered low 0.45-0.6 V) faces the P4 bus (P4 VIL 0.825 V). No other offset buffer or rise-time accelerator on the P4 bus."/>
       <property name="Sheetname" value="P4 header and isolated control bus"/>
       <property name="Sheetfile" value="01_p4.kicad_sch"/>
       <sheetpath names="/P4 header and isolated control bus/" tstamps="/ba6d9c1c-39b0-53a8-a75e-6466ca3ff27b/"/>
@@ -639,7 +664,7 @@
       </units>
     </comp>
     <comp ref="C200">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -664,7 +689,7 @@
       </units>
     </comp>
     <comp ref="C201">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -689,7 +714,7 @@
       </units>
     </comp>
     <comp ref="C202">
-      <value>1u 16V</value>
+      <value>1u 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN</datasheet>
       <fields>
@@ -739,7 +764,7 @@
       </units>
     </comp>
     <comp ref="C204">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -1034,17 +1059,17 @@
       </units>
     </comp>
     <comp ref="RS200">
-      <value>0.020 1% 0.5W</value>
+      <value>0.020 1% 1W</value>
       <footprint>Resistor_SMD:R_1206_3216Metric</footprint>
       <datasheet>https://www.vishay.com/docs/30122/wslp.pdf</datasheet>
       <fields>
-        <field name="Design note">Kelvin sense required; exact current-sense resistor MPN pending.</field>
+        <field name="Design note">Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py).</field>
         <field name="Footprint">Resistor_SMD:R_1206_3216Metric</field>
         <field name="Datasheet">https://www.vishay.com/docs/30122/wslp.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="RS200" description=""/>
-      <property name="Design note" value="Kelvin sense required; exact current-sense resistor MPN pending."/>
+      <property name="Design note" value="Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py)."/>
       <property name="Sheetname" value="Camera 1 socket, power and signal isolation"/>
       <property name="Sheetfile" value="02_camera1.kicad_sch"/>
       <sheetpath names="/Camera 1 socket, power and signal isolation/" tstamps="/85cf253e-4e5d-5c4f-ad53-79f9c57e0e61/"/>
@@ -1171,7 +1196,7 @@
       </units>
     </comp>
     <comp ref="C300">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -1196,7 +1221,7 @@
       </units>
     </comp>
     <comp ref="C301">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -1221,7 +1246,7 @@
       </units>
     </comp>
     <comp ref="C302">
-      <value>1u 16V</value>
+      <value>1u 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN</datasheet>
       <fields>
@@ -1271,7 +1296,7 @@
       </units>
     </comp>
     <comp ref="C304">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -1566,17 +1591,17 @@
       </units>
     </comp>
     <comp ref="RS300">
-      <value>0.020 1% 0.5W</value>
+      <value>0.020 1% 1W</value>
       <footprint>Resistor_SMD:R_1206_3216Metric</footprint>
       <datasheet>https://www.vishay.com/docs/30122/wslp.pdf</datasheet>
       <fields>
-        <field name="Design note">Kelvin sense required; exact current-sense resistor MPN pending.</field>
+        <field name="Design note">Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py).</field>
         <field name="Footprint">Resistor_SMD:R_1206_3216Metric</field>
         <field name="Datasheet">https://www.vishay.com/docs/30122/wslp.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="RS300" description=""/>
-      <property name="Design note" value="Kelvin sense required; exact current-sense resistor MPN pending."/>
+      <property name="Design note" value="Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py)."/>
       <property name="Sheetname" value="Camera 2 socket, power and signal isolation"/>
       <property name="Sheetfile" value="03_camera2.kicad_sch"/>
       <sheetpath names="/Camera 2 socket, power and signal isolation/" tstamps="/01cb1596-bc85-5258-a6b1-63b00310773b/"/>
@@ -1703,7 +1728,7 @@
       </units>
     </comp>
     <comp ref="C400">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -1728,7 +1753,7 @@
       </units>
     </comp>
     <comp ref="C401">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -1753,7 +1778,7 @@
       </units>
     </comp>
     <comp ref="C402">
-      <value>1u 16V</value>
+      <value>1u 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN</datasheet>
       <fields>
@@ -1803,7 +1828,7 @@
       </units>
     </comp>
     <comp ref="C404">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -2098,17 +2123,17 @@
       </units>
     </comp>
     <comp ref="RS400">
-      <value>0.020 1% 0.5W</value>
+      <value>0.020 1% 1W</value>
       <footprint>Resistor_SMD:R_1206_3216Metric</footprint>
       <datasheet>https://www.vishay.com/docs/30122/wslp.pdf</datasheet>
       <fields>
-        <field name="Design note">Kelvin sense required; exact current-sense resistor MPN pending.</field>
+        <field name="Design note">Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py).</field>
         <field name="Footprint">Resistor_SMD:R_1206_3216Metric</field>
         <field name="Datasheet">https://www.vishay.com/docs/30122/wslp.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="RS400" description=""/>
-      <property name="Design note" value="Kelvin sense required; exact current-sense resistor MPN pending."/>
+      <property name="Design note" value="Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py)."/>
       <property name="Sheetname" value="Camera 3 socket, power and signal isolation"/>
       <property name="Sheetfile" value="04_camera3.kicad_sch"/>
       <sheetpath names="/Camera 3 socket, power and signal isolation/" tstamps="/0165745c-ce23-53bc-854b-83df2fc1e887/"/>
@@ -2235,7 +2260,7 @@
       </units>
     </comp>
     <comp ref="C500">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -2260,7 +2285,7 @@
       </units>
     </comp>
     <comp ref="C501">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -2285,7 +2310,7 @@
       </units>
     </comp>
     <comp ref="C502">
-      <value>1u 16V</value>
+      <value>1u 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN</datasheet>
       <fields>
@@ -2335,7 +2360,7 @@
       </units>
     </comp>
     <comp ref="C504">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -2630,17 +2655,17 @@
       </units>
     </comp>
     <comp ref="RS500">
-      <value>0.020 1% 0.5W</value>
+      <value>0.020 1% 1W</value>
       <footprint>Resistor_SMD:R_1206_3216Metric</footprint>
       <datasheet>https://www.vishay.com/docs/30122/wslp.pdf</datasheet>
       <fields>
-        <field name="Design note">Kelvin sense required; exact current-sense resistor MPN pending.</field>
+        <field name="Design note">Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py).</field>
         <field name="Footprint">Resistor_SMD:R_1206_3216Metric</field>
         <field name="Datasheet">https://www.vishay.com/docs/30122/wslp.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="RS500" description=""/>
-      <property name="Design note" value="Kelvin sense required; exact current-sense resistor MPN pending."/>
+      <property name="Design note" value="Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py)."/>
       <property name="Sheetname" value="Camera 4 socket, power and signal isolation"/>
       <property name="Sheetfile" value="05_camera4.kicad_sch"/>
       <sheetpath names="/Camera 4 socket, power and signal isolation/" tstamps="/98c561ab-7625-5940-bd5e-29e85052e268/"/>
@@ -2792,7 +2817,7 @@
       </units>
     </comp>
     <comp ref="C601">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -2817,7 +2842,7 @@
       </units>
     </comp>
     <comp ref="C602">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -3209,7 +3234,7 @@
       </units>
     </comp>
     <comp ref="C700">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -3284,7 +3309,7 @@
       </units>
     </comp>
     <comp ref="C703">
-      <value>1u 16V</value>
+      <value>1u 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <fields>
         <field name="Design note">TI: 1 uF from BAT to VSS, close to the gauge.</field>
@@ -3459,7 +3484,7 @@
       </units>
     </comp>
     <comp ref="C800">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -3484,7 +3509,7 @@
       </units>
     </comp>
     <comp ref="C801">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -3509,7 +3534,7 @@
       </units>
     </comp>
     <comp ref="C802">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -3534,7 +3559,7 @@
       </units>
     </comp>
     <comp ref="C803">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -3832,7 +3857,7 @@
       </units>
     </comp>
     <comp ref="C905">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -3922,6 +3947,31 @@
       <property name="Sheetfile" value="09_controls.kicad_sch"/>
       <sheetpath names="/Cover, shutter and haptic interfaces/" tstamps="/c327de22-5c04-5d62-b574-57593a1d0d4b/"/>
       <tstamps>2aa5d291-719a-55bf-b373-297ed3068374</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="D903">
+      <value>PESD5V0S1BA</value>
+      <footprint>Diode_SMD:D_SOD-323</footprint>
+      <datasheet>https://assets.nexperia.com/documents/data-sheet/PESD5V0S1BA.pdf</datasheet>
+      <fields>
+        <field name="Design note">Cased button line, same class as the shutter input (D902). Beside J904.</field>
+        <field name="Footprint">Diode_SMD:D_SOD-323</field>
+        <field name="Datasheet">https://assets.nexperia.com/documents/data-sheet/PESD5V0S1BA.pdf</field>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="KINO_A0" part="D903" description=""/>
+      <property name="Design note" value="Cased button line, same class as the shutter input (D902). Beside J904."/>
+      <property name="Sheetname" value="Cover, shutter and haptic interfaces"/>
+      <property name="Sheetfile" value="09_controls.kicad_sch"/>
+      <sheetpath names="/Cover, shutter and haptic interfaces/" tstamps="/c327de22-5c04-5d62-b574-57593a1d0d4b/"/>
+      <tstamps>da734d70-46ef-548a-bab2-5619a8e82763</tstamps>
       <units>
         <unit name="A">
           <pins>
@@ -4320,7 +4370,7 @@
       </units>
     </comp>
     <comp ref="C1000">
-      <value>1u 35V</value>
+      <value>1u 50V</value>
       <footprint>Capacitor_SMD:C_0805_2012Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21B105KBFNNN</datasheet>
       <fields>
@@ -4420,17 +4470,17 @@
       </units>
     </comp>
     <comp ref="D1001">
-      <value>SMF12A</value>
+      <value>SMF22A</value>
       <footprint>Diode_SMD:D_SOD-123F</footprint>
       <datasheet>https://www.vishay.com/docs/85881/smf5v0atosmf58a.pdf</datasheet>
       <fields>
-        <field name="Design note"/>
+        <field name="Design note">VRWM 22 V: no conduction on a 20 V contract (unprogrammed STUSB4500 NVM). VBR 24.4-27 V, under the 28 V STUSB4500 and 30 V charger/FET ratings at low current.</field>
         <field name="Footprint">Diode_SMD:D_SOD-123F</field>
         <field name="Datasheet">https://www.vishay.com/docs/85881/smf5v0atosmf58a.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="D1001" description=""/>
-      <property name="Design note" value=""/>
+      <property name="Design note" value="VRWM 22 V: no conduction on a 20 V contract (unprogrammed STUSB4500 NVM). VBR 24.4-27 V, under the 28 V STUSB4500 and 30 V charger/FET ratings at low current."/>
       <property name="Sheetname" value="USB-C PD sink and protected input"/>
       <property name="Sheetfile" value="10_usb_pd.kicad_sch"/>
       <sheetpath names="/USB-C PD sink and protected input/" tstamps="/5aa1220a-e17d-547d-8acf-276839514db8/"/>
@@ -4535,17 +4585,17 @@
       </units>
     </comp>
     <comp ref="Q1000">
-      <value>AO4407A</value>
+      <value>AO4409</value>
       <footprint>Package_SO:SOIC-8_3.9x4.9mm_P1.27mm</footprint>
-      <datasheet>https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf</datasheet>
+      <datasheet>https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf</datasheet>
       <fields>
-        <field name="Design note">Verify exact AO4407A manufacturer and SO8 pinout before BOM release.</field>
+        <field name="Design note">AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V.</field>
         <field name="Footprint">Package_SO:SOIC-8_3.9x4.9mm_P1.27mm</field>
-        <field name="Datasheet">https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf</field>
+        <field name="Datasheet">https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="Q1000" description=""/>
-      <property name="Design note" value="Verify exact AO4407A manufacturer and SO8 pinout before BOM release."/>
+      <property name="Design note" value="AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V."/>
       <property name="Sheetname" value="USB-C PD sink and protected input"/>
       <property name="Sheetfile" value="10_usb_pd.kicad_sch"/>
       <sheetpath names="/USB-C PD sink and protected input/" tstamps="/5aa1220a-e17d-547d-8acf-276839514db8/"/>
@@ -4566,17 +4616,17 @@
       </units>
     </comp>
     <comp ref="Q1001">
-      <value>AO4407A</value>
+      <value>AO4409</value>
       <footprint>Package_SO:SOIC-8_3.9x4.9mm_P1.27mm</footprint>
-      <datasheet>https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf</datasheet>
+      <datasheet>https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf</datasheet>
       <fields>
-        <field name="Design note">Verify exact AO4407A manufacturer and SO8 pinout before BOM release.</field>
+        <field name="Design note">AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V.</field>
         <field name="Footprint">Package_SO:SOIC-8_3.9x4.9mm_P1.27mm</field>
-        <field name="Datasheet">https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf</field>
+        <field name="Datasheet">https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="Q1001" description=""/>
-      <property name="Design note" value="Verify exact AO4407A manufacturer and SO8 pinout before BOM release."/>
+      <property name="Design note" value="AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V."/>
       <property name="Sheetname" value="USB-C PD sink and protected input"/>
       <property name="Sheetfile" value="10_usb_pd.kicad_sch"/>
       <sheetpath names="/USB-C PD sink and protected input/" tstamps="/5aa1220a-e17d-547d-8acf-276839514db8/"/>
@@ -4697,17 +4747,17 @@
       </units>
     </comp>
     <comp ref="R1004">
-      <value>1k</value>
+      <value>10k</value>
       <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
-      <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071KL</datasheet>
+      <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL</datasheet>
       <fields>
-        <field name="Design note"/>
+        <field name="Design note">Above 10 V VBUS D1000 conducts through this resistor: 1.2 mA at 22 V, inside the 3 mA VBUS_EN_SNK test condition (ST reference: 22k). Gate at -4.55 V at 5 V VBUS.</field>
         <field name="Footprint">Resistor_SMD:R_0603_1608Metric</field>
-        <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071KL</field>
+        <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="R1004" description=""/>
-      <property name="Design note" value=""/>
+      <property name="Design note" value="Above 10 V VBUS D1000 conducts through this resistor: 1.2 mA at 22 V, inside the 3 mA VBUS_EN_SNK test condition (ST reference: 22k). Gate at -4.55 V at 5 V VBUS."/>
       <property name="Sheetname" value="USB-C PD sink and protected input"/>
       <property name="Sheetfile" value="10_usb_pd.kicad_sch"/>
       <sheetpath names="/USB-C PD sink and protected input/" tstamps="/5aa1220a-e17d-547d-8acf-276839514db8/"/>
@@ -4736,29 +4786,6 @@
       <property name="Sheetfile" value="10_usb_pd.kicad_sch"/>
       <sheetpath names="/USB-C PD sink and protected input/" tstamps="/5aa1220a-e17d-547d-8acf-276839514db8/"/>
       <tstamps>a920751f-8e00-5725-ad97-f2f1420d23c0</tstamps>
-      <units>
-        <unit name="A">
-          <pins>
-            <pin num="1"/>
-          </pins>
-        </unit>
-      </units>
-    </comp>
-    <comp ref="TP1001">
-      <value>PD_9V_OK_N</value>
-      <footprint>TestPoint:TestPoint_Pad_D1.5mm</footprint>
-      <fields>
-        <field name="Design note"/>
-        <field name="Footprint">TestPoint:TestPoint_Pad_D1.5mm</field>
-        <field name="Datasheet"/>
-        <field name="Description"/>
-      </fields>
-      <libsource lib="KINO_A0" part="TP1001" description=""/>
-      <property name="Design note" value=""/>
-      <property name="Sheetname" value="USB-C PD sink and protected input"/>
-      <property name="Sheetfile" value="10_usb_pd.kicad_sch"/>
-      <sheetpath names="/USB-C PD sink and protected input/" tstamps="/5aa1220a-e17d-547d-8acf-276839514db8/"/>
-      <tstamps>0d050785-d815-5dbc-bc8a-ecd0716c6835</tstamps>
       <units>
         <unit name="A">
           <pins>
@@ -4916,7 +4943,7 @@
       </units>
     </comp>
     <comp ref="C1104">
-      <value>10u 35V X7R</value>
+      <value>10u 50V X7R</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</datasheet>
       <fields>
@@ -4941,7 +4968,7 @@
       </units>
     </comp>
     <comp ref="C1105">
-      <value>10u 35V X7R</value>
+      <value>10u 50V X7R</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</datasheet>
       <fields>
@@ -4966,7 +4993,7 @@
       </units>
     </comp>
     <comp ref="C1106">
-      <value>100n 35V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -4991,7 +5018,7 @@
       </units>
     </comp>
     <comp ref="C1107">
-      <value>10u 35V X7R</value>
+      <value>10u 50V X7R</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</datasheet>
       <fields>
@@ -5016,7 +5043,7 @@
       </units>
     </comp>
     <comp ref="C1108">
-      <value>10u 35V X7R</value>
+      <value>10u 50V X7R</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</datasheet>
       <fields>
@@ -5041,7 +5068,7 @@
       </units>
     </comp>
     <comp ref="C1109">
-      <value>10u 35V X7R</value>
+      <value>10u 50V X7R</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</datasheet>
       <fields>
@@ -5066,7 +5093,7 @@
       </units>
     </comp>
     <comp ref="C1110">
-      <value>100n 35V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -5091,7 +5118,7 @@
       </units>
     </comp>
     <comp ref="C1111">
-      <value>10u 35V X7R</value>
+      <value>10u 50V X7R</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</datasheet>
       <fields>
@@ -5116,7 +5143,7 @@
       </units>
     </comp>
     <comp ref="C1112">
-      <value>10u 35V X7R</value>
+      <value>10u 50V X7R</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</datasheet>
       <fields>
@@ -5141,7 +5168,7 @@
       </units>
     </comp>
     <comp ref="C1113">
-      <value>10u 35V X7R</value>
+      <value>10u 50V X7R</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</datasheet>
       <fields>
@@ -5166,7 +5193,7 @@
       </units>
     </comp>
     <comp ref="C1114">
-      <value>10u 35V X7R</value>
+      <value>10u 50V X7R</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</datasheet>
       <fields>
@@ -5191,7 +5218,7 @@
       </units>
     </comp>
     <comp ref="C1115">
-      <value>10u 35V X7R</value>
+      <value>10u 50V X7R</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</datasheet>
       <fields>
@@ -5216,7 +5243,7 @@
       </units>
     </comp>
     <comp ref="C1116">
-      <value>100n 35V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -5241,7 +5268,7 @@
       </units>
     </comp>
     <comp ref="C1117">
-      <value>10u 35V X7R</value>
+      <value>10u 50V X7R</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</datasheet>
       <fields>
@@ -5266,7 +5293,7 @@
       </units>
     </comp>
     <comp ref="C1118">
-      <value>10u 35V X7R</value>
+      <value>10u 50V X7R</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</datasheet>
       <fields>
@@ -5291,7 +5318,7 @@
       </units>
     </comp>
     <comp ref="C1119">
-      <value>100n 35V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -5396,13 +5423,13 @@
       <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-073KL</datasheet>
       <fields>
-        <field name="Design note">TI Table 7-1: 1S, 1.5MHz. Default 4.2V / 1A charge, hardware-disabled until qualified.</field>
+        <field name="Design note">TI Table 7-1: 1S, 1.5MHz. POR default 4.2 V / 1 A; charging enabled in hardware (CE low). Inhibit with EN_CHG or by fitting R1110.</field>
         <field name="Footprint">Resistor_SMD:R_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-073KL</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="R1100" description=""/>
-      <property name="Design note" value="TI Table 7-1: 1S, 1.5MHz. Default 4.2V / 1A charge, hardware-disabled until qualified."/>
+      <property name="Design note" value="TI Table 7-1: 1S, 1.5MHz. POR default 4.2 V / 1 A; charging enabled in hardware (CE low). Inhibit with EN_CHG or by fitting R1110."/>
       <property name="Sheetname" value="1S charger and battery entry"/>
       <property name="Sheetfile" value="11_charger.kicad_sch"/>
       <sheetpath names="/1S charger and battery entry/" tstamps="/7db3d43e-d2ec-5c9b-9d22-bda4d57a7a9a/"/>
@@ -5571,13 +5598,13 @@
       <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603JR-070RL</datasheet>
       <fields>
-        <field name="Design note">NTC returns to pack negative = board GND; the gauge shunt is on the high side, so no TS offset.</field>
+        <field name="Design note">0 ohm NTC link (bring-up): open it to measure the pack NTC alone; open = TS cold = charging suspended. NTC returns to board GND; the gauge shunt is high side, so no TS offset.</field>
         <field name="Footprint">Resistor_SMD:R_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603JR-070RL</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="R1108" description=""/>
-      <property name="Design note" value="NTC returns to pack negative = board GND; the gauge shunt is on the high side, so no TS offset."/>
+      <property name="Design note" value="0 ohm NTC link (bring-up): open it to measure the pack NTC alone; open = TS cold = charging suspended. NTC returns to board GND; the gauge shunt is high side, so no TS offset."/>
       <property name="Sheetname" value="1S charger and battery entry"/>
       <property name="Sheetfile" value="11_charger.kicad_sch"/>
       <sheetpath names="/1S charger and battery entry/" tstamps="/7db3d43e-d2ec-5c9b-9d22-bda4d57a7a9a/"/>
@@ -5722,13 +5749,13 @@
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10C101JB8NNN</datasheet>
       <fields>
-        <field name="Design note"/>
+        <field name="Design note">TPS61288 optional CP (TI eq 14). DNP; fit only if the bench loop or COMP ripple needs the extra pole.</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10C101JB8NNN</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="C1201" description=""/>
-      <property name="Design note" value=""/>
+      <property name="Design note" value="TPS61288 optional CP (TI eq 14). DNP; fit only if the bench loop or COMP ripple needs the extra pole."/>
       <property name="Sheetname" value="5V boost and main load disconnect"/>
       <property name="Sheetfile" value="12_boost.kicad_sch"/>
       <property name="dnp"/>
@@ -5747,13 +5774,13 @@
       <value>4.7u 16V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <fields>
-        <field name="Design note">TI: VCC needs &gt; 1.0 uF effective; 2.2 uF 0603 is about 1.0 uF at 5 V.</field>
+        <field name="Design note">TI: VCC needs &gt; 1.0 uF effective; 2.2 uF 0603 is about 1.0 uF at 5 V, hence 4.7 uF.</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet"/>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="C1202" description=""/>
-      <property name="Design note" value="TI: VCC needs &gt; 1.0 uF effective; 2.2 uF 0603 is about 1.0 uF at 5 V."/>
+      <property name="Design note" value="TI: VCC needs &gt; 1.0 uF effective; 2.2 uF 0603 is about 1.0 uF at 5 V, hence 4.7 uF."/>
       <property name="Sheetname" value="5V boost and main load disconnect"/>
       <property name="Sheetfile" value="12_boost.kicad_sch"/>
       <sheetpath names="/5V boost and main load disconnect/" tstamps="/7b9b6bc4-2c97-56ef-abdc-8792495ea361/"/>
@@ -5818,7 +5845,7 @@
       </units>
     </comp>
     <comp ref="C1205">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -6143,17 +6170,17 @@
       </units>
     </comp>
     <comp ref="Q1200">
-      <value>AO4407A</value>
+      <value>AO4409</value>
       <footprint>Package_SO:SOIC-8_3.9x4.9mm_P1.27mm</footprint>
-      <datasheet>https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf</datasheet>
+      <datasheet>https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf</datasheet>
       <fields>
-        <field name="Design note">Verify exact AO4407A manufacturer and SO8 pinout before BOM release.</field>
+        <field name="Design note">AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V.</field>
         <field name="Footprint">Package_SO:SOIC-8_3.9x4.9mm_P1.27mm</field>
-        <field name="Datasheet">https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf</field>
+        <field name="Datasheet">https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="Q1200" description=""/>
-      <property name="Design note" value="Verify exact AO4407A manufacturer and SO8 pinout before BOM release."/>
+      <property name="Design note" value="AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V."/>
       <property name="Sheetname" value="5V boost and main load disconnect"/>
       <property name="Sheetfile" value="12_boost.kicad_sch"/>
       <sheetpath names="/5V boost and main load disconnect/" tstamps="/7b9b6bc4-2c97-56ef-abdc-8792495ea361/"/>
@@ -6174,17 +6201,17 @@
       </units>
     </comp>
     <comp ref="Q1201">
-      <value>AO4407A</value>
+      <value>AO4409</value>
       <footprint>Package_SO:SOIC-8_3.9x4.9mm_P1.27mm</footprint>
-      <datasheet>https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf</datasheet>
+      <datasheet>https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf</datasheet>
       <fields>
-        <field name="Design note">Verify exact AO4407A manufacturer and SO8 pinout before BOM release.</field>
+        <field name="Design note">AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V.</field>
         <field name="Footprint">Package_SO:SOIC-8_3.9x4.9mm_P1.27mm</field>
-        <field name="Datasheet">https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf</field>
+        <field name="Datasheet">https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="Q1201" description=""/>
-      <property name="Design note" value="Verify exact AO4407A manufacturer and SO8 pinout before BOM release."/>
+      <property name="Design note" value="AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V."/>
       <property name="Sheetname" value="5V boost and main load disconnect"/>
       <property name="Sheetfile" value="12_boost.kicad_sch"/>
       <sheetpath names="/5V boost and main load disconnect/" tstamps="/7b9b6bc4-2c97-56ef-abdc-8792495ea361/"/>
@@ -6205,17 +6232,17 @@
       </units>
     </comp>
     <comp ref="Q1202">
-      <value>2N7002</value>
+      <value>PMV16UN</value>
       <footprint>Package_TO_SOT_SMD:SOT-23</footprint>
-      <datasheet>https://assets.nexperia.com/documents/data-sheet/2N7002.pdf</datasheet>
+      <datasheet>https://assets.nexperia.com/documents/data-sheet/PMV16UN.pdf</datasheet>
       <fields>
-        <field name="Design note"/>
+        <field name="Design note">VGS(th) 0.4-1.0 V: fully on from BOOST_ENABLE at any SYS_RAW; a 2N7002 (up to 2.5 V) could drop out at low battery.</field>
         <field name="Footprint">Package_TO_SOT_SMD:SOT-23</field>
-        <field name="Datasheet">https://assets.nexperia.com/documents/data-sheet/2N7002.pdf</field>
+        <field name="Datasheet">https://assets.nexperia.com/documents/data-sheet/PMV16UN.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="Q1202" description=""/>
-      <property name="Design note" value=""/>
+      <property name="Design note" value="VGS(th) 0.4-1.0 V: fully on from BOOST_ENABLE at any SYS_RAW; a 2N7002 (up to 2.5 V) could drop out at low battery."/>
       <property name="Sheetname" value="5V boost and main load disconnect"/>
       <property name="Sheetfile" value="12_boost.kicad_sch"/>
       <sheetpath names="/5V boost and main load disconnect/" tstamps="/7b9b6bc4-2c97-56ef-abdc-8792495ea361/"/>
@@ -6321,6 +6348,31 @@
       <property name="Sheetfile" value="12_boost.kicad_sch"/>
       <sheetpath names="/5V boost and main load disconnect/" tstamps="/7b9b6bc4-2c97-56ef-abdc-8792495ea361/"/>
       <tstamps>312e0536-9f2c-5eff-b579-266aa779361f</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="R1204">
+      <value>100k</value>
+      <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
+      <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL</datasheet>
+      <fields>
+        <field name="Design note">LTC2955-1 EN is a 1.2-2.8 uA current-source pull-up (ADI p13: add an external pull-up) and TPS61288 EN has an 850k-1.1M pull-down: worst case 1.02 V, under its 1.2 V VIH. This holds EN at about 2.7 V or more; off, the LTC2955 sinks 30-44 uA.</field>
+        <field name="Footprint">Resistor_SMD:R_0603_1608Metric</field>
+        <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL</field>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="KINO_A0" part="R1204" description=""/>
+      <property name="Design note" value="LTC2955-1 EN is a 1.2-2.8 uA current-source pull-up (ADI p13: add an external pull-up) and TPS61288 EN has an 850k-1.1M pull-down: worst case 1.02 V, under its 1.2 V VIH. This holds EN at about 2.7 V or more; off, the LTC2955 sinks 30-44 uA."/>
+      <property name="Sheetname" value="5V boost and main load disconnect"/>
+      <property name="Sheetfile" value="12_boost.kicad_sch"/>
+      <sheetpath names="/5V boost and main load disconnect/" tstamps="/7b9b6bc4-2c97-56ef-abdc-8792495ea361/"/>
+      <tstamps>101466e5-71ee-50c8-8c97-cfbe7df2d0df</tstamps>
       <units>
         <unit name="A">
           <pins>
@@ -6466,7 +6518,7 @@
       </units>
     </comp>
     <comp ref="C1300">
-      <value>100n 16V</value>
+      <value>100n 50V</value>
       <footprint>Capacitor_SMD:C_0603_1608Metric</footprint>
       <datasheet>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</datasheet>
       <fields>
@@ -6727,7 +6779,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -6741,7 +6793,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21B105KBFNNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">1u 35V</field>
+        <field name="Value">1u 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0805_2012Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21B105KBFNNN</field>
         <field name="Description"/>
@@ -6839,7 +6891,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">10u 35V X7R</field>
+        <field name="Value">10u 50V X7R</field>
         <field name="Footprint">Capacitor_SMD:C_1206_3216Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</field>
         <field name="Description"/>
@@ -6853,7 +6905,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">10u 35V X7R</field>
+        <field name="Value">10u 50V X7R</field>
         <field name="Footprint">Capacitor_SMD:C_1206_3216Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</field>
         <field name="Description"/>
@@ -6867,7 +6919,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 35V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -6881,7 +6933,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">10u 35V X7R</field>
+        <field name="Value">10u 50V X7R</field>
         <field name="Footprint">Capacitor_SMD:C_1206_3216Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</field>
         <field name="Description"/>
@@ -6895,7 +6947,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">10u 35V X7R</field>
+        <field name="Value">10u 50V X7R</field>
         <field name="Footprint">Capacitor_SMD:C_1206_3216Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</field>
         <field name="Description"/>
@@ -6909,7 +6961,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">10u 35V X7R</field>
+        <field name="Value">10u 50V X7R</field>
         <field name="Footprint">Capacitor_SMD:C_1206_3216Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</field>
         <field name="Description"/>
@@ -6923,7 +6975,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 35V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -6937,7 +6989,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">10u 35V X7R</field>
+        <field name="Value">10u 50V X7R</field>
         <field name="Footprint">Capacitor_SMD:C_1206_3216Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</field>
         <field name="Description"/>
@@ -6951,7 +7003,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">10u 35V X7R</field>
+        <field name="Value">10u 50V X7R</field>
         <field name="Footprint">Capacitor_SMD:C_1206_3216Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</field>
         <field name="Description"/>
@@ -6965,7 +7017,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">10u 35V X7R</field>
+        <field name="Value">10u 50V X7R</field>
         <field name="Footprint">Capacitor_SMD:C_1206_3216Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</field>
         <field name="Description"/>
@@ -6979,7 +7031,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">10u 35V X7R</field>
+        <field name="Value">10u 50V X7R</field>
         <field name="Footprint">Capacitor_SMD:C_1206_3216Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</field>
         <field name="Description"/>
@@ -6993,7 +7045,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">10u 35V X7R</field>
+        <field name="Value">10u 50V X7R</field>
         <field name="Footprint">Capacitor_SMD:C_1206_3216Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</field>
         <field name="Description"/>
@@ -7007,7 +7059,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 35V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7021,7 +7073,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">10u 35V X7R</field>
+        <field name="Value">10u 50V X7R</field>
         <field name="Footprint">Capacitor_SMD:C_1206_3216Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</field>
         <field name="Description"/>
@@ -7035,7 +7087,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">10u 35V X7R</field>
+        <field name="Value">10u 50V X7R</field>
         <field name="Footprint">Capacitor_SMD:C_1206_3216Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN</field>
         <field name="Description"/>
@@ -7049,7 +7101,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 35V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7132,7 +7184,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7258,7 +7310,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7285,7 +7337,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7299,7 +7351,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7313,7 +7365,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">1u 16V</field>
+        <field name="Value">1u 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN</field>
         <field name="Description"/>
@@ -7341,7 +7393,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7355,7 +7407,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7369,7 +7421,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7383,7 +7435,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">1u 16V</field>
+        <field name="Value">1u 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN</field>
         <field name="Description"/>
@@ -7411,7 +7463,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7425,7 +7477,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7439,7 +7491,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7453,7 +7505,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">1u 16V</field>
+        <field name="Value">1u 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN</field>
         <field name="Description"/>
@@ -7481,7 +7533,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7495,7 +7547,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7509,7 +7561,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7523,7 +7575,7 @@
       <docs>https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">1u 16V</field>
+        <field name="Value">1u 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN</field>
         <field name="Description"/>
@@ -7551,7 +7603,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7579,7 +7631,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7593,7 +7645,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7607,7 +7659,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7648,7 +7700,7 @@
     <libpart lib="KINO_A0" part="C703">
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">1u 16V</field>
+        <field name="Value">1u 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet"/>
         <field name="Description"/>
@@ -7662,7 +7714,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7676,7 +7728,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7690,7 +7742,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7704,7 +7756,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7788,7 +7840,7 @@
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</docs>
       <fields>
         <field name="Reference">C</field>
-        <field name="Value">100n 16V</field>
+        <field name="Value">100n 50V</field>
         <field name="Footprint">Capacitor_SMD:C_0603_1608Metric</field>
         <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104</field>
         <field name="Description"/>
@@ -7816,7 +7868,7 @@
       <docs>https://www.vishay.com/docs/85881/smf5v0atosmf58a.pdf</docs>
       <fields>
         <field name="Reference">D</field>
-        <field name="Value">SMF12A</field>
+        <field name="Value">SMF22A</field>
         <field name="Footprint">Diode_SMD:D_SOD-123F</field>
         <field name="Datasheet">https://www.vishay.com/docs/85881/smf5v0atosmf58a.pdf</field>
         <field name="Description"/>
@@ -7980,11 +8032,25 @@
         <pin num="2" name="A" type="passive"/>
       </pins>
     </libpart>
+    <libpart lib="KINO_A0" part="D903">
+      <docs>https://assets.nexperia.com/documents/data-sheet/PESD5V0S1BA.pdf</docs>
+      <fields>
+        <field name="Reference">D</field>
+        <field name="Value">PESD5V0S1BA</field>
+        <field name="Footprint">Diode_SMD:D_SOD-323</field>
+        <field name="Datasheet">https://assets.nexperia.com/documents/data-sheet/PESD5V0S1BA.pdf</field>
+        <field name="Description"/>
+      </fields>
+      <pins>
+        <pin num="1" name="K" type="passive"/>
+        <pin num="2" name="A" type="passive"/>
+      </pins>
+    </libpart>
     <libpart lib="KINO_A0" part="F100">
       <docs>https://www.belfuse.com/media/datasheets/products/circuit-protection/ds-cp-0zcj-series.pdf</docs>
       <fields>
         <field name="Reference">F</field>
-        <field name="Value">PTC 100mA - select</field>
+        <field name="Value">PTC 100mA</field>
         <field name="Footprint">Fuse:Fuse_1206_3216Metric</field>
         <field name="Datasheet">https://www.belfuse.com/media/datasheets/products/circuit-protection/ds-cp-0zcj-series.pdf</field>
         <field name="Description"/>
@@ -8568,12 +8634,12 @@
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="Q1000">
-      <docs>https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf</docs>
+      <docs>https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf</docs>
       <fields>
         <field name="Reference">Q</field>
-        <field name="Value">AO4407A</field>
+        <field name="Value">AO4409</field>
         <field name="Footprint">Package_SO:SOIC-8_3.9x4.9mm_P1.27mm</field>
-        <field name="Datasheet">https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf</field>
+        <field name="Datasheet">https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf</field>
         <field name="Description"/>
       </fields>
       <pins>
@@ -8588,12 +8654,12 @@
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="Q1001">
-      <docs>https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf</docs>
+      <docs>https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf</docs>
       <fields>
         <field name="Reference">Q</field>
-        <field name="Value">AO4407A</field>
+        <field name="Value">AO4409</field>
         <field name="Footprint">Package_SO:SOIC-8_3.9x4.9mm_P1.27mm</field>
-        <field name="Datasheet">https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf</field>
+        <field name="Datasheet">https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf</field>
         <field name="Description"/>
       </fields>
       <pins>
@@ -8608,12 +8674,12 @@
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="Q1200">
-      <docs>https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf</docs>
+      <docs>https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf</docs>
       <fields>
         <field name="Reference">Q</field>
-        <field name="Value">AO4407A</field>
+        <field name="Value">AO4409</field>
         <field name="Footprint">Package_SO:SOIC-8_3.9x4.9mm_P1.27mm</field>
-        <field name="Datasheet">https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf</field>
+        <field name="Datasheet">https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf</field>
         <field name="Description"/>
       </fields>
       <pins>
@@ -8628,12 +8694,12 @@
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="Q1201">
-      <docs>https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf</docs>
+      <docs>https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf</docs>
       <fields>
         <field name="Reference">Q</field>
-        <field name="Value">AO4407A</field>
+        <field name="Value">AO4409</field>
         <field name="Footprint">Package_SO:SOIC-8_3.9x4.9mm_P1.27mm</field>
-        <field name="Datasheet">https://www.aosmd.com/sites/default/files/res/datasheets/AO4407A.pdf</field>
+        <field name="Datasheet">https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf</field>
         <field name="Description"/>
       </fields>
       <pins>
@@ -8648,12 +8714,12 @@
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="Q1202">
-      <docs>https://assets.nexperia.com/documents/data-sheet/2N7002.pdf</docs>
+      <docs>https://assets.nexperia.com/documents/data-sheet/PMV16UN.pdf</docs>
       <fields>
         <field name="Reference">Q</field>
-        <field name="Value">2N7002</field>
+        <field name="Value">PMV16UN</field>
         <field name="Footprint">Package_TO_SOT_SMD:SOT-23</field>
-        <field name="Datasheet">https://assets.nexperia.com/documents/data-sheet/2N7002.pdf</field>
+        <field name="Datasheet">https://assets.nexperia.com/documents/data-sheet/PMV16UN.pdf</field>
         <field name="Description"/>
       </fields>
       <pins>
@@ -8693,12 +8759,12 @@
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="R100">
-      <docs>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL</docs>
+      <docs>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-072K2L</docs>
       <fields>
         <field name="Reference">R</field>
-        <field name="Value">10k</field>
+        <field name="Value">2.2k</field>
         <field name="Footprint">Resistor_SMD:R_0603_1608Metric</field>
-        <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL</field>
+        <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-072K2L</field>
         <field name="Description"/>
       </fields>
       <pins>
@@ -8763,12 +8829,12 @@
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="R1004">
-      <docs>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071KL</docs>
+      <docs>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL</docs>
       <fields>
         <field name="Reference">R</field>
-        <field name="Value">1k</field>
+        <field name="Value">10k</field>
         <field name="Footprint">Resistor_SMD:R_0603_1608Metric</field>
-        <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071KL</field>
+        <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL</field>
         <field name="Description"/>
       </fields>
       <pins>
@@ -8777,12 +8843,12 @@
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="R101">
-      <docs>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071ML</docs>
+      <docs>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0722KL</docs>
       <fields>
         <field name="Reference">R</field>
-        <field name="Value">1M</field>
+        <field name="Value">22k</field>
         <field name="Footprint">Resistor_SMD:R_0603_1608Metric</field>
-        <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071ML</field>
+        <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0722KL</field>
         <field name="Description"/>
       </fields>
       <pins>
@@ -8819,6 +8885,20 @@
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="R104">
+      <docs>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL</docs>
+      <fields>
+        <field name="Reference">R</field>
+        <field name="Value">100k</field>
+        <field name="Footprint">Resistor_SMD:R_0603_1608Metric</field>
+        <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL</field>
+        <field name="Description"/>
+      </fields>
+      <pins>
+        <pin num="1" name="1" type="passive"/>
+        <pin num="2" name="2" type="passive"/>
+      </pins>
+    </libpart>
+    <libpart lib="KINO_A0" part="R105">
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL</docs>
       <fields>
         <field name="Reference">R</field>
@@ -9001,6 +9081,20 @@
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="R1203">
+      <docs>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL</docs>
+      <fields>
+        <field name="Reference">R</field>
+        <field name="Value">100k</field>
+        <field name="Footprint">Resistor_SMD:R_0603_1608Metric</field>
+        <field name="Datasheet">https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL</field>
+        <field name="Description"/>
+      </fields>
+      <pins>
+        <pin num="1" name="1" type="passive"/>
+        <pin num="2" name="2" type="passive"/>
+      </pins>
+    </libpart>
+    <libpart lib="KINO_A0" part="R1204">
       <docs>https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL</docs>
       <fields>
         <field name="Reference">R</field>
@@ -9634,7 +9728,7 @@
       <docs>https://www.vishay.com/docs/30122/wslp.pdf</docs>
       <fields>
         <field name="Reference">RS</field>
-        <field name="Value">0.020 1% 0.5W</field>
+        <field name="Value">0.020 1% 1W</field>
         <field name="Footprint">Resistor_SMD:R_1206_3216Metric</field>
         <field name="Datasheet">https://www.vishay.com/docs/30122/wslp.pdf</field>
         <field name="Description"/>
@@ -9648,7 +9742,7 @@
       <docs>https://www.vishay.com/docs/30122/wslp.pdf</docs>
       <fields>
         <field name="Reference">RS</field>
-        <field name="Value">0.020 1% 0.5W</field>
+        <field name="Value">0.020 1% 1W</field>
         <field name="Footprint">Resistor_SMD:R_1206_3216Metric</field>
         <field name="Datasheet">https://www.vishay.com/docs/30122/wslp.pdf</field>
         <field name="Description"/>
@@ -9662,7 +9756,7 @@
       <docs>https://www.vishay.com/docs/30122/wslp.pdf</docs>
       <fields>
         <field name="Reference">RS</field>
-        <field name="Value">0.020 1% 0.5W</field>
+        <field name="Value">0.020 1% 1W</field>
         <field name="Footprint">Resistor_SMD:R_1206_3216Metric</field>
         <field name="Datasheet">https://www.vishay.com/docs/30122/wslp.pdf</field>
         <field name="Description"/>
@@ -9676,7 +9770,7 @@
       <docs>https://www.vishay.com/docs/30122/wslp.pdf</docs>
       <fields>
         <field name="Reference">RS</field>
-        <field name="Value">0.020 1% 0.5W</field>
+        <field name="Value">0.020 1% 1W</field>
         <field name="Footprint">Resistor_SMD:R_1206_3216Metric</field>
         <field name="Datasheet">https://www.vishay.com/docs/30122/wslp.pdf</field>
         <field name="Description"/>
@@ -9722,18 +9816,6 @@
       </fields>
       <pins>
         <pin num="1" name="USB_VBUS" type="passive"/>
-      </pins>
-    </libpart>
-    <libpart lib="KINO_A0" part="TP1001">
-      <fields>
-        <field name="Reference">TP</field>
-        <field name="Value">PD_9V_OK_N</field>
-        <field name="Footprint">TestPoint:TestPoint_Pad_D1.5mm</field>
-        <field name="Datasheet"/>
-        <field name="Description"/>
-      </fields>
-      <pins>
-        <pin num="1" name="PD_9V_OK_N" type="passive"/>
       </pins>
     </libpart>
     <libpart lib="KINO_A0" part="TP101">
@@ -10550,6 +10632,7 @@
     </net>
     <net code="7" name="BOOST_ENABLE" class="Default">
       <node ref="Q1202" pin="1" pinfunction="G_1" pintype="input"/>
+      <node ref="R1204" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="U1200" pin="6" pinfunction="EN_6" pintype="input"/>
       <node ref="U1300" pin="7" pinfunction="EN_7" pintype="output"/>
     </net>
@@ -11111,6 +11194,7 @@
       <node ref="R605" pin="2" pinfunction="2_2" pintype="passive"/>
     </net>
     <net code="127" name="FN_N" class="Default">
+      <node ref="D903" pin="2" pinfunction="A_2" pintype="passive"/>
       <node ref="J904" pin="1" pinfunction="FN_N_1" pintype="passive"/>
       <node ref="R906" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="U600" pin="18" pinfunction="IO1_5_18" pintype="bidirectional"/>
@@ -11210,6 +11294,7 @@
       <node ref="D900" pin="1" pinfunction="K_1" pintype="passive"/>
       <node ref="D901" pin="1" pinfunction="K_1" pintype="passive"/>
       <node ref="D902" pin="1" pinfunction="K_1" pintype="passive"/>
+      <node ref="D903" pin="1" pinfunction="K_1" pintype="passive"/>
       <node ref="J100" pin="16" pinfunction="GND_16" pintype="passive"/>
       <node ref="J100" pin="5" pinfunction="GND_5" pintype="passive"/>
       <node ref="J100" pin="6" pinfunction="GND_6" pintype="passive"/>
@@ -11244,6 +11329,7 @@
       <node ref="R1000" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="R101" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="R104" pin="2" pinfunction="2_2" pintype="passive"/>
+      <node ref="R105" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="R1100" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="R1102" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="R1105" pin="2" pinfunction="2_2" pintype="passive"/>
@@ -11333,7 +11419,7 @@
       <node ref="J600" pin="5" pinfunction="I2C_SCL_5" pintype="passive"/>
       <node ref="J601" pin="4" pinfunction="I2C_SCL_4" pintype="passive"/>
       <node ref="R103" pin="1" pinfunction="1_1" pintype="passive"/>
-      <node ref="U100" pin="7" pinfunction="SCLB_7" pintype="bidirectional"/>
+      <node ref="U100" pin="2" pinfunction="SCLA_2" pintype="bidirectional"/>
       <node ref="U1000" pin="7" pinfunction="SCL_7" pintype="input"/>
       <node ref="U1100" pin="14" pinfunction="SCL_14" pintype="input"/>
       <node ref="U600" pin="22" pinfunction="SCL_22" pintype="input"/>
@@ -11349,7 +11435,7 @@
       <node ref="J600" pin="6" pinfunction="I2C_SDA_6" pintype="passive"/>
       <node ref="J601" pin="3" pinfunction="I2C_SDA_3" pintype="passive"/>
       <node ref="R102" pin="1" pinfunction="1_1" pintype="passive"/>
-      <node ref="U100" pin="6" pinfunction="SDAB_6" pintype="bidirectional"/>
+      <node ref="U100" pin="3" pinfunction="SDAA_3" pintype="bidirectional"/>
       <node ref="U1000" pin="8" pinfunction="SDA_8" pintype="bidirectional"/>
       <node ref="U1100" pin="15" pinfunction="SDA_15" pintype="bidirectional"/>
       <node ref="U600" pin="23" pinfunction="SDA_23" pintype="bidirectional"/>
@@ -11488,11 +11574,11 @@
     </net>
     <net code="151" name="P4_SCL" class="Default">
       <node ref="J100" pin="25" pinfunction="P4_SCL_25" pintype="passive"/>
-      <node ref="U100" pin="2" pinfunction="SCLA_2" pintype="bidirectional"/>
+      <node ref="U100" pin="7" pinfunction="SCLB_7" pintype="bidirectional"/>
     </net>
     <net code="152" name="P4_SDA" class="Default">
       <node ref="J100" pin="23" pinfunction="P4_SDA_23" pintype="passive"/>
-      <node ref="U100" pin="3" pinfunction="SDAA_3" pintype="bidirectional"/>
+      <node ref="U100" pin="6" pinfunction="SDAB_6" pintype="bidirectional"/>
     </net>
     <net code="153" name="P4_TX1" class="Default">
       <node ref="J100" pin="7" pinfunction="P4_TX1_7" pintype="passive"/>
@@ -11533,11 +11619,7 @@
       <node ref="C1002" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="U1000" pin="23" pinfunction="VREG_2V7_23" pintype="power_out"/>
     </net>
-    <net code="162" name="PD_9V_OK_N" class="Default">
-      <node ref="TP1001" pin="1" pinfunction="PD_9V_OK_N_1" pintype="passive"/>
-      <node ref="U1000" pin="20" pinfunction="POWER_OK2_20" pintype="open_collector"/>
-    </net>
-    <net code="163" name="PD_COMMON_SOURCE" class="Default">
+    <net code="162" name="PD_COMMON_SOURCE" class="Default">
       <node ref="D1000" pin="1" pinfunction="K_1" pintype="passive"/>
       <node ref="Q1000" pin="1" pinfunction="S_1" pintype="passive"/>
       <node ref="Q1000" pin="2" pinfunction="S_2" pintype="passive"/>
@@ -11547,90 +11629,91 @@
       <node ref="Q1001" pin="3" pinfunction="S_3" pintype="passive"/>
       <node ref="R1003" pin="1" pinfunction="1_1" pintype="passive"/>
     </net>
-    <net code="164" name="PD_DISCH" class="Default">
+    <net code="163" name="PD_DISCH" class="Default">
       <node ref="R1002" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="U1000" pin="9" pinfunction="DISCH_9" pintype="bidirectional"/>
     </net>
-    <net code="165" name="PD_GATE" class="Default">
+    <net code="164" name="PD_GATE" class="Default">
       <node ref="D1000" pin="2" pinfunction="A_2" pintype="passive"/>
       <node ref="Q1000" pin="4" pinfunction="G_4" pintype="input"/>
       <node ref="Q1001" pin="4" pinfunction="G_4" pintype="input"/>
       <node ref="R1003" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="R1004" pin="1" pinfunction="1_1" pintype="passive"/>
     </net>
-    <net code="166" name="PD_RESET" class="Default">
+    <net code="165" name="PD_RESET" class="Default">
       <node ref="R1000" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="U1000" pin="6" pinfunction="RESET_6" pintype="input"/>
     </net>
-    <net code="167" name="PD_SINK_EN_N" class="Default">
+    <net code="166" name="PD_SINK_EN_N" class="Default">
       <node ref="R1004" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="U1000" pin="16" pinfunction="VBUS_EN_SNK_16" pintype="open_collector"/>
     </net>
-    <net code="168" name="PD_VBUS_SENSE" class="Default">
+    <net code="167" name="PD_VBUS_SENSE" class="Default">
       <node ref="R1001" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="U1000" pin="18" pinfunction="VBUS_VS_DISCH_18" pintype="input"/>
     </net>
-    <net code="169" name="POWER_INT_N" class="Default">
+    <net code="168" name="POWER_INT_N" class="Default">
       <node ref="R1302" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="U1300" pin="8" pinfunction="INT_N_8" pintype="open_collector"/>
       <node ref="U600" pin="17" pinfunction="IO1_4_17" pintype="bidirectional"/>
     </net>
-    <net code="170" name="POWER_KILL_N" class="Default">
+    <net code="169" name="POWER_KILL_N" class="Default">
       <node ref="Q1300" pin="3" pinfunction="D_3" pintype="passive"/>
       <node ref="R1300" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="U1300" pin="2" pinfunction="KILL_2" pintype="input"/>
     </net>
-    <net code="171" name="POWER_LED_A" class="Default">
+    <net code="170" name="POWER_LED_A" class="Default">
       <node ref="D1300" pin="2" pinfunction="A_2" pintype="passive"/>
       <node ref="R1303" pin="2" pinfunction="2_2" pintype="passive"/>
     </net>
-    <net code="172" name="POWER_PB_N" class="Default">
+    <net code="171" name="POWER_PB_N" class="Default">
       <node ref="J1300" pin="1" pinfunction="POWER_PB_N_1" pintype="passive"/>
       <node ref="U1300" pin="5" pinfunction="PB_N_5" pintype="input"/>
     </net>
-    <net code="173" name="POWER_TMR" class="Default">
+    <net code="172" name="POWER_TMR" class="Default">
       <node ref="C1301" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="U1300" pin="3" pinfunction="TMR_3" pintype="passive"/>
     </net>
-    <net code="174" name="REMOTE_ACTIVE" class="Default">
+    <net code="173" name="REMOTE_ACTIVE" class="Default">
       <node ref="Q900" pin="1" pinfunction="G_1" pintype="input"/>
       <node ref="R905" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="U901" pin="4" pinfunction="Y_4" pintype="output"/>
     </net>
-    <net code="175" name="REMOTE_CONTACT" class="Default">
+    <net code="174" name="REMOTE_CONTACT" class="Default">
       <node ref="D900" pin="2" pinfunction="A_2" pintype="passive"/>
       <node ref="J903" pin="1" pinfunction="REMOTE_CONTACT_1" pintype="passive"/>
       <node ref="R903" pin="1" pinfunction="1_1" pintype="passive"/>
     </net>
-    <net code="176" name="REMOTE_FILTER" class="Default">
+    <net code="175" name="REMOTE_FILTER" class="Default">
       <node ref="C904" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="R903" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="R904" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="U901" pin="2" pinfunction="A_2" pintype="input"/>
     </net>
-    <net code="177" name="RTC_BACKUP" class="Default">
+    <net code="176" name="RTC_BACKUP" class="Default">
       <node ref="J800" pin="1" pinfunction="RTC_BACKUP_1" pintype="passive"/>
       <node ref="U801" pin="6" pinfunction="VBACKUP_6" pintype="power_in"/>
     </net>
-    <net code="178" name="RTC_INT_N" class="Default">
+    <net code="177" name="RTC_INT_N" class="Default">
       <node ref="R800" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="U600" pin="14" pinfunction="IO1_1_14" pintype="bidirectional"/>
       <node ref="U801" pin="2" pinfunction="~{INT}_2" pintype="open_collector"/>
     </net>
-    <net code="179" name="SHUTTER_N" class="Default">
+    <net code="178" name="SHUTTER_N" class="Default">
       <node ref="D902" pin="2" pinfunction="A_2" pintype="passive"/>
       <node ref="J100" pin="21" pinfunction="SHUTTER_N_21" pintype="passive"/>
       <node ref="J902" pin="1" pinfunction="SHUTTER_N_1" pintype="passive"/>
       <node ref="Q900" pin="3" pinfunction="D_3" pintype="passive"/>
     </net>
-    <net code="180" name="SOFT_KILL" class="Default">
+    <net code="179" name="SOFT_KILL" class="Default">
       <node ref="Q1300" pin="1" pinfunction="G_1" pintype="input"/>
       <node ref="R1301" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="U600" pin="15" pinfunction="IO1_2_15" pintype="bidirectional"/>
     </net>
-    <net code="181" name="SYNC_MASTER" class="Default">
+    <net code="180" name="SYNC_MASTER" class="Default">
       <node ref="J100" pin="19" pinfunction="SYNC_MASTER_19" pintype="passive"/>
       <node ref="J600" pin="7" pinfunction="SYNC_MASTER_7" pintype="passive"/>
+      <node ref="R105" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="R605" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="TP101" pin="1" pinfunction="SYNC_MASTER_1" pintype="passive"/>
       <node ref="U200" pin="3" pinfunction="A2_3" pintype="input"/>
@@ -11638,7 +11721,7 @@
       <node ref="U400" pin="3" pinfunction="A2_3" pintype="input"/>
       <node ref="U500" pin="3" pinfunction="A2_3" pintype="input"/>
     </net>
-    <net code="182" name="SYS_5V" class="Default">
+    <net code="181" name="SYS_5V" class="Default">
       <node ref="C1212" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="D1200" pin="2" pinfunction="A_2" pintype="passive"/>
       <node ref="J600" pin="2" pinfunction="SYS_5V_2" pintype="passive"/>
@@ -11658,7 +11741,7 @@
       <node ref="U700" pin="13" pinfunction="SENSE2+_13" pintype="input"/>
       <node ref="U700" pin="8" pinfunction="SENSE3+_8" pintype="input"/>
     </net>
-    <net code="183" name="SYS_RAW" class="Default">
+    <net code="182" name="SYS_RAW" class="Default">
       <node ref="C1111" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="C1112" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="C1113" pin="1" pinfunction="1_1" pintype="passive"/>
@@ -11669,25 +11752,26 @@
       <node ref="C1205" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="C1300" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="L1200" pin="1" pinfunction="1_1" pintype="passive"/>
+      <node ref="R1204" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="R1300" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="TP1101" pin="1" pinfunction="SYS_RAW_1" pintype="passive"/>
       <node ref="U1100" pin="25" pinfunction="SYS_25" pintype="power_out"/>
       <node ref="U1200" pin="7" pinfunction="VIN_7" pintype="power_in"/>
       <node ref="U1300" pin="6" pinfunction="VIN_6" pintype="power_in"/>
     </net>
-    <net code="184" name="USB_CC1" class="Default">
+    <net code="183" name="USB_CC1" class="Default">
       <node ref="D1002" pin="1" pinfunction="K_1" pintype="passive"/>
       <node ref="J1000" pin="A5" pinfunction="CC1_A5" pintype="bidirectional"/>
       <node ref="U1000" pin="1" pinfunction="CC1DB_1" pintype="bidirectional"/>
       <node ref="U1000" pin="2" pinfunction="CC1_2" pintype="bidirectional"/>
     </net>
-    <net code="185" name="USB_CC2" class="Default">
+    <net code="184" name="USB_CC2" class="Default">
       <node ref="D1003" pin="1" pinfunction="K_1" pintype="passive"/>
       <node ref="J1000" pin="B5" pinfunction="CC2_B5" pintype="bidirectional"/>
       <node ref="U1000" pin="4" pinfunction="CC2_4" pintype="bidirectional"/>
       <node ref="U1000" pin="5" pinfunction="CC2DB_5" pintype="bidirectional"/>
     </net>
-    <net code="186" name="USB_VBUS" class="Default">
+    <net code="185" name="USB_VBUS" class="Default">
       <node ref="C1000" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="D1001" pin="1" pinfunction="K_1" pintype="passive"/>
       <node ref="J1000" pin="A4" pinfunction="VBUS_A4" pintype="passive"/>
@@ -11702,122 +11786,125 @@
       <node ref="TP1000" pin="1" pinfunction="USB_VBUS_1" pintype="passive"/>
       <node ref="U1000" pin="24" pinfunction="VDD_24" pintype="power_in"/>
     </net>
-    <net code="187" name="unconnected-(J100-NC-Pad15)" class="Default">
+    <net code="186" name="unconnected-(J100-NC-Pad15)" class="Default">
       <node ref="J100" pin="15" pinfunction="NC_15" pintype="passive+no_connect"/>
     </net>
-    <net code="188" name="unconnected-(J600-NC-Pad9)" class="Default">
+    <net code="187" name="unconnected-(J600-NC-Pad9)" class="Default">
       <node ref="J600" pin="9" pinfunction="NC_9" pintype="passive+no_connect"/>
     </net>
-    <net code="189" name="unconnected-(J600-NC-Pad10)" class="Default">
+    <net code="188" name="unconnected-(J600-NC-Pad10)" class="Default">
       <node ref="J600" pin="10" pinfunction="NC_10" pintype="passive+no_connect"/>
     </net>
-    <net code="190" name="unconnected-(J600-NC-Pad11)" class="Default">
+    <net code="189" name="unconnected-(J600-NC-Pad11)" class="Default">
       <node ref="J600" pin="11" pinfunction="NC_11" pintype="passive+no_connect"/>
     </net>
-    <net code="191" name="unconnected-(J1000-D+-PadA6)" class="Default">
+    <net code="190" name="unconnected-(J1000-D+-PadA6)" class="Default">
       <node ref="J1000" pin="A6" pinfunction="D+_A6" pintype="bidirectional+no_connect"/>
     </net>
-    <net code="192" name="unconnected-(J1000-D+-PadB6)" class="Default">
+    <net code="191" name="unconnected-(J1000-D+-PadB6)" class="Default">
       <node ref="J1000" pin="B6" pinfunction="D+_B6" pintype="bidirectional+no_connect"/>
     </net>
-    <net code="193" name="unconnected-(J1000-D--PadA7)" class="Default">
+    <net code="192" name="unconnected-(J1000-D--PadA7)" class="Default">
       <node ref="J1000" pin="A7" pinfunction="D-_A7" pintype="bidirectional+no_connect"/>
     </net>
-    <net code="194" name="unconnected-(J1000-D--PadB7)" class="Default">
+    <net code="193" name="unconnected-(J1000-D--PadB7)" class="Default">
       <node ref="J1000" pin="B7" pinfunction="D-_B7" pintype="bidirectional+no_connect"/>
     </net>
-    <net code="195" name="unconnected-(J1000-SBU1-PadA8)" class="Default">
+    <net code="194" name="unconnected-(J1000-SBU1-PadA8)" class="Default">
       <node ref="J1000" pin="A8" pinfunction="SBU1_A8" pintype="bidirectional+no_connect"/>
     </net>
-    <net code="196" name="unconnected-(J1000-SBU2-PadB8)" class="Default">
+    <net code="195" name="unconnected-(J1000-SBU2-PadB8)" class="Default">
       <node ref="J1000" pin="B8" pinfunction="SBU2_B8" pintype="bidirectional+no_connect"/>
     </net>
-    <net code="197" name="unconnected-(U200-B3Y-Pad11)" class="Default">
+    <net code="196" name="unconnected-(U200-B3Y-Pad11)" class="Default">
       <node ref="U200" pin="11" pinfunction="B3Y_11" pintype="output+no_connect"/>
     </net>
-    <net code="198" name="unconnected-(U200-NC-Pad6)" class="Default">
+    <net code="197" name="unconnected-(U200-NC-Pad6)" class="Default">
       <node ref="U200" pin="6" pinfunction="NC_6" pintype="no_connect"/>
     </net>
-    <net code="199" name="unconnected-(U200-NC-Pad9)" class="Default">
+    <net code="198" name="unconnected-(U200-NC-Pad9)" class="Default">
       <node ref="U200" pin="9" pinfunction="NC_9" pintype="no_connect"/>
     </net>
-    <net code="200" name="unconnected-(U300-B3Y-Pad11)" class="Default">
+    <net code="199" name="unconnected-(U300-B3Y-Pad11)" class="Default">
       <node ref="U300" pin="11" pinfunction="B3Y_11" pintype="output+no_connect"/>
     </net>
-    <net code="201" name="unconnected-(U300-NC-Pad6)" class="Default">
+    <net code="200" name="unconnected-(U300-NC-Pad6)" class="Default">
       <node ref="U300" pin="6" pinfunction="NC_6" pintype="no_connect"/>
     </net>
-    <net code="202" name="unconnected-(U300-NC-Pad9)" class="Default">
+    <net code="201" name="unconnected-(U300-NC-Pad9)" class="Default">
       <node ref="U300" pin="9" pinfunction="NC_9" pintype="no_connect"/>
     </net>
-    <net code="203" name="unconnected-(U400-B3Y-Pad11)" class="Default">
+    <net code="202" name="unconnected-(U400-B3Y-Pad11)" class="Default">
       <node ref="U400" pin="11" pinfunction="B3Y_11" pintype="output+no_connect"/>
     </net>
-    <net code="204" name="unconnected-(U400-NC-Pad6)" class="Default">
+    <net code="203" name="unconnected-(U400-NC-Pad6)" class="Default">
       <node ref="U400" pin="6" pinfunction="NC_6" pintype="no_connect"/>
     </net>
-    <net code="205" name="unconnected-(U400-NC-Pad9)" class="Default">
+    <net code="204" name="unconnected-(U400-NC-Pad9)" class="Default">
       <node ref="U400" pin="9" pinfunction="NC_9" pintype="no_connect"/>
     </net>
-    <net code="206" name="unconnected-(U500-B3Y-Pad11)" class="Default">
+    <net code="205" name="unconnected-(U500-B3Y-Pad11)" class="Default">
       <node ref="U500" pin="11" pinfunction="B3Y_11" pintype="output+no_connect"/>
     </net>
-    <net code="207" name="unconnected-(U500-NC-Pad6)" class="Default">
+    <net code="206" name="unconnected-(U500-NC-Pad6)" class="Default">
       <node ref="U500" pin="6" pinfunction="NC_6" pintype="no_connect"/>
     </net>
-    <net code="208" name="unconnected-(U500-NC-Pad9)" class="Default">
+    <net code="207" name="unconnected-(U500-NC-Pad9)" class="Default">
       <node ref="U500" pin="9" pinfunction="NC_9" pintype="no_connect"/>
     </net>
-    <net code="209" name="unconnected-(U600-IO1_3-Pad16)" class="Default">
+    <net code="208" name="unconnected-(U600-IO1_3-Pad16)" class="Default">
       <node ref="U600" pin="16" pinfunction="IO1_3_16" pintype="bidirectional+no_connect"/>
     </net>
-    <net code="210" name="unconnected-(U600-~{INT}-Pad1)" class="Default">
+    <net code="209" name="unconnected-(U600-~{INT}-Pad1)" class="Default">
       <node ref="U600" pin="1" pinfunction="~{INT}_1" pintype="open_collector+no_connect"/>
     </net>
-    <net code="211" name="unconnected-(U700-GPIO-Pad15)" class="Default">
+    <net code="210" name="unconnected-(U700-GPIO-Pad15)" class="Default">
       <node ref="U700" pin="15" pinfunction="GPIO_15" pintype="bidirectional+no_connect"/>
     </net>
-    <net code="212" name="unconnected-(U701-NC-Pad4)" class="Default">
+    <net code="211" name="unconnected-(U701-NC-Pad4)" class="Default">
       <node ref="U701" pin="4" pinfunction="NC_4" pintype="no_connect"/>
     </net>
-    <net code="213" name="unconnected-(U701-NC-Pad9)" class="Default">
+    <net code="212" name="unconnected-(U701-NC-Pad9)" class="Default">
       <node ref="U701" pin="9" pinfunction="NC_9" pintype="no_connect"/>
     </net>
-    <net code="214" name="unconnected-(U701-NC-Pad11)" class="Default">
+    <net code="213" name="unconnected-(U701-NC-Pad11)" class="Default">
       <node ref="U701" pin="11" pinfunction="NC_11" pintype="no_connect"/>
     </net>
-    <net code="215" name="unconnected-(U800-INT2-Pad9)" class="Default">
+    <net code="214" name="unconnected-(U800-INT2-Pad9)" class="Default">
       <node ref="U800" pin="9" pinfunction="INT2_9" pintype="output+no_connect"/>
     </net>
-    <net code="216" name="unconnected-(U800-OCS_AUX-Pad10)" class="Default">
+    <net code="215" name="unconnected-(U800-OCS_AUX-Pad10)" class="Default">
       <node ref="U800" pin="10" pinfunction="OCS_AUX_10" pintype="no_connect"/>
     </net>
-    <net code="217" name="unconnected-(U800-SDO_AUX-Pad11)" class="Default">
+    <net code="216" name="unconnected-(U800-SDO_AUX-Pad11)" class="Default">
       <node ref="U800" pin="11" pinfunction="SDO_AUX_11" pintype="no_connect"/>
     </net>
-    <net code="218" name="unconnected-(U801-CLKOUT-Pad1)" class="Default">
+    <net code="217" name="unconnected-(U801-CLKOUT-Pad1)" class="Default">
       <node ref="U801" pin="1" pinfunction="CLKOUT_1" pintype="output+no_connect"/>
     </net>
-    <net code="219" name="unconnected-(U802-ALERT-Pad3)" class="Default">
+    <net code="218" name="unconnected-(U802-ALERT-Pad3)" class="Default">
       <node ref="U802" pin="3" pinfunction="ALERT_3" pintype="open_collector+no_connect"/>
     </net>
-    <net code="220" name="unconnected-(U901-NC-Pad1)" class="Default">
+    <net code="219" name="unconnected-(U901-NC-Pad1)" class="Default">
       <node ref="U901" pin="1" pinfunction="NC_1" pintype="no_connect"/>
     </net>
-    <net code="221" name="unconnected-(U1000-ALERT-Pad19)" class="Default">
+    <net code="220" name="unconnected-(U1000-ALERT-Pad19)" class="Default">
       <node ref="U1000" pin="19" pinfunction="ALERT_19" pintype="open_collector+no_connect"/>
     </net>
-    <net code="222" name="unconnected-(U1000-ATTACH-Pad11)" class="Default">
+    <net code="221" name="unconnected-(U1000-ATTACH-Pad11)" class="Default">
       <node ref="U1000" pin="11" pinfunction="ATTACH_11" pintype="open_collector+no_connect"/>
     </net>
-    <net code="223" name="unconnected-(U1000-A_B_SIDE-Pad17)" class="Default">
+    <net code="222" name="unconnected-(U1000-A_B_SIDE-Pad17)" class="Default">
       <node ref="U1000" pin="17" pinfunction="A_B_SIDE_17" pintype="open_collector+no_connect"/>
     </net>
-    <net code="224" name="unconnected-(U1000-GPIO-Pad15)" class="Default">
+    <net code="223" name="unconnected-(U1000-GPIO-Pad15)" class="Default">
       <node ref="U1000" pin="15" pinfunction="GPIO_15" pintype="open_collector+no_connect"/>
     </net>
-    <net code="225" name="unconnected-(U1000-NC-Pad3)" class="Default">
+    <net code="224" name="unconnected-(U1000-NC-Pad3)" class="Default">
       <node ref="U1000" pin="3" pinfunction="NC_3" pintype="no_connect"/>
+    </net>
+    <net code="225" name="unconnected-(U1000-POWER_OK2-Pad20)" class="Default">
+      <node ref="U1000" pin="20" pinfunction="POWER_OK2_20" pintype="open_collector+no_connect"/>
     </net>
     <net code="226" name="unconnected-(U1000-POWER_OK3-Pad14)" class="Default">
       <node ref="U1000" pin="14" pinfunction="POWER_OK3_14" pintype="open_collector+no_connect"/>
