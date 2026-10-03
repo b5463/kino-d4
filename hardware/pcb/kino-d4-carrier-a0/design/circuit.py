@@ -104,8 +104,8 @@ for n in range(1,5):
     tp(sh,f'TP{base}',local('5V'));tp(sh,f'TP{base+1}',local('SYNC'))
 
 sheet('06_control','Camera enables and GPIO expansion','Camera outputs default off. Firmware must configure expander before enabling GPIO31. No spare P4 pin is consumed.')
-tcanets={1:None,2:'GND',3:'EXP_RESET_N',4:'CAM1_REQ',5:'CAM2_REQ',6:'CAM3_REQ',7:'CAM4_REQ',8:'CAM1_FAULT_N',9:'CAM2_FAULT_N',10:'CAM3_FAULT_N',11:'CAM4_FAULT_N',12:'GND',13:'IMU_INT',14:'RTC_INT_N',15:'SOFT_KILL',16:'CHARGE_STAT_N',17:'POWER_INT_N',18:'FN_N',19:'HAPTIC_EN',20:'COVER_N',21:'GND',22:'I2C_SCL',23:'I2C_SDA',24:'MB_3V3'}
-add('06_control','U600','TCA9539PWR',tcanets,lib='Interface_Expansion:PCA9539xPW',source='https://www.ti.com/lit/ds/symlink/tca9539.pdf',note='TCA9539 PW pin map verified against TI; address 0x74 candidate. Port 1 (pins 13-20, P1.0-P1.7): IMU_INT, RTC_INT_N, SOFT_KILL, CHARGE_STAT_N, POWER_INT_N, FN_N, HAPTIC_EN, COVER_N; P1.3 (pin 16) reads charger STAT, configure as INPUT only. Order set by the layout: the lines leaving south take pins 13-17 in the order they reach their parts.')
+tcanets={1:None,2:'GND',3:'EXP_RESET_N',4:'CAM1_REQ',5:'CAM2_REQ',6:'CAM3_REQ',7:'CAM4_REQ',8:'CAM1_FAULT_N',9:'CAM2_FAULT_N',10:'CAM3_FAULT_N',11:'CAM4_FAULT_N',12:'GND',13:'IMU_INT',14:'RTC_INT_N',15:'SOFT_KILL',16:None,17:'POWER_INT_N',18:'FN_N',19:'HAPTIC_EN',20:'COVER_N',21:'GND',22:'I2C_SCL',23:'I2C_SDA',24:'MB_3V3'}
+add('06_control','U600','TCA9539PWR',tcanets,lib='Interface_Expansion:PCA9539xPW',source='https://www.ti.com/lit/ds/symlink/tca9539.pdf',note='TCA9539 PW pin map verified against TI; address 0x74 candidate. Port 1 (pins 13-20, P1.0-P1.7): IMU_INT, RTC_INT_N, SOFT_KILL, unused, POWER_INT_N, FN_N, HAPTIC_EN, COVER_N; P1.3 (pin 16) is not connected (no layout path from the charger on the far side of the board): firmware reads the charge state from the BQ25798 status registers over I2C; configure P1.3 as an input. Order set by the layout: the lines leaving south take pins 13-17 in the order they reach their parts.')
 res('06_control','R600','EXP_RESET_N','MB_3V3','10k');cap('06_control','C600','EXP_RESET_N','100n');cap('06_control','C601','MB_3V3')
 andpins={i:((('VCC' if i==14 else 'GND') if i in (7,14) else f'PIN{i}'),'power_in' if i in (7,14) else 'output' if i in(3,6,8,11) else 'input') for i in range(1,15)}
 add('06_control','U601','SN74LVC08APWR',{1:'CAM_GLOBAL_EN',2:'CAM1_REQ',3:'CAM1_EN',4:'CAM_GLOBAL_EN',5:'CAM2_REQ',6:'CAM2_EN',7:'GND',8:'CAM3_EN',9:'CAM_GLOBAL_EN',10:'CAM3_REQ',11:'CAM4_EN',12:'CAM_GLOBAL_EN',13:'CAM4_REQ',14:'MB_3V3'},pin_defs=andpins,footprint='Package_SO:TSSOP-14_4.4x5mm_P0.65mm',source='https://www.ti.com/lit/ds/symlink/sn74lvc08a.pdf')
@@ -174,10 +174,10 @@ passive('10_usb_pd','D1001','SMF12A','USB_VBUS','GND',kind='D',footprint='Diode_
 for i in (1,2):passive('10_usb_pd',f'D{1001+i}','PESD24VL1BA',f'USB_CC{i}','GND',kind='D',footprint='Diode_SMD:D_SOD-323',mpn='PESD24VL1BA,115',source='https://assets.nexperia.com/documents/data-sheet/PESD24VL1BA.pdf',note='VRWM 24 V, VBR 25.4 V min, 11 pF. A 5 V part conducts if CC shorts to 9 V VBUS.')
 tp('10_usb_pd','TP1000','USB_VBUS');tp('10_usb_pd','TP1001','PD_9V_OK_N')
 
-sheet('11_charger','1S charger and battery entry','CE pulled LOW: charges with the camera off, POR defaults 4.2 V / 1 A (PROG 3.00k, TI tables 7-1/7-2). 103AT-2 pack NTC, TS window 1-60 C (TI RT1 5.24k / RT2 30.31k). Open or shorted NTC suspends charge. Fit R1110 only to inhibit charging at bring-up.')
+sheet('11_charger','1S charger and battery entry','CE pulled LOW: charges with the camera off, POR defaults 4.2 V / 1 A (PROG 3.00k, TI tables 7-1/7-2). 103AT-2 pack NTC, TS window 1-60 C (TI RT1 5.24k / RT2 30.31k). Open or shorted NTC suspends charge. Fit R1110 only to inhibit charging at bring-up. STAT (pin 1) is left open: the pin sits inside the charger power copper with no layout path out; firmware reads the charge state from the status registers over I2C.')
 con('11_charger','J1100','PROTECTED 1S PACK / NTC',{1:'PACK_PLUS',2:'PACK_NTC',3:'GND'},'Connector_JST:JST_VH_B3P-VH_1x03_P3.96mm_Vertical',note='New rated harness required. Keying is not electronic reverse-polarity protection.')
 passive('11_charger','F1100','7A fast 1206','PACK_PLUS','PACK_FUSED',kind='F',footprint='Fuse:Fuse_1206_3216Metric',mpn='SF-1206F700-2',source='Bourns SF-1206F series datasheet',note='5 A planning current = 71 % of 7 A. Interrupt rating 50 A relies on the pack PCM clearing a hard short first.')
-add('11_charger','U1100','BQ25798RQMR',{1:'CHARGE_STAT_N',2:'CHG_VBUS',3:'CHG_VBUS',4:'CHG_BTST1',5:'CHG_REGN',6:None,7:None,8:'CHG_VBUS',9:'CHG_VBUS',10:'GND',11:'GND',12:None,13:'CHARGE_CE_N',14:'I2C_SCL',15:'I2C_SDA',16:'CHG_TS',17:'CHG_ILIM',18:'CHG_BATP',19:'CHG_BTST2',20:'CHG_PROG',21:None,22:'BAT_PROTECTED',23:'BAT_PROTECTED',24:'CHG_SDRV',25:'SYS_RAW',26:'CHG_SW2',27:'GND',28:'CHG_SW1',29:'CHG_PMID'},lib='Battery_Management:BQ25798')
+add('11_charger','U1100','BQ25798RQMR',{1:None,2:'CHG_VBUS',3:'CHG_VBUS',4:'CHG_BTST1',5:'CHG_REGN',6:None,7:None,8:'CHG_VBUS',9:'CHG_VBUS',10:'GND',11:'GND',12:None,13:'CHARGE_CE_N',14:'I2C_SCL',15:'I2C_SDA',16:'CHG_TS',17:'CHG_ILIM',18:'CHG_BATP',19:'CHG_BTST2',20:'CHG_PROG',21:None,22:'BAT_PROTECTED',23:'BAT_PROTECTED',24:'CHG_SDRV',25:'SYS_RAW',26:'CHG_SW2',27:'GND',28:'CHG_SW1',29:'CHG_PMID'},lib='Battery_Management:BQ25798')
 res('11_charger','R1100','CHG_PROG','GND','3.00k 1%',note='TI Table 7-1: 1S, 1.5MHz. Default 4.2V / 1A charge, hardware-disabled until qualified.')
 res('11_charger','R1101','BAT_PROTECTED','CHG_BATP','100')
 res('11_charger','R1102','CHARGE_CE_N','GND','100k',note='TI pin 13: CE must be pulled high or low. LOW = charge whenever VBUS is valid and EN_CHG=1; firmware inhibits with EN_CHG, not this pin.')
@@ -194,7 +194,7 @@ ci=1104
 for net,count in [('CHG_VBUS',2),('CHG_PMID',3),('SYS_RAW',5),('BAT_PROTECTED',2)]:
     for j in range(count): cap('11_charger',f'C{ci}',net,'10u 35V X7R',size='1206');ci+=1
     cap('11_charger',f'C{ci}',net,'100n 35V');ci+=1
-res('11_charger','R1109','CHARGE_STAT_N','MB_3V3','10k');tp('11_charger','TP1100','CHARGE_STAT_N');tp('11_charger','TP1101','SYS_RAW')
+tp('11_charger','TP1101','SYS_RAW')
 
 sheet('12_boost','5V boost and main load disconnect','5V = 0.6*(1+110k/15k). L Isat 19.6 A > ILIM 17.1 A max (TI 9.2.2.2). Comp per TI eq 12-14: fc 8-16 kHz, PM > 68 deg over Co 50-110 uF, L +/-20 %, Vin 3.0-4.3 V. Calculated; measure loop on bench.')
 boostpins={1:('FB','input'),2:('COMP','passive'),3:('PGND','power_in'),4:('SW','passive'),5:('VOUT','power_out'),6:('EN','input'),7:('VIN','power_in'),8:('BST','passive'),9:('SW','passive'),10:('AGND','power_in'),11:('VCC','power_out')}
@@ -215,7 +215,7 @@ passive('12_boost','D1200','SS34','P4_5V_ISO','SYS_5V',kind='D')
 passive('12_boost','JP1200','0R LINK - REMOVE FOR P4 USB SERVICE','P4_5V_ISO','P4_5V',kind='R',footprint='KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP',note='Reverse isolation diode plus manual disconnect (0 ohm link, desolder for P4 USB service). Verify Guition external supply and USB topology before simultaneous connection.')
 tp('12_boost','TP1200','SYS_5V');tp('12_boost','TP1201','MB_3V3');tp('12_boost','TP1202','GND')
 
-sheet('13_power_button','Hardware on/off and user indication','Power controller TS8 pin map checked against manufacturer package drawing; EN is pin 7. KILL is pulled high until software requests shutdown. Long-hold target remains provisional.')
+sheet('13_power_button','Hardware on/off and user indication','Power controller TS8 pin map checked against manufacturer package drawing; EN is pin 7. KILL is pulled high until software requests shutdown. Long-hold target remains provisional. One green power LED (D1300, on MB_3V3, so lit only while the camera runs); there is no charge LED: the charger STAT pin has no layout path out, and charge state is shown by firmware from the charger status read over I2C.')
 ltcpins={1:('ON','input'),2:('KILL','input'),3:('TMR','passive'),4:('GND','power_in'),5:('PB_N','input'),6:('VIN','power_in'),7:('EN','output'),8:('INT_N','open_collector')}
 add('13_power_button','U1300','LTC2955ITS8-1',{1:'GND',2:'POWER_KILL_N',3:'POWER_TMR',4:'GND',5:'POWER_PB_N',6:'SYS_RAW',7:'BOOST_ENABLE',8:'POWER_INT_N'},pin_defs=ltcpins,footprint='Package_TO_SOT_SMD:TSOT-23-8',source='https://www.analog.com/media/en/technical-documentation/data-sheets/2955fa.pdf',note='TS8 p2: 1 ON, 2 KILL, 3 TMR, 4 GND, 5 PB, 6 VIN, 7 EN, 8 INT. Enable drive/loading still requires review.')
 cap('13_power_button','C1300','SYS_RAW');cap('13_power_button','C1301','POWER_TMR','1.5u 16V',note='1.8 uF 0603 is not stocked by a major maker. Timer constant from the ADI data sheet still to confirm; about 7.9 s at 5.2 s/uF.')
@@ -224,8 +224,6 @@ res('13_power_button','R1301','SOFT_KILL','GND','100k');res('13_power_button','R
 con('13_power_button','J1300','POWER PUSHBUTTON',{1:'POWER_PB_N',2:'GND'})
 res('13_power_button','R1303','MB_3V3','POWER_LED_A','2.2k')
 passive('13_power_button','D1300','LED GREEN','GND','POWER_LED_A',kind='D',footprint='LED_SMD:LED_0603_1608Metric')
-res('13_power_button','R1304','MB_3V3','CHARGE_LED_A','2.2k')
-passive('13_power_button','D1301','LED AMBER','CHARGE_STAT_N','CHARGE_LED_A',kind='D',footprint='LED_SMD:LED_0603_1608Metric')
 
 # Inner P4 brass inserts; do not substitute the outer case's 108 x 60 pattern.
 for i,(x,y) in enumerate(INSERT_CENTRES):

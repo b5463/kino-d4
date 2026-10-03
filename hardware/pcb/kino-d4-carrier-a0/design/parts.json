@@ -3229,7 +3229,7 @@
       "13": "IMU_INT",
       "14": "RTC_INT_N",
       "15": "SOFT_KILL",
-      "16": "CHARGE_STAT_N",
+      "16": null,
       "17": "POWER_INT_N",
       "18": "FN_N",
       "19": "HAPTIC_EN",
@@ -3340,7 +3340,7 @@
     "footprint": "Package_SO:TSSOP-24_4.4x7.8mm_P0.65mm",
     "mpn": "TCA9539PWR",
     "source": "https://www.ti.com/lit/ds/symlink/tca9539.pdf",
-    "note": "TCA9539 PW pin map verified against TI; address 0x74 candidate. Port 1 (pins 13-20, P1.0-P1.7): IMU_INT, RTC_INT_N, SOFT_KILL, CHARGE_STAT_N, POWER_INT_N, FN_N, HAPTIC_EN, COVER_N; P1.3 (pin 16) reads charger STAT, configure as INPUT only. Order set by the layout: the lines leaving south take pins 13-17 in the order they reach their parts.",
+    "note": "TCA9539 PW pin map verified against TI; address 0x74 candidate. Port 1 (pins 13-20, P1.0-P1.7): IMU_INT, RTC_INT_N, SOFT_KILL, unused, POWER_INT_N, FN_N, HAPTIC_EN, COVER_N; P1.3 (pin 16) is not connected (no layout path from the charger on the far side of the board): firmware reads the charge state from the BQ25798 status registers over I2C; configure P1.3 as an input. Order set by the layout: the lines leaving south take pins 13-17 in the order they reach their parts.",
     "dnp": false,
     "at": null
   },
@@ -5888,7 +5888,7 @@
     "ref": "U1100",
     "value": "BQ25798RQMR",
     "nets": {
-      "1": "CHARGE_STAT_N",
+      "1": null,
       "2": "CHG_VBUS",
       "3": "CHG_VBUS",
       "4": "CHG_BTST1",
@@ -6789,51 +6789,6 @@
     "footprint": "Capacitor_SMD:C_0603_1608Metric",
     "mpn": "YAGEO CC0603KRX7R9BB104",
     "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
-    "note": "",
-    "dnp": false,
-    "at": null
-  },
-  {
-    "sheet": "11_charger",
-    "ref": "R1109",
-    "value": "10k",
-    "nets": {
-      "1": "CHARGE_STAT_N",
-      "2": "MB_3V3"
-    },
-    "pins": {
-      "1": {
-        "name": "1",
-        "type": "passive"
-      },
-      "2": {
-        "name": "2",
-        "type": "passive"
-      }
-    },
-    "footprint": "Resistor_SMD:R_0603_1608Metric",
-    "mpn": "RC0603FR-0710KL",
-    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
-    "note": "",
-    "dnp": false,
-    "at": null
-  },
-  {
-    "sheet": "11_charger",
-    "ref": "TP1100",
-    "value": "CHARGE_STAT_N",
-    "nets": {
-      "1": "CHARGE_STAT_N"
-    },
-    "pins": {
-      "1": {
-        "name": "CHARGE_STAT_N",
-        "type": "passive"
-      }
-    },
-    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
-    "mpn": "CHARGE_STAT_N",
-    "source": "",
     "note": "",
     "dnp": false,
     "at": null
@@ -8019,56 +7974,6 @@
     "footprint": "LED_SMD:LED_0603_1608Metric",
     "mpn": "Wurth Elektronik 150060VS75000",
     "source": "https://www.we-online.com/components/products/datasheet/150060VS75000.pdf",
-    "note": "",
-    "dnp": false,
-    "at": null
-  },
-  {
-    "sheet": "13_power_button",
-    "ref": "R1304",
-    "value": "2.2k",
-    "nets": {
-      "1": "MB_3V3",
-      "2": "CHARGE_LED_A"
-    },
-    "pins": {
-      "1": {
-        "name": "1",
-        "type": "passive"
-      },
-      "2": {
-        "name": "2",
-        "type": "passive"
-      }
-    },
-    "footprint": "Resistor_SMD:R_0603_1608Metric",
-    "mpn": "RC0603FR-072K2L",
-    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-072K2L",
-    "note": "",
-    "dnp": false,
-    "at": null
-  },
-  {
-    "sheet": "13_power_button",
-    "ref": "D1301",
-    "value": "LED AMBER",
-    "nets": {
-      "1": "CHARGE_STAT_N",
-      "2": "CHARGE_LED_A"
-    },
-    "pins": {
-      "1": {
-        "name": "K",
-        "type": "passive"
-      },
-      "2": {
-        "name": "A",
-        "type": "passive"
-      }
-    },
-    "footprint": "LED_SMD:LED_0603_1608Metric",
-    "mpn": "Wurth Elektronik 150060AS75000",
-    "source": "https://www.we-online.com/components/products/datasheet/150060AS75000.pdf",
     "note": "",
     "dnp": false,
     "at": null
