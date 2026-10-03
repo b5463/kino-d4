@@ -3,8 +3,10 @@
 A script lists RIP items (net, layer 'F'/'B'/'I2' or 'V', a, b): a track by both ends, a via by its
 position (b None), and ADD items (net, layer or 'V', width, points): a polyline or one via. Every
 added item is locked and every track segment must be 0 or 45 degrees. 'rip' removes each RIP item,
-which must match exactly one item on the board; 'run' dispatches on argv[1] and runs one phase in
-its own process (a Remove() leaves this KiCad build's bindings unreliable for the rest of a run).
+which must match exactly one item on the board (a layer written 'B*' etc. takes every duplicate);
+'place' (when the script passes PLACE, {ref: ((x, y), rotation, 'F'/'B')}) moves footprints; 'run'
+dispatches on argv[1] and runs one phase in its own process (a Remove() leaves this KiCad build's
+bindings unreliable for the rest of a run): rip, place, add in that order.
 rip_nets entries (net, (x0, y0, x1, y1)) also rip every unlocked item of that net lying wholly in the box.
 """
 import os, sys
@@ -21,11 +23,12 @@ def _rip(b, rip, rip_nets=()):
     tracks = list(b.GetTracks())
     doomed, missing = [], []
     for net, layer, a, c in rip:
+        dup = layer.endswith('*'); layer = layer.rstrip('*')
         hit = [t for t in tracks if t.GetNetname() == net and (
             (layer == 'V' and isinstance(t, pcb.PCB_VIA) and near(t.GetPosition(), a)) or
             (layer != 'V' and not isinstance(t, pcb.PCB_VIA) and t.GetLayer() == LAY[layer] and
              ((near(t.GetStart(), a) and near(t.GetEnd(), c)) or (near(t.GetStart(), c) and near(t.GetEnd(), a)))))]
-        if len(hit) != 1: missing.append((net, layer, a, c, len(hit)))
+        if len(hit) != 1 and not (dup and hit): missing.append((net, layer, a, c, len(hit)))
         doomed += hit
     assert not missing, ('rip targets not found exactly once', missing)
     for net, box in rip_nets:                        # (net, (x0, y0, x1, y1)): unlocked copper inside a box
@@ -56,11 +59,22 @@ def _add(b, add):
     return n
 
 
-def run(name, rip, add, rip_nets=()):
+def _place(b, place):
+    fs = {f.GetReference(): f for f in b.GetFootprints()}
+    flip = pcb.FLIP_DIRECTION_TOP_BOTTOM if hasattr(pcb, 'FLIP_DIRECTION_TOP_BOTTOM') else False
+    for ref, ((x, y), rot, side) in place.items():
+        f = fs[ref]
+        if f.IsFlipped() != (side == 'B'): f.Flip(f.GetPosition(), flip)
+        f.SetPosition(pt(50 + x, 50 + y)); f.SetOrientationDegrees(rot); f.Reference().SetPosition(f.GetPosition())
+    return ', '.join(f'{r} ' + ' '.join(f'{p.GetNumber()}:({mm(p.GetPosition().x):.3f},{mm(p.GetPosition().y):.3f})' for p in fs[r].Pads()) for r in place)
+
+
+def run(name, rip, add, rip_nets=(), place=None):
     phase = sys.argv[1] if len(sys.argv) > 1 else ''
-    assert phase in ('rip', 'add'), 'run: rip, add'
+    assert phase in ('rip', 'add') or (place and phase == 'place'), 'run: rip, ' + ('place, ' if place else '') + 'add'
     b = pcb.LoadBoard(str(TARGET))
     if phase == 'rip': msg = f'{name} rip: {_rip(b, rip, rip_nets)} items'
+    elif phase == 'place': msg = f'{name} place: {_place(b, place)}'
     else: msg = f'{name} add: {_add(b, add)} items'
     pcb.SaveBoard(str(TARGET), b)
     print(msg, flush=True)
