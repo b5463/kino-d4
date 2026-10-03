@@ -1,11 +1,11 @@
-"""Apply .cache/carrier-routing/grid-routes.json (grid_router.py) to the A0.2 board. KiCad 10 python."""
-import json
+"""Apply .cache/carrier-routing/grid-routes.json (grid_router.py; GR_OUT names another file) to the A0.2 board. KiCad 10 python."""
+import json, os
 import pcbnew as pcb
 from rework import TARGET
 from routing import CACHE, pt
 
 LAYER = {'F': pcb.F_Cu, 'I2': pcb.In2_Cu, 'B': pcb.B_Cu}
-data = json.loads((CACHE / 'grid-routes.json').read_text())
+data = json.loads((CACHE / os.environ.get('GR_OUT', 'grid-routes.json')).read_text())   # GR_OUT: as grid_router.py
 b = pcb.LoadBoard(str(TARGET))
 n_seg = n_via = 0
 for r in data['routes']:
