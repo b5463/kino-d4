@@ -94,11 +94,21 @@ Change scripts, in the order they were applied:
   1. `place_a02_u700.py rip`, `place`: the PAC1954 U700 moves to the front between the camera 2 and 3 headers, centre (58.75, 15.5), with C700 and R700 beside it and C701 on the back; copper on their pads and three runs in the way removed.
   2. `route_a02_kelvin.py clear`, then DRC and `drop_dangling.py --keep <nets with deliberate stubs>` until stable, then `add`: eight 0.15 mm sense lines at 0.32 mm pitch from the inner pad corners of RS200-RS500 to U700, plus U700's GND, MB_3V3 and PAC_ADDR copper. The CAM2_5V and CAM3_5V_ISO vias move. `add` sets the moved vias' nets back, because a save in between can give a via with nothing of its own net attached the pour's net.
   3. `check_a02_kelvin.py`: each sense line touches only its shunt pad and its U700 pin.
+  4. `fp_a02_pac1954.py`, `circuit.py` change, `regenerate_capture.py`, netlist / ERC / PDF, `place_a02_u700.py place`: U700 on a project copy of the VQFN-16 land whose pin 1 triangle sits beside the pin 1 corner (the stock one lay on C700's pad).
+- **Bus slot, edges and expanders, 3 October 2026** (hand scripts on `handroute.py`; each runs `rip`, `place` where it has one, then `add`, as separate processes):
+  1. `route_a02_local_fixes.py`: USB_CC2 out of U1000 (a VBUS via moved), CHG_REGN's missing piece and an In2 link that frees R1107, CHG_TS, POWER_KILL_N under U802 / C803, a straight PACK_FUSED sense exit.
+  2. `route_a02_p4_rx4.py`: P4_RX4 back in its F bus lane (y 20.6) with its J100 tap; POWER_INT_N, CAM2_5V and CAM2_5V_ISO cross the band on In2 in one piece; camera 3's 3V3 runs as camera 1's and shares the header row gap with CAM3_FAULT_N at 0.15 mm; TX3, TX1 and RX2 no longer run past their taps.
+  3. `place_a02_remote.py dry` / `rip` / `place`, `route_a02_remote.py`: the remote dry-contact chain (D900, R903, R904, C904, U901, C905, R905, Q900) beside J903 and D902 beside J902 (ESD at the connector, ODD JOBS 24).
+  4. `route_a02_left_edge.py`: the four C6 service lines up the left edge and along the top edge into J101; SHUTTER_N from Q900 down the left edge on B into J100 pin 21.
+  5. `route_a02_u601.py`: C602 beside U601's VCC pin, CAM_GLOBAL_EN tied once under the package, CAM1_EN, CAM3_EN, CAM3_REQ and CAM4_EN out of U601 (CAM3_EN down the In2 column between the SYS_5V riser and camera 3's fan).
+  6. `route_a02_test_legs.py`: J600 test legs (CAM1_EN's leg to U201's EN node).
+  7. `grid_router.py` (`GR_OUT` names an output; `apply_routes.py` takes the same variable) between the steps for the short links.
 
 Each routing script removes and redraws only the copper it owns. `tidy_routes.py` reshapes unlocked copper, so a hand script re-run after it no longer recognises its own routes: re-run hand scripts from a board saved before the tidy. In this KiCad build a `Remove()` leaves the Python bindings unreliable for the rest of the process, so the newer scripts remove, add and verify in separate runs. Helpers:
 - `free_spot.py`: collision-checked placement of one part.
 - `gnd_pad_vias.py`: a GND via beside a named pad (straight or 45-degree stub), or `A>B` to tie a GND pin to a grounded pad of the same part.
 - `rip_box.py NET x0 y0 x1 y1`: removes a net's unlocked copper inside a box for re-routing.
+- `handroute.py`: shared rip / place / add phases for the hand-route scripts (locked copper, 45-degree check).
 - `clean_dangling.py`: removes track stubs.
 - `drop_dangling.py`: removes exactly the items DRC reports as dangling; `--keep` spares named nets.
 - `gnd_islands.py` / `gnd_stitch.py`: list and stitch GND pour fragments with no via.
