@@ -3868,7 +3868,7 @@
         "type": "passive"
       }
     },
-    "footprint": "Package_DFN_QFN:VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm",
+    "footprint": "KINO_A0:VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm_Pin1Corner",
     "mpn": "PAC1954T-E/4MX",
     "source": "https://ww1.microchip.com/downloads/en/DeviceDoc/PAC195X-Data-Sheet-20006539.pdf",
     "note": "ADDRSEL grounded gives 7-bit 0x10 (Microchip evaluation guide section 4.6). PWRDN high enables; SLOW low gives default sample rate.",

@@ -10,6 +10,11 @@ QFN is 1 mm tall: the XIAOs stay the tallest parts on the front.
   address 0x10) south-east, beside C700; C701 (1 uF) on the back under pin 16, where the edges of
   the package have no room left beside the camera 2 and 3 Kelvin pairs. Courtyards touch, no more:
   the trunk 0.15 mm south of the caps' pads sets the depth.
+  The stock pin 1 triangle (pointing up at pin 1 from the south) would lie on C700's pad 1. U700
+  uses the project footprint KINO_A0:VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm_Pin1Corner instead
+  (fp_a02_pac1954.py, captured in circuit.py): the same land, the triangle in the free corner south-west
+  of the package, pointing north-east at pin 1, clear of the pin 16 via, C700's pad 2 and C700's silk
+  (ODD JOBS 93/94). 'place' sets the footprint ID and draws the triangle, so the board matches it.
 Cleared for it ('rip'): copper attached to the four parts' pads (unlocked; re-routed), the CAM3_REQ
 diagonal and via at (56.80, 14.05), the CAM2_EN B run at x 59.45, the IMU_INT diagonal ending at
 (56.80, 16.00).
@@ -57,6 +62,13 @@ for ref, ((x, y), rot, side) in PARTS.items():
     if f.IsFlipped() != (side == 'B'): f.Flip(f.GetPosition(), FLIP)
     f.SetPosition(pt(50 + x, 50 + y)); f.SetOrientationDegrees(rot)
     log.append(f'{ref} {side} ({x}, {y}) {rot}')
+f = fs['U700']                                   # pin 1 marker: the footprint's one silk polygon
+tri = [g for g in f.GraphicalItems() if g.GetLayer() == pcb.F_SilkS and g.GetShape() == pcb.SHAPE_T_POLY]
+assert len(tri) == 1
+ps = pcb.SHAPE_POLY_SET(); ps.NewOutline()
+for x, y in ((57.45, 17.32), (57.35, 17.77), (57.0, 17.42)): ps.Append(pcb.FromMM(50 + x), pcb.FromMM(50 + y))
+tri[0].SetPolyShape(ps); f.SetFPID(pcb.LIB_ID('KINO_A0', 'VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm_Pin1Corner'))
+log.append('U700 on KINO_A0:...Pin1Corner, pin 1 marker at the south-west corner')
 pin = lambda r, n: next(p for p in fs[r].Pads() if p.GetNumber() == n).GetPosition()
 log.append('pins ' + ', '.join(f'{n}:({mm(pin("U700", n).x):.2f},{mm(pin("U700", n).y):.2f})' for n in ('2', '9', '12', '13', '8', '6')))
 log.append('C700 ' + ', '.join(f'{p.GetNumber()} {p.GetNetname()} ({mm(p.GetPosition().x):.2f},{mm(p.GetPosition().y):.2f})' for p in fs['C700'].Pads()))

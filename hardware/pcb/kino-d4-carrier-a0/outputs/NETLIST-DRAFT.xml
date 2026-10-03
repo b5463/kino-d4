@@ -2,7 +2,7 @@
 <export version="E">
   <design>
     <source>/Users/moravcik/Library/Application Support/Claude/scratch-workspaces/fd95d868-fd9f-42b4-ab0f-1fa3f0ecd399/883b8d98-75ff-4844-b199-4b97bf4e807f/scratch-2026-10-02-a94d7d/kino-d4/hardware/pcb/kino-d4-carrier-a0/KINO_D4_Carrier_A0.kicad_sch</source>
-    <date>2026-10-02T22:47:29</date>
+    <date>2026-10-03T04:39:45</date>
     <tool>Eeschema 10.0.6</tool>
     <sheet number="1" name="/" tstamps="/">
       <title_block>
@@ -3340,11 +3340,11 @@
     </comp>
     <comp ref="U700">
       <value>PAC1954T-E/4MX</value>
-      <footprint>Package_DFN_QFN:VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm</footprint>
+      <footprint>KINO_A0:VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm_Pin1Corner</footprint>
       <datasheet>https://ww1.microchip.com/downloads/en/DeviceDoc/PAC195X-Data-Sheet-20006539.pdf</datasheet>
       <fields>
         <field name="Design note">ADDRSEL grounded gives 7-bit 0x10 (Microchip evaluation guide section 4.6). PWRDN high enables; SLOW low gives default sample rate.</field>
-        <field name="Footprint">Package_DFN_QFN:VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm</field>
+        <field name="Footprint">KINO_A0:VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm_Pin1Corner</field>
         <field name="Datasheet">https://ww1.microchip.com/downloads/en/DeviceDoc/PAC195X-Data-Sheet-20006539.pdf</field>
         <field name="Description"/>
       </fields>
@@ -10431,7 +10431,7 @@
       <fields>
         <field name="Reference">U</field>
         <field name="Value">PAC1954T-E/4MX</field>
-        <field name="Footprint">Package_DFN_QFN:VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm</field>
+        <field name="Footprint">KINO_A0:VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm_Pin1Corner</field>
         <field name="Datasheet">https://ww1.microchip.com/downloads/en/DeviceDoc/PAC195X-Data-Sheet-20006539.pdf</field>
         <field name="Description"/>
       </fields>

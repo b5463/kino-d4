@@ -14055,7 +14055,7 @@
 			)
 		)
 	)
-	(footprint "Package_DFN_QFN:VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm"
+	(footprint "KINO_A0:VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm_Pin1Corner"
 		(layer "F.Cu")
 		(uuid "edf314c2-62b1-5b3c-8c76-56c05ec864da")
 		(at 108.75 65.5 90)
@@ -14204,7 +14204,7 @@
 		)
 		(fp_poly
 			(pts
-				(xy -2.12 -0.75) (xy -2.45 -0.51) (xy -2.45 -0.99)
+				(xy -1.82 -1.3) (xy -2.27 -1.4) (xy -1.92 -1.75)
 			)
 			(stroke
 				(width 0.12)

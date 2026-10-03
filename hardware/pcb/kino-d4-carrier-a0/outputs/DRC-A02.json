@@ -1,7 +1,7 @@
 {
     "$schema": "https://schemas.kicad.org/drc.v1.json",
     "coordinate_units": "mm",
-    "date": "2026-10-03T04:31:22",
+    "date": "2026-10-03T04:40:07",
     "ignored_checks": [
         {
             "description": "Footprint has no courtyard defined",
@@ -436,12 +436,12 @@
                     "uuid": "23f56636-bb60-4c59-a162-d6f1f6f9722f"
                 },
                 {
-                    "description": "Track [MB_3V3] on B.Cu, length 1.6125 mm",
+                    "description": "Pad 1 [MB_3V3] of U200 on B.Cu",
                     "pos": {
                         "x": 72.6425,
                         "y": 89.95
                     },
-                    "uuid": "286ae225-d311-424c-9a71-66c16248c898"
+                    "uuid": "112f0574-3be8-4baf-a18c-44acac84351d"
                 }
             ],
             "severity": "error",
@@ -551,12 +551,12 @@
                     "uuid": "29833c04-60bb-4f27-8de9-5d0fa55ea00e"
                 },
                 {
-                    "description": "Track [MB_3V3] on F.Cu, length 0.5657 mm",
+                    "description": "Track [MB_3V3] on F.Cu, length 1.2000 mm",
                     "pos": {
                         "x": 154.6,
-                        "y": 71.4
+                        "y": 72.6
                     },
-                    "uuid": "253471e7-69ab-4b3b-9ecb-008d043a3b17"
+                    "uuid": "7ed9bcdc-37e6-4e56-8e13-462b83decc57"
                 }
             ],
             "severity": "error",
@@ -612,12 +612,12 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "PTH pad 12 [CAM2_3V3] of J300",
+                    "description": "Track [CAM2_3V3] on F.Cu, length 3.2810 mm",
                     "pos": {
                         "x": 105.125,
                         "y": 82.165
                     },
-                    "uuid": "86ea6eb4-d45e-4a5f-a774-6c935e326853"
+                    "uuid": "33ffe5b5-330c-4013-9549-ca22e68c8b98"
                 },
                 {
                     "description": "PTH pad 2 [CAM2_3V3] of J301",
@@ -689,12 +689,12 @@
                     "uuid": "d69b999e-1ff0-4f9b-b145-e6a7e002cab8"
                 },
                 {
-                    "description": "Pad 2 [POWER_KILL_N] of U1300 on B.Cu",
+                    "description": "Track [POWER_KILL_N] on B.Cu, length 0.7375 mm",
                     "pos": {
-                        "x": 80.8625,
+                        "x": 81.6,
                         "y": 106.325
                     },
-                    "uuid": "df9c2c4a-da3a-4808-abea-83270b9a3aa9"
+                    "uuid": "b59ed145-b870-4579-a8d9-7de8434ef16d"
                 }
             ],
             "severity": "error",
@@ -758,12 +758,12 @@
                     "uuid": "71cee42b-85b7-4112-a87a-37f8745f1d45"
                 },
                 {
-                    "description": "Track [USB_CC2] on B.Cu, length 2.8000 mm",
+                    "description": "Track [USB_CC2] on F.Cu, length 0.9000 mm",
                     "pos": {
                         "x": 159.35,
                         "y": 108.6
                     },
-                    "uuid": "0782ef3d-5ec9-4240-8577-7a717d5a6853"
+                    "uuid": "f2c67928-b545-44b7-b5a2-e34b0db4cb68"
                 }
             ],
             "severity": "error",
@@ -919,12 +919,12 @@
                     "uuid": "7edd88f2-64dc-481c-9d1a-02a079eb6746"
                 },
                 {
-                    "description": "Track [CAM4_EN] on In2.Cu, length 11.5500 mm",
+                    "description": "Via [CAM4_EN] on F.Cu - B.Cu",
                     "pos": {
                         "x": 126.15,
                         "y": 63.45
                     },
-                    "uuid": "bea9872a-ab45-413a-9975-e3fc0ed75f63"
+                    "uuid": "0b3a0894-5b8c-439c-9f8e-ebfb63d3f2aa"
                 }
             ],
             "severity": "error",
@@ -942,12 +942,12 @@
                     "uuid": "41bab3ce-563c-41a1-998f-a9c60cb11f17"
                 },
                 {
-                    "description": "Track [CAM4_EN] on In2.Cu, length 11.5500 mm",
+                    "description": "Via [CAM4_EN] on F.Cu - B.Cu",
                     "pos": {
                         "x": 126.15,
                         "y": 63.45
                     },
-                    "uuid": "bea9872a-ab45-413a-9975-e3fc0ed75f63"
+                    "uuid": "0b3a0894-5b8c-439c-9f8e-ebfb63d3f2aa"
                 }
             ],
             "severity": "error",
@@ -1264,12 +1264,12 @@
                     "uuid": "5312a1e3-5aad-4d61-91e9-00ccf1216a8d"
                 },
                 {
-                    "description": "Pad 1 [REMOTE_ACTIVE] of R905 on B.Cu",
+                    "description": "Track [REMOTE_ACTIVE] on B.Cu, length 1.5750 mm",
                     "pos": {
-                        "x": 150.75,
+                        "x": 152.325,
                         "y": 67.675
                     },
-                    "uuid": "965bf0b0-e832-427e-8eb2-3af11e1d9099"
+                    "uuid": "34e37796-5060-42b2-b4f0-c2b4df1b1034"
                 }
             ],
             "severity": "error",
@@ -1287,12 +1287,12 @@
                     "uuid": "4ba978ef-db93-45be-896b-f7b53e17077a"
                 },
                 {
-                    "description": "Pad 2 [SHUTTER_N] of D902 on B.Cu",
+                    "description": "Track [SHUTTER_N] on B.Cu, length 3.5355 mm",
                     "pos": {
-                        "x": 153.0,
-                        "y": 67.2
+                        "x": 155.5,
+                        "y": 64.7
                     },
-                    "uuid": "c31bc511-68f8-4c3b-bdc7-58dc62719a2e"
+                    "uuid": "16565dc7-2711-4f3c-8232-d3280e47c01a"
                 }
             ],
             "severity": "error",
@@ -1348,12 +1348,12 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Track [P4_BUS_EN] on B.Cu, length 5.0000 mm",
+                    "description": "Pad 1 [P4_BUS_EN] of R101 on B.Cu",
                     "pos": {
-                        "x": 66.5,
+                        "x": 71.5,
                         "y": 102.825
                     },
-                    "uuid": "8d4bd6dc-4c60-49b4-b551-f8c4f1192313"
+                    "uuid": "6f3a2133-a68a-4fba-9b1b-7cc3eeb07bcd"
                 },
                 {
                     "description": "Pad 5 [P4_BUS_EN] of U100 on B.Cu",
@@ -1440,12 +1440,12 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Pad 1 [CAM_GLOBAL_EN] of R104 on B.Cu",
+                    "description": "Track [CAM_GLOBAL_EN] on B.Cu, length 9.1570 mm",
                     "pos": {
-                        "x": 66.325,
-                        "y": 95.0
+                        "x": 59.85,
+                        "y": 88.525
                     },
-                    "uuid": "53f2508e-6955-498b-adc2-b8d3ad854f5f"
+                    "uuid": "9b909f9d-dca1-465e-b62d-3d26e9067d1d"
                 },
                 {
                     "description": "Track [CAM_GLOBAL_EN] on B.Cu, length 0.5657 mm",
@@ -1701,12 +1701,12 @@
                     "uuid": "dfb1e1a4-6a7b-4be6-813b-18cf66e967a3"
                 },
                 {
-                    "description": "Track [REMOTE_CONTACT] on B.Cu, length 2.1750 mm",
+                    "description": "Pad 1 [REMOTE_CONTACT] of R903 on B.Cu",
                     "pos": {
                         "x": 152.075,
-                        "y": 76.925
+                        "y": 74.75
                     },
-                    "uuid": "4b0d8571-4bd4-4165-ba54-98446644f09d"
+                    "uuid": "0d266add-cecb-44c0-b5f3-98b759f49435"
                 }
             ],
             "severity": "error",
@@ -1716,12 +1716,12 @@
             "description": "Missing connection between items",
             "items": [
                 {
-                    "description": "Track [AUX_3V3] on B.Cu, length 0.4500 mm",
+                    "description": "Pad 2 [AUX_3V3] of J601 on B.Cu",
                     "pos": {
                         "x": 90.25,
-                        "y": 101.75
+                        "y": 101.3
                     },
-                    "uuid": "7d0db76c-0090-4676-9c42-c7fe7b8d1e7c"
+                    "uuid": "0c445b7b-d8af-49a7-9213-d76e7c79bb37"
                 },
                 {
                     "description": "Pad 2 [AUX_3V3] of F100 on B.Cu",
@@ -2108,21 +2108,6 @@
             "type": "silk_over_copper"
         },
         {
-            "description": "Silkscreen clipped by solder mask",
-            "items": [
-                {
-                    "description": "Polygon of U700 on F.Silkscreen",
-                    "pos": {
-                        "x": 108.0,
-                        "y": 67.62
-                    },
-                    "uuid": "5f766457-0170-4796-86ab-ebc2f64335ef"
-                }
-            ],
-            "severity": "warning",
-            "type": "silk_over_copper"
-        },
-        {
             "description": "Silkscreen clearance (board setup constraints silk clearance 0.1500 mm; actual 0.0000 mm)",
             "items": [
                 {
@@ -2163,29 +2148,6 @@
                         "y": 70.049285
                     },
                     "uuid": "db9e253e-28e2-4321-b2e4-b1a0698e5d0f"
-                }
-            ],
-            "severity": "warning",
-            "type": "silk_overlap"
-        },
-        {
-            "description": "Silkscreen clearance (board setup constraints silk clearance 0.1500 mm; actual 0.0000 mm)",
-            "items": [
-                {
-                    "description": "Polygon of U700 on F.Silkscreen",
-                    "pos": {
-                        "x": 108.0,
-                        "y": 67.62
-                    },
-                    "uuid": "5f766457-0170-4796-86ab-ebc2f64335ef"
-                },
-                {
-                    "description": "Segment of C700 on F.Silkscreen",
-                    "pos": {
-                        "x": 107.86558,
-                        "y": 67.91
-                    },
-                    "uuid": "e42e4212-72fa-4691-98de-1732f5957178"
                 }
             ],
             "severity": "warning",
