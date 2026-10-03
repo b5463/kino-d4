@@ -56,6 +56,7 @@ if PHASE == 'rip':
     import os; os._exit(0)
 
 log = []
+PARTS = {r: v for r, v in PARTS.items() if r in fs}     # R700 left the capture (route_a02_u700_i2c.py)
 FLIP = pcb.FLIP_DIRECTION_TOP_BOTTOM if hasattr(pcb, 'FLIP_DIRECTION_TOP_BOTTOM') else False
 for ref, ((x, y), rot, side) in PARTS.items():
     f = fs[ref]
@@ -73,7 +74,7 @@ pin = lambda r, n: next(p for p in fs[r].Pads() if p.GetNumber() == n).GetPositi
 log.append('pins ' + ', '.join(f'{n}:({mm(pin("U700", n).x):.2f},{mm(pin("U700", n).y):.2f})' for n in ('2', '9', '12', '13', '8', '6')))
 log.append('C700 ' + ', '.join(f'{p.GetNumber()} {p.GetNetname()} ({mm(p.GetPosition().x):.2f},{mm(p.GetPosition().y):.2f})' for p in fs['C700'].Pads()))
 log.append('C701 ' + ', '.join(f'{p.GetNumber()} {p.GetNetname()} ({mm(p.GetPosition().x):.2f},{mm(p.GetPosition().y):.2f})' for p in fs['C701'].Pads()))
-log.append('R700 ' + ', '.join(f'{p.GetNumber()} {p.GetNetname()} ({mm(p.GetPosition().x):.2f},{mm(p.GetPosition().y):.2f})' for p in fs['R700'].Pads()))
+if 'R700' in fs: log.append('R700 ' + ', '.join(f'{p.GetNumber()} {p.GetNetname()} ({mm(p.GetPosition().x):.2f},{mm(p.GetPosition().y):.2f})' for p in fs['R700'].Pads()))
 pcb.SaveBoard(str(TARGET), b)
 print('u700 place:', '; '.join(log), flush=True)
 import os; os._exit(0)

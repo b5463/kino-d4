@@ -434,7 +434,7 @@ U700,2,V_{DD},MB_3V3,07_monitoring
 U700,3,GND,GND,07_monitoring
 U700,4,SCL,I2C_SCL,07_monitoring
 U700,5,SDA,I2C_SDA,07_monitoring
-U700,6,ADDRSEL,PAC_ADDR,07_monitoring
+U700,6,ADDRSEL,GND,07_monitoring
 U700,7,SENSE3-,CAM3_SHUNT_OUT,07_monitoring
 U700,8,SENSE3+,SYS_5V,07_monitoring
 U700,9,SENSE4-,CAM4_SHUNT_OUT,07_monitoring
@@ -446,8 +446,6 @@ U700,14,SENSE2-,CAM2_SHUNT_OUT,07_monitoring
 U700,15,GPIO,NC,07_monitoring
 U700,16,~{PWRDN},MB_3V3,07_monitoring
 U700,17,EP,GND,07_monitoring
-R700,1,1,PAC_ADDR,07_monitoring
-R700,2,2,GND,07_monitoring
 C700,1,1,MB_3V3,07_monitoring
 C700,2,2,GND,07_monitoring
 C701,1,1,MB_3V3,07_monitoring

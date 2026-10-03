@@ -3785,7 +3785,7 @@
       "3": "GND",
       "4": "I2C_SCL",
       "5": "I2C_SDA",
-      "6": "PAC_ADDR",
+      "6": "GND",
       "7": "CAM3_SHUNT_OUT",
       "8": "SYS_5V",
       "9": "CAM4_SHUNT_OUT",
@@ -3871,32 +3871,7 @@
     "footprint": "KINO_A0:VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm_Pin1Corner",
     "mpn": "PAC1954T-E/4MX",
     "source": "https://ww1.microchip.com/downloads/en/DeviceDoc/PAC195X-Data-Sheet-20006539.pdf",
-    "note": "ADDRSEL grounded gives 7-bit 0x10 (Microchip evaluation guide section 4.6). PWRDN high enables; SLOW low gives default sample rate.",
-    "dnp": false,
-    "at": null
-  },
-  {
-    "sheet": "07_monitoring",
-    "ref": "R700",
-    "value": "0",
-    "nets": {
-      "1": "PAC_ADDR",
-      "2": "GND"
-    },
-    "pins": {
-      "1": {
-        "name": "1",
-        "type": "passive"
-      },
-      "2": {
-        "name": "2",
-        "type": "passive"
-      }
-    },
-    "footprint": "Resistor_SMD:R_0603_1608Metric",
-    "mpn": "RC0603JR-070RL",
-    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603JR-070RL",
-    "note": "",
+    "note": "ADDRSEL tied to GND (pin 6 to the exposed pad) gives 7-bit 0x10 (Microchip evaluation guide section 4.6); the only PAC1954 on the bus, so no strap resistor. PWRDN high enables; SLOW low gives default sample rate.",
     "dnp": false,
     "at": null
   },

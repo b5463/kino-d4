@@ -5,7 +5,8 @@ position (b None), and ADD items (net, layer or 'V', width, points): a polyline 
 added item is locked and every track segment must be 0 or 45 degrees. 'rip' removes each RIP item,
 which must match exactly one item on the board (a layer written 'B*' etc. takes every duplicate);
 'place' (when the script passes PLACE, {ref: ((x, y), rotation, 'F'/'B')}, or PAD_NETS, {(ref, pad):
-net} for a pin map changed in circuit.py) moves footprints and sets pad nets; 'run'
+net} for a pin map changed in circuit.py, or REMOVE, parts dropped from circuit.py) moves footprints,
+sets pad nets and deletes footprints; 'run'
 dispatches on argv[1] and runs one phase in its own process (a Remove() leaves this KiCad build's
 bindings unreliable for the rest of a run): rip, place, add in that order.
 rip_nets entries (net, (x0, y0, x1, y1)) also rip every unlocked item of that net lying wholly in the box.
@@ -80,13 +81,18 @@ def _place(b, place):
     return ', '.join(f'{r} ' + ' '.join(f'{p.GetNumber()}:({mm(p.GetPosition().x):.3f},{mm(p.GetPosition().y):.3f})' for p in fs[r].Pads()) for r in place)
 
 
-def run(name, rip, add, rip_nets=(), place=None, pad_nets=None):
+def run(name, rip, add, rip_nets=(), place=None, pad_nets=None, remove=()):
     phase = sys.argv[1] if len(sys.argv) > 1 else ''
-    has_place = bool(place or pad_nets)
+    has_place = bool(place or pad_nets or remove)
     assert phase in ('rip', 'add') or (has_place and phase == 'place'), 'run: rip, ' + ('place, ' if has_place else '') + 'add'
     b = pcb.LoadBoard(str(TARGET))
     if phase == 'rip': msg = f'{name} rip: {_rip(b, rip, rip_nets)} items'
-    elif phase == 'place': msg = f'{name} place: ' + '; '.join(x for x in (_place(b, place or {}), _pad_nets(b, pad_nets or {})) if x)
+    elif phase == 'place':
+        msg = f'{name} place: ' + '; '.join(x for x in (_place(b, place or {}), _pad_nets(b, pad_nets or {})) if x)
+        gone = [f for f in b.GetFootprints() if f.GetReference() in remove]
+        assert len(gone) == len(remove), ('footprints to remove not found', remove)
+        for f in gone: b.Remove(f)                   # last: Remove() invalidates the other proxies
+        if remove: msg += '; removed ' + ', '.join(remove)
     else: msg = f'{name} add: {_add(b, add)} items'
     pcb.SaveBoard(str(TARGET), b)
     print(msg, flush=True)
