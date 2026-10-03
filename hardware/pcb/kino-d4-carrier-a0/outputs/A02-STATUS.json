@@ -14,11 +14,11 @@
     54.8
   ],
   "mounting_hole_diameter_mm": 2.2,
-  "unconnected_items": 75,
+  "unconnected_items": 73,
   "drc_violation_count": 20,
-  "board_sha256": "1189640fc1ed28fd29cc976e05fcbfefb1bdabc3c0ebcfd34991866fe3c61322",
-  "tracks": 1877,
-  "vias": 466,
+  "board_sha256": "44fa717294b893865e1470f2af3b12cd8eeee39772a02a5bf393add7e032d9bc",
+  "tracks": 1874,
+  "vias": 476,
   "front_footprints": 73,
   "rear_footprints": 177
 }

@@ -26,6 +26,22 @@
   ],
   "right_angle_bends": [
     {
+      "net": "HAPTIC_REG",
+      "layer": "F.Cu",
+      "xy_mm": [
+        161.95,
+        69.3
+      ]
+    },
+    {
+      "net": "HAPTIC_REG",
+      "layer": "F.Cu",
+      "xy_mm": [
+        158.95,
+        73.0
+      ]
+    },
+    {
       "net": "MB_3V3",
       "layer": "F.Cu",
       "xy_mm": [
@@ -79,6 +95,14 @@
       "xy_mm": [
         114.525,
         108.7
+      ]
+    },
+    {
+      "net": "CHG_REGN",
+      "layer": "F.Cu",
+      "xy_mm": [
+        134.1,
+        110.5
       ]
     },
     {
@@ -183,6 +207,22 @@
       "xy_mm": [
         143.2,
         102.7
+      ]
+    },
+    {
+      "net": "REMOTE_ACTIVE",
+      "layer": "F.Cu",
+      "xy_mm": [
+        164.4,
+        68.95
+      ]
+    },
+    {
+      "net": "REMOTE_ACTIVE",
+      "layer": "F.Cu",
+      "xy_mm": [
+        164.4,
+        64.55
       ]
     },
     {
@@ -513,9 +553,9 @@
       ]
     },
     "CAM1_EN": {
-      "length_mm": 117.879,
+      "length_mm": 117.03,
       "width_length_mm": {
-        "0.2": 117.879
+        "0.2": 117.03
       },
       "via_count": 7,
       "layers": [
@@ -755,9 +795,9 @@
       ]
     },
     "CAM2_EN": {
-      "length_mm": 40.438,
+      "length_mm": 19.932,
       "width_length_mm": {
-        "0.2": 40.438
+        "0.2": 19.932
       },
       "via_count": 2,
       "layers": [
@@ -847,11 +887,11 @@
       ]
     },
     "CAM2_SYNC": {
-      "length_mm": 23.237,
+      "length_mm": 18.586,
       "width_length_mm": {
-        "0.2": 23.237
+        "0.2": 18.586
       },
-      "via_count": 3,
+      "via_count": 2,
       "layers": [
         "B.Cu",
         "F.Cu"
@@ -1089,9 +1129,9 @@
       ]
     },
     "CAM3_SYNC": {
-      "length_mm": 23.237,
+      "length_mm": 22.601,
       "width_length_mm": {
-        "0.2": 23.237
+        "0.2": 22.601
       },
       "via_count": 3,
       "layers": [
@@ -1328,9 +1368,9 @@
       ]
     },
     "CAM4_SYNC": {
-      "length_mm": 25.263,
+      "length_mm": 19.345,
       "width_length_mm": {
-        "0.2": 25.263
+        "0.2": 19.345
       },
       "via_count": 1,
       "layers": [
@@ -1449,12 +1489,12 @@
       ]
     },
     "CHG_REGN": {
-      "length_mm": 38.722,
+      "length_mm": 41.841,
       "width_length_mm": {
-        "0.2": 36.189,
-        "0.15": 2.533
+        "0.2": 41.208,
+        "0.15": 0.633
       },
-      "via_count": 4,
+      "via_count": 6,
       "layers": [
         "B.Cu",
         "F.Cu",
@@ -1610,28 +1650,29 @@
       ]
     },
     "GND": {
-      "length_mm": 66.322,
+      "length_mm": 76.011,
       "width_length_mm": {
+        "0.25": 58.811,
         "0.8": 8.75,
-        "0.25": 52.222,
         "0.6": 0.7,
-        "0.2": 2.7,
-        "0.3": 1.95
+        "0.3": 5.05,
+        "0.2": 2.7
       },
-      "via_count": 146,
+      "via_count": 153,
       "layers": [
         "B.Cu",
         "F.Cu"
       ]
     },
     "HAPTIC_REG": {
-      "length_mm": 5.141,
+      "length_mm": 12.49,
       "width_length_mm": {
-        "0.2": 5.141
+        "0.15": 12.49
       },
-      "via_count": 0,
+      "via_count": 2,
       "layers": [
-        "F.Cu"
+        "F.Cu",
+        "In2.Cu"
       ]
     },
     "I2C_SCL": {
@@ -1658,11 +1699,11 @@
       ]
     },
     "IMU_INT": {
-      "length_mm": 15.116,
+      "length_mm": 8.714,
       "width_length_mm": {
-        "0.15": 15.116
+        "0.15": 8.714
       },
-      "via_count": 1,
+      "via_count": 0,
       "layers": [
         "B.Cu",
         "F.Cu"
@@ -1693,9 +1734,9 @@
       ]
     },
     "MB_3V3": {
-      "length_mm": 435.31,
+      "length_mm": 425.311,
       "width_length_mm": {
-        "0.3": 410.672,
+        "0.3": 400.673,
         "0.25": 13.356,
         "0.2": 9.332,
         "0.8": 1.95
@@ -1748,9 +1789,9 @@
       ]
     },
     "P4_BUS_EN": {
-      "length_mm": 104.836,
+      "length_mm": 102.775,
       "width_length_mm": {
-        "0.2": 104.836
+        "0.2": 102.775
       },
       "via_count": 8,
       "layers": [
@@ -2036,11 +2077,11 @@
       ]
     },
     "REMOTE_ACTIVE": {
-      "length_mm": 21.609,
+      "length_mm": 32.268,
       "width_length_mm": {
-        "0.2": 21.609
+        "0.2": 32.268
       },
-      "via_count": 2,
+      "via_count": 3,
       "layers": [
         "B.Cu",
         "F.Cu",
@@ -2194,9 +2235,9 @@
     }
   },
   "track_segments_by_layer": {
-    "F.Cu": 619,
-    "B.Cu": 1010,
-    "In2.Cu": 248
+    "F.Cu": 629,
+    "In2.Cu": 252,
+    "B.Cu": 993
   },
   "switching_nodes_with_layer_changes": [
     "CHG_SW1",
@@ -2206,7 +2247,7 @@
     "track_dangling": 14,
     "via_dangling": 6
   },
-  "unconnected_items": 75,
+  "unconnected_items": 73,
   "order_verdict": "DO NOT ORDER",
   "electrical_function_verified": false,
   "thermal_verified": false,
