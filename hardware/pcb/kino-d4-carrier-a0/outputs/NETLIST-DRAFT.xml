@@ -2,7 +2,7 @@
 <export version="E">
   <design>
     <source>/Users/moravcik/Library/Application Support/Claude/scratch-workspaces/fd95d868-fd9f-42b4-ab0f-1fa3f0ecd399/883b8d98-75ff-4844-b199-4b97bf4e807f/scratch-2026-10-02-a94d7d/kino-d4/hardware/pcb/kino-d4-carrier-a0/KINO_D4_Carrier_A0.kicad_sch</source>
-    <date>2026-10-03T04:39:45</date>
+    <date>2026-10-03T07:34:52</date>
     <tool>Eeschema 10.0.6</tool>
     <sheet number="1" name="/" tstamps="/">
       <title_block>
@@ -3060,13 +3060,13 @@
       <footprint>Package_SO:TSSOP-24_4.4x7.8mm_P0.65mm</footprint>
       <datasheet>https://www.ti.com/lit/ds/symlink/tca9539.pdf</datasheet>
       <fields>
-        <field name="Design note">TCA9539 PW pin map verified against TI; address 0x74 candidate. P1.3 (pin 20) reads charger STAT; configure as INPUT only.</field>
+        <field name="Design note">TCA9539 PW pin map verified against TI; address 0x74 candidate. Port 1 (pins 13-20, P1.0-P1.7): IMU_INT, RTC_INT_N, SOFT_KILL, CHARGE_STAT_N, POWER_INT_N, FN_N, HAPTIC_EN, COVER_N; P1.3 (pin 16) reads charger STAT, configure as INPUT only. Order set by the layout: the lines leaving south take pins 13-17 in the order they reach their parts.</field>
         <field name="Footprint">Package_SO:TSSOP-24_4.4x7.8mm_P0.65mm</field>
         <field name="Datasheet">https://www.ti.com/lit/ds/symlink/tca9539.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="KINO_A0" part="U600" description=""/>
-      <property name="Design note" value="TCA9539 PW pin map verified against TI; address 0x74 candidate. P1.3 (pin 20) reads charger STAT; configure as INPUT only."/>
+      <property name="Design note" value="TCA9539 PW pin map verified against TI; address 0x74 candidate. Port 1 (pins 13-20, P1.0-P1.7): IMU_INT, RTC_INT_N, SOFT_KILL, CHARGE_STAT_N, POWER_INT_N, FN_N, HAPTIC_EN, COVER_N; P1.3 (pin 16) reads charger STAT, configure as INPUT only. Order set by the layout: the lines leaving south take pins 13-17 in the order they reach their parts."/>
       <property name="Sheetname" value="Camera enables and GPIO expansion"/>
       <property name="Sheetfile" value="06_control.kicad_sch"/>
       <sheetpath names="/Camera enables and GPIO expansion/" tstamps="/243a2e2e-3f89-5623-a352-a3b314db1d0e/"/>
@@ -11116,7 +11116,7 @@
       <node ref="R1109" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="TP1100" pin="1" pinfunction="CHARGE_STAT_N_1" pintype="passive"/>
       <node ref="U1100" pin="1" pinfunction="STAT_1" pintype="open_collector"/>
-      <node ref="U600" pin="20" pinfunction="IO1_7_20" pintype="bidirectional"/>
+      <node ref="U600" pin="16" pinfunction="IO1_3_16" pintype="bidirectional"/>
     </net>
     <net code="113" name="CHG_BATP" class="Default">
       <node ref="R1101" pin="2" pinfunction="2_2" pintype="passive"/>
@@ -11191,7 +11191,7 @@
       <node ref="C903" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="R901" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="R902" pin="1" pinfunction="1_1" pintype="passive"/>
-      <node ref="U600" pin="13" pinfunction="IO1_0_13" pintype="bidirectional"/>
+      <node ref="U600" pin="20" pinfunction="IO1_7_20" pintype="bidirectional"/>
     </net>
     <net code="126" name="COVER_RAW" class="Default">
       <node ref="D901" pin="2" pinfunction="A_2" pintype="passive"/>
@@ -11210,7 +11210,7 @@
     <net code="129" name="FN_N" class="Default">
       <node ref="J904" pin="1" pinfunction="FN_N_1" pintype="passive"/>
       <node ref="R906" pin="1" pinfunction="1_1" pintype="passive"/>
-      <node ref="U600" pin="16" pinfunction="IO1_3_16" pintype="bidirectional"/>
+      <node ref="U600" pin="18" pinfunction="IO1_5_18" pintype="bidirectional"/>
     </net>
     <net code="130" name="GAUGE_1V8" class="Default">
       <node ref="C702" pin="1" pinfunction="1_1" pintype="passive"/>
@@ -11458,7 +11458,7 @@
       <node ref="U900" pin="3" pinfunction="SDA_3" pintype="bidirectional"/>
     </net>
     <net code="138" name="IMU_INT" class="Default">
-      <node ref="U600" pin="17" pinfunction="IO1_4_17" pintype="bidirectional"/>
+      <node ref="U600" pin="13" pinfunction="IO1_0_13" pintype="bidirectional"/>
       <node ref="U800" pin="4" pinfunction="INT1_4" pintype="output"/>
     </net>
     <net code="139" name="MAIN_COMMON" class="Default">
@@ -11676,7 +11676,7 @@
     <net code="172" name="POWER_INT_N" class="Default">
       <node ref="R1302" pin="1" pinfunction="1_1" pintype="passive"/>
       <node ref="U1300" pin="8" pinfunction="INT_N_8" pintype="open_collector"/>
-      <node ref="U600" pin="14" pinfunction="IO1_1_14" pintype="bidirectional"/>
+      <node ref="U600" pin="17" pinfunction="IO1_4_17" pintype="bidirectional"/>
     </net>
     <net code="173" name="POWER_KILL_N" class="Default">
       <node ref="Q1300" pin="3" pinfunction="D_3" pintype="passive"/>
@@ -11717,7 +11717,7 @@
     </net>
     <net code="181" name="RTC_INT_N" class="Default">
       <node ref="R800" pin="1" pinfunction="1_1" pintype="passive"/>
-      <node ref="U600" pin="18" pinfunction="IO1_5_18" pintype="bidirectional"/>
+      <node ref="U600" pin="14" pinfunction="IO1_1_14" pintype="bidirectional"/>
       <node ref="U801" pin="2" pinfunction="~{INT}_2" pintype="open_collector"/>
     </net>
     <net code="182" name="SHUTTER_N" class="Default">

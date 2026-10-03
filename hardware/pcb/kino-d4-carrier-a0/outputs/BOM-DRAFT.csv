@@ -93,7 +93,7 @@ C503,22u 10V,Samsung Electro-Mechanics CL21A226MAQNNNE,Capacitor_SMD:C_0805_2012
 C504,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
 TP500,CAM4_5V,CAM4_5V,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
 TP501,CAM4_SYNC,CAM4_SYNC,TestPoint:TestPoint_Pad_D1.5mm,False,ENGINEERING_DRAFT,,
-U600,TCA9539PWR,TCA9539PWR,Package_SO:TSSOP-24_4.4x7.8mm_P0.65mm,False,ENGINEERING_DRAFT,TCA9539 PW pin map verified against TI; address 0x74 candidate. P1.3 (pin 20) reads charger STAT; configure as INPUT only.,https://www.ti.com/lit/ds/symlink/tca9539.pdf
+U600,TCA9539PWR,TCA9539PWR,Package_SO:TSSOP-24_4.4x7.8mm_P0.65mm,False,ENGINEERING_DRAFT,"TCA9539 PW pin map verified against TI; address 0x74 candidate. Port 1 (pins 13-20, P1.0-P1.7): IMU_INT, RTC_INT_N, SOFT_KILL, CHARGE_STAT_N, POWER_INT_N, FN_N, HAPTIC_EN, COVER_N; P1.3 (pin 16) reads charger STAT, configure as INPUT only. Order set by the layout: the lines leaving south take pins 13-17 in the order they reach their parts.",https://www.ti.com/lit/ds/symlink/tca9539.pdf
 R600,10k,RC0603FR-0710KL,Resistor_SMD:R_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL
 C600,100n,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104
 C601,100n 16V,YAGEO CC0603KRX7R9BB104,Capacitor_SMD:C_0603_1608Metric,False,ENGINEERING_DRAFT,,https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104

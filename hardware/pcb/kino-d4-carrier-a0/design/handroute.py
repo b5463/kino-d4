@@ -4,7 +4,8 @@ A script lists RIP items (net, layer 'F'/'B'/'I2' or 'V', a, b): a track by both
 position (b None), and ADD items (net, layer or 'V', width, points): a polyline or one via. Every
 added item is locked and every track segment must be 0 or 45 degrees. 'rip' removes each RIP item,
 which must match exactly one item on the board (a layer written 'B*' etc. takes every duplicate);
-'place' (when the script passes PLACE, {ref: ((x, y), rotation, 'F'/'B')}) moves footprints; 'run'
+'place' (when the script passes PLACE, {ref: ((x, y), rotation, 'F'/'B')}, or PAD_NETS, {(ref, pad):
+net} for a pin map changed in circuit.py) moves footprints and sets pad nets; 'run'
 dispatches on argv[1] and runs one phase in its own process (a Remove() leaves this KiCad build's
 bindings unreliable for the rest of a run): rip, place, add in that order.
 rip_nets entries (net, (x0, y0, x1, y1)) also rip every unlocked item of that net lying wholly in the box.
@@ -59,6 +60,16 @@ def _add(b, add):
     return n
 
 
+def _pad_nets(b, pad_nets):
+    fs = {f.GetReference(): f for f in b.GetFootprints()}
+    out = []
+    for (ref, num), net in pad_nets.items():
+        pad = next(p for p in fs[ref].Pads() if p.GetNumber() == num)
+        code = b.FindNet(net).GetNetCode(); old = pad.GetNetname()
+        pad.SetNetCode(code); out.append(f'{ref}.{num} {old}->{net}')
+    return ', '.join(out)
+
+
 def _place(b, place):
     fs = {f.GetReference(): f for f in b.GetFootprints()}
     flip = pcb.FLIP_DIRECTION_TOP_BOTTOM if hasattr(pcb, 'FLIP_DIRECTION_TOP_BOTTOM') else False
@@ -69,12 +80,13 @@ def _place(b, place):
     return ', '.join(f'{r} ' + ' '.join(f'{p.GetNumber()}:({mm(p.GetPosition().x):.3f},{mm(p.GetPosition().y):.3f})' for p in fs[r].Pads()) for r in place)
 
 
-def run(name, rip, add, rip_nets=(), place=None):
+def run(name, rip, add, rip_nets=(), place=None, pad_nets=None):
     phase = sys.argv[1] if len(sys.argv) > 1 else ''
-    assert phase in ('rip', 'add') or (place and phase == 'place'), 'run: rip, ' + ('place, ' if place else '') + 'add'
+    has_place = bool(place or pad_nets)
+    assert phase in ('rip', 'add') or (has_place and phase == 'place'), 'run: rip, ' + ('place, ' if has_place else '') + 'add'
     b = pcb.LoadBoard(str(TARGET))
     if phase == 'rip': msg = f'{name} rip: {_rip(b, rip, rip_nets)} items'
-    elif phase == 'place': msg = f'{name} place: {_place(b, place)}'
+    elif phase == 'place': msg = f'{name} place: ' + '; '.join(x for x in (_place(b, place or {}), _pad_nets(b, pad_nets or {})) if x)
     else: msg = f'{name} add: {_add(b, add)} items'
     pcb.SaveBoard(str(TARGET), b)
     print(msg, flush=True)
