@@ -4,6 +4,8 @@
 
 The board files are complete and checked: every connection routed, DRC, ERC and the board-to-netlist comparison clean, Gerbers regenerated from the board byte-identical. Order only after the [manual checks before ordering](#11-release-matrix-and-manual-checks). The bench tests in the same section come after the first boards arrive. Board revision CARRIER A0.2, date code 2026-10, design package 0.1.8. The [30 September review](A02-REVIEW.md) is superseded.
 
+**Change after release, 3 October 2026:** the three back cable connectors J1300 (POWER), J102 (3V3 I2C) and J800 (RTC BACKUP) now sit on one row, with their four routes redrawn and their labels on one line (`place_a02_connector_row.py`). DRC, the board-to-netlist comparison, the routing audit and the fab package were re-run on the changed board; the status below is unchanged.
+
 ## 1. Scope and evidence
 
 The release pass followed a read-only audit of the routed board (problem list C-1, H-1 to H-7, M-1 to M-12, L-1 to L-10, U-1 to U-7). It changed the board where an audit finding or a datasheet check required it, and kept the listed architecture: J100 to P4 JP1 map, GPIO35 open, C6 passthrough, TXU0304 isolation with 33 Ω, TCA9517 I2C buffer, I2C map, AND-gated camera enables, TPS2553 with FAULT, diode directions, Kelvin routing, F1100 → RS700, charger PROG/NTC/ILIM with R1110 DNP, back-to-back P-FETs, CC protection, power-only USB, TPS61288 + XAL7070 + compensation, LTC2955 load disconnect, In1 plane, stitched GND, face assignment, 22 mm pitch, mounting keep-outs, remote chain, ESD at J901-J903, ODD JOBS mark.

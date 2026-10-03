@@ -10,12 +10,13 @@
   ],
   "reference_layers": "F.SilkS/B.SilkS",
   "reference_count": 202,
-  "at_fallback_height": 20,
+  "at_fallback_height": 25,
   "ambiguous": [
+    "U1201",
     "C1108",
     "R1201",
     "U100",
-    "U1201",
+    "R1302",
     "F1100",
     "J1000",
     "C1211"
@@ -137,6 +138,75 @@
         47.126
       ],
       "distance_to_own_part_mm": 0.55,
+      "ambiguity_mm": 0.0,
+      "placement": "explicit spot"
+    },
+    {
+      "reference": "U1201",
+      "side": "B",
+      "text_xy_mm": [
+        42.769,
+        56.153
+      ],
+      "offset_mm": [
+        -0.231,
+        2.153
+      ],
+      "angle_deg": 0,
+      "text_height_mm": 0.8,
+      "bounding_box_mm": [
+        40.904,
+        55.64,
+        44.596,
+        56.59
+      ],
+      "distance_to_own_part_mm": 0.25,
+      "ambiguity_mm": 0.16,
+      "placement": "explicit spot"
+    },
+    {
+      "reference": "J102",
+      "side": "B",
+      "text_xy_mm": [
+        36.0,
+        58.9
+      ],
+      "offset_mm": [
+        0.0,
+        -4.1
+      ],
+      "angle_deg": 0,
+      "text_height_mm": 0.8,
+      "bounding_box_mm": [
+        34.63,
+        58.387,
+        37.408,
+        59.337
+      ],
+      "distance_to_own_part_mm": 0.34,
+      "ambiguity_mm": 0.0,
+      "placement": "explicit spot"
+    },
+    {
+      "reference": "J800",
+      "side": "B",
+      "text_xy_mm": [
+        44.5,
+        58.9
+      ],
+      "offset_mm": [
+        0.0,
+        -4.1
+      ],
+      "angle_deg": 0,
+      "text_height_mm": 0.8,
+      "bounding_box_mm": [
+        43.13,
+        58.387,
+        45.908,
+        59.337
+      ],
+      "distance_to_own_part_mm": 0.34,
       "ambiguity_mm": 0.0,
       "placement": "explicit spot"
     },
@@ -1498,29 +1568,6 @@
       "placement": "search"
     },
     {
-      "reference": "D1200",
-      "side": "B",
-      "text_xy_mm": [
-        46.233,
-        57.825
-      ],
-      "offset_mm": [
-        -4.267,
-        -3.175
-      ],
-      "angle_deg": 0,
-      "text_height_mm": 1.0,
-      "bounding_box_mm": [
-        43.944,
-        57.205,
-        48.475,
-        58.355
-      ],
-      "distance_to_own_part_mm": 0.25,
-      "ambiguity_mm": 0.0,
-      "placement": "search"
-    },
-    {
       "reference": "R600",
       "side": "B",
       "text_xy_mm": [
@@ -1935,29 +1982,6 @@
       "placement": "search"
     },
     {
-      "reference": "J800",
-      "side": "B",
-      "text_xy_mm": [
-        44.476,
-        68.195
-      ],
-      "offset_mm": [
-        -0.024,
-        4.195
-      ],
-      "angle_deg": 0,
-      "text_height_mm": 1.0,
-      "bounding_box_mm": [
-        42.782,
-        67.575,
-        46.218,
-        68.725
-      ],
-      "distance_to_own_part_mm": 0.25,
-      "ambiguity_mm": 0.0,
-      "placement": "search"
-    },
-    {
       "reference": "TP1201",
       "side": "B",
       "text_xy_mm": [
@@ -2188,6 +2212,29 @@
       "placement": "search"
     },
     {
+      "reference": "J1300",
+      "side": "B",
+      "text_xy_mm": [
+        24.705,
+        57.207
+      ],
+      "offset_mm": [
+        -1.295,
+        -5.793
+      ],
+      "angle_deg": 270,
+      "text_height_mm": 1.0,
+      "bounding_box_mm": [
+        24.175,
+        55.037,
+        25.325,
+        59.425
+      ],
+      "distance_to_own_part_mm": 0.25,
+      "ambiguity_mm": 0.0,
+      "placement": "search"
+    },
+    {
       "reference": "J904",
       "side": "B",
       "text_xy_mm": [
@@ -2297,29 +2344,6 @@
         44.344,
         104.575,
         48.875
-      ],
-      "distance_to_own_part_mm": 0.25,
-      "ambiguity_mm": 0.0,
-      "placement": "search"
-    },
-    {
-      "reference": "J102",
-      "side": "B",
-      "text_xy_mm": [
-        41.226,
-        57.895
-      ],
-      "offset_mm": [
-        5.226,
-        -4.105
-      ],
-      "angle_deg": 0,
-      "text_height_mm": 1.0,
-      "bounding_box_mm": [
-        39.532,
-        57.275,
-        42.968,
-        58.425
       ],
       "distance_to_own_part_mm": 0.25,
       "ambiguity_mm": 0.0,
@@ -2533,6 +2557,52 @@
       "placement": "search"
     },
     {
+      "reference": "L1201",
+      "side": "B",
+      "text_xy_mm": [
+        47.274,
+        51.645
+      ],
+      "offset_mm": [
+        0.274,
+        -2.605
+      ],
+      "angle_deg": 0,
+      "text_height_mm": 1.0,
+      "bounding_box_mm": [
+        45.08,
+        51.025,
+        49.42,
+        52.175
+      ],
+      "distance_to_own_part_mm": 0.25,
+      "ambiguity_mm": 0.0,
+      "placement": "search"
+    },
+    {
+      "reference": "U700",
+      "side": "F",
+      "text_xy_mm": [
+        61.745,
+        15.576
+      ],
+      "offset_mm": [
+        2.995,
+        0.076
+      ],
+      "angle_deg": 90,
+      "text_height_mm": 1.0,
+      "bounding_box_mm": [
+        61.125,
+        13.739,
+        62.275,
+        17.366
+      ],
+      "distance_to_own_part_mm": 0.25,
+      "ambiguity_mm": 0.0,
+      "placement": "search"
+    },
+    {
       "reference": "D902",
       "side": "B",
       "text_xy_mm": [
@@ -2550,29 +2620,6 @@
         63.841,
         13.975,
         67.419
-      ],
-      "distance_to_own_part_mm": 0.25,
-      "ambiguity_mm": 0.0,
-      "placement": "search"
-    },
-    {
-      "reference": "U700",
-      "side": "F",
-      "text_xy_mm": [
-        61.745,
-        15.626
-      ],
-      "offset_mm": [
-        2.995,
-        0.126
-      ],
-      "angle_deg": 90,
-      "text_height_mm": 1.0,
-      "bounding_box_mm": [
-        61.125,
-        13.789,
-        62.275,
-        17.416
       ],
       "distance_to_own_part_mm": 0.25,
       "ambiguity_mm": 0.0,
@@ -2734,29 +2781,6 @@
         56.755,
         61.963,
         60.381
-      ],
-      "distance_to_own_part_mm": 0.25,
-      "ambiguity_mm": 0.0,
-      "placement": "search"
-    },
-    {
-      "reference": "L1201",
-      "side": "B",
-      "text_xy_mm": [
-        47.274,
-        51.645
-      ],
-      "offset_mm": [
-        0.274,
-        -2.605
-      ],
-      "angle_deg": 0,
-      "text_height_mm": 1.0,
-      "bounding_box_mm": [
-        45.08,
-        51.025,
-        49.42,
-        52.175
       ],
       "distance_to_own_part_mm": 0.25,
       "ambiguity_mm": 0.0,
@@ -3154,29 +3178,6 @@
       "placement": "search"
     },
     {
-      "reference": "C700",
-      "side": "F",
-      "text_xy_mm": [
-        57.725,
-        20.045
-      ],
-      "offset_mm": [
-        0.0,
-        1.625
-      ],
-      "angle_deg": 0,
-      "text_height_mm": 1.0,
-      "bounding_box_mm": [
-        55.912,
-        19.425,
-        59.538,
-        20.575
-      ],
-      "distance_to_own_part_mm": 0.25,
-      "ambiguity_mm": 0.0,
-      "placement": "search"
-    },
-    {
       "reference": "C901",
       "side": "B",
       "text_xy_mm": [
@@ -3217,6 +3218,29 @@
         2.925,
         54.881,
         4.075
+      ],
+      "distance_to_own_part_mm": 0.25,
+      "ambiguity_mm": 0.0,
+      "placement": "search"
+    },
+    {
+      "reference": "C700",
+      "side": "F",
+      "text_xy_mm": [
+        57.725,
+        20.045
+      ],
+      "offset_mm": [
+        0.0,
+        1.625
+      ],
+      "angle_deg": 0,
+      "text_height_mm": 1.0,
+      "bounding_box_mm": [
+        55.912,
+        19.425,
+        59.538,
+        20.575
       ],
       "distance_to_own_part_mm": 0.25,
       "ambiguity_mm": 0.0,
@@ -4189,6 +4213,29 @@
       "placement": "search"
     },
     {
+      "reference": "D1200",
+      "side": "B",
+      "text_xy_mm": [
+        49.212,
+        66.681
+      ],
+      "offset_mm": [
+        -1.288,
+        5.681
+      ],
+      "angle_deg": 270,
+      "text_height_mm": 0.8,
+      "bounding_box_mm": [
+        48.775,
+        64.835,
+        49.725,
+        68.49
+      ],
+      "distance_to_own_part_mm": 0.25,
+      "ambiguity_mm": 0.0,
+      "placement": "search"
+    },
+    {
       "reference": "R104",
       "side": "B",
       "text_xy_mm": [
@@ -4304,26 +4351,26 @@
       "placement": "search"
     },
     {
-      "reference": "U1201",
+      "reference": "R1302",
       "side": "B",
       "text_xy_mm": [
-        42.769,
-        56.153
+        29.601,
+        58.788
       ],
       "offset_mm": [
-        -0.231,
-        2.153
+        2.851,
+        0.788
       ],
       "angle_deg": 0,
       "text_height_mm": 0.8,
       "bounding_box_mm": [
-        40.904,
-        55.64,
-        44.596,
-        56.59
+        27.755,
+        58.275,
+        31.41,
+        59.225
       ],
       "distance_to_own_part_mm": 0.25,
-      "ambiguity_mm": 0.16,
+      "ambiguity_mm": 0.15,
       "placement": "search"
     },
     {
@@ -4583,20 +4630,20 @@
       "reference": "C1212",
       "side": "B",
       "text_xy_mm": [
-        36.655,
-        55.75
+        38.5,
+        56.018
       ],
       "offset_mm": [
-        -2.595,
-        1.5
+        -0.75,
+        1.768
       ],
-      "angle_deg": 270,
-      "text_height_mm": 1.0,
+      "angle_deg": 0,
+      "text_height_mm": 0.8,
       "bounding_box_mm": [
-        36.125,
-        53.461,
-        37.275,
-        58.039
+        36.654,
+        55.505,
+        40.346,
+        56.455
       ],
       "distance_to_own_part_mm": 0.25,
       "ambiguity_mm": 0.0,
@@ -4607,69 +4654,23 @@
       "side": "B",
       "text_xy_mm": [
         34.855,
-        55.851
+        55.601
       ],
       "offset_mm": [
         2.855,
-        -0.149
+        -0.399
       ],
       "angle_deg": 270,
       "text_height_mm": 1.0,
       "bounding_box_mm": [
         34.325,
-        53.538,
+        53.288,
         35.475,
-        58.117
+        57.867
       ],
       "distance_to_own_part_mm": 0.25,
       "ambiguity_mm": 0.0,
       "placement": "moved for C1212"
-    },
-    {
-      "reference": "R1302",
-      "side": "B",
-      "text_xy_mm": [
-        25.024,
-        55.715
-      ],
-      "offset_mm": [
-        -1.726,
-        -2.285
-      ],
-      "angle_deg": 0,
-      "text_height_mm": 1.0,
-      "bounding_box_mm": [
-        22.735,
-        55.095,
-        27.265,
-        56.245
-      ],
-      "distance_to_own_part_mm": 0.25,
-      "ambiguity_mm": 0.0,
-      "placement": "repair"
-    },
-    {
-      "reference": "J1300",
-      "side": "B",
-      "text_xy_mm": [
-        20.027,
-        66.545
-      ],
-      "offset_mm": [
-        -5.973,
-        3.545
-      ],
-      "angle_deg": 0,
-      "text_height_mm": 1.0,
-      "bounding_box_mm": [
-        17.857,
-        65.925,
-        22.245,
-        67.075
-      ],
-      "distance_to_own_part_mm": 0.25,
-      "ambiguity_mm": 0.0,
-      "placement": "moved for R1302"
     }
   ]
 }

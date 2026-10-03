@@ -173,11 +173,14 @@ def place(refs, size, how='search', strict=False):
 # Explicit banks: rows of matching parts read as rows. Skipped where they no longer fit.
 banks = {**{f'C{1111 + i}': (84.5 - 3 * i, 51.3, True, SIZES[0]) for i in range(5)},
          'C1117': (80.5, 54.65, False, SIZES[0]), 'C1118': (74.8, 54.65, False, SIZES[0]),
-         'C1105': (99.5, 45.28, True, SIZES[-1])}      # above its own part: the 1.0 mm pass found only a spot 2.7 mm away
+         'C1105': (99.5, 45.28, True, SIZES[-1]),      # above its own part: the 1.0 mm pass found only a spot 2.7 mm away
+         'U1201': (42.769, 56.153, False, SIZES[-1]),  # under its part (0.16 mm ambiguity); the J800 search took this strip
+         'J102': (36.0, 58.9, False, SIZES[-1]), 'J800': (44.5, 58.9, False, SIZES[-1])}  # centred over the back connector row
+BANK_AMB_OK = {'U1201'}
 for r, (x, y, vertical, size) in banks.items():
     f = fs[r]; s = side_of(f); style(f, size); w, h, ox, oy = shape(f, vertical)
     j = judge(r, s, w, h, (x + ox, y + oy), vertical)
-    if j and j[1] == 0: commit(f, vertical, (x + ox, y + oy), (ox, oy), j, 'explicit spot', size)
+    if j and (j[1] == 0 or r in BANK_AMB_OK): commit(f, vertical, (x + ox, y + oy), (ox, oy), j, 'explicit spot', size)
 # The four camera circuits use one convention: each group of four matching parts (one per camera)
 # takes the same offset from its own part, unambiguous where possible. A group that fits nowhere
 # together goes to Fab as a whole rather than half on silk; sockets, breakout headers, power links and test points

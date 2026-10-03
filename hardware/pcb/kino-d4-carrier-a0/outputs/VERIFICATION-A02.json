@@ -1,6 +1,6 @@
 {
   "board": "KINO_D4_Carrier_A0_2.kicad_pcb",
-  "board_sha256": "026840b406681c1f93c1dbe15f6ec896bab0e5ad43de85bf28348ffab3bfb81c",
+  "board_sha256": "b7ab0a615936e1e6e4882a91790120ffaf6d56fccf1695fa3f2d5ba07fffe0f6",
   "netlist_sha256": "ec8d73eade7bb332de1a298e73a35a4296a793dd85b71242581e21b3786706c0",
   "schematic_to_pcb_match": true,
   "physical_pads_compared": 895,

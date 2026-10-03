@@ -124,9 +124,9 @@
   ],
   "net_routing": {
     "AUX_3V3": {
-      "length_mm": 52.208,
+      "length_mm": 53.308,
       "width_length_mm": {
-        "0.2": 52.208
+        "0.2": 53.308
       },
       "via_count": 6,
       "layers": [
@@ -1584,9 +1584,9 @@
       ]
     },
     "I2C_SCL": {
-      "length_mm": 330.099,
+      "length_mm": 330.958,
       "width_length_mm": {
-        "0.2": 330.099
+        "0.2": 330.958
       },
       "via_count": 19,
       "layers": [
@@ -1596,9 +1596,9 @@
       ]
     },
     "I2C_SDA": {
-      "length_mm": 326.053,
+      "length_mm": 327.053,
       "width_length_mm": {
-        "0.2": 326.053
+        "0.2": 327.053
       },
       "via_count": 24,
       "layers": [
@@ -2063,9 +2063,9 @@
       ]
     },
     "RTC_BACKUP": {
-      "length_mm": 10.021,
+      "length_mm": 9.021,
       "width_length_mm": {
-        "0.2": 10.021
+        "0.2": 9.021
       },
       "via_count": 1,
       "layers": [
