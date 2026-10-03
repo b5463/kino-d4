@@ -113,9 +113,10 @@ cap('06_control','C602','MB_3V3')
 for n in range(1,5):res('06_control',f'R{600+n}',f'CAM{n}_REQ','GND','100k')
 con('06_control','J600','POGO TEST - SENSE ONLY',
     {1:'GND',2:'SYS_5V',3:'MB_3V3',4:'BAT_PROTECTED',5:'I2C_SCL',6:'I2C_SDA',
-     7:'SYNC_MASTER',8:'CAM1_EN',9:'CAM2_EN',10:'CAM3_EN',11:'CAM4_EN',12:'GND'},
+     7:'SYNC_MASTER',8:'CAM1_EN',9:None,10:None,11:None,12:'GND'},
     'KINO_A0:Pogo_12_Asymmetric',at=(16,49),mpn='PCB feature - no fitted component',
-    note='1.5mm ENIG pads, no paste. Pad 1 offset for fixture orientation. Measure enables; do not drive against U601. Rails are sense points, not a power injection connector.')
+    note='1.5mm ENIG pads, no paste. Pad 1 offset for fixture orientation. Measure enables; do not drive against U601. Rails are sense points, not a power injection connector. Pads 9-11 are unconnected: CAM2-CAM4_EN have no layout path down to the field, so they are probed at TP600-TP602 beside their lines at the top of the board.')
+tp('06_control','TP600','CAM2_EN');tp('06_control','TP601','CAM3_EN');tp('06_control','TP602','CAM4_EN')
 con('06_control','J601','EXTERNAL FLASH LOGIC',
     {1:'GND',2:'AUX_3V3',3:'I2C_SDA',4:'I2C_SCL',5:'FLASH_SYNC'},
     at=(39,50),mpn='BM05B-GHS-TBT(LF)(SN)',dnp=True,

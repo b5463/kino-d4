@@ -3642,9 +3642,9 @@
       "6": "I2C_SDA",
       "7": "SYNC_MASTER",
       "8": "CAM1_EN",
-      "9": "CAM2_EN",
-      "10": "CAM3_EN",
-      "11": "CAM4_EN",
+      "9": null,
+      "10": null,
+      "11": null,
       "12": "GND"
     },
     "pins": {
@@ -3681,15 +3681,15 @@
         "type": "passive"
       },
       "9": {
-        "name": "CAM2_EN",
+        "name": "NC",
         "type": "passive"
       },
       "10": {
-        "name": "CAM3_EN",
+        "name": "NC",
         "type": "passive"
       },
       "11": {
-        "name": "CAM4_EN",
+        "name": "NC",
         "type": "passive"
       },
       "12": {
@@ -3700,12 +3700,72 @@
     "footprint": "KINO_A0:Pogo_12_Asymmetric",
     "mpn": "PCB feature - no fitted component",
     "source": "",
-    "note": "1.5mm ENIG pads, no paste. Pad 1 offset for fixture orientation. Measure enables; do not drive against U601. Rails are sense points, not a power injection connector.",
+    "note": "1.5mm ENIG pads, no paste. Pad 1 offset for fixture orientation. Measure enables; do not drive against U601. Rails are sense points, not a power injection connector. Pads 9-11 are unconnected: CAM2-CAM4_EN have no layout path down to the field, so they are probed at TP600-TP602 beside their lines at the top of the board.",
     "dnp": false,
     "at": [
       16,
       49
     ]
+  },
+  {
+    "sheet": "06_control",
+    "ref": "TP600",
+    "value": "CAM2_EN",
+    "nets": {
+      "1": "CAM2_EN"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM2_EN",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "CAM2_EN",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "06_control",
+    "ref": "TP601",
+    "value": "CAM3_EN",
+    "nets": {
+      "1": "CAM3_EN"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM3_EN",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "CAM3_EN",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "06_control",
+    "ref": "TP602",
+    "value": "CAM4_EN",
+    "nets": {
+      "1": "CAM4_EN"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM4_EN",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "CAM4_EN",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
   },
   {
     "sheet": "06_control",
