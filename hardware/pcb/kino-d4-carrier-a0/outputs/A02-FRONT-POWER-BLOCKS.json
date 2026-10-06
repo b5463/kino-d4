@@ -1,0 +1,29 @@
+{
+  "moved_to_front": [
+    "U1000",
+    "R1000",
+    "R1001",
+    "R1002",
+    "R1003",
+    "R1004",
+    "C1000",
+    "C1001",
+    "C1002",
+    "D1000",
+    "D1001",
+    "D1002",
+    "D1003",
+    "R1100",
+    "R1101",
+    "R1102",
+    "R1103",
+    "R1104",
+    "R1105",
+    "R1106",
+    "R1107",
+    "R1108",
+    "R1109",
+    "Q1100"
+  ],
+  "reason": "Make physical room for readable component references and power-section assembly access."
+}

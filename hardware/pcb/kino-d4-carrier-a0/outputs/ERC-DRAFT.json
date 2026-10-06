@@ -1,0 +1,102 @@
+{
+    "$schema": "https://schemas.kicad.org/erc.v1.json",
+    "coordinate_units": "mm",
+    "date": "2026-10-03T16:30:19",
+    "ignored_checks": [
+        {
+            "description": "Global label only appears once in the schematic",
+            "key": "single_global_label"
+        },
+        {
+            "description": "Four connection points are joined together",
+            "key": "four_way_junction"
+        },
+        {
+            "description": "SPICE model issue",
+            "key": "simulation_model_issue"
+        },
+        {
+            "description": "Assigned footprint doesn't match footprint filters",
+            "key": "footprint_filter"
+        }
+    ],
+    "included_severities": [
+        "error",
+        "warning",
+        "exclusion"
+    ],
+    "kicad_version": "10.0.6",
+    "sheets": [
+        {
+            "path": "/",
+            "uuid_path": "/3e6ce248-02da-5043-9ed8-b7ca2a49de29",
+            "violations": []
+        },
+        {
+            "path": "/P4 header and isolated control bus/",
+            "uuid_path": "/3e6ce248-02da-5043-9ed8-b7ca2a49de29/ba6d9c1c-39b0-53a8-a75e-6466ca3ff27b",
+            "violations": []
+        },
+        {
+            "path": "/Camera 1 socket, power and signal isolation/",
+            "uuid_path": "/3e6ce248-02da-5043-9ed8-b7ca2a49de29/85cf253e-4e5d-5c4f-ad53-79f9c57e0e61",
+            "violations": []
+        },
+        {
+            "path": "/Camera 2 socket, power and signal isolation/",
+            "uuid_path": "/3e6ce248-02da-5043-9ed8-b7ca2a49de29/01cb1596-bc85-5258-a6b1-63b00310773b",
+            "violations": []
+        },
+        {
+            "path": "/Camera 3 socket, power and signal isolation/",
+            "uuid_path": "/3e6ce248-02da-5043-9ed8-b7ca2a49de29/0165745c-ce23-53bc-854b-83df2fc1e887",
+            "violations": []
+        },
+        {
+            "path": "/Camera 4 socket, power and signal isolation/",
+            "uuid_path": "/3e6ce248-02da-5043-9ed8-b7ca2a49de29/98c561ab-7625-5940-bd5e-29e85052e268",
+            "violations": []
+        },
+        {
+            "path": "/Camera enables and GPIO expansion/",
+            "uuid_path": "/3e6ce248-02da-5043-9ed8-b7ca2a49de29/243a2e2e-3f89-5623-a352-a3b314db1d0e",
+            "violations": []
+        },
+        {
+            "path": "/Four camera currents and battery fuel gauge/",
+            "uuid_path": "/3e6ce248-02da-5043-9ed8-b7ca2a49de29/985f8df9-e02e-560f-b1f2-2be50556dca4",
+            "violations": []
+        },
+        {
+            "path": "/Motion, clock and board temperature/",
+            "uuid_path": "/3e6ce248-02da-5043-9ed8-b7ca2a49de29/d9a7d4b7-979a-5a1e-ace5-b920ff8d8aa8",
+            "violations": []
+        },
+        {
+            "path": "/Cover, shutter and haptic interfaces/",
+            "uuid_path": "/3e6ce248-02da-5043-9ed8-b7ca2a49de29/c327de22-5c04-5d62-b574-57593a1d0d4b",
+            "violations": []
+        },
+        {
+            "path": "/USB-C PD sink and protected input/",
+            "uuid_path": "/3e6ce248-02da-5043-9ed8-b7ca2a49de29/5aa1220a-e17d-547d-8acf-276839514db8",
+            "violations": []
+        },
+        {
+            "path": "/1S charger and battery entry/",
+            "uuid_path": "/3e6ce248-02da-5043-9ed8-b7ca2a49de29/7db3d43e-d2ec-5c9b-9d22-bda4d57a7a9a",
+            "violations": []
+        },
+        {
+            "path": "/5V boost and main load disconnect/",
+            "uuid_path": "/3e6ce248-02da-5043-9ed8-b7ca2a49de29/7b9b6bc4-2c97-56ef-abdc-8792495ea361",
+            "violations": []
+        },
+        {
+            "path": "/Hardware on/off and user indication/",
+            "uuid_path": "/3e6ce248-02da-5043-9ed8-b7ca2a49de29/88235194-cd9f-573b-be45-1b4b1647b942",
+            "violations": []
+        }
+    ],
+    "source": "KINO_D4_Carrier_A0.kicad_sch"
+}

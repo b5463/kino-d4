@@ -1,0 +1,496 @@
+{
+  "manufacturer": "Yageo",
+  "checked_date": "2026-09-30",
+  "package": "0603 / 1608 metric, nominal body 1.6 x 0.8 mm",
+  "selected": [
+    {
+      "ref": "R100",
+      "value": "2.2k",
+      "mpn": "RC0603FR-072K2L",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-072K2L",
+      "dnp": false
+    },
+    {
+      "ref": "R101",
+      "value": "22k",
+      "mpn": "RC0603FR-0722KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0722KL",
+      "dnp": false
+    },
+    {
+      "ref": "R102",
+      "value": "4.7k",
+      "mpn": "RC0603FR-074K7L",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-074K7L",
+      "dnp": false
+    },
+    {
+      "ref": "R103",
+      "value": "4.7k",
+      "mpn": "RC0603FR-074K7L",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-074K7L",
+      "dnp": false
+    },
+    {
+      "ref": "R105",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R104",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R200",
+      "value": "33",
+      "mpn": "RC0603FR-0733RL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+      "dnp": false
+    },
+    {
+      "ref": "R201",
+      "value": "33",
+      "mpn": "RC0603FR-0733RL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+      "dnp": false
+    },
+    {
+      "ref": "R202",
+      "value": "33",
+      "mpn": "RC0603FR-0733RL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+      "dnp": false
+    },
+    {
+      "ref": "R203",
+      "value": "25.5k 1%",
+      "mpn": "RC0603FR-0725K5L",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0725K5L",
+      "dnp": false
+    },
+    {
+      "ref": "R204",
+      "value": "10k",
+      "mpn": "RC0603FR-0710KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+      "dnp": false
+    },
+    {
+      "ref": "R205",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R300",
+      "value": "33",
+      "mpn": "RC0603FR-0733RL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+      "dnp": false
+    },
+    {
+      "ref": "R301",
+      "value": "33",
+      "mpn": "RC0603FR-0733RL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+      "dnp": false
+    },
+    {
+      "ref": "R302",
+      "value": "33",
+      "mpn": "RC0603FR-0733RL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+      "dnp": false
+    },
+    {
+      "ref": "R303",
+      "value": "25.5k 1%",
+      "mpn": "RC0603FR-0725K5L",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0725K5L",
+      "dnp": false
+    },
+    {
+      "ref": "R304",
+      "value": "10k",
+      "mpn": "RC0603FR-0710KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+      "dnp": false
+    },
+    {
+      "ref": "R305",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R400",
+      "value": "33",
+      "mpn": "RC0603FR-0733RL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+      "dnp": false
+    },
+    {
+      "ref": "R401",
+      "value": "33",
+      "mpn": "RC0603FR-0733RL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+      "dnp": false
+    },
+    {
+      "ref": "R402",
+      "value": "33",
+      "mpn": "RC0603FR-0733RL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+      "dnp": false
+    },
+    {
+      "ref": "R403",
+      "value": "25.5k 1%",
+      "mpn": "RC0603FR-0725K5L",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0725K5L",
+      "dnp": false
+    },
+    {
+      "ref": "R404",
+      "value": "10k",
+      "mpn": "RC0603FR-0710KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+      "dnp": false
+    },
+    {
+      "ref": "R405",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R500",
+      "value": "33",
+      "mpn": "RC0603FR-0733RL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+      "dnp": false
+    },
+    {
+      "ref": "R501",
+      "value": "33",
+      "mpn": "RC0603FR-0733RL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+      "dnp": false
+    },
+    {
+      "ref": "R502",
+      "value": "33",
+      "mpn": "RC0603FR-0733RL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+      "dnp": false
+    },
+    {
+      "ref": "R503",
+      "value": "25.5k 1%",
+      "mpn": "RC0603FR-0725K5L",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0725K5L",
+      "dnp": false
+    },
+    {
+      "ref": "R504",
+      "value": "10k",
+      "mpn": "RC0603FR-0710KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+      "dnp": false
+    },
+    {
+      "ref": "R505",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R600",
+      "value": "10k",
+      "mpn": "RC0603FR-0710KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+      "dnp": false
+    },
+    {
+      "ref": "R601",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R602",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R603",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R604",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R605",
+      "value": "33",
+      "mpn": "RC0603FR-0733RL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+      "dnp": true
+    },
+    {
+      "ref": "R701",
+      "value": "10k",
+      "mpn": "RC0603FR-0710KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+      "dnp": false
+    },
+    {
+      "ref": "R702",
+      "value": "10k",
+      "mpn": "RC0603FR-0710KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+      "dnp": false
+    },
+    {
+      "ref": "R800",
+      "value": "10k",
+      "mpn": "RC0603FR-0710KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+      "dnp": false
+    },
+    {
+      "ref": "R900",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R901",
+      "value": "1k",
+      "mpn": "RC0603FR-071KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071KL",
+      "dnp": false
+    },
+    {
+      "ref": "R902",
+      "value": "10k",
+      "mpn": "RC0603FR-0710KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+      "dnp": false
+    },
+    {
+      "ref": "R903",
+      "value": "10k",
+      "mpn": "RC0603FR-0710KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+      "dnp": false
+    },
+    {
+      "ref": "R904",
+      "value": "47k",
+      "mpn": "RC0603FR-0747KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0747KL",
+      "dnp": false
+    },
+    {
+      "ref": "R905",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R906",
+      "value": "10k",
+      "mpn": "RC0603FR-0710KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+      "dnp": false
+    },
+    {
+      "ref": "R1000",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R1001",
+      "value": "470",
+      "mpn": "RC0603FR-07470RL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07470RL",
+      "dnp": false
+    },
+    {
+      "ref": "R1002",
+      "value": "1k",
+      "mpn": "RC0603FR-071KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071KL",
+      "dnp": false
+    },
+    {
+      "ref": "R1003",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R1004",
+      "value": "10k",
+      "mpn": "RC0603FR-0710KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+      "dnp": false
+    },
+    {
+      "ref": "R1100",
+      "value": "3.00k 1%",
+      "mpn": "RC0603FR-073KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-073KL",
+      "dnp": false
+    },
+    {
+      "ref": "R1101",
+      "value": "100",
+      "mpn": "RC0603FR-07100RL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100RL",
+      "dnp": false
+    },
+    {
+      "ref": "R1102",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R1110",
+      "value": "10k",
+      "mpn": "RC0603FR-0710KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+      "dnp": true
+    },
+    {
+      "ref": "R1104",
+      "value": "30.1k 1%",
+      "mpn": "RC0603FR-0730K1L",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0730K1L",
+      "dnp": false
+    },
+    {
+      "ref": "R1105",
+      "value": "10k 1%",
+      "mpn": "RC0603FR-0710KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+      "dnp": false
+    },
+    {
+      "ref": "R1106",
+      "value": "5.23k 1%",
+      "mpn": "RC0603FR-075K23L",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-075K23L",
+      "dnp": false
+    },
+    {
+      "ref": "R1107",
+      "value": "30.1k 1%",
+      "mpn": "RC0603FR-0730K1L",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0730K1L",
+      "dnp": false
+    },
+    {
+      "ref": "R1108",
+      "value": "0",
+      "mpn": "RC0603JR-070RL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603JR-070RL",
+      "dnp": false
+    },
+    {
+      "ref": "R1200",
+      "value": "110k 0.1%",
+      "mpn": "RT0603BRD07110KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RT0603BRD07110KL",
+      "dnp": false
+    },
+    {
+      "ref": "R1201",
+      "value": "15k 0.1%",
+      "mpn": "RT0603BRD0715KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RT0603BRD0715KL",
+      "dnp": false
+    },
+    {
+      "ref": "R1202",
+      "value": "20.5k 1%",
+      "mpn": "RC0603FR-0720K5L",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0720K5L",
+      "dnp": false
+    },
+    {
+      "ref": "R1203",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R1204",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R1300",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R1301",
+      "value": "100k",
+      "mpn": "RC0603FR-07100KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+      "dnp": false
+    },
+    {
+      "ref": "R1302",
+      "value": "10k",
+      "mpn": "RC0603FR-0710KL",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+      "dnp": false
+    },
+    {
+      "ref": "R1303",
+      "value": "2.2k",
+      "mpn": "RC0603FR-072K2L",
+      "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-072K2L",
+      "dnp": false
+    }
+  ],
+  "count": 69,
+  "limitations": [
+    "Availability and assembly-house sourcing not checked.",
+    "Circuit voltage/power derating and temperature remain to be qualified.",
+    "Current-sense shunts are not covered by this selection."
+  ]
+}

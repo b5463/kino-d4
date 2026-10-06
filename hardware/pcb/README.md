@@ -2,7 +2,9 @@
 
 D4 V1 currently uses a perfboard or Perma-Proto-style carrier. No production PCB is released.
 
-If the carrier becomes a PCB, commit:
+A component-level [carrier A0.2 draft](kino-d4-carrier-a0/README.md) now exists, with four sockets at 22 mm pitch and the P4 mounting pattern. Its working PCB has components on both faces and partial routing. The [strict release review](kino-d4-carrier-a0/A02-REVIEW.md) rejects it for fabrication pending electrical, routing and mechanical resolution.
+
+Before a PCB release, commit:
 
 - native KiCad project files;
 - schematic and PCB plots;

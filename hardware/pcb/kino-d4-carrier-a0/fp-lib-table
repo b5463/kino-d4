@@ -1,0 +1,1 @@
+(fp_lib_table (version 7) (lib (name "KINO_A0") (type "KiCad") (uri "${KIPRJMOD}/KINO_A0.pretty") (options "") (descr "Socket geometry and provisional power footprints")))
