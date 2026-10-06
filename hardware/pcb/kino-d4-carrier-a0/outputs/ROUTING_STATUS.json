@@ -1,0 +1,25 @@
+{
+  "width_mm": 117.01,
+  "height_mm": 69.41,
+  "footprints": 247,
+  "nets": 188,
+  "tracks": 2227,
+  "status": "TWO_FACE_ROUTING_REVIEW",
+  "date": "2026-09-29",
+  "components": 247,
+  "sheets": 14,
+  "fabrication_released": false,
+  "erc_passed": true,
+  "drc_passed": false,
+  "physical_fit_verified": false,
+  "schematic_to_pcb_match": true,
+  "mounting_pattern_mm": [
+    61.9,
+    54.8
+  ],
+  "mounting_hole_diameter_mm": 2.2,
+  "board": "KINO_D4_Carrier_A0_Routed.kicad_pcb",
+  "vias": 321,
+  "front_footprints": 39,
+  "rear_footprints": 208
+}

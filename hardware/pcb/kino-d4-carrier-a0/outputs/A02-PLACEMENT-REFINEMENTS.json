@@ -1,0 +1,42 @@
+{
+  "placements_local_mm": {
+    "C1117": [
+      80.5,
+      56.7
+    ],
+    "C1118": [
+      74.8,
+      56.7
+    ],
+    "TP1100": [
+      90,
+      63
+    ],
+    "TP1101": [
+      75,
+      64
+    ],
+    "R1001": [
+      103.5,
+      56
+    ],
+    "JP200": [
+      23.755,
+      11
+    ],
+    "JP300": [
+      45.754999999999995,
+      11
+    ],
+    "JP400": [
+      67.755,
+      11
+    ],
+    "JP500": [
+      89.755,
+      11
+    ]
+  },
+  "sys_raw_bias_escape_layer": "In2.Cu; avoids front boost capacitor lands",
+  "note": "Component banks and adjacent reference rows; camera socket datums unchanged."
+}

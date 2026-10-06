@@ -2,6 +2,13 @@
 
 Status: **Phase 1 architecture baseline — NOT FOR FABRICATION**
 
+New proposal (2026-09-28): [four directly socketed XIAOs, a matching IDC header,
+integrated charging and battery retention](docs/FOUR_XIAO_CARRIER_PROPOSAL.md).
+This records the revised requirements and first-board additions; the KiCad
+files below still contain the earlier Phase 1 baseline.
+
+The implemented component capture and P4-sized placement study are now in [carrier A0](../kino-d4-carrier-a0/README.md). The files in this directory remain the earlier architecture baseline.
+
 The KiCad 10 workspace for the custom KINO D4 mainboard.
 
 Phase 1 settles the questions that can be settled on paper: how the system

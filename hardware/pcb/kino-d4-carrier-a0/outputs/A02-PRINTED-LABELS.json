@@ -1,0 +1,272 @@
+[
+  {
+    "text": "P4 / PIN1",
+    "xy_mm": [
+      6.0,
+      55.224999999999994
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "REMOTE",
+    "xy_mm": [
+      7.0,
+      2.5549999999999997
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "SHUTTER",
+    "xy_mm": [
+      7.0,
+      65.445
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "P4 PWR LINK",
+    "xy_mm": [
+      12.75,
+      67.465
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "POGO / SENSE",
+    "xy_mm": [
+      20.0,
+      54.0
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "CAM1 GPIO",
+    "xy_mm": [
+      25.504999999999995,
+      20.950000000000003
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "CAM 1",
+    "xy_mm": [
+      25.504999999999995,
+      23.0
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "CAM1 PWR",
+    "xy_mm": [
+      25.754999999999995,
+      7.799999999999997
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "POWER",
+    "xy_mm": [
+      26.0,
+      58.55500000000001
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "C6 SERVICE",
+    "xy_mm": [
+      30.099999999999994,
+      2.085000000000001
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "3V3 I2C",
+    "xy_mm": [
+      36.0,
+      66.445
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "CAM2 PWR",
+    "xy_mm": [
+      46.754999999999995,
+      7.799999999999997
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "CAM2 GPIO",
+    "xy_mm": [
+      47.504999999999995,
+      20.950000000000003
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "CAM 2",
+    "xy_mm": [
+      47.504999999999995,
+      23.0
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "RTC BACKUP",
+    "xy_mm": [
+      53.125,
+      64.0
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "PACK + / NTC / -",
+    "xy_mm": [
+      57.959999999999994,
+      11.700000000000003
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "CAM3 PWR",
+    "xy_mm": [
+      69.005,
+      7.799999999999997
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "CAM3 GPIO",
+    "xy_mm": [
+      69.505,
+      20.950000000000003
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "CAM 3",
+    "xy_mm": [
+      69.505,
+      23.0
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "CAM4 PWR",
+    "xy_mm": [
+      89.505,
+      7.799999999999997
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "CAM4 GPIO",
+    "xy_mm": [
+      91.505,
+      20.950000000000003
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "CAM 4",
+    "xy_mm": [
+      91.505,
+      23.0
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "FUNCTION",
+    "xy_mm": [
+      98.0,
+      2.5549999999999997
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "CHARGE USB",
+    "xy_mm": [
+      98.30000000000001,
+      68.0
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "MOTOR",
+    "xy_mm": [
+      110.0,
+      3.5549999999999997
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "COVER",
+    "xy_mm": [
+      110.0,
+      13.555
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "KINO D4",
+    "xy_mm": [
+      110.0,
+      30.339286
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "A0.2 DRAFT",
+    "xy_mm": [
+      110.0,
+      31.889286
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "CARRIER REV 1",
+    "xy_mm": [
+      110.0,
+      33.5
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  },
+  {
+    "text": "FLASH",
+    "xy_mm": [
+      31.5,
+      49.5
+    ],
+    "height_mm": 1.0,
+    "stroke_mm": 0.15
+  }
+]

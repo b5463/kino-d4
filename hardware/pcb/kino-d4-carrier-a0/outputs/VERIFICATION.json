@@ -1,0 +1,22 @@
+{
+  "schematic_to_pcb_match": true,
+  "physical_pads_compared": 878,
+  "firmware_header_map_match": true,
+  "xiao_socket_geometry_match": true,
+  "p4_insert_geometry_match": true,
+  "p4_envelope_mm": [
+    117.01,
+    69.41
+  ],
+  "erc_violations": 0,
+  "drc_violations_by_type": {
+    "clearance": 23,
+    "hole_clearance": 4,
+    "drill_out_of_range": 7,
+    "lib_footprint_mismatch": 17
+  },
+  "unconnected_items": 499,
+  "manufacturing_ready": false,
+  "physical_fit_verified": false,
+  "note": "Placement feasibility and data-transfer checks only. Circuit, routing, battery and stack qualification remain open."
+}

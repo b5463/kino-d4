@@ -3,6 +3,29 @@
 No checked box may rely only on a render, vendor listing or unrecorded bench
 observation. Attach the evidence record, instrument setup and unit serial.
 
+## Four-XIAO carrier additions — confirmed scope, 2026-09-28
+
+These gates apply to the new carrier proposal in
+`FOUR_XIAO_CARRIER_PROPOSAL.md` (draft ECN-0007). They do not imply that the
+existing KiCad baseline already contains the added circuitry.
+
+- [ ] Exact IMU, RTC/backup source, current monitor/shunts, Hall sensor, temperature sensor and haptic driver/motor selected.
+- [ ] Remote-release, cover-sensor and motor connector pinouts and mechanical access defined.
+- [ ] Shared I2C addresses, bandwidth, pull-ups and powered-off isolation reviewed with the existing P4 peripherals.
+- [ ] Expander allocation, reset states and power-controller signalling implemented and reviewed.
+- [ ] Added active, standby and motor peak loads included in the power and thermal budgets.
+- [ ] IMU axis/calibration and sustained bus-traffic tests pass.
+- [ ] RTC retains valid time through main-battery replacement; backup-source charging configuration verified.
+- [ ] Cover sensor works through enclosure tolerances, darkness and defined disconnected-sensor handling.
+- [ ] All four camera current measurements correlate to instruments and show no disabled-node backfeed.
+- [ ] Local/remote shutter debounce, simultaneous presses, held-at-reset and insertion tests pass without spurious captures.
+- [ ] Board-temperature readings correlate to a probe and firmware responses are validated.
+- [ ] Haptics remain silent at reset, can be disabled, do not disturb power and are suppressed through exposure and the measured settling interval.
+- [ ] New body accommodates the serviceable cover sensor/magnet, vibration motor and RTC backup source.
+
+Automatic cover/motion wake, if implemented, additionally requires an
+always-powered wake path and validation with the P4 and expander powered off.
+
 ## Gate A — architecture to detailed schematic
 
 - [x] Measured Guition JP1 table reconciled with ECN-0002 and ECN-0003.

@@ -1,0 +1,13 @@
+{
+  "source": "odd_jobs_symbol.png",
+  "source_sha256": "e649915c312c913e8411a8392c0d4ce312a83d3df6814cca4b8060538b80c59e",
+  "layer": "F.SilkS",
+  "colour": "white",
+  "width_mm": 9.0,
+  "height_mm": 7.3393,
+  "board_top_left_mm": [
+    105.5,
+    29.2
+  ],
+  "artwork_licence": "LicenseRef-KINO-Reserved"
+}

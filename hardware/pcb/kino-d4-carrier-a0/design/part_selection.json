@@ -1,0 +1,976 @@
+{
+  "date": "2026-09-30",
+  "basis": "circuit.py as found on 2026-09-30 (C1200 is 3.3n 50V, L1100/L1200 selected by the lead, Q1100 removed, J1000 on the KINO_A0 USB footprint). DC-bias figures are Samsung characteristic data (weblib.samsungsem.com) at 25 C with no tolerance or temperature applied. JLC class and LCSC stock from the JLCPCB parts API on 2026-09-30.",
+  "selections": [
+    {
+      "refs": [
+        "C100",
+        "C200",
+        "C201",
+        "C204",
+        "C300",
+        "C301",
+        "C304",
+        "C400",
+        "C401",
+        "C404",
+        "C500",
+        "C501",
+        "C504",
+        "C601",
+        "C602",
+        "C700",
+        "C800",
+        "C801",
+        "C802",
+        "C803",
+        "C905",
+        "C1205",
+        "C1300"
+      ],
+      "value": "100n 16V",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer": "YAGEO",
+      "mpn": "CC0603KRX7R9BB104",
+      "ratings": "100 nF 10% 50 V X7R 0603, -55..+125 C.",
+      "datasheet": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+      "lcsc": "C14663",
+      "jlc_class": "basic",
+      "second_source": "Samsung CL10B104KB8NNNC (LCSC C1591, extended; Samsung data -3.2% at 9 V); Murata GRM188R71H104KA93D (C77055)",
+      "reason": "Decoupling on MB_3V3, CAMx_3V3, CAMx_5V, SYS_RAW (5 V max). The 50 V part is the JLC basic part; no size penalty.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "C600",
+        "C904",
+        "C1203"
+      ],
+      "value": "100n",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer": "YAGEO",
+      "mpn": "CC0603KRX7R9BB104",
+      "ratings": "100 nF 10% 50 V X7R 0603, -55..+125 C.",
+      "datasheet": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+      "lcsc": "C14663",
+      "jlc_class": "basic",
+      "second_source": "Samsung CL10B104KB8NNNC (LCSC C1591, extended; Samsung data -3.2% at 9 V); Murata GRM188R71H104KA93D (C77055)",
+      "reason": "EXP_RESET_N, BAT_PROTECTED (4.4 V), REMOTE_FILTER, BOOST_BST to BOOST_SW (~5 V). Same part as the 100n 16V line.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "C1106",
+        "C1110",
+        "C1116",
+        "C1119"
+      ],
+      "value": "100n 35V",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer": "YAGEO",
+      "mpn": "CC0603KRX7R9BB104",
+      "ratings": "100 nF 10% 50 V X7R 0603, -55..+125 C.",
+      "datasheet": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+      "lcsc": "C14663",
+      "jlc_class": "basic",
+      "second_source": "Samsung CL10B104KB8NNNC (LCSC C1591, extended; Samsung data -3.2% at 9 V); Murata GRM188R71H104KA93D (C77055)",
+      "reason": "CHG_VBUS and CHG_PMID up to 9 V PD with 12 V transients; SYS_RAW, BAT_PROTECTED. 50 V gives >4x margin at 12 V.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "C202",
+        "C302",
+        "C402",
+        "C502"
+      ],
+      "value": "1u 16V",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "mpn": "CL10A105KB8NNNC",
+      "ratings": "1 uF 10% 50 V X5R 0603. Samsung DC bias -34.4% at 5 V -> 0.66 uF effective on CAMx_SHUNT_OUT.",
+      "datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN",
+      "lcsc": "C15849",
+      "jlc_class": "basic",
+      "second_source": "Murata GRM188R61H105KAALD (C77386)",
+      "reason": "TPS2553 IN bypass on 5 V. 50 V X5R keeps more capacitance at 5 V than a 16 V part in the same case.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "C701",
+        "C900",
+        "C901",
+        "C1001",
+        "C1002"
+      ],
+      "value": "1u",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "mpn": "CL10A105KB8NNNC",
+      "ratings": "1 uF 10% 50 V X5R 0603. Samsung DC bias: -18.4% at 3.3 V (0.82 uF, C701/C901 on MB_3V3); -5.0% at 1.8 V (0.95 uF, C900 HAPTIC_REG); -12.6% at 2.7 V (0.87 uF, C1002 PD_2V7); -1.6% at 1.2 V (C1001 PD_1V2).",
+      "datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN",
+      "lcsc": "C15849",
+      "jlc_class": "basic",
+      "second_source": "Murata GRM188R61H105KAALD (C77386)",
+      "reason": "DRV2605L REG needs 1 uF X5R/X7R (TI). Same part as the 1u 16V line.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "C203",
+        "C303",
+        "C403",
+        "C503"
+      ],
+      "value": "22u 10V",
+      "footprint": "Capacitor_SMD:C_0805_2012Metric",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "mpn": "CL21A226MAQNNNE",
+      "ratings": "22 uF 20% 25 V X5R 0805. Samsung DC bias -51.3% at 5 V -> 10.7 uF effective on CAMx_5V.",
+      "datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN",
+      "lcsc": "C45783",
+      "jlc_class": "basic",
+      "second_source": "Murata GRM21BR61E226ME44L (C86816)",
+      "reason": "25 V instead of 10 V for DC-bias headroom. Optional: 1206 CL31A226KAHNNNE gives 13.6 uF at 5 V (footprint change, not required).",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "C702"
+      ],
+      "value": "470n",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "mpn": "CL10B474KA8NNNC",
+      "ratings": "470 nF 10% 25 V X7R 0603. Samsung DC bias +2.2% at 1.8 V.",
+      "datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B474KA8NNN",
+      "lcsc": "C1623",
+      "jlc_class": "basic",
+      "second_source": "Murata GRM188R71E474KA12D (C77052)",
+      "reason": "BQ27441 VDD 1.8 V LDO: TI asks for 0.47 uF ceramic.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "C902",
+        "C1212"
+      ],
+      "value": "10u",
+      "footprint": "Capacitor_SMD:C_0805_2012Metric",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "mpn": "CL21A106KAYNNNE",
+      "ratings": "10 uF 10% 25 V X5R 0805. Samsung DC bias -30.5% at 3.3 V (6.95 uF, C902 MB_3V3); -50.3% at 5 V (4.97 uF, C1212 SYS_5V buck input).",
+      "datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A106KAYNNN",
+      "lcsc": "C15850",
+      "jlc_class": "basic",
+      "second_source": "Murata GRM21BR61E106KA73L (C84416)",
+      "reason": "TPS62162 input: TI recommends 10 uF and uses 10 uF 25 V 0805 in its own BOM. SYS_5V also carries camera and boost-output bulk.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "C903"
+      ],
+      "value": "10n",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "mpn": "CL10B103KB8NNNC",
+      "ratings": "10 nF 10% 50 V X7R 0603. Samsung DC bias +1.0% at 3.3 V.",
+      "datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B103KB8NNN",
+      "lcsc": "C1589",
+      "jlc_class": "extended",
+      "second_source": "FH 0603B103K500NT (LCSC C57112, JLC basic, maker data sheet not checked); Murata GRM188R71H103KA01D (C77053)",
+      "reason": "COVER_N RC filter on 3.3 V.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "C1000"
+      ],
+      "value": "1u 35V",
+      "footprint": "Capacitor_SMD:C_0805_2012Metric",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "mpn": "CL21B105KBFNNNE",
+      "ratings": "1 uF 10% 50 V X7R 0805. Samsung DC bias -9.1% at 9 V (0.91 uF), -14.7% at 12 V (0.85 uF).",
+      "datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21B105KBFNNN",
+      "lcsc": "C28323",
+      "jlc_class": "basic",
+      "second_source": "Murata GRM21BR71H105KA12L (C77083)",
+      "reason": "USB_VBUS at the connector: up to 20 V on an unprogrammed PD NVM; SMF22A clamps at 27 V VBR max (35.5 V at full IPPM). 50 V covers the clamp voltage.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "C1100"
+      ],
+      "value": "1n 50V",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "mpn": "CL10B102KB8NNNC",
+      "ratings": "1 nF 10% 50 V X7R 0603.",
+      "datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B102KB8NNN",
+      "lcsc": "C1588",
+      "jlc_class": "basic",
+      "second_source": "Murata GRM188R71H102KA01D (C71653)",
+      "reason": "BQ25798 SDRV with no ship FET: TI asks for 1 nF 50 V.",
+      "footprint_change": null,
+      "flags": [
+        "TI text names a 0402 package for this capacitor; 0603 keeps value and rating. Confirm no layout reason for 0402."
+      ]
+    },
+    {
+      "refs": [
+        "C1101"
+      ],
+      "value": "4.7u 10V",
+      "footprint": "Capacitor_SMD:C_0805_2012Metric",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "mpn": "CL21A475KAQNNNE",
+      "ratings": "4.7 uF 10% 25 V X5R 0805. Samsung DC bias -31.8% at 5 V -> 3.2 uF effective on CHG_REGN.",
+      "datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A475KAQNNN",
+      "lcsc": "C1779",
+      "jlc_class": "basic",
+      "second_source": "Murata GRM21BR61E475KA12L (C77077)",
+      "reason": "BQ25798 REGN: TI asks for 10 V 4.7 uF. The 25 V part keeps more capacitance at 5 V.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "C1102",
+        "C1103"
+      ],
+      "value": "47n 16V",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "mpn": "CL10B473KB8NNNC",
+      "ratings": "47 nF 10% 50 V X7R 0603. Samsung DC bias +0.6% at 5 V.",
+      "datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B473KB8NNN",
+      "lcsc": "C1622",
+      "jlc_class": "basic",
+      "second_source": "Murata GRM188R71H473KA61D (C86027, 0 LCSC stock at check)",
+      "reason": "BQ25798 BTST1/BTST2 bootstrap: TI asks for 47 nF. Sees about REGN (5 V).",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "C1104",
+        "C1105",
+        "C1107",
+        "C1108",
+        "C1109",
+        "C1111",
+        "C1112",
+        "C1113",
+        "C1114",
+        "C1115",
+        "C1117",
+        "C1118"
+      ],
+      "value": "10u 35V X7R",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "mpn": "CL31B106KBHNNNE",
+      "ratings": "10 uF 10% 50 V X7R 1206, 1.6 mm thick. Samsung DC bias: -41.1% at 9 V (5.9 uF), -53.5% at 12 V (4.65 uF), -10.8% at 4.4 V (8.9 uF). Per net: CHG_VBUS 2x = 11.8 uF at 9 V; CHG_PMID 3x = 17.7 uF at 9 V; SYS_RAW 5x = 44.6 uF at 4.4 V; BAT_PROTECTED 2x = 17.8 uF at 4.4 V.",
+      "datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN",
+      "lcsc": "C89632",
+      "jlc_class": "extended",
+      "second_source": "TDK C3216X7R1H106K160AC (LCSC C2182622, 0 stock at check)",
+      "reason": "TI prefers >=25 V on PMID for inputs to 20 V. 35 V X7R 10 uF 1206 is not stocked at LCSC (TDK C3216X7R1V106K160AC: 0 pcs), so 50 V. One part for all four nets.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "C1200"
+      ],
+      "value": "3.3n 50V",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "mpn": "CL10B332KB8NNNC",
+      "ratings": "3.3 nF 10% 50 V X7R 0603. Samsung DC bias +0.1% at 1 V.",
+      "datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B332KB8NNN",
+      "lcsc": "C1613",
+      "jlc_class": "basic",
+      "second_source": "Yageo CC0603KRX7R9BB332 (C107088)",
+      "reason": "TPS61288 compensation CC. X7R drifts +-15% over temperature; use C0G if the loop margin is small.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "C1201"
+      ],
+      "value": "100p",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "mpn": "CL10C101JB8NNNC",
+      "ratings": "100 pF 5% 50 V C0G 0603.",
+      "datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10C101JB8NNN",
+      "lcsc": "C14858",
+      "jlc_class": "basic",
+      "second_source": "Murata GRM1885C1H101JA01D (C71664)",
+      "reason": "TPS61288 CP (DNP). C0G for a loop capacitor.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "C1202"
+      ],
+      "value": "2.2u",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "mpn": "CL10A475KO8NNNC",
+      "ratings": "4.7 uF 10% 16 V X5R 0603. Samsung DC bias -49.9% at 5 V -> 2.35 uF effective on BOOST_VCC.",
+      "datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A475KO8NNN",
+      "lcsc": "C19666",
+      "jlc_class": "basic",
+      "second_source": "Murata GRM188R61C475KAAJD (C86016)",
+      "reason": "TPS61288 VCC needs more than 1.0 uF (TI). 2.2 uF 0603 parts give 1.02 uF (CL10A225KA8NNNC, 25 V) or 0.97 uF (CL10A225KO8NNNC, 16 V) at 5 V: no margin after 10% tolerance.",
+      "footprint_change": null,
+      "flags": [
+        "VALUE CHANGE: 2.2u -> 4.7u 16V X5R, footprint unchanged.",
+        "Alternative keeping 2.2u: CL21B225KAFNNNE 25 V X7R 0805 (LCSC C19110), 1.87 uF at 5 V, needs Capacitor_SMD:C_0805_2012Metric."
+      ]
+    },
+    {
+      "refs": [
+        "C1204",
+        "C1206",
+        "C1207",
+        "C1208",
+        "C1209",
+        "C1210",
+        "C1211"
+      ],
+      "value": "22u 10V",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "mpn": "CL31A226KAHNNNE",
+      "ratings": "22 uF 10% 25 V X5R 1206. Samsung DC bias -32.2% at 4.4 V (14.9 uF, C1204 SYS_RAW); -38.0% at 5 V (13.6 uF each). BOOST_5V 6x = 82 uF effective at 5 V.",
+      "datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31A226KAHNNN",
+      "lcsc": "C12891",
+      "jlc_class": "basic",
+      "second_source": "Murata GRM31CR61E226KE15L (C77091)",
+      "reason": "TI TPS61288: three 22 uF typical, example Cout(eff) = 50 uF. 25 V instead of 10 V for DC bias.",
+      "footprint_change": null,
+      "flags": [
+        "Compute the TPS61288 compensation with ~82 uF effective output capacitance, not 132 uF nominal."
+      ]
+    },
+    {
+      "refs": [
+        "C1213"
+      ],
+      "value": "22u",
+      "footprint": "Capacitor_SMD:C_0805_2012Metric",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "mpn": "CL21A226MAQNNNE",
+      "ratings": "22 uF 20% 25 V X5R 0805. Samsung DC bias -32.3% at 3.3 V -> 14.9 uF effective on MB_3V3.",
+      "datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN",
+      "lcsc": "C45783",
+      "jlc_class": "basic",
+      "second_source": "Murata GRM21BR61E226ME44L (C86816)",
+      "reason": "TPS62162 output: TI recommends 22 uF; its Table 2 marks 2.2 uH with 10 uF and 22 uF as stable. 14.9 uF effective sits between them.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "D200",
+        "D300",
+        "D400",
+        "D500",
+        "D1200"
+      ],
+      "value": "SS34",
+      "footprint": "Diode_SMD:D_SMA",
+      "manufacturer": "Diodes Incorporated",
+      "mpn": "B340A-13-F",
+      "ratings": "40 V, 3 A, SMA. VF max 0.50 V at 3 A, 25 C. VF at 1 A read from Fig. 1 (typical): ~0.39 V at 25 C, ~0.32 V at 75 C. IR 0.5 mA max at 40 V, 25 C. 5000 per 13 in reel.",
+      "datasheet": "https://www.diodes.com/datasheet/download/B340A.pdf",
+      "lcsc": "C85098",
+      "jlc_class": "extended",
+      "second_source": "onsemi MBRA340T3G (not checked); MDD SS34 (LCSC C8678, JLC basic, maker data sheet not checked)",
+      "reason": "SMA 3 A 40 V Schottky with a maker VF curve. Diodes suggested pad (C 4.00, X 2.50, Y 1.70 mm) matches Diode_SMD:D_SMA (4.0 mm pitch, 2.5 x 1.8 mm pads).",
+      "footprint_change": null,
+      "flags": [
+        "BOM value \"SS34\" is ambiguous: Vishay SS34 is DO-214AB (SMC) and does not fit D_SMA. Order by MPN.",
+        "About 0.4 W per diode at 1 A. The XIAO 5V pin sees SYS_5V minus TPS2553, the 20 mOhm shunt and ~0.39 V: about 4.5 V at 1 A. P4 current through D1200 is not known here."
+      ]
+    },
+    {
+      "refs": [
+        "D900",
+        "D901",
+        "D902",
+        "D903"
+      ],
+      "value": "PESD5V0S1BA",
+      "footprint": "Diode_SMD:D_SOD-323",
+      "manufacturer": "Nexperia",
+      "mpn": "PESD5V0S1BA,115",
+      "ratings": "Bidirectional ESD, SOD323. VRWM 5 V, VBR 5.5-9.5 V at 1 mA, IRM 100 nA max at 5 V, Cd 35 pF typ / 45 pF max, VCL 14 V at 12 A (8/20 us), 30 kV contact.",
+      "datasheet": "https://assets.nexperia.com/documents/data-sheet/PESD5V0S1BA.pdf",
+      "lcsc": "C19224",
+      "jlc_class": "extended",
+      "second_source": "UMW PESD5V0S1BA (LCSC C5158048, maker data sheet not checked)",
+      "reason": "Fits the 3.3 V control lines (REMOTE_CONTACT, COVER_RAW, SHUTTER_N).",
+      "footprint_change": null,
+      "flags": [
+        "Nexperia reflow land: 0.6 x 0.6 mm pads at 2.2 mm pitch. KiCad D_SOD-323: 0.6 x 0.45 mm at 2.1 mm. Usable, minor difference.",
+        "Packing suffix ,115 is from the distributor listing; the Nexperia ordering table gives the type number only.",
+        "D1002/D1003 on USB_CC1/CC2: see open item on CC short to VBUS."
+      ]
+    },
+    {
+      "refs": [
+        "D1000"
+      ],
+      "value": "BZT52C10",
+      "footprint": "Diode_SMD:D_SOD-123",
+      "manufacturer": "Diodes Incorporated",
+      "mpn": "BZT52C10-7-F",
+      "ratings": "Zener SOD123, VZ 9.4-10.6 V at 5 mA, IR 0.2 uA max at 7 V, 500 mW (TL 75 C) / 370 mW (TA 25 C), 3000 per 7 in reel.",
+      "datasheet": "https://www.diodes.com/assets/Datasheets/ds18004.pdf",
+      "lcsc": "C155227",
+      "jlc_class": "extended",
+      "second_source": "LRC LBZT52C10T1G (LCSC C12732, not checked)",
+      "reason": "Gate-source clamp for the AO4407A pair (VGS max +-25 V). At 9.45 V PD the gate sees ~9.36 V, under the 9.4 V minimum; R1004 1k limits clamp current to ~2 mA at 12 V.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "D1001"
+      ],
+      "value": "SMF22A",
+      "footprint": "Diode_SMD:D_SOD-123F",
+      "manufacturer": "Vishay General Semiconductor",
+      "mpn": "SMF22A-E3-08",
+      "ratings": "Unidirectional TVS, SMF (DO-219AB). VRWM 22 V, IR 0.1 uA max at 22 V, VBR 24.4-27.0 V at 1 mA, VC 35.5 V at IPPM 5.6 A (10/1000 us), 200 W, Tj -65..+175 C. Marking BX.",
+      "datasheet": "https://www.vishay.com/docs/85881/smf5v0atosmf58a.pdf",
+      "lcsc": null,
+      "jlc_class": null,
+      "second_source": "Littelfuse SMF22A (not checked)",
+      "reason": "Safe on the STUSB4500 factory NVM, which takes the 20 V PDO: 20 V +5% = 21 V is under VRWM 22 V and 3.4 V under VBR min, so no conduction. Hot-plug ringing is clamped near VBR (24.4-27 V), under the STUSB4500 28 V, BQ25798 VBUS 30 V and AO4407A VDS -30 V ratings; the 35.5 V full-IPPM clamp applies only to a 10/1000 us surge a USB-C port does not see. SMF12A (VBR 13.3 V) would conduct on 20 V.",
+      "footprint_change": null,
+      "flags": [
+        "Vishay land: 1.3 x 1.4 mm pads. KiCad D_SOD-123F: 1.1 x 1.1 mm pads at 2.8 mm pitch. Solderable; Vishay pads are larger.",
+        "LCSC number not checked: order by the Vishay MPN."
+      ]
+    },
+    {
+      "refs": [
+        "D1300"
+      ],
+      "value": "LED GREEN",
+      "footprint": "LED_SMD:LED_0603_1608Metric",
+      "manufacturer": "Wurth Elektronik",
+      "mpn": "150060VS75000",
+      "ratings": "0603 AlInGaP bright green, 570 nm dominant, 12-40 mcd at 20 mA, VF 2.0 typ / 2.4 max at 20 mA, 30 mA max.",
+      "datasheet": "https://www.we-online.com/components/products/datasheet/150060VS75000.pdf",
+      "lcsc": "C6848499",
+      "jlc_class": "extended",
+      "second_source": "Lite-On LTST-C191KGKT (LCSC C125098, AlInGaP, data sheet not checked)",
+      "reason": "R1303 2.2k from MB_3V3 gives ~0.6 mA with an AlInGaP die. An InGaN green (150060GS75000, VF 3.2 typ / 3.5 max at 20 mA) would get only a few hundred uA from 3.3 V.",
+      "footprint_change": null,
+      "flags": [
+        "Pin 1 = cathode (Wurth drawing); matches D1300 pin 1 = GND. Wurth land 0.8 x 0.8 mm, 0.8 mm gap matches LED_0603_1608Metric.",
+        "LCSC stock at check: 70 pcs."
+      ]
+    },
+    {
+      "refs": [
+        "Q1000",
+        "Q1001",
+        "Q1200",
+        "Q1201"
+      ],
+      "value": "AO4409",
+      "footprint": "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
+      "manufacturer": "Alpha & Omega Semiconductor",
+      "mpn": "AO4409",
+      "ratings": "P-channel, SO-8. VDS -30 V, VGS +/-20 V, ID -15 A, RDS(on) < 7.5 mOhm at VGS -10 V and < 12 mOhm at -4.5 V. S pins 1-3, G 4, D 5-8.",
+      "datasheet": "https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf",
+      "lcsc": "C347462",
+      "jlc_class": null,
+      "second_source": "AOS AO4407A (same pinout; RDS(on) specified only to -6 V)",
+      "reason": "Gate drive is about -5 V on the BOOST_5V load switch and in the 5 V PD fallback; the AO4409 is specified at -4.5 V. The PD pair gate is clamped to 10.6 V by D1000, inside the +/-20 V VGS rating.",
+      "footprint_change": null,
+      "flags": [
+        "LCSC number from the JLC part page found in the release BOM review; not re-checked."
+      ]
+    },
+    {
+      "refs": [
+        "Q900",
+        "Q1300"
+      ],
+      "value": "2N7002",
+      "footprint": "Package_TO_SOT_SMD:SOT-23",
+      "manufacturer": "Nexperia",
+      "mpn": "2N7002,215",
+      "ratings": "N-channel 60 V, 300 mA, VGS +-30 V, VGS(th) 1-2.5 V, RDS(on) 5 Ohm max at 10 V and 5.3 Ohm max at 4.5 V, SOT23.",
+      "datasheet": "https://assets.nexperia.com/documents/data-sheet/2N7002.pdf",
+      "lcsc": "C65189",
+      "jlc_class": "extended",
+      "second_source": "onsemi 2N7002LT1G (LCSC C16338, pinout not checked); CJ 2N7002 (LCSC C8545, JLC basic, pinout not checked)",
+      "reason": "Pinout verified from the Nexperia pinning table: 1 G, 2 S, 3 D. Matches circuit.py nfet().",
+      "footprint_change": null,
+      "flags": [
+        "Packing suffix ,215 from the distributor listing; the data sheet ordering table gives the type number only.",
+        "Q1100 is no longer in circuit.py; this line covers Q900, Q1202, Q1300."
+      ]
+    },
+    {
+      "refs": [
+        "RS200",
+        "RS300",
+        "RS400",
+        "RS500"
+      ],
+      "value": "0.020 1% 0.5W",
+      "footprint": "Resistor_SMD:R_1206_3216Metric",
+      "manufacturer": "Vishay Dale",
+      "mpn": "WSLP1206R0200FEA",
+      "ratings": "Power Metal Strip, 0.020 Ohm 1%, 1.0 W at 70 C, 1206, -65..+170 C. At 1 A camera current: 20 mV, 20 mW.",
+      "datasheet": "https://www.vishay.com/docs/30122/wslp.pdf",
+      "lcsc": "C441558",
+      "jlc_class": "extended",
+      "second_source": "Yageo PE1206FRF470R02L (LCSC C164156, 1 W, not checked)",
+      "reason": "Metal strip for PAC1954 sensing; 1 W exceeds the 0.5 W requirement.",
+      "footprint_change": null,
+      "flags": [
+        "Vishay pad for WSLP1206 6-50 mOhm: 1.65 x 1.93 mm, 1.80 mm gap, 5.10 mm outer. KiCad R_1206_3216Metric: 1.125 x 1.75 mm, 1.80 mm gap, 4.05 mm outer. The 0.51 mm terminals land fully on the KiCad pads; the Vishay pad spreads heat better. Take Kelvin sense traces from the inner pad edges."
+      ]
+    },
+    {
+      "refs": [
+        "RS700"
+      ],
+      "value": "0.005 1% 1W",
+      "footprint": "Resistor_SMD:R_1206_3216Metric",
+      "manufacturer": "Vishay Dale",
+      "mpn": "WSLP12065L000FEA",
+      "ratings": "5 mOhm 1 % 1 W, 1206 (Vishay writes values under 10 mOhm in L notation).",
+      "datasheet": "https://www.vishay.com/docs/30122/wslp.pdf",
+      "lcsc": null,
+      "jlc_class": "extended",
+      "second_source": "Panasonic ERJ-8CWFR010V (LCSC C409086, 1 W, not checked)",
+      "reason": "High-side gauge shunt per TI BQ27441-G1; +/-25 mV range: 5 A = 25 mV.",
+      "footprint_change": null,
+      "flags": [
+        "Same Vishay pad note as RS200.",
+        "Pulse capability not computed; Vishay refers to its JouleWizard tool for short-time overload.",
+        "See open item: BQ27441 VSR range +-25 mV is exceeded above 2.5 A with 10 mOhm.",
+        "LCSC number not checked for the 5 mOhm WSLP12065L000FEA: order by the Vishay MPN."
+      ]
+    },
+    {
+      "refs": [
+        "F1100"
+      ],
+      "value": "FUSE 5A - select",
+      "footprint": "Fuse:Fuse_1812_4532Metric",
+      "manufacturer": "Bourns",
+      "mpn": "SF-1206F700-2",
+      "ratings": "Fast-acting thin-film chip fuse, 7.00 A, 7.5 mOhm typ, 32 VDC, 50 A interrupting at 32 VDC, melting I2t 3.25 A2s (at 10x In), 200% In clears in 60 s max, 100% In carried 4 h min, -20..+105 C, 5000 per 7 in reel.",
+      "datasheet": "https://www.bourns.com/docs/product-datasheets/sf-1206f.pdf",
+      "lcsc": "C1972769",
+      "jlc_class": "extended",
+      "second_source": "Bourns SF-1206S700-2 (slow blow 7 A, I2t 5.68 A2s, same pad; LCSC C1972611, 0 stock at check)",
+      "reason": "5 A planning current = 71% of 7 A at 25 C; the Bourns derating curve gives ~95% at 60 C (6.65 A) -> 75% loading. 0.19 W at 5 A. Pack insertion inrush: ~80 uF effective on BAT_PROTECTED + SYS_RAW at 4.4 V through >=20 mOhm gives I2t <= C*V^2/(2R) = 0.039 A2s, about 1/80 of the melting I2t. A 1812 PTC was rejected: 1812 hold ratings found top out at 4-5 A at 23 C, 6 V max, and lose ~20% hold by 50 C, so 5 A would nuisance-trip.",
+      "footprint_change": "New:Fuse:Fuse_1206_3216Metric",
+      "flags": [
+        "FOOTPRINT CHANGE REQUIRED: no 1812 disposable fuse >=7 A could be verified from a maker data sheet.",
+        "Bourns pad: 1.25 x 1.65 mm, 2.2 mm gap, 4.7 mm outer. KiCad Fuse_1206_3216Metric: 1.25 x 1.75 mm, 1.55 mm gap, 4.05 mm outer. A custom land with the Bourns gap spreads heat better.",
+        "Interrupting rating 50 A. A 1S cell can source more than 50 A into a hard short; the pack protection PCB must clear first. Confirm with the pack data.",
+        "Operating range -20..+105 C."
+      ]
+    },
+    {
+      "refs": [
+        "F100"
+      ],
+      "value": "PTC 100mA - select",
+      "footprint": "Fuse:Fuse_1206_3216Metric",
+      "manufacturer": "Bel Fuse",
+      "mpn": "0ZCJ0010FF2E",
+      "ratings": "PTC 1206: IH 0.10 A, IT 0.25 A (23 C), Vmax 60 VDC, Imax 10 A, trips at 0.5 A in 1.0 s max, Rmin 1.6 Ohm, R1max 15 Ohm, 3000 per reel. Hold derating 81% at 40 C, 60% at 60 C.",
+      "datasheet": "https://www.belfuse.com/media/datasheets/products/circuit-protection/ds-cp-0zcj-series.pdf",
+      "lcsc": "C194142",
+      "jlc_class": "extended",
+      "second_source": "Bourns MF-NSMF010/30X-2 (IH 0.10 A, Rmin 1.35 Ohm, R1max 15 Ohm; LCSC C20606973, 20 pcs at check)",
+      "reason": "Accessory 3.3 V limit for J102 and J601. Drop after a trip cycle up to 15 Ohm x load: 0.15 V at 10 mA, 0.75 V at 50 mA.",
+      "footprint_change": null,
+      "flags": [
+        "Bel pad layout is given as a dimension table; not compared numerically with Fuse_1206_3216Metric."
+      ]
+    },
+    {
+      "refs": [
+        "L1201"
+      ],
+      "value": "2.2uH 1.5A",
+      "footprint": "Inductor_SMD:L_Taiyo-Yuden_NR-30xx",
+      "manufacturer": "Taiyo Yuden",
+      "mpn": "LSXND3030QKT2R2MNG",
+      "ratings": "2.2 uH 20%, Isat 1.48 A max (dL 30%), Itemp 1.5 A (dT 40 C), DCR 69.6 mOhm max, 3.0 x 3.0 x 1.5 mm max. Previous PN NRS3015T2R2MNGH. TI lists NR3015T2R2M (1.48/1.5 A, same size) for TPS6216x.",
+      "datasheet": "https://ds.yuden.co.jp/TYCOMPAS/ut/detail?pn=LSXND3030QKT2R2MNG&u=M",
+      "lcsc": "C6980123",
+      "jlc_class": "extended",
+      "second_source": "Coilcraft XFL3012-222MEC (TI list, 1.9 A; different land, not checked)",
+      "reason": "Peak at 1 A load: fsw 2.25 MHz, L min 1.76 uH, 5.0 V in, 3.3 V out -> 0.28 A p-p ripple, 1.14 A peak; +20% = 1.37 A < 1.48 A Isat. Taiyo 3030 land 0.8 x 2.7 mm at 2.2 mm pitch matches L_Taiyo-Yuden_NR-30xx exactly.",
+      "footprint_change": null,
+      "flags": [
+        "TPS62162 high-side current limit is 1.45-2.45 A. In overload the inductor saturates before the limit acts; same as the TI-listed parts, but no margin to the limit.",
+        "Land pattern taken from the Taiyo LCXND3030 spec sheet (same 3030 package)."
+      ]
+    },
+    {
+      "refs": [
+        "J100"
+      ],
+      "value": "P4 JP1 - 26 pin IDC",
+      "footprint": "Connector_IDC:IDC-Header_2x13_P2.54mm_Vertical",
+      "manufacturer": "Wurth Elektronik",
+      "mpn": "61202621621",
+      "ratings": "WR-BHD male box header 2x13, 2.54 mm, THT vertical, 0.64 mm square posts, gold, 3 A per contact, 250 V, body 40.68 x 8.75/9.0 mm, 9.1 mm high, 30 mating cycles.",
+      "datasheet": "https://www.we-online.com/components/products/datasheet/61202621621.pdf",
+      "lcsc": "C17586777",
+      "jlc_class": "extended",
+      "second_source": "Any DIN 41651 2x13 box header with 0.64 mm posts (not checked)",
+      "reason": "Body 40.68 mm matches the KiCad fab outline (y -5.10..35.58); key notch on the pin-1 row side in both. Wurth hole 1.1 +-0.15 mm; KiCad drill 1.0 mm is inside tolerance (post diagonal 0.91 mm).",
+      "footprint_change": null,
+      "flags": [
+        "LCSC stock at check: 129 pcs.",
+        "P4_5V uses pins 2 and 4: 6 A combined at 3 A per contact."
+      ]
+    },
+    {
+      "refs": [
+        "J200",
+        "J300",
+        "J400",
+        "J500"
+      ],
+      "value": "XIAO ESP32-S3 Sense socket",
+      "footprint": "KINO_A0:XIAO_Socket_15.24mm",
+      "manufacturer": "Wurth Elektronik",
+      "mpn": "61300711821",
+      "ratings": "WR-PHD socket header 1x07, 2.54 mm, THT vertical, gold, 3 A per contact, insulator height 8.5 +-0.15 mm, length 18.28 mm, recommended hole 1.02 +-0.15 mm, 30 mating cycles. 2 pieces per reference (8 total).",
+      "datasheet": "https://www.we-online.com/components/products/datasheet/61300711821.pdf",
+      "lcsc": "C19626658",
+      "jlc_class": "extended",
+      "second_source": "Samtec SSW-107-01-G-S (8.51 mm, LCSC C6236290, not checked)",
+      "reason": "Insulator height 8.5 mm. Mated height (carrier top to XIAO PCB underside) = 8.5 mm + plastic body of the male header on the XIAO; 11.0 mm with a standard 2.5 mm body. KINO_A0 footprint drill 1.0 mm is inside the Wurth hole tolerance.",
+      "footprint_change": null,
+      "flags": [
+        "BOM quantity is 2 pieces per J200/J300/J400/J500.",
+        "LCSC stock 0 at check; order from Wurth or a broadline distributor.",
+        "Mated height depends on the XIAO header, not yet specified; see open item."
+      ]
+    },
+    {
+      "refs": [
+        "J201",
+        "J301",
+        "J401",
+        "J501"
+      ],
+      "value": "GPIO breakout - SD/strap restrictions",
+      "footprint": "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical",
+      "manufacturer": "Wurth Elektronik",
+      "mpn": "61301021121",
+      "ratings": "WR-PHD dual pin header 2x05, 2.54 mm, THT vertical, gold, 3 A, 6.0 mm mating pin, 3.0 mm tail, 25 mating cycles.",
+      "datasheet": "https://www.we-online.com/components/products/datasheet/61301021121.pdf",
+      "lcsc": "C5343117",
+      "jlc_class": "extended",
+      "second_source": "Any 2x05 2.54 mm header with 0.64 mm square posts",
+      "reason": "Breakout header. Wurth hole 1.10 +-0.15 mm; KiCad drill 1.0 mm is inside tolerance.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "JP200",
+        "JP300",
+        "JP400",
+        "JP500",
+        "JP1200"
+      ],
+      "value": "0R LINK - REMOVE FOR NODE USB / REMOVE FOR P4 USB SERVICE",
+      "footprint": "KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP",
+      "manufacturer": "Vishay",
+      "mpn": "CRCW12060000Z0EAHP",
+      "ratings": "0 ohm jumper, CRCW1206-HP e3: Imax 10 A, <= 5 mOhm (Vishay doc 20043 rev 17-Mar-2026, p2). Camera link ~1 A = 10 %; JP1200 at an assumed 3 A = 30 %, 45 mW. -55..+155 C, AEC-Q200.",
+      "datasheet": "https://www.vishay.com/docs/20043/crcwhpe3.pdf",
+      "lcsc": "C844862",
+      "jlc_class": "extended",
+      "second_source": "JP200-JP500 only: Vishay CRCW12060000Z0EA (CRCW1206 e3 jumper, Imax 3.5 A, <= 20 mOhm, doc 20035 rev 14-Apr-2026; LCSC C190124). JP1200 needs a jumper rated >= 4 A: standard 1206 jumpers (3.5 A) are not a substitute there.",
+      "reason": "Replaces the 2.54 mm header and shunt (ODD JOBS 109-110, 162): flat on the front so the XIAOs stay the tallest parts, reachable with the carrier on the P4, rated for the current. Land redrawn to the Vishay reflow pattern (G 1.50, Y 1.05, X 1.80, Z 3.60 mm, doc 20043 p9).",
+      "footprint_change": "2.54 mm 1x02 header -> KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP (pads at the old pin pitch, 2.55 mm)",
+      "flags": [
+        "JP1200 carries the P4 5 V feed; P4 current is not known here. Confirm it stays under 3 A (30 % of the 10 A rating)."
+      ]
+    },
+    {
+      "refs": [
+        "J101"
+      ],
+      "value": "C6 service - 3V3 sense only",
+      "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
+      "manufacturer": "Wurth Elektronik",
+      "mpn": "61300611121",
+      "ratings": "WR-PHD pin header 1x06, 2.54 mm, THT vertical, gold, 3 A, 6.0 mm pin.",
+      "datasheet": "https://www.we-online.com/components/products/datasheet/61300611121.pdf",
+      "lcsc": "C5444523",
+      "jlc_class": "extended",
+      "second_source": "Any 1x06 2.54 mm header",
+      "reason": "Service header. Wurth hole 1.10 +-0.15 mm vs KiCad drill 1.0 mm: inside tolerance.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "J800",
+        "J900",
+        "J902",
+        "J903",
+        "J904",
+        "J1300"
+      ],
+      "value": "BM02B-GHS-TBT",
+      "footprint": "Connector_JST:JST_GH_BM02B-GHS-TBT_1x02-1MP_P1.25mm_Vertical",
+      "manufacturer": "JST",
+      "mpn": "BM02B-GHS-TBT(LF)(SN)",
+      "ratings": "JST GH, 1.25 mm, SMT top entry, 1.0 A per contact (AWG26), 50 V, -40..+105 C incl. temperature rise. Mates GHR-02V-S with SSHL-002T-P0.2 contacts.",
+      "datasheet": "https://www.jst-mfg.com/product/pdf/eng/eGH.pdf",
+      "lcsc": "C161690",
+      "jlc_class": "extended",
+      "second_source": "None (JST GH is single source)",
+      "reason": "Model in the JST header table; (LF)(SN) is the label suffix JST prints for this product.",
+      "footprint_change": null,
+      "flags": [
+        "LCSC stock at check: 1 pc. Order through JST distribution."
+      ]
+    },
+    {
+      "refs": [
+        "J901"
+      ],
+      "value": "BM03B-GHS-TBT",
+      "footprint": "Connector_JST:JST_GH_BM03B-GHS-TBT_1x03-1MP_P1.25mm_Vertical",
+      "manufacturer": "JST",
+      "mpn": "BM03B-GHS-TBT(LF)(SN)",
+      "ratings": "JST GH, 1.25 mm, SMT top entry, 1.0 A per contact (AWG26), 50 V, -40..+105 C incl. temperature rise. Mates GHR-03V-S.",
+      "datasheet": "https://www.jst-mfg.com/product/pdf/eng/eGH.pdf",
+      "lcsc": "C161691",
+      "jlc_class": "extended",
+      "second_source": "None (JST GH is single source)",
+      "reason": "Cover Hall sensor, 3.3 V.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "J102"
+      ],
+      "value": "BM04B-GHS-TBT",
+      "footprint": "Connector_JST:JST_GH_BM04B-GHS-TBT_1x04-1MP_P1.25mm_Vertical",
+      "manufacturer": "JST",
+      "mpn": "BM04B-GHS-TBT(LF)(SN)",
+      "ratings": "JST GH, 1.25 mm, SMT top entry, 1.0 A per contact (AWG26), 50 V, -40..+105 C incl. temperature rise. Mates GHR-04V-S.",
+      "datasheet": "https://www.jst-mfg.com/product/pdf/eng/eGH.pdf",
+      "lcsc": "C161692",
+      "jlc_class": "extended",
+      "second_source": "None (JST GH is single source)",
+      "reason": "3.3 V I2C accessory.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "J601"
+      ],
+      "value": "BM05B-GHS-TBT (DNP)",
+      "footprint": "Connector_JST:JST_GH_BM05B-GHS-TBT_1x05-1MP_P1.25mm_Vertical",
+      "manufacturer": "JST",
+      "mpn": "BM05B-GHS-TBT(LF)(SN)",
+      "ratings": "JST GH, 1.25 mm, SMT top entry, 1.0 A per contact (AWG26), 50 V, -40..+105 C incl. temperature rise. Mates GHR-05V-S.",
+      "datasheet": "https://www.jst-mfg.com/product/pdf/eng/eGH.pdf",
+      "lcsc": "C189891",
+      "jlc_class": "extended",
+      "second_source": "None (JST GH is single source)",
+      "reason": "Existing MPN confirmed against the JST catalog.",
+      "footprint_change": null,
+      "flags": [
+        "LCSC lists it as BM05B-GHS-TBT(LF)(SN)(N); the (N) suffix is not explained in the JST catalog."
+      ]
+    },
+    {
+      "refs": [
+        "J1100"
+      ],
+      "value": "PROTECTED 1S PACK / NTC",
+      "footprint": "Connector_JST:JST_VH_B3P-VH_1x03_P3.96mm_Vertical",
+      "manufacturer": "JST",
+      "mpn": "B3P-VH(LF)(SN)",
+      "ratings": "JST VH standard header, 3 pos, 3.96 mm, THT top entry. 10 A per contact with AWG16 on the standard header; 250 V. Mates VHR-3N with SVH-21T-P1.1 (AWG22-18) or SVH-41T-P1.1 (AWG20-16) contacts.",
+      "datasheet": "https://www.jst-mfg.com/product/pdf/eng/eVH.pdf",
+      "lcsc": "C160316",
+      "jlc_class": "extended",
+      "second_source": "None (JST VH is single source)",
+      "reason": "5 A pack current = 50% of the 10 A rating with AWG16. JST gives 7 A with AWG18 on the shrouded header; use AWG16 for the pack lead.",
+      "footprint_change": null,
+      "flags": []
+    },
+    {
+      "refs": [
+        "J1000"
+      ],
+      "value": "USB4105-GF-A",
+      "footprint": "KINO_A0:USB_C_GCT_USB4105_KINO_GND0.05",
+      "manufacturer": "GCT",
+      "mpn": "USB4105-GF-A",
+      "ratings": "USB-C 2.0 receptacle, 16 pin, SMT top mount. GF = gold flash, A = tape and reel (800 per reel), no stake code = 0.95 mm shell stake. VBUS 5.00 A collectively, GND 6.25 A, A5/B5 1.25 A, 48 V DC, -40..+85 C, 20,000 cycles.",
+      "datasheet": "https://gct.co/files/drawings/usb4105.pdf",
+      "lcsc": "C3020560",
+      "jlc_class": "extended",
+      "second_source": "None (footprint is GCT-specific)",
+      "reason": "Full code confirmed from the GCT ordering grid. 0.95 mm stake suits the 1.6 mm board. 9 V x 2 A is inside the 5 A VBUS rating.",
+      "footprint_change": null,
+      "flags": [
+        "circuit.py now uses KINO_A0:USB_C_GCT_USB4105_KINO_GND0.05 (BOM-DRAFT.csv still shows the stock footprint). Pad positions checked against GCT drawing B4; outer GND pads 0.60 x 1.10 mm vs GCT 1.15 mm is the documented local deviation."
+      ]
+    },
+    {
+      "refs": [
+        "U801"
+      ],
+      "value": "RV-3028-C7",
+      "footprint": "Package_SON:MicroCrystal_C7_SON-8_1.5x3.2mm_P0.9mm",
+      "manufacturer": "Micro Crystal",
+      "mpn": "RV-3028-C7 32.768kHz 1ppm TA QC",
+      "ratings": "Data sheet order code format: RV-3028-C7 TA QC. TA = -40..+85 C, QC = commercial grade (QA = AEC-Q200). Micro Crystal assigns a numeric PN per spec: 20xxxx-MG01 = 1000 pcs, 20xxxx-MG03 = 3000 pcs, 12 mm tape on 7 in reel. Pins 1 CLKOUT, 2 INT, 3 SCL, 4 SDA, 5 VSS, 6 VBACKUP, 7 VDD, 8 EVI match circuit.py.",
+      "datasheet": "https://www.microcrystal.com/fileadmin/Media/Products/RTC/Datasheet/RV-3028-C7.pdf",
+      "lcsc": "C3019759",
+      "jlc_class": "extended",
+      "second_source": "None (single source)",
+      "reason": "Distributor form of the code with the TA/QC fields. The data sheet has no packaging letter suffix; reel size is in the numeric PN.",
+      "footprint_change": null,
+      "flags": [
+        "LCSC stock 0 at check.",
+        "Reel numeric PN (20xxxx-MG01 or -MG03) must come from Micro Crystal or the distributor."
+      ]
+    },
+    {
+      "refs": [
+        "Q1202"
+      ],
+      "value": "PMV16UN",
+      "footprint": "Package_TO_SOT_SMD:SOT-23",
+      "manufacturer": "Nexperia",
+      "mpn": "PMV16UN",
+      "ratings": "N-channel, SOT-23 (G 1, S 2, D 3). VDS 20 V, VGS +/-8 V, VGS(th) 0.4-1.0 V.",
+      "datasheet": "https://assets.nexperia.com/documents/data-sheet/PMV16UN.pdf",
+      "lcsc": null,
+      "jlc_class": null,
+      "second_source": null,
+      "reason": "Gate is BOOST_ENABLE (SYS_RAW through R1204, 2.7-4.4 V). A 2N7002 threshold reaches 2.5 V (2.75 V cold) and can drop out at low battery; VGS(th) <= 1.0 V cannot.",
+      "footprint_change": null,
+      "flags": [
+        "Ratings from the release power review of the Nexperia data sheet; LCSC number not checked."
+      ]
+    }
+  ],
+  "open": [
+    {
+      "refs": [
+        "C1301"
+      ],
+      "issue": "1.8 uF 0603: no maker part found in stock (no Samsung/Murata/TDK/Taiyo 1.8 uF 0603 at LCSC; only CCTC TCC0603X5R185K160CT, 0 pcs). LTC2955 TMR constant not verified: the ADI data sheet did not load. A search snippet gives 5.2 s/uF on top of 64 ms; if confirmed, 1.8 uF = 9.4 s, 2.2 uF (CL10A225KO8NNNC, LCSC C23630, JLC basic) = 11.5 s, 1.5 uF = 7.9 s. Pick the value against the long-hold target, then check X5R tolerance and temperature drift."
+    },
+    {
+      "refs": [
+        "U1300"
+      ],
+      "issue": "LTC2955 full ordering code not verified against ADI (analog.com unreachable). LCSC lists LTC2955CTS8-1#TRMPBF (C580659, mini reel) and LTC2955CTS8-1#TRPBF (C683790). A search snippet says C grade = 0..70 C and I grade = -40..85 C. An outdoor camera needs the I grade (LTC2955ITS8-1#TRMPBF). Confirm from the ADI data sheet."
+    },
+    {
+      "refs": [
+        "J200",
+        "J300",
+        "J400",
+        "J500"
+      ],
+      "issue": "Mated height needs the male header fitted to the XIAO: socket 8.5 mm + that header body (2.5 mm standard -> 11.0 mm). Define the XIAO header part and check enclosure and lens height against 11.0 mm."
+    },
+    {
+      "refs": [
+        "D1001"
+      ],
+      "issue": "Vishay SMF22A-E3-08 checked against the Vishay SMF series data sheet (85881); the Littelfuse second source is not checked."
+    },
+    {
+      "refs": [
+        "D200",
+        "D300",
+        "D400",
+        "D500",
+        "D1200"
+      ],
+      "issue": "VF at 1 A (~0.39 V) is read from the typical curve, not a guaranteed limit. Only VF max 0.50 V at 3 A is guaranteed."
+    }
+  ],
+  "resolved": [
+    {
+      "refs": [
+        "D1002",
+        "D1003",
+        "U1000"
+      ],
+      "issue": "PESD5V0S1BA on USB_CC1/CC2 breaks down at 5.5-9.5 V (Nexperia). If a damaged cable or debris shorts CC to VBUS at 9 V PD, the diode takes current from the 9 V source and can fail short. The STUSB4500 CC short-to-VBUS rating could not be checked (ST data sheet did not load). Use a CC ESD part with VRWM >= 20 V and low capacitance, or confirm with ST that the STUSB4500 alone meets the ESD target.",
+      "resolution": "PESD24VL1BA fitted on CC1/CC2 (VRWM 24 V)."
+    },
+    {
+      "refs": [
+        "RS700",
+        "U701"
+      ],
+      "issue": "BQ27441-G1 data sheet (TI, current revision) says SRP/SRN expect a 10 mOhm HIGH-SIDE sense resistor: SRP to the PACK+ side, SRN to VSYS. circuit.py wires it low-side (SRP = GND, SRN = PACK_MINUS). The coulomb-counter input range is VSR +-25 mV, so 10 mOhm saturates above 2.5 A; the 5 A planning current gives 50 mV. Either follow TI (high-side) and drop to 5 mOhm with CC-gain recalibration, or confirm low-side support with TI and accept a 2.5 A counting limit.",
+      "resolution": "Gauge shunt moved high side per TI BQ27441-G1 (a02_gauge_rev.py)."
+    },
+    {
+      "refs": [
+        "F1100"
+      ],
+      "issue": "Footprint change 1812 -> 1206 required for the selected Bourns SF-1206F700-2. Also confirm the protected pack short-circuit current and trip time against the 50 A interrupting rating.",
+      "resolution": "1206 footprint fitted for Bourns SF-1206F700-2."
+    },
+    {
+      "refs": [
+        "Q1000",
+        "Q1001",
+        "Q1200",
+        "Q1201"
+      ],
+      "issue": "AO4407A RDS(on) is not specified at VGS = -5 V, the drive level on BOOST_5V and in the 5 V PD fallback. Measure the drop at the real load (boost path ~2.6 A) or pick a P-FET specified at -4.5 V.",
+      "resolution": "AO4409 fitted: RDS(on) specified at -4.5 V."
+    }
+  ]
+}

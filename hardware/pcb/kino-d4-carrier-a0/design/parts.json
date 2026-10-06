@@ -1,0 +1,8160 @@
+[
+  {
+    "sheet": "01_p4",
+    "ref": "J100",
+    "value": "P4 JP1 - 26 pin IDC",
+    "nets": {
+      "1": "P4_3V3_SENSE",
+      "2": "P4_5V",
+      "3": "P4_3V3_TEST",
+      "4": "P4_5V",
+      "5": "GND",
+      "6": "GND",
+      "7": "P4_TX1",
+      "8": "P4_RX3",
+      "9": "P4_RX1",
+      "10": "CAM_GLOBAL_EN",
+      "11": "P4_TX2",
+      "12": "P4_TX4",
+      "13": "P4_RX2",
+      "14": "P4_RX4",
+      "15": null,
+      "16": "GND",
+      "17": "P4_TX3",
+      "18": "C6_3V3_TEST",
+      "19": "SYNC_MASTER",
+      "20": "C6_RX_SERVICE",
+      "21": "SHUTTER_N",
+      "22": "C6_TX_SERVICE",
+      "23": "P4_SDA",
+      "24": "C6_BOOT_SERVICE",
+      "25": "P4_SCL",
+      "26": "C6_EN_SERVICE"
+    },
+    "pins": {
+      "1": {
+        "name": "P4_3V3_SENSE",
+        "type": "passive"
+      },
+      "2": {
+        "name": "P4_5V",
+        "type": "passive"
+      },
+      "3": {
+        "name": "P4_3V3_TEST",
+        "type": "passive"
+      },
+      "4": {
+        "name": "P4_5V",
+        "type": "passive"
+      },
+      "5": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "6": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "7": {
+        "name": "P4_TX1",
+        "type": "passive"
+      },
+      "8": {
+        "name": "P4_RX3",
+        "type": "passive"
+      },
+      "9": {
+        "name": "P4_RX1",
+        "type": "passive"
+      },
+      "10": {
+        "name": "CAM_GLOBAL_EN",
+        "type": "passive"
+      },
+      "11": {
+        "name": "P4_TX2",
+        "type": "passive"
+      },
+      "12": {
+        "name": "P4_TX4",
+        "type": "passive"
+      },
+      "13": {
+        "name": "P4_RX2",
+        "type": "passive"
+      },
+      "14": {
+        "name": "P4_RX4",
+        "type": "passive"
+      },
+      "15": {
+        "name": "NC",
+        "type": "passive"
+      },
+      "16": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "17": {
+        "name": "P4_TX3",
+        "type": "passive"
+      },
+      "18": {
+        "name": "C6_3V3_TEST",
+        "type": "passive"
+      },
+      "19": {
+        "name": "SYNC_MASTER",
+        "type": "passive"
+      },
+      "20": {
+        "name": "C6_RX_SERVICE",
+        "type": "passive"
+      },
+      "21": {
+        "name": "SHUTTER_N",
+        "type": "passive"
+      },
+      "22": {
+        "name": "C6_TX_SERVICE",
+        "type": "passive"
+      },
+      "23": {
+        "name": "P4_SDA",
+        "type": "passive"
+      },
+      "24": {
+        "name": "C6_BOOT_SERVICE",
+        "type": "passive"
+      },
+      "25": {
+        "name": "P4_SCL",
+        "type": "passive"
+      },
+      "26": {
+        "name": "C6_EN_SERVICE",
+        "type": "passive"
+      }
+    },
+    "footprint": "Connector_IDC:IDC-Header_2x13_P2.54mm_Vertical",
+    "mpn": "Wurth Elektronik 61202621621",
+    "source": "https://www.we-online.com/components/products/datasheet/61202621621.pdf",
+    "note": "1:1 electrical pin numbering; verify cable and mating views.",
+    "dnp": false,
+    "at": [
+      6,
+      18
+    ]
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "J101",
+    "value": "C6 service - 3V3 sense only",
+    "nets": {
+      "1": "GND",
+      "2": "C6_3V3_TEST",
+      "3": "C6_RX_SERVICE",
+      "4": "C6_TX_SERVICE",
+      "5": "C6_BOOT_SERVICE",
+      "6": "C6_EN_SERVICE"
+    },
+    "pins": {
+      "1": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "2": {
+        "name": "C6_3V3_TEST",
+        "type": "passive"
+      },
+      "3": {
+        "name": "C6_RX_SERVICE",
+        "type": "passive"
+      },
+      "4": {
+        "name": "C6_TX_SERVICE",
+        "type": "passive"
+      },
+      "5": {
+        "name": "C6_BOOT_SERVICE",
+        "type": "passive"
+      },
+      "6": {
+        "name": "C6_EN_SERVICE",
+        "type": "passive"
+      }
+    },
+    "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
+    "mpn": "Wurth Elektronik 61300611121",
+    "source": "https://www.we-online.com/components/products/datasheet/61300611121.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "U100",
+    "value": "TCA9517ADGKR",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "I2C_SCL",
+      "3": "I2C_SDA",
+      "4": "GND",
+      "5": "P4_BUS_EN",
+      "6": "P4_SDA",
+      "7": "P4_SCL",
+      "8": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "VCCA",
+        "type": "power_in"
+      },
+      "2": {
+        "name": "SCLA",
+        "type": "bidirectional"
+      },
+      "3": {
+        "name": "SDAA",
+        "type": "bidirectional"
+      },
+      "4": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "5": {
+        "name": "EN",
+        "type": "passive"
+      },
+      "6": {
+        "name": "SDAB",
+        "type": "bidirectional"
+      },
+      "7": {
+        "name": "SCLB",
+        "type": "bidirectional"
+      },
+      "8": {
+        "name": "VCCB",
+        "type": "power_in"
+      }
+    },
+    "footprint": "Package_SO:VSSOP-8_3x3mm_P0.65mm",
+    "mpn": "TCA9517ADGKR",
+    "source": "https://www.ti.com/lit/ds/symlink/tca9517a.pdf",
+    "note": "A side is local: its hard low suits the STUSB4500 (VIL 0.35 V), BQ25798 (0.4 V), DRV2605L and BQ27441. B side (buffered low 0.45-0.6 V) faces the P4 bus (P4 VIL 0.825 V). No other offset buffer or rise-time accelerator on the P4 bus.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "R100",
+    "value": "2.2k",
+    "nets": {
+      "1": "P4_3V3_SENSE",
+      "2": "P4_BUS_EN"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-072K2L",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-072K2L",
+    "note": "With R101: EN 3.0 V with the P4 on; 0.66 V worst case with JP1 pin 1 open against the TCA9517 EN pull-up (30 uA max), under its 0.99 V VIL and the TXU0304 OE 0.89 V VT- min.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "R101",
+    "value": "22k",
+    "nets": {
+      "1": "P4_BUS_EN",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0722KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0722KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "R102",
+    "value": "4.7k",
+    "nets": {
+      "1": "I2C_SDA",
+      "2": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-074K7L",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-074K7L",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "R103",
+    "value": "4.7k",
+    "nets": {
+      "1": "I2C_SCL",
+      "2": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-074K7L",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-074K7L",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "R105",
+    "value": "100k",
+    "nets": {
+      "1": "SYNC_MASTER",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "P4 GPIO32 is Hi-Z from reset until firmware drives it; holds the shared sync (and the J601 flash option) low. ODD JOBS 116/117.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "C100",
+    "value": "100n 50V",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "R104",
+    "value": "100k",
+    "nets": {
+      "1": "CAM_GLOBAL_EN",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "J102",
+    "value": "3V3 I2C accessory",
+    "nets": {
+      "1": "GND",
+      "2": "AUX_3V3",
+      "3": "I2C_SDA",
+      "4": "I2C_SCL"
+    },
+    "pins": {
+      "1": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "2": {
+        "name": "AUX_3V3",
+        "type": "passive"
+      },
+      "3": {
+        "name": "I2C_SDA",
+        "type": "passive"
+      },
+      "4": {
+        "name": "I2C_SCL",
+        "type": "passive"
+      }
+    },
+    "footprint": "Connector_JST:JST_GH_BM04B-GHS-TBT_1x04-1MP_P1.25mm_Vertical",
+    "mpn": "JST BM04B-GHS-TBT(LF)(SN)",
+    "source": "https://www.jst-mfg.com/product/pdf/eng/eGH.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "F100",
+    "value": "PTC 100mA",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "AUX_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Fuse:Fuse_1206_3216Metric",
+    "mpn": "Bel Fuse 0ZCJ0010FF2E",
+    "source": "https://www.belfuse.com/media/datasheets/products/circuit-protection/ds-cp-0zcj-series.pdf",
+    "note": "Accessory protection and ESD review open.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "TP100",
+    "value": "P4_3V3_TEST",
+    "nets": {
+      "1": "P4_3V3_TEST"
+    },
+    "pins": {
+      "1": {
+        "name": "P4_3V3_TEST",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "TP101",
+    "value": "SYNC_MASTER",
+    "nets": {
+      "1": "SYNC_MASTER"
+    },
+    "pins": {
+      "1": {
+        "name": "SYNC_MASTER",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "TP102",
+    "value": "P4_5V",
+    "nets": {
+      "1": "P4_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "P4_5V",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "J200",
+    "value": "XIAO ESP32-S3 Sense socket",
+    "nets": {
+      "1": "CAM1_D0",
+      "2": "CAM1_SYNC",
+      "3": "CAM1_D2_STRAP",
+      "4": "CAM1_D3",
+      "5": "CAM1_D4",
+      "6": "CAM1_D5",
+      "7": "CAM1_TX",
+      "8": "CAM1_RX",
+      "9": "CAM1_D8_SD",
+      "10": "CAM1_D9_SD",
+      "11": "CAM1_D10_SD",
+      "12": "CAM1_3V3",
+      "13": "GND",
+      "14": "CAM1_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM1_D0",
+        "type": "passive"
+      },
+      "2": {
+        "name": "CAM1_SYNC",
+        "type": "passive"
+      },
+      "3": {
+        "name": "CAM1_D2_STRAP",
+        "type": "passive"
+      },
+      "4": {
+        "name": "CAM1_D3",
+        "type": "passive"
+      },
+      "5": {
+        "name": "CAM1_D4",
+        "type": "passive"
+      },
+      "6": {
+        "name": "CAM1_D5",
+        "type": "passive"
+      },
+      "7": {
+        "name": "CAM1_TX",
+        "type": "passive"
+      },
+      "8": {
+        "name": "CAM1_RX",
+        "type": "passive"
+      },
+      "9": {
+        "name": "CAM1_D8_SD",
+        "type": "passive"
+      },
+      "10": {
+        "name": "CAM1_D9_SD",
+        "type": "passive"
+      },
+      "11": {
+        "name": "CAM1_D10_SD",
+        "type": "passive"
+      },
+      "12": {
+        "name": "CAM1_3V3",
+        "type": "passive"
+      },
+      "13": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "14": {
+        "name": "CAM1_5V",
+        "type": "passive"
+      }
+    },
+    "footprint": "KINO_A0:XIAO_Socket_15.24mm",
+    "mpn": "2 x Wurth Elektronik 61300711821",
+    "source": "https://www.we-online.com/components/products/datasheet/61300711821.pdf",
+    "note": "Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.",
+    "dnp": false,
+    "at": [
+      25.505000000000003,
+      34.705
+    ]
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "J201",
+    "value": "GPIO breakout - SD/strap restrictions",
+    "nets": {
+      "1": "GND",
+      "2": "CAM1_3V3",
+      "3": "CAM1_D0",
+      "4": "CAM1_D2_STRAP",
+      "5": "CAM1_D3",
+      "6": "CAM1_D4",
+      "7": "CAM1_D5",
+      "8": "CAM1_D8_SD",
+      "9": "CAM1_D9_SD",
+      "10": "CAM1_D10_SD"
+    },
+    "pins": {
+      "1": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "2": {
+        "name": "CAM1_3V3",
+        "type": "passive"
+      },
+      "3": {
+        "name": "CAM1_D0",
+        "type": "passive"
+      },
+      "4": {
+        "name": "CAM1_D2_STRAP",
+        "type": "passive"
+      },
+      "5": {
+        "name": "CAM1_D3",
+        "type": "passive"
+      },
+      "6": {
+        "name": "CAM1_D4",
+        "type": "passive"
+      },
+      "7": {
+        "name": "CAM1_D5",
+        "type": "passive"
+      },
+      "8": {
+        "name": "CAM1_D8_SD",
+        "type": "passive"
+      },
+      "9": {
+        "name": "CAM1_D9_SD",
+        "type": "passive"
+      },
+      "10": {
+        "name": "CAM1_D10_SD",
+        "type": "passive"
+      }
+    },
+    "footprint": "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical",
+    "mpn": "Wurth Elektronik 61301021121",
+    "source": "https://www.we-online.com/components/products/datasheet/61301021121.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "JP200",
+    "value": "0R LINK - REMOVE FOR NODE USB",
+    "nets": {
+      "1": "CAM1_5V_ISO",
+      "2": "CAM1_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP",
+    "mpn": "Vishay CRCW12060000Z0EAHP",
+    "source": "https://www.vishay.com/docs/20043/crcwhpe3.pdf",
+    "note": "0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "U200",
+    "value": "TXU0304PWR",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "P4_TX1",
+      "3": "SYNC_MASTER",
+      "4": "GND",
+      "5": "CAM1_RX_RETURN",
+      "6": null,
+      "7": "GND",
+      "8": "P4_BUS_EN",
+      "9": null,
+      "10": "CAM1_TX",
+      "11": null,
+      "12": "CAM1_SYNC_BUF",
+      "13": "CAM1_RX_BUF",
+      "14": "CAM1_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "VCCA",
+        "type": "power_in"
+      },
+      "2": {
+        "name": "A1",
+        "type": "input"
+      },
+      "3": {
+        "name": "A2",
+        "type": "input"
+      },
+      "4": {
+        "name": "A3",
+        "type": "input"
+      },
+      "5": {
+        "name": "A4Y",
+        "type": "output"
+      },
+      "6": {
+        "name": "NC",
+        "type": "no_connect"
+      },
+      "7": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "8": {
+        "name": "OE",
+        "type": "input"
+      },
+      "9": {
+        "name": "NC",
+        "type": "no_connect"
+      },
+      "10": {
+        "name": "B4",
+        "type": "input"
+      },
+      "11": {
+        "name": "B3Y",
+        "type": "output"
+      },
+      "12": {
+        "name": "B2Y",
+        "type": "output"
+      },
+      "13": {
+        "name": "B1Y",
+        "type": "output"
+      },
+      "14": {
+        "name": "VCCB",
+        "type": "power_in"
+      }
+    },
+    "footprint": "Package_SO:TSSOP-14_4.4x5mm_P0.65mm",
+    "mpn": "TXU0304PWR",
+    "source": "https://www.ti.com/lit/ds/symlink/txu0304.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "R200",
+    "value": "33",
+    "nets": {
+      "1": "CAM1_RX_BUF",
+      "2": "CAM1_RX"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0733RL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "R201",
+    "value": "33",
+    "nets": {
+      "1": "CAM1_SYNC_BUF",
+      "2": "CAM1_SYNC"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0733RL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "R202",
+    "value": "33",
+    "nets": {
+      "1": "CAM1_RX_RETURN",
+      "2": "P4_RX1"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0733RL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "C200",
+    "value": "100n 50V",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "C201",
+    "value": "100n 50V",
+    "nets": {
+      "1": "CAM1_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "U201",
+    "value": "TPS2553DBVR",
+    "nets": {
+      "1": "CAM1_SHUNT_OUT",
+      "2": "GND",
+      "3": "CAM1_EN",
+      "4": "CAM1_FAULT_N",
+      "5": "CAM1_ILIM",
+      "6": "CAM1_SW5V"
+    },
+    "pins": {
+      "1": {
+        "name": "IN",
+        "type": "power_in"
+      },
+      "2": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "3": {
+        "name": "EN",
+        "type": "input"
+      },
+      "4": {
+        "name": "FAULT_N",
+        "type": "open_collector"
+      },
+      "5": {
+        "name": "ILIM",
+        "type": "passive"
+      },
+      "6": {
+        "name": "OUT",
+        "type": "power_out"
+      }
+    },
+    "footprint": "Package_TO_SOT_SMD:SOT-23-6",
+    "mpn": "TPS2553DBVR",
+    "source": "https://www.ti.com/lit/ds/symlink/tps2553.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "R203",
+    "value": "25.5k 1%",
+    "nets": {
+      "1": "CAM1_ILIM",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0725K5L",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0725K5L",
+    "note": "Approx. 1A target; verify min/max and startup before release.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "R204",
+    "value": "10k",
+    "nets": {
+      "1": "CAM1_FAULT_N",
+      "2": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0710KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "R205",
+    "value": "100k",
+    "nets": {
+      "1": "CAM1_EN",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "RS200",
+    "value": "0.020 1% 1W",
+    "nets": {
+      "1": "SYS_5V",
+      "2": "CAM1_SHUNT_OUT"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_1206_3216Metric",
+    "mpn": "Vishay Dale WSLP1206R0200FEA",
+    "source": "https://www.vishay.com/docs/30122/wslp.pdf",
+    "note": "Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py).",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "D200",
+    "value": "SS34",
+    "nets": {
+      "1": "CAM1_5V_ISO",
+      "2": "CAM1_SW5V"
+    },
+    "pins": {
+      "1": {
+        "name": "K",
+        "type": "passive"
+      },
+      "2": {
+        "name": "A",
+        "type": "passive"
+      }
+    },
+    "footprint": "Diode_SMD:D_SMA",
+    "mpn": "Diodes Incorporated B340A-13-F",
+    "source": "https://www.diodes.com/datasheet/download/B340A.pdf",
+    "note": "Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "C202",
+    "value": "1u 50V",
+    "nets": {
+      "1": "CAM1_SHUNT_OUT",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10A105KB8NNNC",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "C203",
+    "value": "22u 10V",
+    "nets": {
+      "1": "CAM1_5V",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0805_2012Metric",
+    "mpn": "Samsung Electro-Mechanics CL21A226MAQNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "C204",
+    "value": "100n 50V",
+    "nets": {
+      "1": "CAM1_5V",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "TP200",
+    "value": "CAM1_5V",
+    "nets": {
+      "1": "CAM1_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM1_5V",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "02_camera1",
+    "ref": "TP201",
+    "value": "CAM1_SYNC",
+    "nets": {
+      "1": "CAM1_SYNC"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM1_SYNC",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "J300",
+    "value": "XIAO ESP32-S3 Sense socket",
+    "nets": {
+      "1": "CAM2_D0",
+      "2": "CAM2_SYNC",
+      "3": "CAM2_D2_STRAP",
+      "4": "CAM2_D3",
+      "5": "CAM2_D4",
+      "6": "CAM2_D5",
+      "7": "CAM2_TX",
+      "8": "CAM2_RX",
+      "9": "CAM2_D8_SD",
+      "10": "CAM2_D9_SD",
+      "11": "CAM2_D10_SD",
+      "12": "CAM2_3V3",
+      "13": "GND",
+      "14": "CAM2_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM2_D0",
+        "type": "passive"
+      },
+      "2": {
+        "name": "CAM2_SYNC",
+        "type": "passive"
+      },
+      "3": {
+        "name": "CAM2_D2_STRAP",
+        "type": "passive"
+      },
+      "4": {
+        "name": "CAM2_D3",
+        "type": "passive"
+      },
+      "5": {
+        "name": "CAM2_D4",
+        "type": "passive"
+      },
+      "6": {
+        "name": "CAM2_D5",
+        "type": "passive"
+      },
+      "7": {
+        "name": "CAM2_TX",
+        "type": "passive"
+      },
+      "8": {
+        "name": "CAM2_RX",
+        "type": "passive"
+      },
+      "9": {
+        "name": "CAM2_D8_SD",
+        "type": "passive"
+      },
+      "10": {
+        "name": "CAM2_D9_SD",
+        "type": "passive"
+      },
+      "11": {
+        "name": "CAM2_D10_SD",
+        "type": "passive"
+      },
+      "12": {
+        "name": "CAM2_3V3",
+        "type": "passive"
+      },
+      "13": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "14": {
+        "name": "CAM2_5V",
+        "type": "passive"
+      }
+    },
+    "footprint": "KINO_A0:XIAO_Socket_15.24mm",
+    "mpn": "2 x Wurth Elektronik 61300711821",
+    "source": "https://www.we-online.com/components/products/datasheet/61300711821.pdf",
+    "note": "Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.",
+    "dnp": false,
+    "at": [
+      47.505,
+      34.705
+    ]
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "J301",
+    "value": "GPIO breakout - SD/strap restrictions",
+    "nets": {
+      "1": "GND",
+      "2": "CAM2_3V3",
+      "3": "CAM2_D0",
+      "4": "CAM2_D2_STRAP",
+      "5": "CAM2_D3",
+      "6": "CAM2_D4",
+      "7": "CAM2_D5",
+      "8": "CAM2_D8_SD",
+      "9": "CAM2_D9_SD",
+      "10": "CAM2_D10_SD"
+    },
+    "pins": {
+      "1": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "2": {
+        "name": "CAM2_3V3",
+        "type": "passive"
+      },
+      "3": {
+        "name": "CAM2_D0",
+        "type": "passive"
+      },
+      "4": {
+        "name": "CAM2_D2_STRAP",
+        "type": "passive"
+      },
+      "5": {
+        "name": "CAM2_D3",
+        "type": "passive"
+      },
+      "6": {
+        "name": "CAM2_D4",
+        "type": "passive"
+      },
+      "7": {
+        "name": "CAM2_D5",
+        "type": "passive"
+      },
+      "8": {
+        "name": "CAM2_D8_SD",
+        "type": "passive"
+      },
+      "9": {
+        "name": "CAM2_D9_SD",
+        "type": "passive"
+      },
+      "10": {
+        "name": "CAM2_D10_SD",
+        "type": "passive"
+      }
+    },
+    "footprint": "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical",
+    "mpn": "Wurth Elektronik 61301021121",
+    "source": "https://www.we-online.com/components/products/datasheet/61301021121.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "JP300",
+    "value": "0R LINK - REMOVE FOR NODE USB",
+    "nets": {
+      "1": "CAM2_5V_ISO",
+      "2": "CAM2_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP",
+    "mpn": "Vishay CRCW12060000Z0EAHP",
+    "source": "https://www.vishay.com/docs/20043/crcwhpe3.pdf",
+    "note": "0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "U300",
+    "value": "TXU0304PWR",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "P4_TX2",
+      "3": "SYNC_MASTER",
+      "4": "GND",
+      "5": "CAM2_RX_RETURN",
+      "6": null,
+      "7": "GND",
+      "8": "P4_BUS_EN",
+      "9": null,
+      "10": "CAM2_TX",
+      "11": null,
+      "12": "CAM2_SYNC_BUF",
+      "13": "CAM2_RX_BUF",
+      "14": "CAM2_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "VCCA",
+        "type": "power_in"
+      },
+      "2": {
+        "name": "A1",
+        "type": "input"
+      },
+      "3": {
+        "name": "A2",
+        "type": "input"
+      },
+      "4": {
+        "name": "A3",
+        "type": "input"
+      },
+      "5": {
+        "name": "A4Y",
+        "type": "output"
+      },
+      "6": {
+        "name": "NC",
+        "type": "no_connect"
+      },
+      "7": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "8": {
+        "name": "OE",
+        "type": "input"
+      },
+      "9": {
+        "name": "NC",
+        "type": "no_connect"
+      },
+      "10": {
+        "name": "B4",
+        "type": "input"
+      },
+      "11": {
+        "name": "B3Y",
+        "type": "output"
+      },
+      "12": {
+        "name": "B2Y",
+        "type": "output"
+      },
+      "13": {
+        "name": "B1Y",
+        "type": "output"
+      },
+      "14": {
+        "name": "VCCB",
+        "type": "power_in"
+      }
+    },
+    "footprint": "Package_SO:TSSOP-14_4.4x5mm_P0.65mm",
+    "mpn": "TXU0304PWR",
+    "source": "https://www.ti.com/lit/ds/symlink/txu0304.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "R300",
+    "value": "33",
+    "nets": {
+      "1": "CAM2_RX_BUF",
+      "2": "CAM2_RX"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0733RL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "R301",
+    "value": "33",
+    "nets": {
+      "1": "CAM2_SYNC_BUF",
+      "2": "CAM2_SYNC"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0733RL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "R302",
+    "value": "33",
+    "nets": {
+      "1": "CAM2_RX_RETURN",
+      "2": "P4_RX2"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0733RL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "C300",
+    "value": "100n 50V",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "C301",
+    "value": "100n 50V",
+    "nets": {
+      "1": "CAM2_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "U301",
+    "value": "TPS2553DBVR",
+    "nets": {
+      "1": "CAM2_SHUNT_OUT",
+      "2": "GND",
+      "3": "CAM2_EN",
+      "4": "CAM2_FAULT_N",
+      "5": "CAM2_ILIM",
+      "6": "CAM2_SW5V"
+    },
+    "pins": {
+      "1": {
+        "name": "IN",
+        "type": "power_in"
+      },
+      "2": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "3": {
+        "name": "EN",
+        "type": "input"
+      },
+      "4": {
+        "name": "FAULT_N",
+        "type": "open_collector"
+      },
+      "5": {
+        "name": "ILIM",
+        "type": "passive"
+      },
+      "6": {
+        "name": "OUT",
+        "type": "power_out"
+      }
+    },
+    "footprint": "Package_TO_SOT_SMD:SOT-23-6",
+    "mpn": "TPS2553DBVR",
+    "source": "https://www.ti.com/lit/ds/symlink/tps2553.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "R303",
+    "value": "25.5k 1%",
+    "nets": {
+      "1": "CAM2_ILIM",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0725K5L",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0725K5L",
+    "note": "Approx. 1A target; verify min/max and startup before release.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "R304",
+    "value": "10k",
+    "nets": {
+      "1": "CAM2_FAULT_N",
+      "2": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0710KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "R305",
+    "value": "100k",
+    "nets": {
+      "1": "CAM2_EN",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "RS300",
+    "value": "0.020 1% 1W",
+    "nets": {
+      "1": "SYS_5V",
+      "2": "CAM2_SHUNT_OUT"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_1206_3216Metric",
+    "mpn": "Vishay Dale WSLP1206R0200FEA",
+    "source": "https://www.vishay.com/docs/30122/wslp.pdf",
+    "note": "Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py).",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "D300",
+    "value": "SS34",
+    "nets": {
+      "1": "CAM2_5V_ISO",
+      "2": "CAM2_SW5V"
+    },
+    "pins": {
+      "1": {
+        "name": "K",
+        "type": "passive"
+      },
+      "2": {
+        "name": "A",
+        "type": "passive"
+      }
+    },
+    "footprint": "Diode_SMD:D_SMA",
+    "mpn": "Diodes Incorporated B340A-13-F",
+    "source": "https://www.diodes.com/datasheet/download/B340A.pdf",
+    "note": "Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "C302",
+    "value": "1u 50V",
+    "nets": {
+      "1": "CAM2_SHUNT_OUT",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10A105KB8NNNC",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "C303",
+    "value": "22u 10V",
+    "nets": {
+      "1": "CAM2_5V",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0805_2012Metric",
+    "mpn": "Samsung Electro-Mechanics CL21A226MAQNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "C304",
+    "value": "100n 50V",
+    "nets": {
+      "1": "CAM2_5V",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "TP300",
+    "value": "CAM2_5V",
+    "nets": {
+      "1": "CAM2_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM2_5V",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "03_camera2",
+    "ref": "TP301",
+    "value": "CAM2_SYNC",
+    "nets": {
+      "1": "CAM2_SYNC"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM2_SYNC",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "J400",
+    "value": "XIAO ESP32-S3 Sense socket",
+    "nets": {
+      "1": "CAM3_D0",
+      "2": "CAM3_SYNC",
+      "3": "CAM3_D2_STRAP",
+      "4": "CAM3_D3",
+      "5": "CAM3_D4",
+      "6": "CAM3_D5",
+      "7": "CAM3_TX",
+      "8": "CAM3_RX",
+      "9": "CAM3_D8_SD",
+      "10": "CAM3_D9_SD",
+      "11": "CAM3_D10_SD",
+      "12": "CAM3_3V3",
+      "13": "GND",
+      "14": "CAM3_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM3_D0",
+        "type": "passive"
+      },
+      "2": {
+        "name": "CAM3_SYNC",
+        "type": "passive"
+      },
+      "3": {
+        "name": "CAM3_D2_STRAP",
+        "type": "passive"
+      },
+      "4": {
+        "name": "CAM3_D3",
+        "type": "passive"
+      },
+      "5": {
+        "name": "CAM3_D4",
+        "type": "passive"
+      },
+      "6": {
+        "name": "CAM3_D5",
+        "type": "passive"
+      },
+      "7": {
+        "name": "CAM3_TX",
+        "type": "passive"
+      },
+      "8": {
+        "name": "CAM3_RX",
+        "type": "passive"
+      },
+      "9": {
+        "name": "CAM3_D8_SD",
+        "type": "passive"
+      },
+      "10": {
+        "name": "CAM3_D9_SD",
+        "type": "passive"
+      },
+      "11": {
+        "name": "CAM3_D10_SD",
+        "type": "passive"
+      },
+      "12": {
+        "name": "CAM3_3V3",
+        "type": "passive"
+      },
+      "13": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "14": {
+        "name": "CAM3_5V",
+        "type": "passive"
+      }
+    },
+    "footprint": "KINO_A0:XIAO_Socket_15.24mm",
+    "mpn": "2 x Wurth Elektronik 61300711821",
+    "source": "https://www.we-online.com/components/products/datasheet/61300711821.pdf",
+    "note": "Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.",
+    "dnp": false,
+    "at": [
+      69.505,
+      34.705
+    ]
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "J401",
+    "value": "GPIO breakout - SD/strap restrictions",
+    "nets": {
+      "1": "GND",
+      "2": "CAM3_3V3",
+      "3": "CAM3_D0",
+      "4": "CAM3_D2_STRAP",
+      "5": "CAM3_D3",
+      "6": "CAM3_D4",
+      "7": "CAM3_D5",
+      "8": "CAM3_D8_SD",
+      "9": "CAM3_D9_SD",
+      "10": "CAM3_D10_SD"
+    },
+    "pins": {
+      "1": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "2": {
+        "name": "CAM3_3V3",
+        "type": "passive"
+      },
+      "3": {
+        "name": "CAM3_D0",
+        "type": "passive"
+      },
+      "4": {
+        "name": "CAM3_D2_STRAP",
+        "type": "passive"
+      },
+      "5": {
+        "name": "CAM3_D3",
+        "type": "passive"
+      },
+      "6": {
+        "name": "CAM3_D4",
+        "type": "passive"
+      },
+      "7": {
+        "name": "CAM3_D5",
+        "type": "passive"
+      },
+      "8": {
+        "name": "CAM3_D8_SD",
+        "type": "passive"
+      },
+      "9": {
+        "name": "CAM3_D9_SD",
+        "type": "passive"
+      },
+      "10": {
+        "name": "CAM3_D10_SD",
+        "type": "passive"
+      }
+    },
+    "footprint": "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical",
+    "mpn": "Wurth Elektronik 61301021121",
+    "source": "https://www.we-online.com/components/products/datasheet/61301021121.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "JP400",
+    "value": "0R LINK - REMOVE FOR NODE USB",
+    "nets": {
+      "1": "CAM3_5V_ISO",
+      "2": "CAM3_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP",
+    "mpn": "Vishay CRCW12060000Z0EAHP",
+    "source": "https://www.vishay.com/docs/20043/crcwhpe3.pdf",
+    "note": "0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "U400",
+    "value": "TXU0304PWR",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "P4_TX3",
+      "3": "SYNC_MASTER",
+      "4": "GND",
+      "5": "CAM3_RX_RETURN",
+      "6": null,
+      "7": "GND",
+      "8": "P4_BUS_EN",
+      "9": null,
+      "10": "CAM3_TX",
+      "11": null,
+      "12": "CAM3_SYNC_BUF",
+      "13": "CAM3_RX_BUF",
+      "14": "CAM3_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "VCCA",
+        "type": "power_in"
+      },
+      "2": {
+        "name": "A1",
+        "type": "input"
+      },
+      "3": {
+        "name": "A2",
+        "type": "input"
+      },
+      "4": {
+        "name": "A3",
+        "type": "input"
+      },
+      "5": {
+        "name": "A4Y",
+        "type": "output"
+      },
+      "6": {
+        "name": "NC",
+        "type": "no_connect"
+      },
+      "7": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "8": {
+        "name": "OE",
+        "type": "input"
+      },
+      "9": {
+        "name": "NC",
+        "type": "no_connect"
+      },
+      "10": {
+        "name": "B4",
+        "type": "input"
+      },
+      "11": {
+        "name": "B3Y",
+        "type": "output"
+      },
+      "12": {
+        "name": "B2Y",
+        "type": "output"
+      },
+      "13": {
+        "name": "B1Y",
+        "type": "output"
+      },
+      "14": {
+        "name": "VCCB",
+        "type": "power_in"
+      }
+    },
+    "footprint": "Package_SO:TSSOP-14_4.4x5mm_P0.65mm",
+    "mpn": "TXU0304PWR",
+    "source": "https://www.ti.com/lit/ds/symlink/txu0304.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "R400",
+    "value": "33",
+    "nets": {
+      "1": "CAM3_RX_BUF",
+      "2": "CAM3_RX"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0733RL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "R401",
+    "value": "33",
+    "nets": {
+      "1": "CAM3_SYNC_BUF",
+      "2": "CAM3_SYNC"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0733RL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "R402",
+    "value": "33",
+    "nets": {
+      "1": "CAM3_RX_RETURN",
+      "2": "P4_RX3"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0733RL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "C400",
+    "value": "100n 50V",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "C401",
+    "value": "100n 50V",
+    "nets": {
+      "1": "CAM3_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "U401",
+    "value": "TPS2553DBVR",
+    "nets": {
+      "1": "CAM3_SHUNT_OUT",
+      "2": "GND",
+      "3": "CAM3_EN",
+      "4": "CAM3_FAULT_N",
+      "5": "CAM3_ILIM",
+      "6": "CAM3_SW5V"
+    },
+    "pins": {
+      "1": {
+        "name": "IN",
+        "type": "power_in"
+      },
+      "2": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "3": {
+        "name": "EN",
+        "type": "input"
+      },
+      "4": {
+        "name": "FAULT_N",
+        "type": "open_collector"
+      },
+      "5": {
+        "name": "ILIM",
+        "type": "passive"
+      },
+      "6": {
+        "name": "OUT",
+        "type": "power_out"
+      }
+    },
+    "footprint": "Package_TO_SOT_SMD:SOT-23-6",
+    "mpn": "TPS2553DBVR",
+    "source": "https://www.ti.com/lit/ds/symlink/tps2553.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "R403",
+    "value": "25.5k 1%",
+    "nets": {
+      "1": "CAM3_ILIM",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0725K5L",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0725K5L",
+    "note": "Approx. 1A target; verify min/max and startup before release.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "R404",
+    "value": "10k",
+    "nets": {
+      "1": "CAM3_FAULT_N",
+      "2": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0710KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "R405",
+    "value": "100k",
+    "nets": {
+      "1": "CAM3_EN",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "RS400",
+    "value": "0.020 1% 1W",
+    "nets": {
+      "1": "SYS_5V",
+      "2": "CAM3_SHUNT_OUT"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_1206_3216Metric",
+    "mpn": "Vishay Dale WSLP1206R0200FEA",
+    "source": "https://www.vishay.com/docs/30122/wslp.pdf",
+    "note": "Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py).",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "D400",
+    "value": "SS34",
+    "nets": {
+      "1": "CAM3_5V_ISO",
+      "2": "CAM3_SW5V"
+    },
+    "pins": {
+      "1": {
+        "name": "K",
+        "type": "passive"
+      },
+      "2": {
+        "name": "A",
+        "type": "passive"
+      }
+    },
+    "footprint": "Diode_SMD:D_SMA",
+    "mpn": "Diodes Incorporated B340A-13-F",
+    "source": "https://www.diodes.com/datasheet/download/B340A.pdf",
+    "note": "Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "C402",
+    "value": "1u 50V",
+    "nets": {
+      "1": "CAM3_SHUNT_OUT",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10A105KB8NNNC",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "C403",
+    "value": "22u 10V",
+    "nets": {
+      "1": "CAM3_5V",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0805_2012Metric",
+    "mpn": "Samsung Electro-Mechanics CL21A226MAQNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "C404",
+    "value": "100n 50V",
+    "nets": {
+      "1": "CAM3_5V",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "TP400",
+    "value": "CAM3_5V",
+    "nets": {
+      "1": "CAM3_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM3_5V",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "04_camera3",
+    "ref": "TP401",
+    "value": "CAM3_SYNC",
+    "nets": {
+      "1": "CAM3_SYNC"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM3_SYNC",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "J500",
+    "value": "XIAO ESP32-S3 Sense socket",
+    "nets": {
+      "1": "CAM4_D0",
+      "2": "CAM4_SYNC",
+      "3": "CAM4_D2_STRAP",
+      "4": "CAM4_D3",
+      "5": "CAM4_D4",
+      "6": "CAM4_D5",
+      "7": "CAM4_TX",
+      "8": "CAM4_RX",
+      "9": "CAM4_D8_SD",
+      "10": "CAM4_D9_SD",
+      "11": "CAM4_D10_SD",
+      "12": "CAM4_3V3",
+      "13": "GND",
+      "14": "CAM4_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM4_D0",
+        "type": "passive"
+      },
+      "2": {
+        "name": "CAM4_SYNC",
+        "type": "passive"
+      },
+      "3": {
+        "name": "CAM4_D2_STRAP",
+        "type": "passive"
+      },
+      "4": {
+        "name": "CAM4_D3",
+        "type": "passive"
+      },
+      "5": {
+        "name": "CAM4_D4",
+        "type": "passive"
+      },
+      "6": {
+        "name": "CAM4_D5",
+        "type": "passive"
+      },
+      "7": {
+        "name": "CAM4_TX",
+        "type": "passive"
+      },
+      "8": {
+        "name": "CAM4_RX",
+        "type": "passive"
+      },
+      "9": {
+        "name": "CAM4_D8_SD",
+        "type": "passive"
+      },
+      "10": {
+        "name": "CAM4_D9_SD",
+        "type": "passive"
+      },
+      "11": {
+        "name": "CAM4_D10_SD",
+        "type": "passive"
+      },
+      "12": {
+        "name": "CAM4_3V3",
+        "type": "passive"
+      },
+      "13": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "14": {
+        "name": "CAM4_5V",
+        "type": "passive"
+      }
+    },
+    "footprint": "KINO_A0:XIAO_Socket_15.24mm",
+    "mpn": "2 x Wurth Elektronik 61300711821",
+    "source": "https://www.we-online.com/components/products/datasheet/61300711821.pdf",
+    "note": "Two 1x07 sockets; 22 mm camera pitch. 5V shared with node USB; isolate via the 0 ohm link for USB service.",
+    "dnp": false,
+    "at": [
+      91.505,
+      34.705
+    ]
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "J501",
+    "value": "GPIO breakout - SD/strap restrictions",
+    "nets": {
+      "1": "GND",
+      "2": "CAM4_3V3",
+      "3": "CAM4_D0",
+      "4": "CAM4_D2_STRAP",
+      "5": "CAM4_D3",
+      "6": "CAM4_D4",
+      "7": "CAM4_D5",
+      "8": "CAM4_D8_SD",
+      "9": "CAM4_D9_SD",
+      "10": "CAM4_D10_SD"
+    },
+    "pins": {
+      "1": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "2": {
+        "name": "CAM4_3V3",
+        "type": "passive"
+      },
+      "3": {
+        "name": "CAM4_D0",
+        "type": "passive"
+      },
+      "4": {
+        "name": "CAM4_D2_STRAP",
+        "type": "passive"
+      },
+      "5": {
+        "name": "CAM4_D3",
+        "type": "passive"
+      },
+      "6": {
+        "name": "CAM4_D4",
+        "type": "passive"
+      },
+      "7": {
+        "name": "CAM4_D5",
+        "type": "passive"
+      },
+      "8": {
+        "name": "CAM4_D8_SD",
+        "type": "passive"
+      },
+      "9": {
+        "name": "CAM4_D9_SD",
+        "type": "passive"
+      },
+      "10": {
+        "name": "CAM4_D10_SD",
+        "type": "passive"
+      }
+    },
+    "footprint": "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical",
+    "mpn": "Wurth Elektronik 61301021121",
+    "source": "https://www.we-online.com/components/products/datasheet/61301021121.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "JP500",
+    "value": "0R LINK - REMOVE FOR NODE USB",
+    "nets": {
+      "1": "CAM4_5V_ISO",
+      "2": "CAM4_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP",
+    "mpn": "Vishay CRCW12060000Z0EAHP",
+    "source": "https://www.vishay.com/docs/20043/crcwhpe3.pdf",
+    "note": "0 ohm link, fitted for camera operation. Desolder before connecting node USB; refit after. Flat on the front: the XIAO stays the tallest part there.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "U500",
+    "value": "TXU0304PWR",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "P4_TX4",
+      "3": "SYNC_MASTER",
+      "4": "GND",
+      "5": "CAM4_RX_RETURN",
+      "6": null,
+      "7": "GND",
+      "8": "P4_BUS_EN",
+      "9": null,
+      "10": "CAM4_TX",
+      "11": null,
+      "12": "CAM4_SYNC_BUF",
+      "13": "CAM4_RX_BUF",
+      "14": "CAM4_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "VCCA",
+        "type": "power_in"
+      },
+      "2": {
+        "name": "A1",
+        "type": "input"
+      },
+      "3": {
+        "name": "A2",
+        "type": "input"
+      },
+      "4": {
+        "name": "A3",
+        "type": "input"
+      },
+      "5": {
+        "name": "A4Y",
+        "type": "output"
+      },
+      "6": {
+        "name": "NC",
+        "type": "no_connect"
+      },
+      "7": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "8": {
+        "name": "OE",
+        "type": "input"
+      },
+      "9": {
+        "name": "NC",
+        "type": "no_connect"
+      },
+      "10": {
+        "name": "B4",
+        "type": "input"
+      },
+      "11": {
+        "name": "B3Y",
+        "type": "output"
+      },
+      "12": {
+        "name": "B2Y",
+        "type": "output"
+      },
+      "13": {
+        "name": "B1Y",
+        "type": "output"
+      },
+      "14": {
+        "name": "VCCB",
+        "type": "power_in"
+      }
+    },
+    "footprint": "Package_SO:TSSOP-14_4.4x5mm_P0.65mm",
+    "mpn": "TXU0304PWR",
+    "source": "https://www.ti.com/lit/ds/symlink/txu0304.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "R500",
+    "value": "33",
+    "nets": {
+      "1": "CAM4_RX_BUF",
+      "2": "CAM4_RX"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0733RL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "R501",
+    "value": "33",
+    "nets": {
+      "1": "CAM4_SYNC_BUF",
+      "2": "CAM4_SYNC"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0733RL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "R502",
+    "value": "33",
+    "nets": {
+      "1": "CAM4_RX_RETURN",
+      "2": "P4_RX4"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0733RL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "C500",
+    "value": "100n 50V",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "C501",
+    "value": "100n 50V",
+    "nets": {
+      "1": "CAM4_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "U501",
+    "value": "TPS2553DBVR",
+    "nets": {
+      "1": "CAM4_SHUNT_OUT",
+      "2": "GND",
+      "3": "CAM4_EN",
+      "4": "CAM4_FAULT_N",
+      "5": "CAM4_ILIM",
+      "6": "CAM4_SW5V"
+    },
+    "pins": {
+      "1": {
+        "name": "IN",
+        "type": "power_in"
+      },
+      "2": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "3": {
+        "name": "EN",
+        "type": "input"
+      },
+      "4": {
+        "name": "FAULT_N",
+        "type": "open_collector"
+      },
+      "5": {
+        "name": "ILIM",
+        "type": "passive"
+      },
+      "6": {
+        "name": "OUT",
+        "type": "power_out"
+      }
+    },
+    "footprint": "Package_TO_SOT_SMD:SOT-23-6",
+    "mpn": "TPS2553DBVR",
+    "source": "https://www.ti.com/lit/ds/symlink/tps2553.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "R503",
+    "value": "25.5k 1%",
+    "nets": {
+      "1": "CAM4_ILIM",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0725K5L",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0725K5L",
+    "note": "Approx. 1A target; verify min/max and startup before release.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "R504",
+    "value": "10k",
+    "nets": {
+      "1": "CAM4_FAULT_N",
+      "2": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0710KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "R505",
+    "value": "100k",
+    "nets": {
+      "1": "CAM4_EN",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "RS500",
+    "value": "0.020 1% 1W",
+    "nets": {
+      "1": "SYS_5V",
+      "2": "CAM4_SHUNT_OUT"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_1206_3216Metric",
+    "mpn": "Vishay Dale WSLP1206R0200FEA",
+    "source": "https://www.vishay.com/docs/30122/wslp.pdf",
+    "note": "Kelvin pair to U700 from the pad inner corners (route_a02_kelvin.py).",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "D500",
+    "value": "SS34",
+    "nets": {
+      "1": "CAM4_5V_ISO",
+      "2": "CAM4_SW5V"
+    },
+    "pins": {
+      "1": {
+        "name": "K",
+        "type": "passive"
+      },
+      "2": {
+        "name": "A",
+        "type": "passive"
+      }
+    },
+    "footprint": "Diode_SMD:D_SMA",
+    "mpn": "Diodes Incorporated B340A-13-F",
+    "source": "https://www.diodes.com/datasheet/download/B340A.pdf",
+    "note": "Reverse node USB-to-carrier isolation; does not prevent carrier-to-host VBUS feed without removing the link.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "C502",
+    "value": "1u 50V",
+    "nets": {
+      "1": "CAM4_SHUNT_OUT",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10A105KB8NNNC",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "C503",
+    "value": "22u 10V",
+    "nets": {
+      "1": "CAM4_5V",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0805_2012Metric",
+    "mpn": "Samsung Electro-Mechanics CL21A226MAQNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "C504",
+    "value": "100n 50V",
+    "nets": {
+      "1": "CAM4_5V",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "TP500",
+    "value": "CAM4_5V",
+    "nets": {
+      "1": "CAM4_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM4_5V",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "05_camera4",
+    "ref": "TP501",
+    "value": "CAM4_SYNC",
+    "nets": {
+      "1": "CAM4_SYNC"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM4_SYNC",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "06_control",
+    "ref": "U600",
+    "value": "TCA9539PWR",
+    "nets": {
+      "1": null,
+      "2": "GND",
+      "3": "EXP_RESET_N",
+      "4": "CAM1_REQ",
+      "5": "CAM2_REQ",
+      "6": "CAM3_REQ",
+      "7": "CAM4_REQ",
+      "8": "CAM1_FAULT_N",
+      "9": "CAM2_FAULT_N",
+      "10": "CAM3_FAULT_N",
+      "11": "CAM4_FAULT_N",
+      "12": "GND",
+      "13": "IMU_INT",
+      "14": "RTC_INT_N",
+      "15": "SOFT_KILL",
+      "16": null,
+      "17": "POWER_INT_N",
+      "18": "FN_N",
+      "19": "HAPTIC_EN",
+      "20": "COVER_N",
+      "21": "GND",
+      "22": "I2C_SCL",
+      "23": "I2C_SDA",
+      "24": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "~{INT}",
+        "type": "open_collector"
+      },
+      "2": {
+        "name": "A1",
+        "type": "input"
+      },
+      "3": {
+        "name": "~{RESET}",
+        "type": "input"
+      },
+      "4": {
+        "name": "IO0_0",
+        "type": "bidirectional"
+      },
+      "5": {
+        "name": "IO0_1",
+        "type": "bidirectional"
+      },
+      "6": {
+        "name": "IO0_2",
+        "type": "bidirectional"
+      },
+      "7": {
+        "name": "IO0_3",
+        "type": "bidirectional"
+      },
+      "8": {
+        "name": "IO0_4",
+        "type": "bidirectional"
+      },
+      "9": {
+        "name": "IO0_5",
+        "type": "bidirectional"
+      },
+      "10": {
+        "name": "IO0_6",
+        "type": "bidirectional"
+      },
+      "11": {
+        "name": "IO0_7",
+        "type": "bidirectional"
+      },
+      "12": {
+        "name": "V_{SS}",
+        "type": "power_in"
+      },
+      "13": {
+        "name": "IO1_0",
+        "type": "bidirectional"
+      },
+      "14": {
+        "name": "IO1_1",
+        "type": "bidirectional"
+      },
+      "15": {
+        "name": "IO1_2",
+        "type": "bidirectional"
+      },
+      "16": {
+        "name": "IO1_3",
+        "type": "bidirectional"
+      },
+      "17": {
+        "name": "IO1_4",
+        "type": "bidirectional"
+      },
+      "18": {
+        "name": "IO1_5",
+        "type": "bidirectional"
+      },
+      "19": {
+        "name": "IO1_6",
+        "type": "bidirectional"
+      },
+      "20": {
+        "name": "IO1_7",
+        "type": "bidirectional"
+      },
+      "21": {
+        "name": "A0",
+        "type": "input"
+      },
+      "22": {
+        "name": "SCL",
+        "type": "input"
+      },
+      "23": {
+        "name": "SDA",
+        "type": "bidirectional"
+      },
+      "24": {
+        "name": "V_{DD}",
+        "type": "power_in"
+      }
+    },
+    "footprint": "Package_SO:TSSOP-24_4.4x7.8mm_P0.65mm",
+    "mpn": "TCA9539PWR",
+    "source": "https://www.ti.com/lit/ds/symlink/tca9539.pdf",
+    "note": "TCA9539 PW pin map verified against TI; address 0x74 candidate. Port 1 (pins 13-20, P1.0-P1.7): IMU_INT, RTC_INT_N, SOFT_KILL, unused, POWER_INT_N, FN_N, HAPTIC_EN, COVER_N; P1.3 (pin 16) is not connected (no layout path from the charger on the far side of the board): firmware reads the charge state from the BQ25798 status registers over I2C; configure P1.3 as an input. Order set by the layout: the lines leaving south take pins 13-17 in the order they reach their parts.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "06_control",
+    "ref": "R600",
+    "value": "10k",
+    "nets": {
+      "1": "EXP_RESET_N",
+      "2": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0710KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "06_control",
+    "ref": "C600",
+    "value": "100n",
+    "nets": {
+      "1": "EXP_RESET_N",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "06_control",
+    "ref": "C601",
+    "value": "100n 50V",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "06_control",
+    "ref": "U601",
+    "value": "SN74LVC08APWR",
+    "nets": {
+      "1": "CAM_GLOBAL_EN",
+      "2": "CAM1_REQ",
+      "3": "CAM1_EN",
+      "4": "CAM_GLOBAL_EN",
+      "5": "CAM2_REQ",
+      "6": "CAM2_EN",
+      "7": "GND",
+      "8": "CAM3_EN",
+      "9": "CAM_GLOBAL_EN",
+      "10": "CAM3_REQ",
+      "11": "CAM4_EN",
+      "12": "CAM_GLOBAL_EN",
+      "13": "CAM4_REQ",
+      "14": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "PIN1",
+        "type": "input"
+      },
+      "2": {
+        "name": "PIN2",
+        "type": "input"
+      },
+      "3": {
+        "name": "PIN3",
+        "type": "output"
+      },
+      "4": {
+        "name": "PIN4",
+        "type": "input"
+      },
+      "5": {
+        "name": "PIN5",
+        "type": "input"
+      },
+      "6": {
+        "name": "PIN6",
+        "type": "output"
+      },
+      "7": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "8": {
+        "name": "PIN8",
+        "type": "output"
+      },
+      "9": {
+        "name": "PIN9",
+        "type": "input"
+      },
+      "10": {
+        "name": "PIN10",
+        "type": "input"
+      },
+      "11": {
+        "name": "PIN11",
+        "type": "output"
+      },
+      "12": {
+        "name": "PIN12",
+        "type": "input"
+      },
+      "13": {
+        "name": "PIN13",
+        "type": "input"
+      },
+      "14": {
+        "name": "VCC",
+        "type": "power_in"
+      }
+    },
+    "footprint": "Package_SO:TSSOP-14_4.4x5mm_P0.65mm",
+    "mpn": "SN74LVC08APWR",
+    "source": "https://www.ti.com/lit/ds/symlink/sn74lvc08a.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "06_control",
+    "ref": "C602",
+    "value": "100n 50V",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "06_control",
+    "ref": "R601",
+    "value": "100k",
+    "nets": {
+      "1": "CAM1_REQ",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "06_control",
+    "ref": "R602",
+    "value": "100k",
+    "nets": {
+      "1": "CAM2_REQ",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "06_control",
+    "ref": "R603",
+    "value": "100k",
+    "nets": {
+      "1": "CAM3_REQ",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "06_control",
+    "ref": "R604",
+    "value": "100k",
+    "nets": {
+      "1": "CAM4_REQ",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "06_control",
+    "ref": "J600",
+    "value": "POGO TEST - SENSE ONLY",
+    "nets": {
+      "1": "GND",
+      "2": "SYS_5V",
+      "3": "MB_3V3",
+      "4": "BAT_PROTECTED",
+      "5": "I2C_SCL",
+      "6": "I2C_SDA",
+      "7": "SYNC_MASTER",
+      "8": "CAM1_EN",
+      "9": null,
+      "10": null,
+      "11": null,
+      "12": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "2": {
+        "name": "SYS_5V",
+        "type": "passive"
+      },
+      "3": {
+        "name": "MB_3V3",
+        "type": "passive"
+      },
+      "4": {
+        "name": "BAT_PROTECTED",
+        "type": "passive"
+      },
+      "5": {
+        "name": "I2C_SCL",
+        "type": "passive"
+      },
+      "6": {
+        "name": "I2C_SDA",
+        "type": "passive"
+      },
+      "7": {
+        "name": "SYNC_MASTER",
+        "type": "passive"
+      },
+      "8": {
+        "name": "CAM1_EN",
+        "type": "passive"
+      },
+      "9": {
+        "name": "NC",
+        "type": "passive"
+      },
+      "10": {
+        "name": "NC",
+        "type": "passive"
+      },
+      "11": {
+        "name": "NC",
+        "type": "passive"
+      },
+      "12": {
+        "name": "GND",
+        "type": "passive"
+      }
+    },
+    "footprint": "KINO_A0:Pogo_12_Asymmetric",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "1.5mm ENIG pads, no paste. Pad 1 offset for fixture orientation. Measure enables; do not drive against U601. Rails are sense points, not a power injection connector. Pads 9-11 are unconnected: CAM2-CAM4_EN have no layout path down to the field, so they are probed at TP600-TP602 beside their lines at the top of the board.",
+    "dnp": false,
+    "at": [
+      16,
+      49
+    ]
+  },
+  {
+    "sheet": "06_control",
+    "ref": "TP600",
+    "value": "CAM2_EN",
+    "nets": {
+      "1": "CAM2_EN"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM2_EN",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "06_control",
+    "ref": "TP601",
+    "value": "CAM3_EN",
+    "nets": {
+      "1": "CAM3_EN"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM3_EN",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "06_control",
+    "ref": "TP602",
+    "value": "CAM4_EN",
+    "nets": {
+      "1": "CAM4_EN"
+    },
+    "pins": {
+      "1": {
+        "name": "CAM4_EN",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "06_control",
+    "ref": "J601",
+    "value": "EXTERNAL FLASH LOGIC",
+    "nets": {
+      "1": "GND",
+      "2": "AUX_3V3",
+      "3": "I2C_SDA",
+      "4": "I2C_SCL",
+      "5": "FLASH_SYNC"
+    },
+    "pins": {
+      "1": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "2": {
+        "name": "AUX_3V3",
+        "type": "passive"
+      },
+      "3": {
+        "name": "I2C_SDA",
+        "type": "passive"
+      },
+      "4": {
+        "name": "I2C_SCL",
+        "type": "passive"
+      },
+      "5": {
+        "name": "FLASH_SYNC",
+        "type": "passive"
+      }
+    },
+    "footprint": "Connector_JST:JST_GH_BM05B-GHS-TBT_1x05-1MP_P1.25mm_Vertical",
+    "mpn": "JST BM05B-GHS-TBT(LF)(SN)",
+    "source": "https://www.jst-mfg.com/product/pdf/eng/eGH.pdf",
+    "note": "Logic-only internal interface. External driver must arm via I2C and gate shared SYNC. No dedicated FLASH_EN is available in the retained P4 map. Flash load requires its own qualified supply; AUX_3V3 is behind the accessory PTC.",
+    "dnp": true,
+    "at": [
+      39,
+      50
+    ]
+  },
+  {
+    "sheet": "06_control",
+    "ref": "R605",
+    "value": "33",
+    "nets": {
+      "1": "SYNC_MASTER",
+      "2": "FLASH_SYNC"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0733RL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0733RL",
+    "note": "Fit with J601 only after external flash-driver timing/loading review.",
+    "dnp": true,
+    "at": null
+  },
+  {
+    "sheet": "07_monitoring",
+    "ref": "U700",
+    "value": "PAC1954T-E/4MX",
+    "nets": {
+      "1": "GND",
+      "2": "MB_3V3",
+      "3": "GND",
+      "4": "I2C_SCL",
+      "5": "I2C_SDA",
+      "6": "GND",
+      "7": "CAM3_SHUNT_OUT",
+      "8": "SYS_5V",
+      "9": "CAM4_SHUNT_OUT",
+      "10": "SYS_5V",
+      "11": "SYS_5V",
+      "12": "CAM1_SHUNT_OUT",
+      "13": "SYS_5V",
+      "14": "CAM2_SHUNT_OUT",
+      "15": null,
+      "16": "MB_3V3",
+      "17": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "SLOW",
+        "type": "input"
+      },
+      "2": {
+        "name": "V_{DD}",
+        "type": "power_in"
+      },
+      "3": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "4": {
+        "name": "SCL",
+        "type": "input"
+      },
+      "5": {
+        "name": "SDA",
+        "type": "bidirectional"
+      },
+      "6": {
+        "name": "ADDRSEL",
+        "type": "passive"
+      },
+      "7": {
+        "name": "SENSE3-",
+        "type": "input"
+      },
+      "8": {
+        "name": "SENSE3+",
+        "type": "input"
+      },
+      "9": {
+        "name": "SENSE4-",
+        "type": "input"
+      },
+      "10": {
+        "name": "SENSE4+",
+        "type": "input"
+      },
+      "11": {
+        "name": "SENSE1+",
+        "type": "input"
+      },
+      "12": {
+        "name": "SENSE1-",
+        "type": "input"
+      },
+      "13": {
+        "name": "SENSE2+",
+        "type": "input"
+      },
+      "14": {
+        "name": "SENSE2-",
+        "type": "input"
+      },
+      "15": {
+        "name": "GPIO",
+        "type": "bidirectional"
+      },
+      "16": {
+        "name": "~{PWRDN}",
+        "type": "input"
+      },
+      "17": {
+        "name": "EP",
+        "type": "passive"
+      }
+    },
+    "footprint": "KINO_A0:VQFN-16-1EP_3x3mm_P0.5mm_EP1.1x1.1mm_Pin1Corner",
+    "mpn": "PAC1954T-E/4MX",
+    "source": "https://ww1.microchip.com/downloads/en/DeviceDoc/PAC195X-Data-Sheet-20006539.pdf",
+    "note": "ADDRSEL tied to GND (pin 6 to the exposed pad) gives 7-bit 0x10 (Microchip evaluation guide section 4.6); the only PAC1954 on the bus, so no strap resistor. PWRDN high enables; SLOW low gives default sample rate.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "07_monitoring",
+    "ref": "C700",
+    "value": "100n 50V",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "07_monitoring",
+    "ref": "C701",
+    "value": "1u",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10A105KB8NNNC",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "07_monitoring",
+    "ref": "U701",
+    "value": "BQ27441DRZR-G1A",
+    "nets": {
+      "1": "I2C_SDA",
+      "2": "I2C_SCL",
+      "3": "GND",
+      "4": null,
+      "5": "GAUGE_1V8",
+      "6": "PACK_FUSED",
+      "7": "BAT_PROTECTED",
+      "8": "PACK_FUSED",
+      "9": null,
+      "10": "GAUGE_BIN",
+      "11": null,
+      "12": "GAUGE_GPOUT",
+      "13": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "SDA",
+        "type": "bidirectional"
+      },
+      "2": {
+        "name": "SCL",
+        "type": "input"
+      },
+      "3": {
+        "name": "V_{SS}",
+        "type": "power_in"
+      },
+      "4": {
+        "name": "NC",
+        "type": "no_connect"
+      },
+      "5": {
+        "name": "V_{DD}",
+        "type": "power_out"
+      },
+      "6": {
+        "name": "BAT",
+        "type": "power_in"
+      },
+      "7": {
+        "name": "SRN",
+        "type": "input"
+      },
+      "8": {
+        "name": "SRP",
+        "type": "input"
+      },
+      "9": {
+        "name": "NC",
+        "type": "no_connect"
+      },
+      "10": {
+        "name": "BIN",
+        "type": "input"
+      },
+      "11": {
+        "name": "NC",
+        "type": "no_connect"
+      },
+      "12": {
+        "name": "GPOUT",
+        "type": "output"
+      },
+      "13": {
+        "name": "PAD",
+        "type": "power_in"
+      }
+    },
+    "footprint": "Package_SON:Texas_S-PDSO-N12",
+    "mpn": "BQ27441DRZR-G1A",
+    "source": "http://www.ti.com/lit/ds/symlink/bq27441-g1.pdf",
+    "note": "TI SLUSBH1C pin table: SRP (8) Kelvin to RS700 pack side, SRN (7) Kelvin to RS700 system side, BAT (6) Kelvin to pack positive. GPOUT must not float.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "07_monitoring",
+    "ref": "C702",
+    "value": "470n",
+    "nets": {
+      "1": "GAUGE_1V8",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10B474KA8NNNC",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B474KA8NNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "07_monitoring",
+    "ref": "C703",
+    "value": "1u 50V",
+    "nets": {
+      "1": "PACK_FUSED",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10A105KB8NNNC",
+    "source": "",
+    "note": "TI: 1 uF from BAT to VSS, close to the gauge.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "07_monitoring",
+    "ref": "R701",
+    "value": "10k",
+    "nets": {
+      "1": "GAUGE_BIN",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0710KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+    "note": "Embedded pack: BIN 10k to VSS per TI.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "07_monitoring",
+    "ref": "R702",
+    "value": "10k",
+    "nets": {
+      "1": "GAUGE_GPOUT",
+      "2": "GAUGE_1V8"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0710KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+    "note": "TI: GPOUT must not float; 10k pull-up to the gauge VDD, which stays up with the camera off.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "07_monitoring",
+    "ref": "RS700",
+    "value": "0.005 1% 1W",
+    "nets": {
+      "1": "PACK_FUSED",
+      "2": "BAT_PROTECTED"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_1206_3216Metric",
+    "mpn": "Vishay Dale WSLP12065L000FEA",
+    "source": "https://www.vishay.com/en/product/30122/",
+    "note": "High side after F1100. 4.4 A = 22 mV (gauge range 25 mV), 97 mW. Kelvin taps from the pad inner edges.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "08_sensors",
+    "ref": "U800",
+    "value": "LSM6DSOXTR",
+    "nets": {
+      "1": "GND",
+      "2": "GND",
+      "3": "GND",
+      "4": "IMU_INT",
+      "5": "MB_3V3",
+      "6": "GND",
+      "7": "GND",
+      "8": "MB_3V3",
+      "9": null,
+      "10": null,
+      "11": null,
+      "12": "MB_3V3",
+      "13": "I2C_SCL",
+      "14": "I2C_SDA"
+    },
+    "pins": {
+      "1": {
+        "name": "SA0",
+        "type": "input"
+      },
+      "2": {
+        "name": "SDX",
+        "type": "input"
+      },
+      "3": {
+        "name": "SCX",
+        "type": "input"
+      },
+      "4": {
+        "name": "INT1",
+        "type": "output"
+      },
+      "5": {
+        "name": "VDDIO",
+        "type": "power_in"
+      },
+      "6": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "7": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "8": {
+        "name": "VDD",
+        "type": "power_in"
+      },
+      "9": {
+        "name": "INT2",
+        "type": "output"
+      },
+      "10": {
+        "name": "OCS_AUX",
+        "type": "no_connect"
+      },
+      "11": {
+        "name": "SDO_AUX",
+        "type": "no_connect"
+      },
+      "12": {
+        "name": "CS",
+        "type": "input"
+      },
+      "13": {
+        "name": "SCL",
+        "type": "input"
+      },
+      "14": {
+        "name": "SDA",
+        "type": "bidirectional"
+      }
+    },
+    "footprint": "Package_LGA:LGA-14_3x2.5mm_P0.5mm_LayoutBorder3x4y",
+    "mpn": "LSM6DSOXTR",
+    "source": "https://www.st.com/resource/en/datasheet/lsm6dsox.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "08_sensors",
+    "ref": "C800",
+    "value": "100n 50V",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "08_sensors",
+    "ref": "C801",
+    "value": "100n 50V",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "08_sensors",
+    "ref": "U801",
+    "value": "RV-3028-C7",
+    "nets": {
+      "1": null,
+      "2": "RTC_INT_N",
+      "3": "I2C_SCL",
+      "4": "I2C_SDA",
+      "5": "GND",
+      "6": "RTC_BACKUP",
+      "7": "MB_3V3",
+      "8": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "CLKOUT",
+        "type": "output"
+      },
+      "2": {
+        "name": "~{INT}",
+        "type": "open_collector"
+      },
+      "3": {
+        "name": "SCL",
+        "type": "input"
+      },
+      "4": {
+        "name": "SDA",
+        "type": "bidirectional"
+      },
+      "5": {
+        "name": "VSS",
+        "type": "power_in"
+      },
+      "6": {
+        "name": "VBACKUP",
+        "type": "power_in"
+      },
+      "7": {
+        "name": "VDD",
+        "type": "power_in"
+      },
+      "8": {
+        "name": "EVI",
+        "type": "input"
+      }
+    },
+    "footprint": "Package_SON:MicroCrystal_C7_SON-8_1.5x3.2mm_P0.9mm",
+    "mpn": "Micro Crystal RV-3028-C7 32.768kHz 1ppm TA QC",
+    "source": "https://www.microcrystal.com/fileadmin/Media/Products/RTC/Datasheet/RV-3028-C7.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "08_sensors",
+    "ref": "C802",
+    "value": "100n 50V",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "08_sensors",
+    "ref": "R800",
+    "value": "10k",
+    "nets": {
+      "1": "RTC_INT_N",
+      "2": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0710KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "08_sensors",
+    "ref": "J800",
+    "value": "3V PRIMARY RTC BACKUP",
+    "nets": {
+      "1": "RTC_BACKUP",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "RTC_BACKUP",
+        "type": "passive"
+      },
+      "2": {
+        "name": "GND",
+        "type": "passive"
+      }
+    },
+    "footprint": "Connector_JST:JST_GH_BM02B-GHS-TBT_1x02-1MP_P1.25mm_Vertical",
+    "mpn": "JST BM02B-GHS-TBT(LF)(SN)",
+    "source": "https://www.jst-mfg.com/product/pdf/eng/eGH.pdf",
+    "note": "Insulated remote backup cell holder; disable RTC trickle charging in hardware configuration/firmware.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "08_sensors",
+    "ref": "U802",
+    "value": "TMP117AIDRVR",
+    "nets": {
+      "1": "I2C_SCL",
+      "2": "GND",
+      "3": null,
+      "4": "GND",
+      "5": "MB_3V3",
+      "6": "I2C_SDA",
+      "7": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "SCL",
+        "type": "input"
+      },
+      "2": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "3": {
+        "name": "ALERT",
+        "type": "open_collector"
+      },
+      "4": {
+        "name": "ADD0",
+        "type": "input"
+      },
+      "5": {
+        "name": "V+",
+        "type": "power_in"
+      },
+      "6": {
+        "name": "SDA",
+        "type": "bidirectional"
+      },
+      "7": {
+        "name": "EP",
+        "type": "passive"
+      }
+    },
+    "footprint": "Package_SON:WSON-6-1EP_2x2mm_P0.65mm_EP1x1.6mm",
+    "mpn": "TMP117AIDRVR",
+    "source": "https://www.ti.com/lit/ds/symlink/tmp117.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "08_sensors",
+    "ref": "C803",
+    "value": "100n 50V",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "U900",
+    "value": "DRV2605LDGSR",
+    "nets": {
+      "1": "HAPTIC_REG",
+      "2": "I2C_SCL",
+      "3": "I2C_SDA",
+      "4": "GND",
+      "5": "HAPTIC_EN",
+      "6": "MB_3V3",
+      "7": "MOTOR_P",
+      "8": "GND",
+      "9": "MOTOR_N",
+      "10": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "REG",
+        "type": "passive"
+      },
+      "2": {
+        "name": "SCL",
+        "type": "input"
+      },
+      "3": {
+        "name": "SDA",
+        "type": "bidirectional"
+      },
+      "4": {
+        "name": "IN/TRIG",
+        "type": "input"
+      },
+      "5": {
+        "name": "EN",
+        "type": "input"
+      },
+      "6": {
+        "name": "VDD/NC",
+        "type": "power_in"
+      },
+      "7": {
+        "name": "OUT+",
+        "type": "output"
+      },
+      "8": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "9": {
+        "name": "OUT-",
+        "type": "output"
+      },
+      "10": {
+        "name": "VDD",
+        "type": "power_in"
+      }
+    },
+    "footprint": "Package_SO:TSSOP-10_3x3mm_P0.5mm",
+    "mpn": "DRV2605LDGSR",
+    "source": "http://www.ti.com/lit/ds/symlink/drv2605l.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "C900",
+    "value": "1u",
+    "nets": {
+      "1": "HAPTIC_REG",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10A105KB8NNNC",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "C901",
+    "value": "1u",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10A105KB8NNNC",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "C902",
+    "value": "10u",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0805_2012Metric",
+    "mpn": "Samsung Electro-Mechanics CL21A106KAYNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A106KAYNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "R900",
+    "value": "100k",
+    "nets": {
+      "1": "HAPTIC_EN",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "J900",
+    "value": "HAPTIC MOTOR",
+    "nets": {
+      "1": "MOTOR_P",
+      "2": "MOTOR_N"
+    },
+    "pins": {
+      "1": {
+        "name": "MOTOR_P",
+        "type": "passive"
+      },
+      "2": {
+        "name": "MOTOR_N",
+        "type": "passive"
+      }
+    },
+    "footprint": "Connector_JST:JST_GH_BM02B-GHS-TBT_1x02-1MP_P1.25mm_Vertical",
+    "mpn": "JST BM02B-GHS-TBT(LF)(SN)",
+    "source": "https://www.jst-mfg.com/product/pdf/eng/eGH.pdf",
+    "note": "Matched LRA/ERM selection and calibration open.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "J901",
+    "value": "COVER HALL SENSOR",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND",
+      "3": "COVER_RAW"
+    },
+    "pins": {
+      "1": {
+        "name": "MB_3V3",
+        "type": "passive"
+      },
+      "2": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "3": {
+        "name": "COVER_RAW",
+        "type": "passive"
+      }
+    },
+    "footprint": "Connector_JST:JST_GH_BM03B-GHS-TBT_1x03-1MP_P1.25mm_Vertical",
+    "mpn": "JST BM03B-GHS-TBT(LF)(SN)",
+    "source": "https://www.jst-mfg.com/product/pdf/eng/eGH.pdf",
+    "note": "External 3.3V open-drain Hall sensor; select magnet/threshold and serviceable mount.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "R901",
+    "value": "1k",
+    "nets": {
+      "1": "COVER_RAW",
+      "2": "COVER_N"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-071KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "R902",
+    "value": "10k",
+    "nets": {
+      "1": "COVER_N",
+      "2": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0710KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "C903",
+    "value": "10n",
+    "nets": {
+      "1": "COVER_N",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10B103KB8NNNC",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B103KB8NNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "J902",
+    "value": "LOCAL SHUTTER",
+    "nets": {
+      "1": "SHUTTER_N",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "SHUTTER_N",
+        "type": "passive"
+      },
+      "2": {
+        "name": "GND",
+        "type": "passive"
+      }
+    },
+    "footprint": "Connector_JST:JST_GH_BM02B-GHS-TBT_1x02-1MP_P1.25mm_Vertical",
+    "mpn": "JST BM02B-GHS-TBT(LF)(SN)",
+    "source": "https://www.jst-mfg.com/product/pdf/eng/eGH.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "J903",
+    "value": "REMOTE DRY CONTACT",
+    "nets": {
+      "1": "REMOTE_CONTACT",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "REMOTE_CONTACT",
+        "type": "passive"
+      },
+      "2": {
+        "name": "GND",
+        "type": "passive"
+      }
+    },
+    "footprint": "Connector_JST:JST_GH_BM02B-GHS-TBT_1x02-1MP_P1.25mm_Vertical",
+    "mpn": "JST BM02B-GHS-TBT(LF)(SN)",
+    "source": "https://www.jst-mfg.com/product/pdf/eng/eGH.pdf",
+    "note": "Internal locking connector to panel socket; choose jack with no insertion short.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "R903",
+    "value": "10k",
+    "nets": {
+      "1": "REMOTE_CONTACT",
+      "2": "REMOTE_FILTER"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0710KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "R904",
+    "value": "47k",
+    "nets": {
+      "1": "REMOTE_FILTER",
+      "2": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0747KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0747KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "C904",
+    "value": "100n",
+    "nets": {
+      "1": "REMOTE_FILTER",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "U901",
+    "value": "SN74LVC1G14DBVR",
+    "nets": {
+      "1": null,
+      "2": "REMOTE_FILTER",
+      "3": "GND",
+      "4": "REMOTE_ACTIVE",
+      "5": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "NC",
+        "type": "no_connect"
+      },
+      "2": {
+        "name": "A",
+        "type": "input"
+      },
+      "3": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "4": {
+        "name": "Y",
+        "type": "output"
+      },
+      "5": {
+        "name": "VCC",
+        "type": "power_in"
+      }
+    },
+    "footprint": "Package_TO_SOT_SMD:SOT-23-5",
+    "mpn": "SN74LVC1G14DBVR",
+    "source": "https://www.ti.com/lit/ds/symlink/sn74lvc1g14.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "C905",
+    "value": "100n 50V",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "Q900",
+    "value": "2N7002",
+    "nets": {
+      "1": "REMOTE_ACTIVE",
+      "2": "GND",
+      "3": "SHUTTER_N"
+    },
+    "pins": {
+      "1": {
+        "name": "G",
+        "type": "input"
+      },
+      "2": {
+        "name": "S",
+        "type": "passive"
+      },
+      "3": {
+        "name": "D",
+        "type": "passive"
+      }
+    },
+    "footprint": "Package_TO_SOT_SMD:SOT-23",
+    "mpn": "Nexperia 2N7002,215",
+    "source": "https://assets.nexperia.com/documents/data-sheet/2N7002.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "R905",
+    "value": "100k",
+    "nets": {
+      "1": "REMOTE_ACTIVE",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "D900",
+    "value": "PESD5V0S1BA",
+    "nets": {
+      "1": "GND",
+      "2": "REMOTE_CONTACT"
+    },
+    "pins": {
+      "1": {
+        "name": "K",
+        "type": "passive"
+      },
+      "2": {
+        "name": "A",
+        "type": "passive"
+      }
+    },
+    "footprint": "Diode_SMD:D_SOD-323",
+    "mpn": "Nexperia PESD5V0S1BA,115",
+    "source": "https://assets.nexperia.com/documents/data-sheet/PESD5V0S1BA.pdf",
+    "note": "Bidirectional ESD clamp candidate; verify surge rating and leakage.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "D901",
+    "value": "PESD5V0S1BA",
+    "nets": {
+      "1": "GND",
+      "2": "COVER_RAW"
+    },
+    "pins": {
+      "1": {
+        "name": "K",
+        "type": "passive"
+      },
+      "2": {
+        "name": "A",
+        "type": "passive"
+      }
+    },
+    "footprint": "Diode_SMD:D_SOD-323",
+    "mpn": "Nexperia PESD5V0S1BA,115",
+    "source": "https://assets.nexperia.com/documents/data-sheet/PESD5V0S1BA.pdf",
+    "note": "Bidirectional ESD clamp candidate; verify surge rating and leakage.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "D902",
+    "value": "PESD5V0S1BA",
+    "nets": {
+      "1": "GND",
+      "2": "SHUTTER_N"
+    },
+    "pins": {
+      "1": {
+        "name": "K",
+        "type": "passive"
+      },
+      "2": {
+        "name": "A",
+        "type": "passive"
+      }
+    },
+    "footprint": "Diode_SMD:D_SOD-323",
+    "mpn": "Nexperia PESD5V0S1BA,115",
+    "source": "https://assets.nexperia.com/documents/data-sheet/PESD5V0S1BA.pdf",
+    "note": "Bidirectional ESD clamp candidate; verify surge rating and leakage.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "J904",
+    "value": "FUNCTION BUTTON",
+    "nets": {
+      "1": "FN_N",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "FN_N",
+        "type": "passive"
+      },
+      "2": {
+        "name": "GND",
+        "type": "passive"
+      }
+    },
+    "footprint": "Connector_JST:JST_GH_BM02B-GHS-TBT_1x02-1MP_P1.25mm_Vertical",
+    "mpn": "JST BM02B-GHS-TBT(LF)(SN)",
+    "source": "https://www.jst-mfg.com/product/pdf/eng/eGH.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "R906",
+    "value": "10k",
+    "nets": {
+      "1": "FN_N",
+      "2": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0710KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "09_controls",
+    "ref": "D903",
+    "value": "PESD5V0S1BA",
+    "nets": {
+      "1": "GND",
+      "2": "FN_N"
+    },
+    "pins": {
+      "1": {
+        "name": "K",
+        "type": "passive"
+      },
+      "2": {
+        "name": "A",
+        "type": "passive"
+      }
+    },
+    "footprint": "Diode_SMD:D_SOD-323",
+    "mpn": "Nexperia PESD5V0S1BA,115",
+    "source": "https://assets.nexperia.com/documents/data-sheet/PESD5V0S1BA.pdf",
+    "note": "Cased button line, same class as the shutter input (D902). Beside J904.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "J1000",
+    "value": "USB4105-GF-A",
+    "nets": {
+      "A1": "GND",
+      "A4": "USB_VBUS",
+      "A5": "USB_CC1",
+      "A6": null,
+      "A7": null,
+      "A8": null,
+      "A9": "USB_VBUS",
+      "A12": "GND",
+      "B1": "GND",
+      "B4": "USB_VBUS",
+      "B5": "USB_CC2",
+      "B6": null,
+      "B7": null,
+      "B8": null,
+      "B9": "USB_VBUS",
+      "B12": "GND",
+      "SH": "GND"
+    },
+    "pins": {
+      "A1": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "A4": {
+        "name": "VBUS",
+        "type": "passive"
+      },
+      "A5": {
+        "name": "CC1",
+        "type": "bidirectional"
+      },
+      "A6": {
+        "name": "D+",
+        "type": "bidirectional"
+      },
+      "A7": {
+        "name": "D-",
+        "type": "bidirectional"
+      },
+      "A8": {
+        "name": "SBU1",
+        "type": "bidirectional"
+      },
+      "A9": {
+        "name": "VBUS",
+        "type": "passive"
+      },
+      "A12": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "B1": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "B4": {
+        "name": "VBUS",
+        "type": "passive"
+      },
+      "B5": {
+        "name": "CC2",
+        "type": "bidirectional"
+      },
+      "B6": {
+        "name": "D+",
+        "type": "bidirectional"
+      },
+      "B7": {
+        "name": "D-",
+        "type": "bidirectional"
+      },
+      "B8": {
+        "name": "SBU2",
+        "type": "bidirectional"
+      },
+      "B9": {
+        "name": "VBUS",
+        "type": "passive"
+      },
+      "B12": {
+        "name": "GND",
+        "type": "passive"
+      },
+      "SH": {
+        "name": "SHIELD",
+        "type": "passive"
+      }
+    },
+    "footprint": "KINO_A0:USB_C_GCT_USB4105_KINO_GND0.05",
+    "mpn": "GCT USB4105-GF-A",
+    "source": "https://gct.co/files/drawings/usb4105.pdf",
+    "note": "Power-only. A6/B6 A7/B7 data unconnected; PD only, no BC1.2 data detection. Land: GCT drawing B4, outer GND lands trimmed 0.05 mm (local deviation, A02-REVIEW).",
+    "dnp": false,
+    "at": [
+      109,
+      65.21
+    ]
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "U1000",
+    "value": "STUSB4500QTR",
+    "nets": {
+      "1": "USB_CC1",
+      "2": "USB_CC1",
+      "3": null,
+      "4": "USB_CC2",
+      "5": "USB_CC2",
+      "6": "PD_RESET",
+      "7": "I2C_SCL",
+      "8": "I2C_SDA",
+      "9": "PD_DISCH",
+      "10": "GND",
+      "11": null,
+      "12": "GND",
+      "13": "GND",
+      "14": null,
+      "15": null,
+      "16": "PD_SINK_EN_N",
+      "17": null,
+      "18": "PD_VBUS_SENSE",
+      "19": null,
+      "20": null,
+      "21": "PD_1V2",
+      "22": "GND",
+      "23": "PD_2V7",
+      "24": "USB_VBUS",
+      "25": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "CC1DB",
+        "type": "bidirectional"
+      },
+      "2": {
+        "name": "CC1",
+        "type": "bidirectional"
+      },
+      "3": {
+        "name": "NC",
+        "type": "no_connect"
+      },
+      "4": {
+        "name": "CC2",
+        "type": "bidirectional"
+      },
+      "5": {
+        "name": "CC2DB",
+        "type": "bidirectional"
+      },
+      "6": {
+        "name": "RESET",
+        "type": "input"
+      },
+      "7": {
+        "name": "SCL",
+        "type": "input"
+      },
+      "8": {
+        "name": "SDA",
+        "type": "bidirectional"
+      },
+      "9": {
+        "name": "DISCH",
+        "type": "bidirectional"
+      },
+      "10": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "11": {
+        "name": "ATTACH",
+        "type": "open_collector"
+      },
+      "12": {
+        "name": "ADDR0",
+        "type": "input"
+      },
+      "13": {
+        "name": "ADDR1",
+        "type": "input"
+      },
+      "14": {
+        "name": "POWER_OK3",
+        "type": "open_collector"
+      },
+      "15": {
+        "name": "GPIO",
+        "type": "open_collector"
+      },
+      "16": {
+        "name": "VBUS_EN_SNK",
+        "type": "open_collector"
+      },
+      "17": {
+        "name": "A_B_SIDE",
+        "type": "open_collector"
+      },
+      "18": {
+        "name": "VBUS_VS_DISCH",
+        "type": "input"
+      },
+      "19": {
+        "name": "ALERT",
+        "type": "open_collector"
+      },
+      "20": {
+        "name": "POWER_OK2",
+        "type": "open_collector"
+      },
+      "21": {
+        "name": "VREG_1V2",
+        "type": "power_out"
+      },
+      "22": {
+        "name": "VSYS",
+        "type": "power_in"
+      },
+      "23": {
+        "name": "VREG_2V7",
+        "type": "power_out"
+      },
+      "24": {
+        "name": "VDD",
+        "type": "power_in"
+      },
+      "25": {
+        "name": "GND",
+        "type": "passive"
+      }
+    },
+    "footprint": "Package_DFN_QFN:QFN-24-1EP_4x4mm_P0.5mm_EP2.7x2.7mm",
+    "mpn": "STUSB4500QTR",
+    "source": "https://www.st.com/resource/en/datasheet/stusb4500.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "C1000",
+    "value": "1u 50V",
+    "nets": {
+      "1": "USB_VBUS",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0805_2012Metric",
+    "mpn": "Samsung Electro-Mechanics CL21B105KBFNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21B105KBFNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "C1001",
+    "value": "1u",
+    "nets": {
+      "1": "PD_1V2",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10A105KB8NNNC",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "C1002",
+    "value": "1u",
+    "nets": {
+      "1": "PD_2V7",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10A105KB8NNNC",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A105KB8NNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "R1000",
+    "value": "100k",
+    "nets": {
+      "1": "PD_RESET",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "R1001",
+    "value": "470",
+    "nets": {
+      "1": "USB_VBUS",
+      "2": "PD_VBUS_SENSE"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07470RL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07470RL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "R1002",
+    "value": "1k",
+    "nets": {
+      "1": "CHG_VBUS",
+      "2": "PD_DISCH"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-071KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-071KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "Q1000",
+    "value": "AO4409",
+    "nets": {
+      "1": "PD_COMMON_SOURCE",
+      "2": "PD_COMMON_SOURCE",
+      "3": "PD_COMMON_SOURCE",
+      "4": "PD_GATE",
+      "5": "USB_VBUS",
+      "6": "USB_VBUS",
+      "7": "USB_VBUS",
+      "8": "USB_VBUS"
+    },
+    "pins": {
+      "1": {
+        "name": "S",
+        "type": "passive"
+      },
+      "2": {
+        "name": "S",
+        "type": "passive"
+      },
+      "3": {
+        "name": "S",
+        "type": "passive"
+      },
+      "4": {
+        "name": "G",
+        "type": "input"
+      },
+      "5": {
+        "name": "D",
+        "type": "passive"
+      },
+      "6": {
+        "name": "D",
+        "type": "passive"
+      },
+      "7": {
+        "name": "D",
+        "type": "passive"
+      },
+      "8": {
+        "name": "D",
+        "type": "passive"
+      }
+    },
+    "footprint": "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
+    "mpn": "Alpha & Omega Semiconductor AO4409",
+    "source": "https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf",
+    "note": "AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "Q1001",
+    "value": "AO4409",
+    "nets": {
+      "1": "PD_COMMON_SOURCE",
+      "2": "PD_COMMON_SOURCE",
+      "3": "PD_COMMON_SOURCE",
+      "4": "PD_GATE",
+      "5": "CHG_VBUS",
+      "6": "CHG_VBUS",
+      "7": "CHG_VBUS",
+      "8": "CHG_VBUS"
+    },
+    "pins": {
+      "1": {
+        "name": "S",
+        "type": "passive"
+      },
+      "2": {
+        "name": "S",
+        "type": "passive"
+      },
+      "3": {
+        "name": "S",
+        "type": "passive"
+      },
+      "4": {
+        "name": "G",
+        "type": "input"
+      },
+      "5": {
+        "name": "D",
+        "type": "passive"
+      },
+      "6": {
+        "name": "D",
+        "type": "passive"
+      },
+      "7": {
+        "name": "D",
+        "type": "passive"
+      },
+      "8": {
+        "name": "D",
+        "type": "passive"
+      }
+    },
+    "footprint": "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
+    "mpn": "Alpha & Omega Semiconductor AO4409",
+    "source": "https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf",
+    "note": "AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "R1003",
+    "value": "100k",
+    "nets": {
+      "1": "PD_COMMON_SOURCE",
+      "2": "PD_GATE"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "R1004",
+    "value": "10k",
+    "nets": {
+      "1": "PD_GATE",
+      "2": "PD_SINK_EN_N"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0710KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+    "note": "Above 10 V VBUS D1000 conducts through this resistor: 1.2 mA at 22 V, inside the 3 mA VBUS_EN_SNK test condition (ST reference: 22k). Gate at -4.55 V at 5 V VBUS.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "D1000",
+    "value": "BZT52C10",
+    "nets": {
+      "1": "PD_COMMON_SOURCE",
+      "2": "PD_GATE"
+    },
+    "pins": {
+      "1": {
+        "name": "K",
+        "type": "passive"
+      },
+      "2": {
+        "name": "A",
+        "type": "passive"
+      }
+    },
+    "footprint": "Diode_SMD:D_SOD-123",
+    "mpn": "Diodes Incorporated BZT52C10-7-F",
+    "source": "https://www.diodes.com/assets/Datasheets/ds18004.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "D1001",
+    "value": "SMF22A",
+    "nets": {
+      "1": "USB_VBUS",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "K",
+        "type": "passive"
+      },
+      "2": {
+        "name": "A",
+        "type": "passive"
+      }
+    },
+    "footprint": "Diode_SMD:D_SOD-123F",
+    "mpn": "Vishay General Semiconductor SMF22A-E3-08",
+    "source": "https://www.vishay.com/docs/85881/smf5v0atosmf58a.pdf",
+    "note": "VRWM 22 V: no conduction on a 20 V contract (unprogrammed STUSB4500 NVM). VBR 24.4-27 V, under the 28 V STUSB4500 and 30 V charger/FET ratings at low current.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "D1002",
+    "value": "PESD24VL1BA",
+    "nets": {
+      "1": "USB_CC1",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "K",
+        "type": "passive"
+      },
+      "2": {
+        "name": "A",
+        "type": "passive"
+      }
+    },
+    "footprint": "Diode_SMD:D_SOD-323",
+    "mpn": "Nexperia PESD24VL1BA,115",
+    "source": "https://assets.nexperia.com/documents/data-sheet/PESD24VL1BA.pdf",
+    "note": "VRWM 24 V, VBR 25.4 V min, 11 pF. A 5 V part conducts if CC shorts to 9 V VBUS.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "D1003",
+    "value": "PESD24VL1BA",
+    "nets": {
+      "1": "USB_CC2",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "K",
+        "type": "passive"
+      },
+      "2": {
+        "name": "A",
+        "type": "passive"
+      }
+    },
+    "footprint": "Diode_SMD:D_SOD-323",
+    "mpn": "Nexperia PESD24VL1BA,115",
+    "source": "https://assets.nexperia.com/documents/data-sheet/PESD24VL1BA.pdf",
+    "note": "VRWM 24 V, VBR 25.4 V min, 11 pF. A 5 V part conducts if CC shorts to 9 V VBUS.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "10_usb_pd",
+    "ref": "TP1000",
+    "value": "USB_VBUS",
+    "nets": {
+      "1": "USB_VBUS"
+    },
+    "pins": {
+      "1": {
+        "name": "USB_VBUS",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "J1100",
+    "value": "PROTECTED 1S PACK / NTC",
+    "nets": {
+      "1": "PACK_PLUS",
+      "2": "PACK_NTC",
+      "3": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "PACK_PLUS",
+        "type": "passive"
+      },
+      "2": {
+        "name": "PACK_NTC",
+        "type": "passive"
+      },
+      "3": {
+        "name": "GND",
+        "type": "passive"
+      }
+    },
+    "footprint": "Connector_JST:JST_VH_B3P-VH_1x03_P3.96mm_Vertical",
+    "mpn": "JST B3P-VH(LF)(SN)",
+    "source": "https://www.jst-mfg.com/product/pdf/eng/eVH.pdf",
+    "note": "New rated harness required. Keying is not electronic reverse-polarity protection.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "F1100",
+    "value": "7A fast 1206",
+    "nets": {
+      "1": "PACK_PLUS",
+      "2": "PACK_FUSED"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Fuse:Fuse_1206_3216Metric",
+    "mpn": "Bourns SF-1206F700-2",
+    "source": "Bourns SF-1206F series datasheet",
+    "note": "5 A planning current = 71 % of 7 A. Interrupt rating 50 A relies on the pack PCM clearing a hard short first.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "U1100",
+    "value": "BQ25798RQMR",
+    "nets": {
+      "1": null,
+      "2": "CHG_VBUS",
+      "3": "CHG_VBUS",
+      "4": "CHG_BTST1",
+      "5": "CHG_REGN",
+      "6": null,
+      "7": null,
+      "8": "CHG_VBUS",
+      "9": "CHG_VBUS",
+      "10": "GND",
+      "11": "GND",
+      "12": null,
+      "13": "CHARGE_CE_N",
+      "14": "I2C_SCL",
+      "15": "I2C_SDA",
+      "16": "CHG_TS",
+      "17": "CHG_ILIM",
+      "18": "CHG_BATP",
+      "19": "CHG_BTST2",
+      "20": "CHG_PROG",
+      "21": null,
+      "22": "BAT_PROTECTED",
+      "23": "BAT_PROTECTED",
+      "24": "CHG_SDRV",
+      "25": "SYS_RAW",
+      "26": "CHG_SW2",
+      "27": "GND",
+      "28": "CHG_SW1",
+      "29": "CHG_PMID"
+    },
+    "pins": {
+      "1": {
+        "name": "STAT",
+        "type": "open_collector"
+      },
+      "2": {
+        "name": "VBUS",
+        "type": "power_in"
+      },
+      "3": {
+        "name": "VBUS",
+        "type": "passive"
+      },
+      "4": {
+        "name": "BTST1",
+        "type": "passive"
+      },
+      "5": {
+        "name": "REGN",
+        "type": "power_out"
+      },
+      "6": {
+        "name": "D+",
+        "type": "bidirectional"
+      },
+      "7": {
+        "name": "D-",
+        "type": "bidirectional"
+      },
+      "8": {
+        "name": "VAC2",
+        "type": "input"
+      },
+      "9": {
+        "name": "VAC1",
+        "type": "input"
+      },
+      "10": {
+        "name": "ACDRV2",
+        "type": "passive"
+      },
+      "11": {
+        "name": "ACDRV1",
+        "type": "passive"
+      },
+      "12": {
+        "name": "~{QON}",
+        "type": "input"
+      },
+      "13": {
+        "name": "~{CE}",
+        "type": "input"
+      },
+      "14": {
+        "name": "SCL",
+        "type": "input"
+      },
+      "15": {
+        "name": "SDA",
+        "type": "bidirectional"
+      },
+      "16": {
+        "name": "TS",
+        "type": "input"
+      },
+      "17": {
+        "name": "ILIM_HIZ",
+        "type": "input"
+      },
+      "18": {
+        "name": "BATP",
+        "type": "input"
+      },
+      "19": {
+        "name": "BTST2",
+        "type": "passive"
+      },
+      "20": {
+        "name": "PROG",
+        "type": "input"
+      },
+      "21": {
+        "name": "~{INT}",
+        "type": "open_collector"
+      },
+      "22": {
+        "name": "BAT",
+        "type": "power_out"
+      },
+      "23": {
+        "name": "BAT",
+        "type": "passive"
+      },
+      "24": {
+        "name": "SDRV",
+        "type": "output"
+      },
+      "25": {
+        "name": "SYS",
+        "type": "power_out"
+      },
+      "26": {
+        "name": "SW2",
+        "type": "power_out"
+      },
+      "27": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "28": {
+        "name": "SW1",
+        "type": "power_out"
+      },
+      "29": {
+        "name": "PMID",
+        "type": "power_out"
+      }
+    },
+    "footprint": "Package_DFN_QFN:Texas_RQM0029A_VQFN-29_4x4mm_P0.4mm",
+    "mpn": "BQ25798RQMR",
+    "source": "https://www.ti.com/lit/ds/symlink/bq25798.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "R1100",
+    "value": "3.00k 1%",
+    "nets": {
+      "1": "CHG_PROG",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-073KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-073KL",
+    "note": "TI Table 7-1: 1S, 1.5MHz. POR default 4.2 V / 1 A; charging enabled in hardware (CE low). Inhibit with EN_CHG or by fitting R1110.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "R1101",
+    "value": "100",
+    "nets": {
+      "1": "BAT_PROTECTED",
+      "2": "CHG_BATP"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100RL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100RL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "R1102",
+    "value": "100k",
+    "nets": {
+      "1": "CHARGE_CE_N",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "TI pin 13: CE must be pulled high or low. LOW = charge whenever VBUS is valid and EN_CHG=1; firmware inhibits with EN_CHG, not this pin.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "R1110",
+    "value": "10k",
+    "nets": {
+      "1": "CHARGE_CE_N",
+      "2": "CHG_REGN"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0710KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+    "note": "BRING-UP ONLY: FIT = CHARGE INHIBIT. 10k over R1102 100k holds CE at 0.91 REGN.",
+    "dnp": true,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "R1104",
+    "value": "30.1k 1%",
+    "nets": {
+      "1": "CHG_REGN",
+      "2": "CHG_ILIM"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0730K1L",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0730K1L",
+    "note": "Fallback only: 30.1k/10k keeps ILIM above restart at REGN 4.6-5.2V. Nominal command 184-371mA. Full-load PD policy remains required; not universal USB-A compliance.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "R1105",
+    "value": "10k 1%",
+    "nets": {
+      "1": "CHG_ILIM",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0710KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "R1106",
+    "value": "5.23k 1%",
+    "nets": {
+      "1": "CHG_REGN",
+      "2": "CHG_TS"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-075K23L",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-075K23L",
+    "note": "RT1. TI 5.24k for 103AT-2; E96 5.23k gives 0.97 C / 59.9 C (T1 73.3 % / T5 34.2 % of REGN).",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "R1107",
+    "value": "30.1k 1%",
+    "nets": {
+      "1": "CHG_TS",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0730K1L",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0730K1L",
+    "note": "RT2. TI 30.31k; open NTC gives 85 % REGN = cold = charge suspended.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "R1108",
+    "value": "0",
+    "nets": {
+      "1": "CHG_TS",
+      "2": "PACK_NTC"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603JR-070RL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603JR-070RL",
+    "note": "0 ohm NTC link (bring-up): open it to measure the pack NTC alone; open = TS cold = charging suspended. NTC returns to board GND; the gauge shunt is high side, so no TS offset.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1100",
+    "value": "1n 50V",
+    "nets": {
+      "1": "CHG_SDRV",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10B102KB8NNNC",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B102KB8NNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1101",
+    "value": "4.7u 10V",
+    "nets": {
+      "1": "CHG_REGN",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0805_2012Metric",
+    "mpn": "Samsung Electro-Mechanics CL21A475KAQNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A475KAQNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1102",
+    "value": "47n 16V",
+    "nets": {
+      "1": "CHG_BTST1",
+      "2": "CHG_SW1"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10B473KB8NNNC",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B473KB8NNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1103",
+    "value": "47n 16V",
+    "nets": {
+      "1": "CHG_BTST2",
+      "2": "CHG_SW2"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10B473KB8NNNC",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B473KB8NNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "L1100",
+    "value": "1.0uH 14.1A Isat",
+    "nets": {
+      "1": "CHG_SW1",
+      "2": "CHG_SW2"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "KINO_A0:L_TDK_SPM6530",
+    "mpn": "SPM6530T-1R0M120",
+    "source": "TDK SPM6530 catalog 20160825 p5-6",
+    "note": "TI BQ25798 characterization part (L1 1 uH). 7.81 mOhm max, Isat 14.1 A (-20 %), Itemp 13 A (+40 C). Land 1.85 x 3.4 mm, gap 3.7 mm per TDK.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1104",
+    "value": "10u 50V X7R",
+    "nets": {
+      "1": "CHG_VBUS",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31B106KBHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1105",
+    "value": "10u 50V X7R",
+    "nets": {
+      "1": "CHG_VBUS",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31B106KBHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1106",
+    "value": "100n 50V",
+    "nets": {
+      "1": "CHG_VBUS",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1107",
+    "value": "10u 50V X7R",
+    "nets": {
+      "1": "CHG_PMID",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31B106KBHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1108",
+    "value": "10u 50V X7R",
+    "nets": {
+      "1": "CHG_PMID",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31B106KBHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1109",
+    "value": "10u 50V X7R",
+    "nets": {
+      "1": "CHG_PMID",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31B106KBHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1110",
+    "value": "100n 50V",
+    "nets": {
+      "1": "CHG_PMID",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1111",
+    "value": "10u 50V X7R",
+    "nets": {
+      "1": "SYS_RAW",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31B106KBHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1112",
+    "value": "10u 50V X7R",
+    "nets": {
+      "1": "SYS_RAW",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31B106KBHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1113",
+    "value": "10u 50V X7R",
+    "nets": {
+      "1": "SYS_RAW",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31B106KBHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1114",
+    "value": "10u 50V X7R",
+    "nets": {
+      "1": "SYS_RAW",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31B106KBHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1115",
+    "value": "10u 50V X7R",
+    "nets": {
+      "1": "SYS_RAW",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31B106KBHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1116",
+    "value": "100n 50V",
+    "nets": {
+      "1": "SYS_RAW",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1117",
+    "value": "10u 50V X7R",
+    "nets": {
+      "1": "BAT_PROTECTED",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31B106KBHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1118",
+    "value": "10u 50V X7R",
+    "nets": {
+      "1": "BAT_PROTECTED",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31B106KBHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31B106KBHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "C1119",
+    "value": "100n 50V",
+    "nets": {
+      "1": "BAT_PROTECTED",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "11_charger",
+    "ref": "TP1101",
+    "value": "SYS_RAW",
+    "nets": {
+      "1": "SYS_RAW"
+    },
+    "pins": {
+      "1": {
+        "name": "SYS_RAW",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "U1200",
+    "value": "TPS61288LRQQR",
+    "nets": {
+      "1": "BOOST_FB",
+      "2": "BOOST_COMP",
+      "3": "GND",
+      "4": "BOOST_SW",
+      "5": "BOOST_5V",
+      "6": "BOOST_ENABLE",
+      "7": "SYS_RAW",
+      "8": "BOOST_BST",
+      "9": "BOOST_SW",
+      "10": "GND",
+      "11": "BOOST_VCC"
+    },
+    "pins": {
+      "1": {
+        "name": "FB",
+        "type": "input"
+      },
+      "2": {
+        "name": "COMP",
+        "type": "passive"
+      },
+      "3": {
+        "name": "PGND",
+        "type": "power_in"
+      },
+      "4": {
+        "name": "SW",
+        "type": "passive"
+      },
+      "5": {
+        "name": "VOUT",
+        "type": "power_out"
+      },
+      "6": {
+        "name": "EN",
+        "type": "input"
+      },
+      "7": {
+        "name": "VIN",
+        "type": "power_in"
+      },
+      "8": {
+        "name": "BST",
+        "type": "passive"
+      },
+      "9": {
+        "name": "SW",
+        "type": "passive"
+      },
+      "10": {
+        "name": "AGND",
+        "type": "power_in"
+      },
+      "11": {
+        "name": "VCC",
+        "type": "power_out"
+      }
+    },
+    "footprint": "KINO_A0:TPS61288_RQQ0011A_DRAFT",
+    "mpn": "TPS61288LRQQR",
+    "source": "https://www.ti.com/lit/ds/symlink/tps61288.pdf",
+    "note": "Custom land pattern independently transcribed; fabrication review mandatory.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "L1200",
+    "value": "2.2uH 19.6A Isat",
+    "nets": {
+      "1": "SYS_RAW",
+      "2": "BOOST_SW"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Inductor_SMD:L_Coilcraft_XAL7070-XXX",
+    "mpn": "XAL7070-222MEC",
+    "source": "https://www.coilcraft.com/getmedia/1ba55433-bcc8-4838-9b21-382f497e12e0/xal7070.pdf",
+    "note": "Isat 19.6 A (-30 %) > TPS61288 ILIM 17.1 A max, per TI 9.2.2.2. 6.33 mOhm max, Irms 13.2 A (+20 C). Worst operating peak 6.1 A at 3.0 V in, 2.6 A out. Same family as TI table 9-2 XAL1060, which does not fit. 7.0 mm tall.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "R1200",
+    "value": "110k 0.1%",
+    "nets": {
+      "1": "BOOST_5V",
+      "2": "BOOST_FB"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RT0603BRD07110KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RT0603BRD07110KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "R1201",
+    "value": "15k 0.1%",
+    "nets": {
+      "1": "BOOST_FB",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RT0603BRD0715KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RT0603BRD0715KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "R1202",
+    "value": "20.5k 1%",
+    "nets": {
+      "1": "BOOST_COMP",
+      "2": "BOOST_COMP_RC"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0720K5L",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0720K5L",
+    "note": "RC per TI eq 12 at fc 8 kHz, Co_eff 72 uF, Vin 3.0 V. Bench loop measurement required.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "C1200",
+    "value": "3.3n 50V",
+    "nets": {
+      "1": "BOOST_COMP_RC",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10B332KB8NNNC",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10B332KB8NNN",
+    "note": "CC per TI eq 13 at 2.6 A load.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "C1201",
+    "value": "100p",
+    "nets": {
+      "1": "BOOST_COMP",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10C101JB8NNNC",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10C101JB8NNN",
+    "note": "TPS61288 optional CP (TI eq 14). DNP; fit only if the bench loop or COMP ripple needs the extra pole.",
+    "dnp": true,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "C1202",
+    "value": "4.7u 16V",
+    "nets": {
+      "1": "BOOST_VCC",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10A475KO8NNNC",
+    "source": "",
+    "note": "TI: VCC needs > 1.0 uF effective; 2.2 uF 0603 is about 1.0 uF at 5 V, hence 4.7 uF.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "C1203",
+    "value": "100n",
+    "nets": {
+      "1": "BOOST_BST",
+      "2": "BOOST_SW"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "C1204",
+    "value": "22u 10V",
+    "nets": {
+      "1": "SYS_RAW",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31A226KAHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31A226KAHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "C1205",
+    "value": "100n 50V",
+    "nets": {
+      "1": "SYS_RAW",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "C1206",
+    "value": "22u 10V",
+    "nets": {
+      "1": "BOOST_5V",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31A226KAHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31A226KAHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "C1207",
+    "value": "22u 10V",
+    "nets": {
+      "1": "BOOST_5V",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31A226KAHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31A226KAHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "C1208",
+    "value": "22u 10V",
+    "nets": {
+      "1": "BOOST_5V",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31A226KAHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31A226KAHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "C1209",
+    "value": "22u 10V",
+    "nets": {
+      "1": "BOOST_5V",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31A226KAHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31A226KAHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "C1210",
+    "value": "22u 10V",
+    "nets": {
+      "1": "BOOST_5V",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31A226KAHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31A226KAHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "C1211",
+    "value": "22u 10V",
+    "nets": {
+      "1": "BOOST_5V",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_1206_3216Metric",
+    "mpn": "Samsung Electro-Mechanics CL31A226KAHNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL31A226KAHNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "Q1200",
+    "value": "AO4409",
+    "nets": {
+      "1": "MAIN_COMMON",
+      "2": "MAIN_COMMON",
+      "3": "MAIN_COMMON",
+      "4": "MAIN_GATE",
+      "5": "BOOST_5V",
+      "6": "BOOST_5V",
+      "7": "BOOST_5V",
+      "8": "BOOST_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "S",
+        "type": "passive"
+      },
+      "2": {
+        "name": "S",
+        "type": "passive"
+      },
+      "3": {
+        "name": "S",
+        "type": "passive"
+      },
+      "4": {
+        "name": "G",
+        "type": "input"
+      },
+      "5": {
+        "name": "D",
+        "type": "passive"
+      },
+      "6": {
+        "name": "D",
+        "type": "passive"
+      },
+      "7": {
+        "name": "D",
+        "type": "passive"
+      },
+      "8": {
+        "name": "D",
+        "type": "passive"
+      }
+    },
+    "footprint": "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
+    "mpn": "Alpha & Omega Semiconductor AO4409",
+    "source": "https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf",
+    "note": "AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "Q1201",
+    "value": "AO4409",
+    "nets": {
+      "1": "MAIN_COMMON",
+      "2": "MAIN_COMMON",
+      "3": "MAIN_COMMON",
+      "4": "MAIN_GATE",
+      "5": "SYS_5V",
+      "6": "SYS_5V",
+      "7": "SYS_5V",
+      "8": "SYS_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "S",
+        "type": "passive"
+      },
+      "2": {
+        "name": "S",
+        "type": "passive"
+      },
+      "3": {
+        "name": "S",
+        "type": "passive"
+      },
+      "4": {
+        "name": "G",
+        "type": "input"
+      },
+      "5": {
+        "name": "D",
+        "type": "passive"
+      },
+      "6": {
+        "name": "D",
+        "type": "passive"
+      },
+      "7": {
+        "name": "D",
+        "type": "passive"
+      },
+      "8": {
+        "name": "D",
+        "type": "passive"
+      }
+    },
+    "footprint": "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
+    "mpn": "Alpha & Omega Semiconductor AO4409",
+    "source": "https://aosmd.com/sites/default/files/res/datasheets/AO4409.pdf",
+    "note": "AO4409, SO-8: S pins 1-3, G pin 4, D pins 5-8. VDS -30 V, VGS +/-20 V, RDS(on) 12 mOhm max at -4.5 V (the 5 V gate drive here). Replaces AO4407A, which is specified only down to -6 V.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "R1203",
+    "value": "100k",
+    "nets": {
+      "1": "MAIN_COMMON",
+      "2": "MAIN_GATE"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "Q1202",
+    "value": "PMV16UN",
+    "nets": {
+      "1": "BOOST_ENABLE",
+      "2": "GND",
+      "3": "MAIN_GATE"
+    },
+    "pins": {
+      "1": {
+        "name": "G",
+        "type": "input"
+      },
+      "2": {
+        "name": "S",
+        "type": "passive"
+      },
+      "3": {
+        "name": "D",
+        "type": "passive"
+      }
+    },
+    "footprint": "Package_TO_SOT_SMD:SOT-23",
+    "mpn": "Nexperia PMV16UN",
+    "source": "https://assets.nexperia.com/documents/data-sheet/PMV16UN.pdf",
+    "note": "VGS(th) 0.4-1.0 V: fully on from BOOST_ENABLE at any SYS_RAW; a 2N7002 (up to 2.5 V) could drop out at low battery.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "R1204",
+    "value": "100k",
+    "nets": {
+      "1": "BOOST_ENABLE",
+      "2": "SYS_RAW"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "LTC2955-1 EN is a 1.2-2.8 uA current-source pull-up (ADI p13: add an external pull-up) and TPS61288 EN has an 850k-1.1M pull-down: worst case 1.02 V, under its 1.2 V VIH. This holds EN at about 2.7 V or more; off, the LTC2955 sinks 30-44 uA.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "U1201",
+    "value": "TPS62162DSGR",
+    "nets": {
+      "1": "GND",
+      "2": "SYS_5V",
+      "3": "SYS_5V",
+      "4": "GND",
+      "5": "GND",
+      "6": "MB_3V3",
+      "7": "BUCK_SW",
+      "8": null,
+      "9": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "PGND",
+        "type": "power_in"
+      },
+      "2": {
+        "name": "VIN",
+        "type": "power_in"
+      },
+      "3": {
+        "name": "EN",
+        "type": "input"
+      },
+      "4": {
+        "name": "AGND",
+        "type": "power_in"
+      },
+      "5": {
+        "name": "FB",
+        "type": "input"
+      },
+      "6": {
+        "name": "VOS",
+        "type": "input"
+      },
+      "7": {
+        "name": "SW",
+        "type": "output"
+      },
+      "8": {
+        "name": "PG",
+        "type": "open_collector"
+      },
+      "9": {
+        "name": "PAD",
+        "type": "power_in"
+      }
+    },
+    "footprint": "Package_SON:Texas_DSG0008A_WSON-8-1EP_2x2mm_P0.5mm_EP0.9x1.6mm_ThermalVias",
+    "mpn": "TPS62162DSGR",
+    "source": "http://www.ti.com/lit/ds/symlink/tps62160.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "L1201",
+    "value": "2.2uH 1.5A",
+    "nets": {
+      "1": "BUCK_SW",
+      "2": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Inductor_SMD:L_Taiyo-Yuden_NR-30xx",
+    "mpn": "Taiyo Yuden LSXND3030QKT2R2MNG",
+    "source": "https://ds.yuden.co.jp/TYCOMPAS/ut/detail?pn=LSXND3030QKT2R2MNG&u=M",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "C1212",
+    "value": "10u",
+    "nets": {
+      "1": "SYS_5V",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0805_2012Metric",
+    "mpn": "Samsung Electro-Mechanics CL21A106KAYNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A106KAYNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "C1213",
+    "value": "22u",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0805_2012Metric",
+    "mpn": "Samsung Electro-Mechanics CL21A226MAQNNNE",
+    "source": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A226MAQNNN",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "D1200",
+    "value": "SS34",
+    "nets": {
+      "1": "P4_5V_ISO",
+      "2": "SYS_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "K",
+        "type": "passive"
+      },
+      "2": {
+        "name": "A",
+        "type": "passive"
+      }
+    },
+    "footprint": "Diode_SMD:D_SMA",
+    "mpn": "Diodes Incorporated B340A-13-F",
+    "source": "https://www.diodes.com/datasheet/download/B340A.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "JP1200",
+    "value": "0R LINK - REMOVE FOR P4 USB SERVICE",
+    "nets": {
+      "1": "P4_5V_ISO",
+      "2": "P4_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "KINO_A0:R_1206_3216Metric_Vishay_CRCW-HP",
+    "mpn": "Vishay CRCW12060000Z0EAHP",
+    "source": "https://www.vishay.com/docs/20043/crcwhpe3.pdf",
+    "note": "Reverse isolation diode plus manual disconnect (0 ohm link, desolder for P4 USB service). Verify Guition external supply and USB topology before simultaneous connection.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "TP1200",
+    "value": "SYS_5V",
+    "nets": {
+      "1": "SYS_5V"
+    },
+    "pins": {
+      "1": {
+        "name": "SYS_5V",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "TP1201",
+    "value": "MB_3V3",
+    "nets": {
+      "1": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "MB_3V3",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "12_boost",
+    "ref": "TP1202",
+    "value": "GND",
+    "nets": {
+      "1": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "GND",
+        "type": "passive"
+      }
+    },
+    "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "13_power_button",
+    "ref": "U1300",
+    "value": "LTC2955ITS8-1",
+    "nets": {
+      "1": "GND",
+      "2": "POWER_KILL_N",
+      "3": "POWER_TMR",
+      "4": "GND",
+      "5": "POWER_PB_N",
+      "6": "SYS_RAW",
+      "7": "BOOST_ENABLE",
+      "8": "POWER_INT_N"
+    },
+    "pins": {
+      "1": {
+        "name": "ON",
+        "type": "input"
+      },
+      "2": {
+        "name": "KILL",
+        "type": "input"
+      },
+      "3": {
+        "name": "TMR",
+        "type": "passive"
+      },
+      "4": {
+        "name": "GND",
+        "type": "power_in"
+      },
+      "5": {
+        "name": "PB_N",
+        "type": "input"
+      },
+      "6": {
+        "name": "VIN",
+        "type": "power_in"
+      },
+      "7": {
+        "name": "EN",
+        "type": "output"
+      },
+      "8": {
+        "name": "INT_N",
+        "type": "open_collector"
+      }
+    },
+    "footprint": "Package_TO_SOT_SMD:TSOT-23-8",
+    "mpn": "Analog Devices LTC2955ITS8-1#TRMPBF",
+    "source": "https://www.analog.com/media/en/technical-documentation/data-sheets/2955fa.pdf",
+    "note": "TS8 p2: 1 ON, 2 KILL, 3 TMR, 4 GND, 5 PB, 6 VIN, 7 EN, 8 INT. Enable drive/loading still requires review.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "13_power_button",
+    "ref": "C1300",
+    "value": "100n 50V",
+    "nets": {
+      "1": "SYS_RAW",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "YAGEO CC0603KRX7R9BB104",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/CC0603KRX7R9BB104",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "13_power_button",
+    "ref": "C1301",
+    "value": "1.5u 16V",
+    "nets": {
+      "1": "POWER_TMR",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Capacitor_SMD:C_0603_1608Metric",
+    "mpn": "Samsung Electro-Mechanics CL10A155KO8NNNC",
+    "source": "",
+    "note": "1.8 uF 0603 is not stocked by a major maker. Timer constant from the ADI data sheet still to confirm; about 7.9 s at 5.2 s/uF.",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "13_power_button",
+    "ref": "R1300",
+    "value": "100k",
+    "nets": {
+      "1": "POWER_KILL_N",
+      "2": "SYS_RAW"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "13_power_button",
+    "ref": "Q1300",
+    "value": "2N7002",
+    "nets": {
+      "1": "SOFT_KILL",
+      "2": "GND",
+      "3": "POWER_KILL_N"
+    },
+    "pins": {
+      "1": {
+        "name": "G",
+        "type": "input"
+      },
+      "2": {
+        "name": "S",
+        "type": "passive"
+      },
+      "3": {
+        "name": "D",
+        "type": "passive"
+      }
+    },
+    "footprint": "Package_TO_SOT_SMD:SOT-23",
+    "mpn": "Nexperia 2N7002,215",
+    "source": "https://assets.nexperia.com/documents/data-sheet/2N7002.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "13_power_button",
+    "ref": "R1301",
+    "value": "100k",
+    "nets": {
+      "1": "SOFT_KILL",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-07100KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-07100KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "13_power_button",
+    "ref": "R1302",
+    "value": "10k",
+    "nets": {
+      "1": "POWER_INT_N",
+      "2": "MB_3V3"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-0710KL",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-0710KL",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "13_power_button",
+    "ref": "J1300",
+    "value": "POWER PUSHBUTTON",
+    "nets": {
+      "1": "POWER_PB_N",
+      "2": "GND"
+    },
+    "pins": {
+      "1": {
+        "name": "POWER_PB_N",
+        "type": "passive"
+      },
+      "2": {
+        "name": "GND",
+        "type": "passive"
+      }
+    },
+    "footprint": "Connector_JST:JST_GH_BM02B-GHS-TBT_1x02-1MP_P1.25mm_Vertical",
+    "mpn": "JST BM02B-GHS-TBT(LF)(SN)",
+    "source": "https://www.jst-mfg.com/product/pdf/eng/eGH.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "13_power_button",
+    "ref": "R1303",
+    "value": "2.2k",
+    "nets": {
+      "1": "MB_3V3",
+      "2": "POWER_LED_A"
+    },
+    "pins": {
+      "1": {
+        "name": "1",
+        "type": "passive"
+      },
+      "2": {
+        "name": "2",
+        "type": "passive"
+      }
+    },
+    "footprint": "Resistor_SMD:R_0603_1608Metric",
+    "mpn": "RC0603FR-072K2L",
+    "source": "https://www.yageogroup.com/component-documentation/download/specsheet/RC0603FR-072K2L",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "13_power_button",
+    "ref": "D1300",
+    "value": "LED GREEN",
+    "nets": {
+      "1": "GND",
+      "2": "POWER_LED_A"
+    },
+    "pins": {
+      "1": {
+        "name": "K",
+        "type": "passive"
+      },
+      "2": {
+        "name": "A",
+        "type": "passive"
+      }
+    },
+    "footprint": "LED_SMD:LED_0603_1608Metric",
+    "mpn": "Wurth Elektronik 150060VS75000",
+    "source": "https://www.we-online.com/components/products/datasheet/150060VS75000.pdf",
+    "note": "",
+    "dnp": false,
+    "at": null
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "H1",
+    "value": "P4 M2 insert mount",
+    "nets": {},
+    "pins": {},
+    "footprint": "MountingHole:MountingHole_2.2mm_M2",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "61.9 x 54.8 inner insert centres. Offset -9.3 mm is drawing-derived, pending physical fit. Extension spacers required for P4 component/header clearance.",
+    "dnp": false,
+    "at": [
+      18.255,
+      7.305
+    ]
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "H2",
+    "value": "P4 M2 insert mount",
+    "nets": {},
+    "pins": {},
+    "footprint": "MountingHole:MountingHole_2.2mm_M2",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "61.9 x 54.8 inner insert centres. Offset -9.3 mm is drawing-derived, pending physical fit. Extension spacers required for P4 component/header clearance.",
+    "dnp": false,
+    "at": [
+      80.155,
+      7.305
+    ]
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "H3",
+    "value": "P4 M2 insert mount",
+    "nets": {},
+    "pins": {},
+    "footprint": "MountingHole:MountingHole_2.2mm_M2",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "61.9 x 54.8 inner insert centres. Offset -9.3 mm is drawing-derived, pending physical fit. Extension spacers required for P4 component/header clearance.",
+    "dnp": false,
+    "at": [
+      18.255,
+      62.105
+    ]
+  },
+  {
+    "sheet": "01_p4",
+    "ref": "H4",
+    "value": "P4 M2 insert mount",
+    "nets": {},
+    "pins": {},
+    "footprint": "MountingHole:MountingHole_2.2mm_M2",
+    "mpn": "PCB feature - no fitted component",
+    "source": "",
+    "note": "61.9 x 54.8 inner insert centres. Offset -9.3 mm is drawing-derived, pending physical fit. Extension spacers required for P4 component/header clearance.",
+    "dnp": false,
+    "at": [
+      80.155,
+      62.105
+    ]
+  }
+]

@@ -1,0 +1,22 @@
+{
+  "reference": "J1000",
+  "pads": [
+    "A1",
+    "A12",
+    "B1",
+    "B12"
+  ],
+  "source": "https://gct.co/files/drawings/usb4105.pdf",
+  "source_drawing_revision": "B4, 18 December 2023",
+  "stock_land_mm": [
+    0.6,
+    1.15
+  ],
+  "adjusted_land_mm": [
+    0.6,
+    1.1
+  ],
+  "centre_shift_y_mm": -0.025,
+  "hole_and_contact_x_datums_changed": false,
+  "assembly_qualification_complete": false
+}

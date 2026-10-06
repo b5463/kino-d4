@@ -1,0 +1,145 @@
+(footprint "R_1206_3216Metric_Vishay_CRCW-HP"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "0 ohm link, Vishay CRCW1206-HP e3 (doc 20043 rev 17-Mar-2026 p9 reflow land: G 1.50, Y 1.05, X 1.80, Z 3.60 mm). KINO carrier power links JP200-JP500, JP1200.")
+	(tags "resistor jumper 0R link 1206 Vishay CRCW-HP")
+	(property "Reference" "REF**"
+		(at 0 -1.83 0)
+		(layer "F.SilkS")
+		(uuid "efc588ca-5034-4867-9ffa-4268d750b4af")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "R_1206_3216Metric"
+		(at 0 1.83 0)
+		(layer "F.Fab")
+		(uuid "125d005b-a3ce-4b5a-8df4-4950d83e6a65")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "086fba57-059a-4130-a62f-de62b656f663")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "f07c6ec1-3747-45e6-8706-20f87d819a68")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "KiLib_Generator" "SMD_2terminal_chip_molded"
+		(at 0 0 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "4d668a04-4181-491e-b349-2422cb239335")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_line
+		(start -0.727064 -0.91)
+		(end 0.727064 -0.91)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "104bfe8a-7caa-444d-ad75-ac642e8579fe")
+	)
+	(fp_line
+		(start -0.727064 0.91)
+		(end 0.727064 0.91)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "eb12126b-7d38-4575-8193-0693aadf62c5")
+	)
+	(fp_rect
+		(start -2.28 -1.13)
+		(end 2.28 1.13)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "ae92e46a-f7b1-4d8e-be58-8919efedbd7d")
+	)
+	(fp_rect
+		(start -1.6 -0.8)
+		(end 1.6 0.8)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "6469d319-1630-4ba0-bc88-dc86df712bab")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "fa9ff4ff-162c-40f8-8c71-a64fd194bd4e")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(pad "1" smd roundrect
+		(at -1.275 0)
+		(size 1.05 1.8)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(roundrect_rratio 0.222222)
+		(uuid "7d7a1ac7-33ef-4d80-a348-e8b9f42e2c10")
+	)
+	(pad "2" smd roundrect
+		(at 1.275 0)
+		(size 1.05 1.8)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(roundrect_rratio 0.222222)
+		(uuid "85e302bc-1fcd-4ee3-b2c9-18069e571631")
+	)
+	(embedded_fonts no)
+	(model "${KICAD10_3DMODEL_DIR}/Resistor_SMD.3dshapes/R_1206_3216Metric.step"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 0)
+		)
+	)
+)
