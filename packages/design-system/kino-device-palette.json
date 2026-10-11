@@ -13,7 +13,7 @@
     "K_ACCENT_INK": { "hex": "2a0e1c", "note": "The dark ink set on the launch shade: the SHOOT card, a pressed control. 9:1 or more on every shade, 5.6:1 or more pressed." },
     "K_FAULT": { "hex": "e5484d", "note": "Red as a mark or a fill: a lost camera, a destructive press, the lens hint. Ink on it is K_GROUND (5.1:1), never K_INK (3.4:1)." },
     "K_FAULT_INK": { "hex": "f26a60", "note": "Red as type on the dark grounds: 6.8:1 on the ground, 6.0:1 on a row." },
-    "K_LIVE": { "hex": "86d6b4", "note": "Retired in this pass: mint. Still drawn by the four-mark, the menu labels, SENT and the ROLL lamp until each moves to K_INK." }
+    "K_LIVE": { "hex": "86d6b4", "note": "Retired in this pass: mint. Still drawn by the four-mark, SENT and the ROLL lamp until each moves to K_INK." }
   },
   "roles": {
     "K_FACE": { "is": "K_GROUND", "note": "The face of the menu and every detail screen: the ground, as on MAO." },
@@ -50,10 +50,6 @@
     "K_BF_COLD": {
       "note": "Cold: the instrument before it knows what it is shooting. The field comes up in these and travels to the launch shade's inks as the cameras answer. Code-neutral greys, light to dark.",
       "values": ["989898", "707070", "484848", "202020"]
-    },
-    "K_MENU_ROW": {
-      "note": "Retired in this pass: the menu's five rows, a green ramp. The rows become flat K_ROW.",
-      "values": ["1e5240", "1a4938", "164031", "13382a", "103024"]
     }
   }
 }

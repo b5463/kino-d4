@@ -57,8 +57,8 @@
 #define K_FAULT RGB(0xe5, 0x48, 0x4d) /* 0xE249 */
 /* Red as type on the dark grounds: 6.8:1 on the ground, 6.0:1 on a row. */
 #define K_FAULT_INK RGB(0xf2, 0x6a, 0x60) /* 0xF34C */
-/* Retired in this pass: mint. Still drawn by the four-mark, the menu labels,
- * SENT and the ROLL lamp until each moves to K_INK.
+/* Retired in this pass: mint. Still drawn by the four-mark, SENT and the ROLL
+ * lamp until each moves to K_INK.
  */
 #define K_LIVE RGB(0x86, 0xd6, 0xb4) /* 0x86B6 */
 
@@ -131,13 +131,4 @@ static const uint16_t K_BF_WARM[K_BF_WARM_N][K_BF_WARM_W] = {
 #define K_BF_COLD_N 4
 static const uint16_t K_BF_COLD[K_BF_COLD_N] = {
     RGB(0x98, 0x98, 0x98), RGB(0x70, 0x70, 0x70), RGB(0x48, 0x48, 0x48), RGB(0x20, 0x20, 0x20),
-};
-
-/* Retired in this pass: the menu's five rows, a green ramp. The rows become
- * flat K_ROW.
- */
-#define K_MENU_ROW_N 5
-static const uint16_t K_MENU_ROW[K_MENU_ROW_N] = {
-    RGB(0x1e, 0x52, 0x40), RGB(0x1a, 0x49, 0x38), RGB(0x16, 0x40, 0x31),
-    RGB(0x13, 0x38, 0x2a), RGB(0x10, 0x30, 0x24),
 };

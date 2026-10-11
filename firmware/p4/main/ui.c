@@ -3386,10 +3386,10 @@ static void human_bytes(char *out, size_t n, uint64_t bytes) {
  * card four times the height of anything else, and the rest are a list under
  * it. Nothing about where a press goes changed; one tap still opens.
  *
- * The palette and the shapes are a revision, and the only one in the tree:
- * near-black ground, one warm accent carrying the one thing that matters,
- * deep green rows darkening as they descend, and a corner radius. The rest of
- * the interface is still the utility shell.
+ * The palette and the shapes: MAO's near-black ground, the launch shade on
+ * the one thing that matters, the five rows flat K_ROW with their words in
+ * ink, and a corner radius. The card is the only colour on the screen at
+ * rest; a row takes the shade only under a finger.
  */
 /*
  * Two columns, and which is which is the hand's.
@@ -3470,19 +3470,16 @@ static void menu_rect(int i, int *x, int *y, int *w, int *h) {
  * mid-move. */
 static uint16_t menu_face(int i, bool down) {
   /*
-   * Each row a step darker than the one above it: a stack seen edge-on, and
-   * the reason the eye starts at the top and not in the middle.
+   * The card in the launch shade, the rows one flat K_ROW.
    *
-   * The ramp has a floor, and finding it was the point. The first one ran to
-   * 0B1A15 against a 0B0D0C ground - measured, that is a summed channel
-   * distance of 20 where the top row has 129, so the bottom two rows had
-   * essentially no container and the list appeared to fade out through the
-   * foot of the panel. A stack of five cards has to still be five cards at
-   * the bottom of it; the step is smaller now and it stops well clear of the
-   * page.
+   * The rows were a green ramp, each a step darker than the one above. With
+   * the card as the one colour, a second colour family on the same screen
+   * argued with it, and the list reads as a list without the ramp: the card
+   * says where the eye starts. A pressed row takes the shade, the way every
+   * other control does.
    */
   if (i == 0) return down ? K_ACCENT_DOWN : K_ACCENT;
-  return down ? K_ACCENT : K_MENU_ROW[i - 1];
+  return down ? K_PRESS : K_ROW;
 }
 
 /* What the camera has, in the place the reference puts its status. */
@@ -3651,7 +3648,7 @@ static void menu_words(int i, int x, int y, int w, int h, uint16_t ink, bool wit
 
 /** The ink an item's words are set in, on its face, pressed or not. */
 static uint16_t menu_ink(int i, bool down) {
-  return i == 0 ? K_ACCENT_INK : (down ? K_GROUND : K_LIVE);
+  return i == 0 ? K_ACCENT_INK : (down ? K_PRESS_INK : K_INK);
 }
 
 static void menu_item(int i, int x, int y, int w, int h, bool down, bool with_word) {

@@ -98,9 +98,8 @@
   X(K_INK, K_ROW, 45, "a dialog's action at rest (RESTART, OK)")                    \
   X(K_ACCENT_INK, K_ACCENT, 45, "TAP TO OPEN and the status line on the SHOOT card")     \
   X(K_ACCENT_INK, K_ACCENT_DOWN, 45, "the SHOOT card's words, pressed")                  \
-  X(K_GROUND, K_ACCENT, 45, "a menu row's label, pressed")                             \
-  X(K_LIVE, K_MENU_ROW[0], 45, "a menu row's label, top row")                          \
-  X(K_LIVE, K_MENU_ROW[K_MENU_ROW_N - 1], 45, "a menu row's label, bottom row")        \
+  X(K_PRESS_INK, K_PRESS, 45, "a menu row's label, pressed")                             \
+  X(K_INK, K_ROW, 45, "a menu row's label")                          \
   X(K_GROUND, K_LIVE, 45, "SENT on a gallery tile")                                    \
   X(K_INK, K_TOAST, 45, "a toast")                                               \
   /* inks on red */                                                                    \
