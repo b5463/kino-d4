@@ -97,7 +97,12 @@ int64_t prev_idle_clock_us = 8040LL * 1000000;
 static const char *g_anim;
 static int g_anim_n;
 
+/* Called on every presented frame and every stash render while set:
+ * check_wake_into_move() reads the scrim each frame was drawn under. */
+static void (*g_frame_hook)(bool stash);
+
 void gfx_present(void) {
+  if (g_frame_hook != NULL) g_frame_hook(false);
   if (g_anim != NULL) {
     char path[600];
     snprintf(path, sizeof path, "%s/%s_%02d.ppm", g_out, g_anim, g_anim_n++);
@@ -134,6 +139,7 @@ void gfx_render_stash(gfx_draw_fn draw, void *ctx) {
    * it points anywhere else, so the stash has to be a view for the draw. */
   const gfx_target_t v = {g_stash, 0, 0, UI_W, UI_H, UI_W};
   g_view = &v;
+  if (g_frame_hook != NULL) g_frame_hook(true);
   draw(ctx);
   g_view = NULL;
 }
@@ -220,6 +226,9 @@ static int g_shutter_n, g_warning_n;
 void audio_shutter(void) { g_shutter_n++; }
 void audio_tick(void) {}
 void audio_warning(void) { g_warning_n++; }
+/* ui_pass() calls these; check_wake_into_move() drives ui_pass. */
+void audio_done(void) {}
+void audio_sync(void) {}
 
 esp_err_t touch_init(void) { return ESP_OK; }
 bool touch_ready(void) { return false; }
@@ -778,13 +787,19 @@ bool media_favorite_get(const char *id) {
   return false;
 }
 
+/* The stage power_get() reports. AWAKE for every scene; the move checks set
+ * DIM to hold a dim that is still arriving. */
+static power_stage_t g_power_stage = POWER_AWAKE;
 void power_activity(void) {}
 void power_wake(void) {}
 bool power_sleep_pending(void) { return false; }
 void power_sleep_shown(void) {}
+void power_cam_bank_cycle(void) {}
+bool power_wake_gesture(void) { return false; }
+void power_end_wake_gesture(void) {}
 void power_get(power_state_t *out) {
   if (out == NULL) return;
-  out->stage = POWER_AWAKE;
+  out->stage = g_power_stage;
   out->idle_s = 12;
   out->display_on = true;
   out->cam_bank_on = true;
@@ -1587,12 +1602,25 @@ static void lift_frame(screen_t sc, int k, int mark, const char *name) {
   g_audit_off = false;
 }
 
+/* The canvas's mean green, 0..63: how much light a frame gives off. */
+static double canvas_mean_g6(void) {
+  double sum = 0.0;
+  for (int i = 0; i < UI_W * UI_H; i++) sum += (double)((g_canvas[i] >> 5) & 0x3F);
+  return sum / (double)(UI_W * UI_H);
+}
+
 /*
  * A move started part-way through a lift takes the rest of it. The pass skips
  * lift_step while a move runs, so a lift left going would land after the move
  * as one step. SETTINGS -> DISPLAY is the slide (no row behind it); the menu
- * -> SETTINGS is the row move. After go() the lift is over and the arriving
- * screen is clear. A dim still arriving keeps its scrim through a move.
+ * -> SETTINGS is the row move. After go() the lift is over, the slide's
+ * arriving screen is clear and the row move carries the scrim. A dim still
+ * arriving (stage DIM) keeps its scrim through a move.
+ *
+ * Then the row move's first frame against the last frame before it: the
+ * pressed menu under the lift's scrim. The two must give off the same light
+ * as they do with no scrim at all - the move may not drop the scrim in one
+ * frame - and the carried scrim only goes down and is gone before the land.
  */
 static void check_move_takes_lift(void) {
   const screen_t scr0 = s_screen;
@@ -1603,24 +1631,209 @@ static void check_move_takes_lift(void) {
     s_screen = FROM[i];
     lift_start(DIM_SCRIM_K / 3, 0, MOTION_UNDIM_MS);
     go(TO[i], MOTION_OPEN_MS);
+    const int carried = s_anim.kind == ANIM_OPEN ? s_anim.scrim0 : 0;
     s_anim.kind = ANIM_NONE;
+    s_anim.scrim0 = s_anim.scrim_k = 0;
     if (s_lift_us != 0 || s_dim_k != 0 || s_lift_mark != 0) {
       fprintf(stderr, "a move from screen %d left the lift running (scrim %d)\n", (int)FROM[i], s_dim_k);
+      g_motion_failed = true;
+    }
+    if (FROM[i] == SCR_MENU && carried != DIM_SCRIM_K / 3) {
+      fprintf(stderr, "the row move carried scrim %d of the lift's %d\n", carried, DIM_SCRIM_K / 3);
       g_motion_failed = true;
     }
   }
   s_screen = SCR_SETTINGS;
   s_lift_us = 0;
   s_dim_k = DIM_SCRIM_K / 2; /* a dim on its way in: no lift running */
+  g_power_stage = POWER_DIM;
   go(SCR_DISPLAY, MOTION_OPEN_MS);
   s_anim.kind = ANIM_NONE;
+  g_power_stage = POWER_AWAKE;
   if (s_dim_k != DIM_SCRIM_K / 2) {
     fprintf(stderr, "a move cut a dim on its way in (scrim %d)\n", s_dim_k);
     g_motion_failed = true;
   }
+
+  /* The row move's first frame, with and without a lift under it. */
+  const int row = menu_item_of(SCR_SETTINGS);
+  double before[2], first[2];
+  for (int pass = 0; pass < 2; pass++) {
+    const int k = pass == 0 ? 0 : DIM_SCRIM_K / 3;
+    s_screen = SCR_MENU;
+    s_pressed = row;
+    s_lift_us = 0;
+    s_dim_k = 0;
+    if (k > 0) lift_start(k, 0, MOTION_UNDIM_MS);
+    scan_conditions();
+    draw_screen();
+    before[pass] = canvas_mean_g6();
+    prev_vclock_us = 1000000;
+    go(SCR_SETTINGS, MOTION_OPEN_MS);
+    int prev_k = s_anim.scrim0, frames = 0;
+    bool first_seen = false;
+    for (int guard = 0; anim_active() && guard < 400; guard++) {
+      const uint32_t wait = anim_tick();
+      if (!first_seen) {
+        first[pass] = canvas_mean_g6();
+        first_seen = true;
+        if (s_anim.scrim_k != k) {
+          fprintf(stderr, "the row move's first frame is at scrim %d, the glass was at %d\n", s_anim.scrim_k, k);
+          g_motion_failed = true;
+        }
+      }
+      if (s_anim.scrim_k > prev_k) {
+        fprintf(stderr, "the row move's scrim goes back up at frame %d (%d -> %d)\n", frames, prev_k, s_anim.scrim_k);
+        g_motion_failed = true;
+      }
+      prev_k = s_anim.scrim_k;
+      frames++;
+      if (wait > 0) prev_vclock_us += (int64_t)wait * 1000;
+    }
+    prev_vclock_us = 0;
+    if (prev_k != 0 || s_dim_k != 0) {
+      fprintf(stderr, "the row move lands under scrim %d (dim %d)\n", prev_k, s_dim_k);
+      g_motion_failed = true;
+    }
+  }
+  /* The scrim takes the same light off both frames: they differ only as much
+   * as the two frames do with no scrim. Without the carry the first frame is
+   * the whole scrim brighter. */
+  const double drift = (first[1] - before[1]) - (first[0] - before[0]);
+  if (drift > 0.10 || drift < -0.10) {
+    fprintf(stderr, "the row move's first frame is %.2f G6 off the scrimmed menu before it\n", drift);
+    g_motion_failed = true;
+  }
+  printf("row move under a lift: first frame %.2f G6 off the menu before it (%.2f with no lift)\n",
+         first[1] - before[1], first[0] - before[0]);
+  s_anim.kind = ANIM_NONE;
+  s_anim.scrim0 = s_anim.scrim_k = 0;
   s_dim_k = 0;
   s_lift_us = 0;
   s_lift_mark = 0;
+  s_pressed = -1;
+  s_screen = scr0;
+  g_screen_drawn = false;
+  g_audit_off = false;
+}
+
+/*
+ * The shutter key on a dimmed or a sleeping screen, through ui_pass().
+ *
+ * The key wakes the screen and starts the move to SHOOT on the same pass, and
+ * the pass would then start the undim or the wake lift under the pending
+ * move. The pass skips lift_step while a move runs, so the landed frame was
+ * drawn dark and cut to full on the next. Every frame from the first one on
+ * is recorded with the scrim it was drawn under; it must only go down, by no
+ * more than one frame of the faster lift at a time, and end at 0. A slide's
+ * arriving screen is drawn clear.
+ */
+#define WAKE_SEQ_MAX 512
+static int g_wake_seq[WAKE_SEQ_MAX];
+static int g_wake_seq_n;
+static int g_wake_stash_k;
+
+static void wake_hook(bool stash) {
+  if (stash) {
+    g_wake_stash_k = s_dim_k;
+    return;
+  }
+  const int k = s_dim_k + (s_anim.kind == ANIM_OPEN ? s_anim.scrim_k : 0);
+  if (g_wake_seq_n < WAKE_SEQ_MAX) g_wake_seq[g_wake_seq_n++] = k;
+}
+
+/* `lift_ms` > 0: a plain pass starts the undim first and the key comes that
+ * far into it - the release in the middle of a lift. */
+static void wake_into_move(const char *what, screen_t from, int k0, bool asleep, int lift_ms, int expect_first) {
+  s_screen = from;
+  s_pressed = -1;
+  s_anim.kind = ANIM_NONE;
+  s_dim_k = k0;
+  s_lift_us = 0;
+  s_lift_mark = 0;
+  s_sleep_mark = asleep;
+  s_sleep_stage = -1;
+  was_asleep = asleep;
+  s_dim_since_us = 0;
+  g_power_stage = POWER_AWAKE; /* power_activity() ran on the buttons task */
+  s_btn_q = xQueueCreate(4, sizeof(btn_event_t));
+  prev_vclock_us = 1000000;
+  g_wake_seq_n = 0;
+  g_wake_stash_k = -1;
+  g_frame_hook = wake_hook;
+
+  bool pressed = false, moved = false;
+  int after = 0;
+  const int64_t t0 = prev_vclock_us;
+  for (int guard = 0; guard < 2000; guard++) {
+    if (!pressed && prev_vclock_us - t0 >= (int64_t)lift_ms * 1000) {
+      on_button(BTN_SHUTTER, false);
+      pressed = true;
+    }
+    const int n0 = g_wake_seq_n;
+    const uint32_t wait = ui_pass();
+    if (anim_active()) moved = true;
+    /* A frame moves the clock itself. A pass that drew nothing and asks for
+     * no wait comes straight back on the camera; it is given a millisecond
+     * here only when no move is pending, so the idle passes before the key
+     * still let time pass. */
+    if (wait > 0) prev_vclock_us += (int64_t)wait * 1000;
+    else if (g_wake_seq_n == n0 && !anim_active()) prev_vclock_us += 1000;
+    if (moved && !anim_active() && ++after > 8) break;
+  }
+  g_frame_hook = NULL;
+  prev_vclock_us = 0;
+
+  if (!moved || s_screen != SCR_SHOOT) {
+    fprintf(stderr, "%s: the shutter did not move to SHOOT (screen %d)\n", what, (int)s_screen);
+    g_motion_failed = true;
+  }
+  if (g_wake_seq_n == 0) {
+    fprintf(stderr, "%s: nothing was drawn\n", what);
+    g_motion_failed = true;
+  } else {
+    if (expect_first >= 0 && g_wake_seq[0] != expect_first) {
+      fprintf(stderr, "%s: the first frame is under scrim %d, expected %d\n", what, g_wake_seq[0], expect_first);
+      g_motion_failed = true;
+    }
+    /* The steepest frame either lift has: the first 16 ms of motion_ease_out
+     * from the ground over MOTION_WAKE_MS is 48 of 255. */
+    for (int i = 1; i < g_wake_seq_n; i++) {
+      const int d = g_wake_seq[i - 1] - g_wake_seq[i];
+      if (d < 0 || d > 64) {
+        fprintf(stderr, "%s: frame %d steps the scrim %d -> %d\n", what, i, g_wake_seq[i - 1], g_wake_seq[i]);
+        g_motion_failed = true;
+        break;
+      }
+    }
+    if (g_wake_seq[g_wake_seq_n - 1] != 0) {
+      fprintf(stderr, "%s: ends under scrim %d\n", what, g_wake_seq[g_wake_seq_n - 1]);
+      g_motion_failed = true;
+    }
+  }
+  if (g_wake_stash_k > 0) {
+    fprintf(stderr, "%s: the arriving screen was drawn under scrim %d\n", what, g_wake_stash_k);
+    g_motion_failed = true;
+  }
+  printf("%s: %d frames, scrim %d first\n", what, g_wake_seq_n, g_wake_seq_n ? g_wake_seq[0] : -1);
+}
+
+static void check_wake_into_move(void) {
+  const screen_t scr0 = s_screen;
+  g_audit_off = true;
+  wake_into_move("shutter on the dimmed menu", SCR_MENU, DIM_SCRIM_K, false, 0, DIM_SCRIM_K);
+  wake_into_move("shutter on the sleeping menu", SCR_MENU, SLEEP_DARK_K, true, 0, 255);
+  wake_into_move("shutter 60 ms into the undim", SCR_MENU, DIM_SCRIM_K, false, 60, -1);
+  wake_into_move("shutter on the dimmed SETTINGS", SCR_SETTINGS, DIM_SCRIM_K, false, 0, -1);
+  wake_into_move("shutter on the sleeping SETTINGS", SCR_SETTINGS, SLEEP_DARK_K, true, 0, -1);
+  s_btn_q = NULL;
+  s_anim.kind = ANIM_NONE;
+  s_anim.scrim0 = s_anim.scrim_k = 0;
+  s_dim_k = 0;
+  s_lift_us = 0;
+  s_lift_mark = 0;
+  s_sleep_mark = false;
+  was_asleep = false;
   s_pressed = -1;
   s_screen = scr0;
   g_screen_drawn = false;
@@ -2387,6 +2600,7 @@ static void scenes(void) {
   /* Last, so nothing it touches reaches a picture. */
   check_shutter_sound();
   check_move_takes_lift();
+  check_wake_into_move();
 }
 
 /* ---- what a frame costs ---- */

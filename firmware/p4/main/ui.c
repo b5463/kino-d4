@@ -2495,6 +2495,11 @@ static struct {
   screen_t card;    /* the screen drawn inside the card: arriving when opening, leaving when not */
   bool snap;        /* the card is blitted from the stash, drawn there once at the start */
   bool from_right;  /* ANIM_SLIDE: the new screen arrives from the right (deeper) */
+  /* ANIM_OPEN: the scrim the move took off the glass (scrim0), coming off
+   * over scrim_ms of the move on motion_ease_out. scrim_k is this frame's
+   * value, set by anim_tick() before the frame is drawn. See go(). */
+  int scrim0, scrim_k;
+  int32_t scrim_ms;
 } s_anim;
 
 static bool anim_active(void) { return s_anim.kind != ANIM_NONE; }
@@ -2542,6 +2547,7 @@ static void anim_report(const char *what) {
 
 static void anim_start_splash(void) {
   s_anim.kind = ANIM_SPLASH;
+  s_anim.scrim0 = s_anim.scrim_k = 0;
   s_anim.start_us = esp_timer_get_time();
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
@@ -2560,6 +2566,7 @@ static void anim_start_open(int row, bool opening, screen_t card, int ms) {
   s_anim.row = row;
   s_anim.opening = opening;
   s_anim.card = card;
+  s_anim.scrim0 = s_anim.scrim_k = 0; /* go() sets the carry after this */
   /*
    * Two screens are too costly to draw on every frame of a move: SHOOT, whose
    * four panes are remapped pixel by pixel from the finder's tiles (18 ms a
@@ -2603,6 +2610,7 @@ static void anim_start_slide(screen_t to, bool from_right, int ms) {
   s_anim.kind = ANIM_SLIDE;
   s_anim.card = to;
   s_anim.from_right = from_right;
+  s_anim.scrim0 = s_anim.scrim_k = 0;
   s_anim.snap = true;
   gfx_render_stash(render_screen, NULL);
   gfx_slide_prepare();
@@ -2618,6 +2626,7 @@ static void anim_start_slide(screen_t to, bool from_right, int ms) {
  * that went to the panel any other way. */
 static void anim_start_cascade(int ms) {
   s_anim.kind = ANIM_CASCADE;
+  s_anim.scrim0 = s_anim.scrim_k = 0;
   s_anim.start_us = esp_timer_get_time();
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
@@ -2756,6 +2765,17 @@ static uint32_t anim_tick(void) {
     case ANIM_OPEN: {
       float p = t;
       if (!s_anim.opening) p = 1.0f - p;
+      /* The scrim the move took over (go()), on the move's own clock, set
+       * here so open_frame() stays a pure draw of state. */
+      if (s_anim.scrim0 > 0) {
+        int32_t sms = s_anim.scrim_ms;
+        if (sms > s_anim.span_ms) sms = s_anim.span_ms;
+        const float te = sms > 0 ? (float)(esp_timer_get_time() - s_anim.start_us) / ((float)sms * 1000.0f) : 1.0f;
+        s_anim.scrim_k = s_anim.scrim0 - (int)(motion_ease_out(te) * (float)s_anim.scrim0 + 0.5f);
+        if (s_anim.scrim_k < 0) s_anim.scrim_k = 0;
+      } else {
+        s_anim.scrim_k = 0;
+      }
       ui_render(render_open, &p);
       if (done) {
         /* The exact end: the destination drawn as itself. The last composited
@@ -8119,6 +8139,10 @@ static void open_frame(int row, float t) {
   }
 
   cut_corners(ox, oy, ow, oh, (float)UI_R * (1.0f - e), K_GROUND);
+
+  /* The rest of an undim or a wake, carried by the move (go()): over
+   * everything, as draw_screen() lays the dim. */
+  if (s_anim.scrim_k > 0) scrim(0, 0, UI_W, UI_H, K_GROUND, s_anim.scrim_k);
 }
 
 static void open_anim(int row, bool opening, screen_t card, int ms) {
@@ -8152,6 +8176,37 @@ static int menu_item_of(screen_t s) {
  * say, and on a device with one screen and no window chrome the thing you
  * most need to know is where you are and how to get back.
  */
+/*
+ * Whether the scrim on the glass is on its way off: a lift running, or the
+ * stage back to AWAKE with no sleep pending while a scrim is still drawn - a
+ * press on a dimmed or a sleeping screen, which this pass would answer with
+ * a lift. power_activity() sets the stage on the task that saw the press,
+ * before the key reaches this one.
+ */
+static bool scrim_leaving(void) {
+  if (s_lift_us != 0) return true;
+  if (s_dim_k <= 0 && s_lift_mark <= 0) return false;
+  power_state_t p;
+  power_get(&p);
+  return p.stage == POWER_AWAKE && !power_sleep_pending();
+}
+
+/*
+ * A pending move takes the scrim at `k`, to finish over `ms` of the move,
+ * and nothing else lifts it: the pass skips lift_step while a move runs. Only
+ * a row move draws it (open_frame); a slide carries its scrim in the
+ * snapshot. Never lowers what the move already carries.
+ */
+static void move_takes_scrim(int k, int32_t ms) {
+  s_lift_us = 0;
+  s_dim_k = 0;
+  s_lift_mark = 0;
+  if (s_anim.kind != ANIM_OPEN || k <= s_anim.scrim0) return;
+  s_anim.scrim0 = k;
+  s_anim.scrim_k = k;
+  s_anim.scrim_ms = ms;
+}
+
 static void go(screen_t s, int ms) {
   if (s == SCR_GALLERY) gallery_refresh();
   /* The panes' settling clock: see SH_SETTLE_US. */
@@ -8168,6 +8223,10 @@ static void go(screen_t s, int ms) {
 
   const bool opening = from == SCR_MENU;
 
+  /* Read before the leaving screen is drawn: it goes into the snapshot with
+   * the scrim the glass is showing. */
+  const bool leaving = scrim_leaving();
+
   /*
    * A row move is drawn from state and needs nothing prepared: its first
    * frame follows the release by one pass. The push between two screens
@@ -8180,12 +8239,21 @@ static void go(screen_t s, int ms) {
     gfx_snapshot();
   }
 
-  /* A lift still running ends here: the move carries what is left of it. The
-   * pass skips lift_step while a move runs, so a lift left going would land
-   * after the move as one step. The leaving screen keeps its scrim in the
-   * snapshot and the arriving one is drawn clear. A dim still arriving or a
-   * sleep winding down has no lift running and keeps its scrim. */
-  if (s_lift_us != 0) {
+  /*
+   * A scrim on its way off ends here, and the move carries what is left of
+   * it. The pass skips lift_step while a move runs, so a lift left going
+   * would land after the move as one step, and a lift started on this pass
+   * would draw the landed frame dark and cut on the next.
+   *
+   * The slide carries it in its snapshot: the leaving screen was drawn above
+   * with the scrim, the arriving one is drawn clear below. The row move has
+   * no snapshot - open_frame() draws the menu and the card from state - so it
+   * takes the level as s_anim.scrim0 and finishes it over MOTION_UNDIM_MS
+   * (MOTION_WAKE_MS from darker than a dim: a wake) through s_anim.scrim_k.
+   * A dim still arriving or a sleep winding down keeps its scrim.
+   */
+  const int carry = leaving ? s_dim_k : 0;
+  if (leaving) {
     s_lift_us = 0;
     s_dim_k = 0;
     s_lift_mark = 0;
@@ -8199,6 +8267,7 @@ static void go(screen_t s, int ms) {
     /* Inside the card: the screen arriving when a row opens, the screen being
      * left when it closes. */
     open_anim(row, opening, opening ? s : from, ms);
+    if (carry > 0) move_takes_scrim(carry, carry > DIM_SCRIM_K ? MOTION_WAKE_MS : MOTION_UNDIM_MS);
   } else {
     /* Beside the parent, not out of a row: the drawn slide (anim_start_slide).
      * The leaving screen is on the canvas and in the snapshot from above. */
@@ -9387,8 +9456,14 @@ static uint32_t ui_pass(void) {
       ESP_LOGI(TAG, "woke: repainting");
       klog("P4", "woke, repainting");
       s_sleep_mark = false;
-      lift_start(255, 0, MOTION_WAKE_MS);
-      ui_render(render_screen, NULL);
+      if (anim_active()) {
+        /* The press that woke it started a move: the move lifts the scrim
+         * (go()), and nothing presents before its first frame. */
+        move_takes_scrim(255, MOTION_WAKE_MS);
+      } else {
+        lift_start(255, 0, MOTION_WAKE_MS);
+        ui_render(render_screen, NULL);
+      }
     }
     was_asleep = asleep_now;
 
@@ -9422,6 +9497,9 @@ static uint32_t ui_pass(void) {
           s_dim_k = k;
           ui_render(render_screen, NULL);
         }
+      } else if (anim_active()) {
+        /* A press on this pass started a move: the move takes the undim. */
+        move_takes_scrim(s_dim_k, MOTION_UNDIM_MS);
       } else {
         if (s_lift_us == 0 && (s_dim_k > 0 || s_lift_mark > 0)) {
           lift_start(s_dim_k, s_lift_mark, MOTION_UNDIM_MS);
@@ -9484,10 +9562,15 @@ static uint32_t ui_pass(void) {
        * lifts from its level. The mark up: the mark leaves first, then the
        * picture comes up from the ground (lift_at). It was one frame. */
       s_sleep_mark = false;
-      if (s_sleep_stage >= 0) lift_start(255, s_sleep_stage, MOTION_WAKE_MS);
-      else lift_start(s_dim_k, 0, MOTION_WAKE_MS);
-      ui_render(render_screen, NULL);
-      lifting = true;
+      if (anim_active()) {
+        /* Called off by a key that started a move: the move lifts it. */
+        move_takes_scrim(s_sleep_stage >= 0 ? 255 : s_dim_k, MOTION_WAKE_MS);
+      } else {
+        if (s_sleep_stage >= 0) lift_start(255, s_sleep_stage, MOTION_WAKE_MS);
+        else lift_start(s_dim_k, 0, MOTION_WAKE_MS);
+        ui_render(render_screen, NULL);
+        lifting = true;
+      }
     }
 
     if (!down) {
