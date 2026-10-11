@@ -373,7 +373,8 @@ void gfx_render_canvas(gfx_draw_fn draw, void *ctx) {
  * of the tile is TILE_H contiguous pixels of one panel row, 128 bytes, two
  * cache lines, sequential. PSRAM sees the 768 KB write and nothing else.
  *
- * The price is that the drawing runs once per tile - 56 times a frame - so
+ * The price is that the drawing runs once per tile - 85 times a frame, 17 x 5
+ * tiles of TILE_W x TILE_H - so
  * every primitive clips to the window before it does any work (ui.c), and
  * the frame's drawing must be a function of state, not of the previous tile.
  *

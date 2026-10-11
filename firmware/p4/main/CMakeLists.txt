@@ -4,10 +4,11 @@
 set(kino_srcs
   "main.c" "usb_link.c" "storage.c" "cam_link.c" "kdp_server.c" "hardware_validation.c"
     "hwv_rules.c"
-  # mesh3d.c is NOT here: 493 lines that no translation unit calls. ui.c
-  # includes mesh3d.h and nothing else references a symbol from it, so the
-  # object was compiled, linked and then dropped by --gc-sections at best.
-  # The source stays on disk; it is just not in the image.
+  # mesh3d.c is NOT here: 493 lines that no translation unit calls. Nothing
+  # includes mesh3d.h any more (ui.c's include went in #234) and nothing
+  # references a symbol from it, so the object was compiled, linked and then
+  # dropped by --gc-sections at best. The source stays on disk; it is not in
+  # the image, the host renderer or the Twin.
   "klog.c" "display.c" "touch.c" "ui.c" "gfx.c" "board_i2c.c"
   "audio.c" "config_store.c" "power.c" "lid.c" "viewfinder.c" "buttons.c" "clock.c" "capture.c"
   "pure.c" "taskmon.c" "meta.c" "thumb.c" "gallery.c" "gallery_index.c" "net_link.c"
@@ -192,11 +193,22 @@ if(KINO_ISR_WATCH)
   target_compile_definitions(${COMPONENT_LIB} PRIVATE KINO_ISR_WATCH=1)
 endif()
 
-# Bench switch: `idf.py -DKINO_UI_FRAME_DUMP=1 build` makes the UI print its
-# composed screens over the console so they can be decoded into pictures.
-# Off by default - it costs several seconds of boot and floods the log.
-if(KINO_UI_FRAME_DUMP)
-  target_compile_definitions(${COMPONENT_LIB} PRIVATE KINO_UI_FRAME_DUMP=1)
+# Bench switches: what the UI costs to draw, in the log ring at boot (#177).
+#
+#   idf.py -DUI_BOOT_BENCH=1 ... build      record and tile-replay time of each
+#                                           menu destination and an open move
+#   idf.py -DUI_DRAW_PROFILE=1 ... build    the same, plus the time per display-
+#                                           list op type (dl_profile in ui.c)
+#
+# UI_DRAW_PROFILE turns UI_BOOT_BENCH on: the profile lines are printed from
+# the boot bench and nowhere else. Both were #ifndef defaults in ui.c with no
+# forward here, so neither could be set from idf.py. Off, not one instruction
+# of either is compiled.
+if(UI_BOOT_BENCH OR UI_DRAW_PROFILE)
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE UI_BOOT_BENCH=1)
+endif()
+if(UI_DRAW_PROFILE)
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE UI_DRAW_PROFILE=1)
 endif()
 
 file(READ "${CMAKE_CURRENT_LIST_DIR}/../../VERSION" KINO_FW_VERSION)

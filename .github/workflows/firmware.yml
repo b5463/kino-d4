@@ -164,21 +164,32 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build the renderer
         run: make -C firmware/p4/host_preview
-      - name: Render every screen
+      - name: Render every screen for both hands and audit them
         run: |
           mkdir -p /tmp/preview
-          ./firmware/p4/host_preview/preview /tmp/preview
-          # A renderer that builds but draws nothing is a pass we do not want.
-          count=$(ls /tmp/preview/*.ppm 2>/dev/null | wc -l)
-          echo "rendered $count screens"
-          if [ "$count" -lt 10 ]; then
-            echo "::error::expected at least 10 rendered screens, got $count"
+          # Fails on the audit's structural checks: a string outside the safe
+          # area, hand-side chrome on the wrong half for either hand, a write
+          # that did not land, a PPM count that moved. Contrast and touch
+          # targets are reported in the log and fail once the colour pass sets
+          # AUDIT_STRICT_DEFAULT to 1 (#234). The golden hashes (make check)
+          # stay local: gcc versions round the anti-aliasing differently.
+          ./firmware/p4/host_preview/preview /tmp/preview > /tmp/preview/preview.log
+          # The files on disk against the count the renderer was built with,
+          # so a renderer that draws nothing, or half of it, is not a pass.
+          expected=$(./firmware/p4/host_preview/preview --ppms)
+          count=$(find /tmp/preview -name '*.ppm' | wc -l)
+          echo "rendered $count PPMs, expected $expected"
+          if [ "$count" -ne "$expected" ]; then
+            echo "::error::expected $expected rendered PPMs (both hands), got $count"
             exit 1
           fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ui-screens
-          path: /tmp/preview/*.ppm
+          path: |
+            /tmp/preview/*.ppm
+            /tmp/preview/left/*.ppm
+            /tmp/preview/preview.log
           retention-days: 7
 
   idf-build:

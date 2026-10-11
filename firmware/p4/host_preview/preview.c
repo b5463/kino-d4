@@ -13,12 +13,25 @@
  * the firmware free of test hooks: nothing in ui.c knows this exists.
  *
  *   make -C firmware/p4/host_preview && firmware/p4/host_preview/preview out/
+ *
+ * Every scene is rendered twice, once per hand (body.hand): the PPMs in out/
+ * are the right-handed body and the ones in out/left/ the left. Each hand
+ * runs in its own forked process from the same starting state, so the second
+ * pass cannot inherit a toast, a dialog or a stub value from the first.
+ *
+ *   preview [--strict] <out>    render, audit, exit non-zero on a failure
+ *   preview --ppms              print how many PPMs a run writes (both hands)
  */
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #define KINO_FW_VERSION "host-preview"
 
@@ -46,6 +59,9 @@
 /* ---- stand-ins for the parts of the camera a preview has no use for ---- */
 
 static uint16_t *g_canvas;
+/* Canvas pixels a picture was blitted into this frame (ui_audit_image): the
+ * contrast audit does not judge type set on a photograph or the finder. */
+static uint8_t g_img_mask[UI_W * UI_H];
 
 bool display_ready(void) { return true; }
 void *display_panel(void) { return NULL; }
@@ -76,6 +92,8 @@ extern char g_out[512];
  */
 int64_t prev_vclock_us;
 int64_t prev_vclock_step_us = 16000;
+/* The idle clock (shim/esp_timer.h): a body that has been up 2 h 14 min. */
+int64_t prev_idle_clock_us = 8040LL * 1000000;
 static const char *g_anim;
 static int g_anim_n;
 
@@ -119,6 +137,7 @@ uint32_t gfx_measure_draw_us(gfx_draw_fn draw, void *ctx) { s_pass++; draw(ctx);
 void gfx_render_canvas(gfx_draw_fn draw, void *ctx) { s_pass++; draw(ctx); }
 void gfx_render(gfx_draw_fn draw, void *ctx) {
   s_pass++;
+  memset(g_img_mask, 0, sizeof g_img_mask);
   draw(ctx);
   gfx_present();
 }
@@ -232,9 +251,13 @@ static const char *g_shutter_sound = "click";
 /* body.name: empty is the default and the state the About screen has always
  * shown, so both get a picture. */
 static const char *g_body_name = "";
+/* body.hand, set once per forked pass by main(). ui.c reads it at the top of
+ * every render_screen(), so every scene is drawn for the hand of its pass. */
+static const char *g_hand = "right";
 
 const char *config_str(const char *path, const char *fallback) {
   if (strcmp(path, "body.name") == 0) return g_body_name;
+  if (strcmp(path, "body.hand") == 0) return g_hand;
   if (strcmp(path, "mode") == 0) return g_mode;
   if (strcmp(path, "shoot.flashMode") == 0) return g_flash_mode;
   if (strcmp(path, "shoot.shutterSound") == 0) return g_shutter_sound;
@@ -915,8 +938,13 @@ int upload_queue_retry_all(void) { return 0; }
 /* Every scene here goes through ui_render(): recorded into the display list
  * and replayed, exactly as the camera draws a frame. So the byte-compare of
  * these pictures against the baseline tests the recorder, and a scene is a
- * pass, which keeps the once-per-pass caches in ui.c honest. */
-#define draw_screen() ui_render(render_screen, NULL)
+ * pass, which keeps the once-per-pass caches in ui.c honest.
+ *
+ * It also marks the canvas as a screen with a hit map, so shot() sweeps the
+ * touch targets of exactly the scenes that have them (not the boot field or
+ * the power-down mark, which are drawn directly). */
+static bool g_screen_drawn;
+#define draw_screen() (ui_render(render_screen, NULL), g_screen_drawn = true)
 
 /* ---- the text-overflow audit ----
  *
@@ -981,6 +1009,306 @@ static int audit_report(void) {
   return g_audit_n;
 }
 
+/* ---- the contrast audit (#176, C7 folded into UI-01) ----
+ *
+ * text() hands every string it draws to ui_audit_ink() just before its glyphs
+ * land, so the canvas under them is the ground the string is actually set on:
+ * a plate, a row, a pressed face, a scrim - whatever the frame put there, and
+ * not what the drawing code believed it put there. The ink is the colour
+ * text() was asked for.
+ *
+ * The ground is read under the glyphs' solid pixels (coverage >= 128), and
+ * the string is judged against the worst colour that makes up at least a
+ * tenth of them - a row edge under one letter is not the ground, a plate
+ * under half the word is. Contrast is WCAG on the RGB565 value, through ui.c's
+ * own rel_lum(), so the numbers here are the numbers the palette work uses.
+ *
+ * The floor is 4.5:1, and 3:1 for large type. "Large" is WCAG's 18 pt, which
+ * is 6.35 mm, and at this panel's 8.5 px/mm that is 54 px of type: only XL
+ * (75 px line) is that big. The 24-32 px faces are 2.8-3.8 mm tall on the
+ * glass, which is small print, so they carry the small-print floor.
+ *
+ * A string whose ground is a picture - a blit of a photograph or a finder
+ * pane (ui_audit_image) that is not flat under the string - is counted and
+ * skipped: its contrast is the scene's, not the palette's.
+ */
+#define AUDIT_LARGE_LINE_H 64 /* XL's 75 px line; L is 41 */
+#define AUDIT_FLOOR 4.5f
+#define AUDIT_FLOOR_LARGE 3.0f
+static bool g_audit_off; /* the frame-cost bench redraws scenes already judged */
+
+void ui_audit_image(int x, int y, int w, int h) {
+  const gfx_target_t *t = TG;
+  for (int r = y; r < y + h; r++) {
+    if (r < t->y0 || r >= CV_Y1(t)) continue;
+    for (int c = x; c < x + w; c++) {
+      if (c < t->x0 || c >= CV_X1(t)) continue;
+      const uint16_t *p = cv_ptr(t, c, r);
+      if (p < g_canvas || p >= g_canvas + (size_t)UI_W * UI_H) return; /* a stash, not the frame */
+      g_img_mask[p - g_canvas] = 1;
+    }
+  }
+}
+
+#define CONTRAST_MAX 160
+static struct {
+  char s[64];
+  uint16_t ink, ground;
+  float ratio, floor;
+  char screen[32];
+} g_contrast[CONTRAST_MAX];
+static int g_contrast_n;
+static int g_judged_n;     /* string draws measured */
+static int g_over_image_n; /* string draws skipped: set on a picture */
+
+void ui_audit_ink(const ui_font_t *f, int x, int y, const char *s, uint16_t ink) {
+  if (g_anim != NULL || g_audit_off) return;
+  const gfx_target_t *t = TG;
+  struct { uint16_t c; int n; } hist[24];
+  int nh = 0, total = 0, on_image = 0;
+  bool many = false;
+  const int baseline = y + f->ascent;
+  int pen = x;
+  for (const char *q = s; *q; q++) {
+    const int gi = (unsigned char)*q - f->first;
+    if (gi < 0 || gi >= f->count) continue;
+    const ui_glyph_t *g = &f->glyphs[gi];
+    const int gx = pen + g->bx, gy = baseline - g->by;
+    pen += g->adv;
+    if (g->cov == NULL) continue;
+    for (int r = 0; r < g->h; r++) {
+      const int py = gy + r;
+      if (py < t->y0 || py >= CV_Y1(t)) continue;
+      for (int c = 0; c < g->w; c++) {
+        const int px = gx + c;
+        if (px < t->x0 || px >= CV_X1(t) || g->cov[r * g->w + c] < 128) continue;
+        const uint16_t *p = cv_ptr(t, px, py);
+        if (p < g_canvas || p >= g_canvas + (size_t)UI_W * UI_H) return; /* not the frame */
+        total++;
+        if (g_img_mask[p - g_canvas]) on_image++;
+        int k = 0;
+        while (k < nh && hist[k].c != *p) k++;
+        if (k == nh) {
+          if (nh == (int)(sizeof hist / sizeof hist[0])) { many = true; continue; }
+          hist[nh].c = *p;
+          hist[nh].n = 0;
+          nh++;
+        }
+        hist[k].n++;
+      }
+    }
+  }
+  if (total == 0) return;
+  int top = 0;
+  for (int k = 1; k < nh; k++) if (hist[k].n > hist[top].n) top = k;
+  const bool flat = !many && hist[top].n * 10 >= total * 9;
+  if (on_image > 0 && !flat) {
+    g_over_image_n++;
+    return;
+  }
+  g_judged_n++;
+  /* The worst ground that is a real share of the string's footprint. */
+  float worst = 1e9f;
+  uint16_t ground = hist[top].c;
+  for (int k = 0; k < nh; k++) {
+    if (hist[k].n * 10 < total) continue;
+    const float cr = contrast(ink, hist[k].c);
+    if (cr < worst) { worst = cr; ground = hist[k].c; }
+  }
+  const float floor = f->line_h >= AUDIT_LARGE_LINE_H ? AUDIT_FLOOR_LARGE : AUDIT_FLOOR;
+  if (worst >= floor) return;
+  for (int i = 0; i < g_contrast_n; i++) {
+    if (g_contrast[i].ink == ink && g_contrast[i].ground == ground &&
+        strncmp(g_contrast[i].s, s, sizeof g_contrast[0].s - 1) == 0) return;
+  }
+  if (g_contrast_n >= CONTRAST_MAX) return;
+  snprintf(g_contrast[g_contrast_n].s, sizeof g_contrast[0].s, "%s", s);
+  g_contrast[g_contrast_n].ink = ink;
+  g_contrast[g_contrast_n].ground = ground;
+  g_contrast[g_contrast_n].ratio = worst;
+  g_contrast[g_contrast_n].floor = floor;
+  g_contrast[g_contrast_n].screen[0] = '\0';
+  g_contrast_n++;
+}
+
+/* RGB565 as the 8-bit hex the palette tables use, expanded the way rel_lum()
+ * expands it (x*255/31, x*255/63) so a reported colour is the measured one. */
+static void hex565(uint16_t c, char out[7]) {
+  snprintf(out, 7, "%02x%02x%02x", ((c >> 11) & 31) * 255 / 31, ((c >> 5) & 63) * 255 / 63,
+           (c & 31) * 255 / 31);
+}
+
+static int contrast_report(void) {
+  if (g_contrast_n == 0) return 0;
+  fprintf(stderr, "\n%d string%s under the contrast floor (ink on ground, measured):\n",
+          g_contrast_n, g_contrast_n == 1 ? "" : "s");
+  for (int i = 0; i < g_contrast_n; i++) {
+    char ink[7], gr[7];
+    hex565(g_contrast[i].ink, ink);
+    hex565(g_contrast[i].ground, gr);
+    fprintf(stderr, "  %-30s %5.2f < %.1f  %s on %s  \"%s\"\n",
+            g_contrast[i].screen[0] != '\0' ? g_contrast[i].screen : "?",
+            (double)g_contrast[i].ratio, (double)g_contrast[i].floor, ink, gr, g_contrast[i].s);
+  }
+  return g_contrast_n;
+}
+
+/* ---- the touch-target sweep and the hand invariant ----
+ *
+ * After every scene that is a screen, hit_test() - with undo_hit() in front of
+ * it, the order the touch handler uses - is asked about every pixel of the
+ * glass. Each answer is a target, and its extent is the box of the pixels that
+ * give it. A target whose box is under 52 px either way is too small for a
+ * thumb on this glass (8.5 px/mm, 6.1 mm; D-U15), unless the allow-list below
+ * says why it is not one.
+ *
+ * The same map checks the hand: a target that is chrome on the hand's side
+ * (from_hand() in ui.c) must have its centre on that half of the panel, for
+ * both hands. A layout that hard-codes a side passes for one hand and fails
+ * here for the other.
+ */
+#define TARGET_MIN 52
+
+typedef struct {
+  screen_t sc;
+  int dialog; /* -1: any; otherwise this dialog must be up */
+  int item;
+  const char *why;
+} target_allow_t;
+
+/* Targets allowed under 52 px: the screen, the item, and why a thumb is not
+ * the point. None today - the SHOOT bar's 34 px band and the time-zone pair's
+ * 40 px are #176 defects to fix, not exceptions. The sentinel keeps the
+ * array non-empty. */
+static const target_allow_t TARGET_ALLOW[] = {
+    {SCR_COUNT, -1, -1, NULL},
+};
+
+/* Chrome that from_hand() puts on the hand's side. */
+static const struct {
+  screen_t sc;
+  int item;
+  const char *what;
+} HAND_SIDE[] = {
+    {SCR_MENU, 0, "menu card"},
+    {SCR_SHOOT, SH_IT_BACK, "SHOOT back"},
+    {SCR_PHOTO, IT_BACK, "PHOTO back"},
+    {SCR_PHOTO, P_IT_DELETE, "PHOTO delete"},
+    {SCR_PHOTO, P_IT_FAV, "PHOTO favourite"},
+    {SCR_PHOTO, P_IT_ROLL, "PHOTO send"},
+    {SCR_PHOTO, P_IT_PREV, "PHOTO previous"},
+    {SCR_PHOTO, P_IT_NEXT, "PHOTO next"},
+    {SCR_GALLERY, G_IT_PREV, "GALLERY page back"},
+    {SCR_GALLERY, G_IT_NEXT, "GALLERY page on"},
+    {SCR_LOOK, LK_IT_PREV, "LOOK previous"},
+    {SCR_LOOK, LK_IT_NEXT, "LOOK next"},
+};
+
+#define FINDING_MAX 96
+typedef struct {
+  char screen[32];
+  char text[96];
+} finding_t;
+static finding_t g_small[FINDING_MAX], g_hand_bad[FINDING_MAX];
+static int g_small_n, g_hand_bad_n;
+
+/* Deduped on the message, which names the screen, the item and its box: the
+ * same short target on six scenes of one screen is one finding. */
+static void finding(finding_t *list, int *n, const char *name, const char *msg) {
+  for (int i = 0; i < *n; i++) {
+    if (strcmp(list[i].text, msg) == 0) return;
+  }
+  if (*n >= FINDING_MAX) return;
+  snprintf(list[*n].screen, sizeof list[0].screen, "%s", name);
+  snprintf(list[*n].text, sizeof list[0].text, "%s", msg);
+  (*n)++;
+}
+
+static const char *const AUDIT_SCREEN[SCR_COUNT] = {
+    [SCR_MENU] = "MENU",         [SCR_SHOOT] = "SHOOT",     [SCR_GALLERY] = "GALLERY",
+    [SCR_LOOK] = "LOOK",         [SCR_ROLL] = "ROLL",       [SCR_PHOTO] = "PHOTO",
+    [SCR_SETTINGS] = "SETTINGS", [SCR_DISPLAY] = "DISPLAY", [SCR_SOUND] = "SOUND",
+    [SCR_CONNECTION] = "CONNECTION", [SCR_STORAGE] = "STORAGE", [SCR_STATUS] = "STATUS",
+    [SCR_ABOUT] = "ABOUT",       [SCR_POWER] = "POWER",
+};
+
+static void sweep_targets(const char *name) {
+  struct { int id; int x0, y0, x1, y1; } reg[64];
+  int nr = 0;
+  /* undo_hit() reads the clock, and a sweep is 384,000 reads: hold the idle
+   * clock still for it, or every scene after this one would be drawn hours
+   * later than the one before it. */
+  const int64_t keep = prev_idle_clock_us;
+  prev_vclock_us = keep;
+  for (int y = 0; y < UI_H; y++) {
+    for (int x = 0; x < UI_W; x++) {
+      const int id = undo_hit(x, y) ? IT_UNDO : hit_test(x, y);
+      if (id < 0) continue;
+      int k = 0;
+      while (k < nr && reg[k].id != id) k++;
+      if (k == nr) {
+        if (nr == (int)(sizeof reg / sizeof reg[0])) continue;
+        reg[nr].id = id;
+        reg[nr].x0 = reg[nr].x1 = x;
+        reg[nr].y0 = reg[nr].y1 = y;
+        nr++;
+      }
+      if (x < reg[k].x0) reg[k].x0 = x;
+      if (x > reg[k].x1) reg[k].x1 = x;
+      if (y < reg[k].y0) reg[k].y0 = y;
+      if (y > reg[k].y1) reg[k].y1 = y;
+    }
+  }
+  prev_vclock_us = 0;
+  prev_idle_clock_us = keep;
+
+  const char *scr = s_screen < SCR_COUNT && AUDIT_SCREEN[s_screen] ? AUDIT_SCREEN[s_screen] : "?";
+  for (int k = 0; k < nr; k++) {
+    const int w = reg[k].x1 - reg[k].x0 + 1, h = reg[k].y1 - reg[k].y0 + 1;
+    if (w >= TARGET_MIN && h >= TARGET_MIN) continue;
+    bool allowed = false;
+    for (size_t a = 0; a < sizeof TARGET_ALLOW / sizeof TARGET_ALLOW[0]; a++) {
+      const target_allow_t *al = &TARGET_ALLOW[a];
+      if (al->why != NULL && al->sc == s_screen && al->item == reg[k].id &&
+          (al->dialog < 0 || al->dialog == (int)s_dialog)) {
+        allowed = true;
+      }
+    }
+    if (allowed) continue;
+    char msg[96];
+    snprintf(msg, sizeof msg, "%s%s item %d: %d x %d px at x %d..%d y %d..%d", scr,
+             s_dialog != DLG_NONE ? " dialog" : "", reg[k].id, w, h, reg[k].x0, reg[k].x1,
+             reg[k].y0, reg[k].y1);
+    finding(g_small, &g_small_n, name, msg);
+  }
+
+  if (s_dialog != DLG_NONE) return;
+  for (size_t i = 0; i < sizeof HAND_SIDE / sizeof HAND_SIDE[0]; i++) {
+    if (HAND_SIDE[i].sc != s_screen) continue;
+    for (int k = 0; k < nr; k++) {
+      if (reg[k].id != HAND_SIDE[i].item) continue;
+      const int cx = (reg[k].x0 + reg[k].x1 + 1) / 2;
+      if ((cx >= UI_W / 2) == s_right_hand) continue;
+      char msg[96];
+      snprintf(msg, sizeof msg, "%s centre x %d is on the %s half for a %s hand",
+               HAND_SIDE[i].what, cx, cx >= UI_W / 2 ? "right" : "left",
+               s_right_hand ? "right" : "left");
+      finding(g_hand_bad, &g_hand_bad_n, name, msg);
+    }
+  }
+}
+
+static int list_report(const char *title, const finding_t *list, int n) {
+  if (n == 0) return 0;
+  fprintf(stderr, "\n%d %s:\n", n, title);
+  for (int i = 0; i < n; i++) fprintf(stderr, "  %-30s %s\n", list[i].screen, list[i].text);
+  return n;
+}
+
+/* The header's height is fixed (FW-25): every hit map and every screen's body
+ * offset is built on it. */
+_Static_assert(HEAD_H == 62, "HEAD_H is 62 px: the header band, BODY_Y and every hit map use it");
+
 /* ---- the frame-cost bench ----
  *
  * Reports how much of the canvas each kind of frame touches, in units of
@@ -1008,12 +1336,20 @@ static void bench_line(const char *what, double screens) {
 
 /* ---- output ---- */
 
-/* Set by any failed write. CI counts .ppm files and requires at least ten, so
- * a run that could not write half its screens - a full disk, a bad output
- * path, a directory that does not exist - could still satisfy the gate with
- * the ones that did land. A partial artifact is a failure, and this is what
- * makes main() say so. */
+/* Set by any failed write. A run that could not write half its screens - a
+ * full disk, a bad output path, a directory that does not exist - must not
+ * pass on the ones that did land. A partial artifact is a failure, and this
+ * is what makes main() say so. */
 static bool g_write_failed;
+/* PPMs written by this hand's pass, stills and animation frames. */
+static int g_ppm_n;
+/*
+ * How many PPMs one hand's pass writes. A scene added or dropped changes it,
+ * and the run fails until this number says so - the count is part of what a
+ * reviewer approves, the way the golden hashes are (make check). CI checks
+ * the files on disk against `preview --ppms`, which is twice this.
+ */
+#define PPMS_PER_HAND 210
 
 void write_ppm_impl_marker(void);
 static void write_ppm(const char *path, const uint16_t *px, int w, int h) {
@@ -1047,15 +1383,29 @@ static void write_ppm(const char *path, const uint16_t *px, int w, int h) {
     g_write_failed = true;
     return;
   }
+  g_ppm_n++;
   printf("wrote %s (%dx%d)\n", path, w, h);
+}
+
+/* Findings carry the scene they were drawn in, stamped once it has a name. */
+static void audit_stamp(const char *name) {
+  audit_name(name);
+  for (int i = 0; i < g_contrast_n; i++) {
+    if (g_contrast[i].screen[0] == '\0') {
+      snprintf(g_contrast[i].screen, sizeof g_contrast[0].screen, "%s", name);
+    }
+  }
 }
 
 char g_out[512];
 static void shot(const char *name) {
   char path[600];
   snprintf(path, sizeof path, "%s/%s.ppm", g_out, name);
-  audit_name(name);
+  audit_stamp(name);
+  if (g_screen_drawn) sweep_targets(name);
+  g_screen_drawn = false;
   write_ppm(path, g_canvas, UI_W, UI_H);
+  memset(g_img_mask, 0, sizeof g_img_mask);
 }
 
 /* The conditions, before a screen is drawn. On the camera this runs on the UI
@@ -1082,6 +1432,9 @@ static void shot_anim(const char *name, screen_t from, screen_t to, int pressed)
   s_pressed = pressed;
   scan_conditions();
   draw_screen();
+  /* The still the move starts from is judged like any still; name what it
+   * found after the move, not after whichever shot comes next. */
+  audit_stamp(name);
 
   g_anim = name;
   g_anim_n = 0;
@@ -1095,17 +1448,13 @@ static void shot_anim(const char *name, screen_t from, screen_t to, int pressed)
   }
   prev_vclock_us = 0;
   g_anim = NULL;
+  /* The frames are a move, not a still: nothing to sweep. */
+  g_screen_drawn = false;
   printf("wrote %s_00..%02d (%d frames)\n", name, g_anim_n - 1, g_anim_n);
 }
 
-
-int main(int argc, char **argv) {
-  snprintf(g_out, sizeof g_out, "%s", argc > 1 ? argv[1] : ".");
-
-  g_canvas = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
-
-  /* One helper, so every state below is "set the state, draw, name it" and
-   * the list reads as the screen inventory it is meant to be. */
+/* One helper, so every state below is "set the state, draw, name it" and
+ * the list reads as the screen inventory it is meant to be. */
 #define SHOT(scr, name)      \
   do {                       \
     s_screen = (scr);        \
@@ -1114,6 +1463,9 @@ int main(int argc, char **argv) {
     shot(name);              \
   } while (0)
 
+/* Every scene, in the order they have always been drawn. Run once per hand,
+ * each time in a fresh forked process (main). */
+static void scenes(void) {
   fake_gallery();
 
   /* A format, mid-way. The calibration used to own this banner; it runs on
@@ -1213,6 +1565,13 @@ int main(int argc, char **argv) {
   s_pressed = SH_IT_BACK;
   SHOT(SCR_SHOOT, "shoot_back_pressed");
   s_pressed = -1;
+
+  /* The lens hint, the red pill over the finder. lens_hint_poll() raises it
+   * from the lid readings on the UI loop, which does not run here, so the
+   * string is set the way the poll sets it. One of #176's contrast pairs. */
+  snprintf(s_lens_hint, sizeof s_lens_hint, "CHECK THE SECOND LENS");
+  SHOT(SCR_SHOOT, "shoot_lens_hint");
+  s_lens_hint[0] = '\0';
 
   /* ---- capture feedback, over the viewfinder it will most often cover ---- */
   s_screen = SCR_SHOOT;
@@ -1534,6 +1893,10 @@ int main(int argc, char **argv) {
     SHOT(SCR_PHOTO, "photo_favourite");
     s_photo_fav = false;
     s_focus[SCR_PHOTO] = P_IT_DELETE;
+    /* DELETE held: the pressed destructive face, one of #176's pairs. */
+    s_pressed = P_IT_DELETE;
+    SHOT(SCR_PHOTO, "photo_delete_pressed");
+    s_pressed = -1;
     s_dialog = DLG_DELETE;
     s_dlg_focus = 0;
     scan_conditions();
@@ -1698,12 +2061,10 @@ int main(int argc, char **argv) {
   scan_conditions();
   draw_screen();
   shot("toast_gallery");
+}
 
-  if (g_write_failed) {
-    fprintf(stderr, "one or more screens were not written\n");
-    return 1;
-  }
-  /* ---- what a frame costs ---- */
+/* ---- what a frame costs ---- */
+static void bench(void) {
   printf("\nframe cost (1.00 screen = 800x480 opaque; blends count double)\n");
   {
     static const struct { screen_t sc; const char *name; } S[] = {
@@ -1782,7 +2143,122 @@ int main(int argc, char **argv) {
     printf("    -> min %.2f  max %.2f  mean %.2f  spread %.1fx\n", lo, hi, sum / 17.0,
            hi / (lo > 0.01 ? lo : 0.01));
   }
+}
 
-  if (audit_report() > 0) return 1;
+/*
+ * The switch for the two judgement checks.
+ *
+ * Contrast and touch targets are reported on every run. They fail the run
+ * only when strict: today's tree has the #176 failures in it (W_TEXT on W_SEL
+ * 2.45, the red pills 4.03, PHOTO DELETE pressed 3.52, the ROLL address 4.41,
+ * the time-zone buttons at 40 px, the SHOOT bar at 34 px), and a check that
+ * fails every build gets switched off. The colour pass fixes them and then
+ * sets this to 1 (#234/#235). `--strict` turns it on for one run.
+ *
+ * The structural checks fail the run whatever this says: a string outside the
+ * safe area, hand-side chrome on the wrong half, a write that did not land, a
+ * PPM count that moved.
+ */
+#define AUDIT_STRICT_DEFAULT 0
+
+/* Exit codes of one hand's pass, to the parent. */
+#define PASS_CLEAN 0
+#define PASS_HARD 1   /* a structural failure */
+#define PASS_SOFT 2   /* contrast or targets only */
+
+static int run_hand(bool right, const char *out) {
+  g_hand = right ? "right" : "left";
+  if (right) {
+    snprintf(g_out, sizeof g_out, "%s", out);
+  } else {
+    snprintf(g_out, sizeof g_out, "%s/left", out);
+    if (mkdir(g_out, 0777) != 0 && errno != EEXIST) {
+      fprintf(stderr, "cannot create %s\n", g_out);
+      return PASS_HARD;
+    }
+  }
+  g_canvas = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
+  if (g_canvas == NULL) return PASS_HARD;
+
+  scenes();
+  /* The frame-cost figures are the same for both hands; print them once. */
+  if (right) {
+    g_audit_off = true;
+    bench();
+    g_audit_off = false;
+  }
+
+  fprintf(stderr, "\n==== %s hand: %d PPMs in %s ====\n", g_hand, g_ppm_n, g_out);
+  bool hard = false;
+  if (g_write_failed) {
+    fprintf(stderr, "one or more screens were not written\n");
+    hard = true;
+  }
+  if (g_ppm_n != PPMS_PER_HAND) {
+    fprintf(stderr,
+            "wrote %d PPMs, expected %d: a scene was added or dropped. Set PPMS_PER_HAND in "
+            "preview.c and re-approve the golden hashes (make approve).\n",
+            g_ppm_n, PPMS_PER_HAND);
+    hard = true;
+  }
+  if (audit_report() > 0) hard = true;
+  if (list_report("hand-side controls on the wrong half", g_hand_bad, g_hand_bad_n) > 0) hard = true;
+  const int soft = contrast_report() +
+                   list_report("touch targets under 52 px", g_small, g_small_n);
+  fprintf(stderr, "\ncontrast: %d string draws judged, %d set on a picture and skipped\n",
+          g_judged_n, g_over_image_n);
+  if (hard) return PASS_HARD;
+  return soft > 0 ? PASS_SOFT : PASS_CLEAN;
+}
+
+int main(int argc, char **argv) {
+  bool strict = AUDIT_STRICT_DEFAULT;
+  const char *out = ".";
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--ppms") == 0) {
+      printf("%d\n", 2 * PPMS_PER_HAND);
+      return 0;
+    }
+    if (strcmp(argv[i], "--strict") == 0) {
+      strict = true;
+      continue;
+    }
+    out = argv[i];
+  }
+
+  /* One process per hand, both from this untouched state: the scene list
+   * mutates the stubs and ui.c's statics as it goes, and a second pass in the
+   * same process would start from wherever the first one left them. */
+  int worst = PASS_CLEAN;
+  for (int h = 0; h < 2; h++) {
+    fflush(stdout);
+    fflush(stderr);
+    const pid_t pid = fork();
+    if (pid < 0) {
+      perror("fork");
+      return 1;
+    }
+    if (pid == 0) {
+      const int rc = run_hand(h == 0, out);
+      fflush(stdout);
+      fflush(stderr);
+      _exit(rc);
+    }
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0 || !WIFEXITED(status)) {
+      fprintf(stderr, "the %s-hand pass did not finish\n", h == 0 ? "right" : "left");
+      return 1;
+    }
+    const int rc = WEXITSTATUS(status);
+    if (rc == PASS_HARD) worst = PASS_HARD;
+    else if (rc == PASS_SOFT && worst == PASS_CLEAN) worst = PASS_SOFT;
+    else if (rc != PASS_CLEAN && rc != PASS_SOFT) worst = PASS_HARD;
+  }
+  if (worst == PASS_HARD) return 1;
+  if (worst == PASS_SOFT) {
+    if (strict) return 1;
+    fprintf(stderr, "\naudit: contrast and target findings reported, not failing "
+                    "(AUDIT_STRICT_DEFAULT 0; --strict to fail on them)\n");
+  }
   return 0;
 }

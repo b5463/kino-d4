@@ -41,7 +41,6 @@
 #include "taskmon.h"
 #include "logo_kino_d4.h"
 #include "meta.h"
-#include "mesh3d.h"
 #include "net_link.h"
 #include "power.h"
 #include "pure.h"
@@ -509,9 +508,10 @@ static inline uint16_t *cv_ptr(const gfx_target_t *t, int x, int y) {
 /*
  * State the screens read while drawing, gathered once per frame.
  *
- * A tile frame calls the screen's drawing code once per tile - about seventy
- * times - and every call ran storage_get_status() (a FatFs free-space query
- * behind its mutex) and net_link_status() (another lock) again. On the panel
+ * A tile frame calls the screen's drawing code once per tile - 85 times,
+ * 17 x 5 tiles of 48 x 96 - and every call ran storage_get_status() (a FatFs
+ * free-space query behind its mutex) and net_link_status() (another lock)
+ * again. On the panel
  * that was most of a 34 ms frame during a move into GALLERY or SETTINGS. The
  * facts do not change inside a frame, so they are fetched on the first call
  * of a pass and handed back from here for the rest of it.
@@ -538,13 +538,13 @@ static const net_status_t *net_status(void) {
 /*
  * The display list: a frame's drawing, recorded once and replayed per tile.
  *
- * The tile renderer calls a frame's drawing code once per tile - about
- * seventy times - and the screens' drawing code is not free to call: it
- * formats strings, measures text, reads state and lays rows out before it
+ * The tile renderer calls a frame's drawing code once per tile - 85 times,
+ * 17 x 5 tiles of 48 x 96 - and the screens' drawing code is not free to
+ * call: it formats strings, measures text, reads state and lays rows out before it
  * touches a pixel. Measured on the panel (0.4.58, #177) with every primitive
  * clipping perfectly, a static screen still cost 12-30 ms to draw through the
  * tiles against 8 ms for the splash, and a move into LOOK cost 35 ms a frame:
- * the fixed cost of the code, seventy times over.
+ * the fixed cost of the code, once per tile (70 tiles of 128 x 48 then).
  *
  * So the frame is drawn once, into a list of primitives, and the tile pass
  * replays the list: for each tile, the primitives whose box touches it, in
@@ -553,7 +553,7 @@ static const net_status_t *net_status(void) {
  *
  * The commands live in PSRAM and are read once per tile they touch; their
  * boxes live in internal SRAM, because the test against every command runs
- * seventy times a frame and must not go over the bus. A view (draw_placed)
+ * 85 times a frame and must not go over the bus. A view (draw_placed)
  * is recorded onto each command as its shift and clip, so a move records the
  * menu's columns and the destination screen exactly as it drew them.
  *
@@ -729,7 +729,7 @@ static char s_toast[48];
 static int64_t s_toast_us;
 static bool s_toast_long;        /* the undo toast: thirty seconds, not two */
 /* The software dim: how dark the scrim over the screen is (0 = awake), and
- * when the DIM stage began, for the three-step arrival. 150 of 255 leaves
+ * when the DIM stage began, for the 1.6 s eased arrival. 150 of 255 leaves
  * the screen readable and unmistakably dimmed. */
 #define DIM_SCRIM_K 150
 #define DIM_RAMP_US 1600000 /* long enough that no frame's step is seen on a dark ground */
@@ -1552,6 +1552,18 @@ static int text_w(const ui_font_t *f, const char *s) {
 #endif
 #if KINO_UI_AUDIT
 void ui_audit_text(int x, int y, int w, int h, const char *s);
+/* The contrast and picture hooks. text() hands over every string it draws -
+ * during the replay or a direct draw, before the glyphs land - and the two
+ * blits name the pixels that are picture rather than chrome, so the renderer
+ * can measure each string's ink against the pixels it is set on and skip the
+ * strings set over a photograph or the finder. */
+void ui_audit_ink(const ui_font_t *f, int x, int y, const char *s, uint16_t ink);
+void ui_audit_image(int x, int y, int w, int h);
+#define AUDIT_IMAGE(x, y, w, h) ui_audit_image((x), (y), (w), (h))
+#else
+#define AUDIT_IMAGE(x, y, w, h) ((void)0)
+#endif
+#if KINO_UI_AUDIT
 /* Set while drawing a band that paints its own ground edge to edge - the
  * viewfinder's status bar, which is the one piece of chrome on a screen with
  * no frame. Inside a band the page's top and bottom margins do not apply,
@@ -1644,6 +1656,9 @@ static void text(const ui_font_t *f, int x, int y, const char *s, uint16_t ink) 
     }
     return;
   }
+#if KINO_UI_AUDIT
+  ui_audit_ink(f, x, y, s, ink);
+#endif
   for (; *s; s++) {
     const int i = (unsigned char)*s - f->first;
     if (i < 0 || i >= f->count) continue;
@@ -3865,6 +3880,7 @@ static void sh_blit(const uint16_t *tile, int px, int py) {
     return;
   }
   if (!s_sh_map_built) sh_build_maps();
+  AUDIT_IMAGE(px, py, SH_PANE_W, SH_PANE_H);
   const gfx_target_t *t = TG;
   int y0 = py < t->y0 ? t->y0 - py : 0, y1 = SH_PANE_H;
   if (py + y1 > CV_Y1(t)) y1 = CV_Y1(t) - py;
@@ -3889,6 +3905,7 @@ static void blit_rows(const uint16_t *src, int src_stride, int x, int y, int w, 
     if (k) { k->p = src; k->a = src_stride; k->b = x; k->c = y; k->d = w; k->e = h; }
     return;
   }
+  AUDIT_IMAGE(x, y, w, h);
   const gfx_target_t *t = TG;
   int sx = 0, sy = 0;
   if (x < t->x0) { sx = t->x0 - x; w -= sx; x = t->x0; }
@@ -3990,7 +4007,12 @@ static void dl_replay(void *ctx) {
  */
 #if UI_DRAW_PROFILE
 static void dl_profile(const char *what, gfx_draw_fn draw, void *ctx) {
-  static const char *const OP[DL_OPS] = {"fill", "rrect", "routl", "cut", "disc", "stroke", "scrim", "text", "odd", "field", "shblit", "blit", "bits", "focus", "ring"};
+  /* In enum order. Unsized, so the assert below can see a name added or
+   * dropped: a stale "odd" sat between "text" and "field" here and every op
+   * after it printed under its neighbour's name. */
+  static const char *const OP[] = {"fill", "rrect", "routl", "cut", "disc", "stroke", "scrim",
+                                   "text", "field", "shblit", "blit", "bits", "focus", "ring"};
+  _Static_assert(sizeof OP / sizeof OP[0] == DL_OPS, "one name per display-list op, in enum order");
   dl_begin();
   draw(ctx);
   if (!dl_end()) return;
@@ -9277,8 +9299,8 @@ static uint32_t ui_pass(void) {
      * DIM stage changed nothing a person could see: the screen sat at full
      * brightness for the whole idle time and then, at the sleep, went out.
      * The dim is drawn instead - a scrim over whatever is on the screen,
-     * arriving in three steps over half a second so it reads as the camera
-     * settling, not as a fault - and lifted the moment a touch or the
+     * eased in over DIM_RAMP_US (1.6 s) so it reads as the camera settling,
+     * not as a fault - and lifted the moment a touch or the
      * shutter brings the stage back to AWAKE.
      */
     {
@@ -9753,8 +9775,11 @@ esp_err_t ui_start(void) {
    * 768 KB PSRAM framebuffers, and the cache maintenance underneath runs
    * inside a critical section - interrupts off on the running core for 1-2 ms
    * while it writes back up to 256 KB of L2. The UART RX FIFO is 128 bytes,
-   * which at 921600 baud is 1.39 ms, so a present that lands on the core
-   * owning the link ISRs overruns the FIFO and the frame in flight is lost.
+   * with its full threshold at 32 (cam_link.c), so the ISR has 96 bytes of
+   * headroom: about 320 us at the 3 Mbaud the link runs at
+   * (NL_BAUD_PREFERRED), about 1.04 ms at the 921600 fallback. A present that
+   * lands on the core owning the link ISRs overruns the FIFO and the frame in
+   * flight is lost.
    *
    * That is what made captures fail while CAMERA_TEST passed over the same
    * wire: capture_fire sets s_stage, the loop below treats a capture as
