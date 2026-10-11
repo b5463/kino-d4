@@ -8180,6 +8180,17 @@ static void go(screen_t s, int ms) {
     gfx_snapshot();
   }
 
+  /* A lift still running ends here: the move carries what is left of it. The
+   * pass skips lift_step while a move runs, so a lift left going would land
+   * after the move as one step. The leaving screen keeps its scrim in the
+   * snapshot and the arriving one is drawn clear. A dim still arriving or a
+   * sleep winding down has no lift running and keeps its scrim. */
+  if (s_lift_us != 0) {
+    s_lift_us = 0;
+    s_dim_k = 0;
+    s_lift_mark = 0;
+  }
+
   if (from == SCR_LOOK && s != SCR_LOOK) s_look_from_shoot = false;
   s_screen = s;
   s_pressed = -1;
@@ -8956,7 +8967,7 @@ static void boot_handoff(void) {
   }
   gfx_snapshot();
   gfx_render_canvas(render_screen, NULL);
-  gfx_dissolve(420);
+  gfx_dissolve(MOTION_HANDOFF_MS);
   boot_bench();
 }
 

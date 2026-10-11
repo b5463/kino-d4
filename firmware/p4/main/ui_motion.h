@@ -75,6 +75,7 @@ static inline float motion_accel(float t) {
 #define MOTION_SPLASH_GROW_MS 1820 /* the field, out of nothing to the panel */
 #define MOTION_SPLASH_HOLD_MS 860  /* full, the cells re-rolling */
 #define MOTION_SPLASH_BACK_MS 1080 /* and away, on motion_accel */
+#define MOTION_HANDOFF_MS 420      /* any first screen but the menu, dissolving in out of the field */
 /* The launch shade warms the field over this window of the whole splash. */
 #define MOTION_SPLASH_WARM_FROM_MS 350
 #define MOTION_SPLASH_WARM_TO_MS 2300

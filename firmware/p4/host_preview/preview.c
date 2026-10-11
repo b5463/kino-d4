@@ -1587,6 +1587,46 @@ static void lift_frame(screen_t sc, int k, int mark, const char *name) {
   g_audit_off = false;
 }
 
+/*
+ * A move started part-way through a lift takes the rest of it. The pass skips
+ * lift_step while a move runs, so a lift left going would land after the move
+ * as one step. SETTINGS -> DISPLAY is the slide (no row behind it); the menu
+ * -> SETTINGS is the row move. After go() the lift is over and the arriving
+ * screen is clear. A dim still arriving keeps its scrim through a move.
+ */
+static void check_move_takes_lift(void) {
+  const screen_t scr0 = s_screen;
+  g_audit_off = true;
+  static const screen_t FROM[2] = {SCR_SETTINGS, SCR_MENU};
+  static const screen_t TO[2] = {SCR_DISPLAY, SCR_SETTINGS};
+  for (int i = 0; i < 2; i++) {
+    s_screen = FROM[i];
+    lift_start(DIM_SCRIM_K / 3, 0, MOTION_UNDIM_MS);
+    go(TO[i], MOTION_OPEN_MS);
+    s_anim.kind = ANIM_NONE;
+    if (s_lift_us != 0 || s_dim_k != 0 || s_lift_mark != 0) {
+      fprintf(stderr, "a move from screen %d left the lift running (scrim %d)\n", (int)FROM[i], s_dim_k);
+      g_motion_failed = true;
+    }
+  }
+  s_screen = SCR_SETTINGS;
+  s_lift_us = 0;
+  s_dim_k = DIM_SCRIM_K / 2; /* a dim on its way in: no lift running */
+  go(SCR_DISPLAY, MOTION_OPEN_MS);
+  s_anim.kind = ANIM_NONE;
+  if (s_dim_k != DIM_SCRIM_K / 2) {
+    fprintf(stderr, "a move cut a dim on its way in (scrim %d)\n", s_dim_k);
+    g_motion_failed = true;
+  }
+  s_dim_k = 0;
+  s_lift_us = 0;
+  s_lift_mark = 0;
+  s_pressed = -1;
+  s_screen = scr0;
+  g_screen_drawn = false;
+  g_audit_off = false;
+}
+
 /* Every millisecond of a lift: the scrim and the mark only ever go down,
  * and both end at zero. */
 static void lift_monotone(const char *what, int32_t span_ms, int k0, int mark0) {
@@ -2346,6 +2386,7 @@ static void scenes(void) {
 
   /* Last, so nothing it touches reaches a picture. */
   check_shutter_sound();
+  check_move_takes_lift();
 }
 
 /* ---- what a frame costs ---- */
