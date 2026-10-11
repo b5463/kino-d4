@@ -1467,7 +1467,10 @@ static void shot(const char *name) {
  * camera with nothing wrong - which, with two nodes offline and two node
  * versions apart in the stubs above, would be the one thing these pictures
  * exist to catch. */
-static void scan_conditions(void) { conditions_scan(about_cameras()); }
+static void scan_conditions(void) {
+  cams_refresh();
+  conditions_scan(s_cams);
+}
 
 /*
  * A transition, as a sequence of pictures.

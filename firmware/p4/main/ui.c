@@ -1,5 +1,6 @@
 #include "ui.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -15,6 +16,7 @@
 #include "conditions.h"
 #include "config_store.h"
 #include "display.h"
+#include "esp_attr.h" /* EXT_RAM_BSS_ATTR */
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -1902,6 +1904,10 @@ static bool usb_attached(void) {
   return p.usb_attached;
 }
 
+/* The power source in one word, as the bars and POWER print it. One place,
+ * so the three screens that show it cannot spell it three ways. */
+static const char *power_words(bool usb) { return usb ? "USB" : "BATTERY"; }
+
 static void toast(const char *s) {
   snprintf(s_toast, sizeof s_toast, "%s", s);
   s_toast_long = false;
@@ -2376,9 +2382,22 @@ static void render_cascade(void *ctx);
 static void boot_bench(void);
 static void first_start_note(void);
 
+/*
+ * True while a frame is being recorded or drawn. A draw may be replayed once
+ * per tile, so anything it calls must be pure and must not wait: no camlink
+ * channel lock, no card, no NVS. cams_refresh() asserts on this flag, which
+ * is how a lock that creeps back into a draw is caught on the first frame
+ * instead of as a stutter during a capture. Saved and restored rather than
+ * cleared, because ui_render() draws render_screen() and both set it.
+ */
+static bool s_in_render;
+
 static void render_screen(void *ctx) {
   (void)ctx;
+  const bool was = s_in_render;
+  s_in_render = true;
   draw_screen();
+  s_in_render = was;
 }
 
 typedef struct {
@@ -2442,7 +2461,23 @@ static void render_restarting(void *ctx) {
  */
 static void boot_handoff(void);
 static bool look_current_id(char *out, size_t cap);
-static const camlink_info_t *about_cameras(void);
+
+/*
+ * The four cameras, as ui_pass() last read them.
+ *
+ * Draws read this and nothing else about the cameras. camlink_get_info_ch()
+ * waits up to 20 ms per channel for the lock request() holds across a whole
+ * round trip, and the shutter fires from any screen, so a draw that asked the
+ * link directly could stall a frame behind a capture. ui_pass() refreshes the
+ * copy outside any draw (cams_refresh()); ABOUT, the boot field and the
+ * conditions all read the same four structs.
+ *
+ * Four camlink_info_t is about 512 bytes. Internal SRAM is the pool this
+ * board runs out of first (#162), so the copy lives in PSRAM; it is read a
+ * few times a frame at most.
+ */
+static EXT_RAM_BSS_ATTR camlink_info_t s_cams[4];
+static void cams_refresh(void);
 
 typedef enum {
   ANIM_NONE = 0,
@@ -2687,10 +2722,10 @@ static uint32_t anim_tick(void) {
       /*
        * The two facts the field is drawing, read off the camera each frame.
        *
-       * about_cameras() is cached for two seconds by the thing that owns the
-       * channel locks, so this is a struct read however often it is called -
-       * and two seconds is the right grain anyway: a node either answered or
-       * it has not, and it does not change between two frames.
+       * s_cams is the snapshot ui_pass() refreshes every two seconds, so this
+       * is a struct read however often it runs - and two seconds is the right
+       * grain anyway: a node either answered or it has not, and it does not
+       * change between two frames.
        *
        * Each quadrant EASES toward its camera's state rather than snapping to
        * it, so a node answering part-way through the boot opens its quarter
@@ -2698,9 +2733,8 @@ static uint32_t anim_tick(void) {
        * this screen: the camera assembling itself while you watch.
        */
       {
-        const camlink_info_t *cams = about_cameras();
         for (int i = 0; i < 4; i++) {
-          const float want = cams[i].online ? 1.0f : BF_DARK;
+          const float want = s_cams[i].online ? 1.0f : BF_DARK;
           s_bf_cam[i] += (want - s_bf_cam[i]) * MOTION_FIELD_CAM_FOLLOW;
         }
       }
@@ -2984,7 +3018,7 @@ static int chrome_state(int left, int right, int y, uint16_t ink, const char *fi
   const storage_status_t sd = *sd_status();
   char card[24];
   card_words(card, sizeof card, &sd);
-  const char *const pwr = usb_attached() ? "USB" : "BATTERY";
+  const char *const pwr = power_words(usb_attached());
 
   /* The chip exists only when a condition does, so an unmarked bar means a
    * camera with nothing to say - which is the reading that has to be
@@ -3987,6 +4021,8 @@ static void dl_profile(const char *what, gfx_draw_fn draw, void *ctx) {
  * drawing the frame directly into every tile when the list overflows.
  */
 static void ui_render(gfx_draw_fn draw, void *ctx) {
+  const bool was = s_in_render;
+  s_in_render = true;
   dl_begin();
   draw(ctx);
   if (dl_end()) {
@@ -3996,6 +4032,7 @@ static void ui_render(gfx_draw_fn draw, void *ctx) {
     if (warned++ == 0) klog("P4", "display list full at %d commands; frame drawn direct", s_dl.n);
     gfx_render(draw, ctx);
   }
+  s_in_render = was;
 }
 
 /* look_display() lives with the LOOK screen's other look plumbing, 200 lines
@@ -4165,7 +4202,7 @@ static void draw_shoot(void) {
   const storage_status_t sd_bar = *sd_status();
   char card_bar[24];
   card_words(card_bar, sizeof card_bar, &sd_bar);
-  const char *const pwr_bar = usb_attached() ? "USB" : "BATTERY";
+  const char *const pwr_bar = power_words(usb_attached());
   const int w_card = text_w(&UI_FONT_T, card_bar) + 2 * SH_PN_PAD;
   const int w_pwr = text_w(&UI_FONT_T, pwr_bar) + 2 * SH_PN_PAD;
 
@@ -4265,11 +4302,13 @@ static bool look_is_mono(void) {
   return strcmp(config_str("quad.slots.cam1.colorMode", "recipe"), "mono") == 0;
 }
 
+/* The four camera ids as the config tree spells them, CAM1 first. */
+static const char *const CAM_IDS[4] = {"cam1", "cam2", "cam3", "cam4"};
+
 static void look_set_mono(bool mono) {
-  static const char *const CAMS[4] = {"cam1", "cam2", "cam3", "cam4"};
   char path[64];
   for (int i = 0; i < 4; i++) {
-    snprintf(path, sizeof path, "quad.slots.%s.colorMode", CAMS[i]);
+    snprintf(path, sizeof path, "quad.slots.%s.colorMode", CAM_IDS[i]);
     cfg_set_str(path, mono ? "mono" : "recipe");
   }
 }
@@ -4383,17 +4422,12 @@ static int lk_col_x(int i) { return PAGE_M + i * (LK_COL_W + LK_COL_GAP); }
 #define LK_IT_TARGET 9  /* 9..13 ALL / CAM1..CAM4, QUAD only */
 #define LK_IT_COUNT 14
 
-/* The look's own numbers, which live inside its card now. */
-#define LK_DET_COLS 5
-
 /* Which camera the picker writes to, in QUAD. 0 is ALL, 1..4 are cam1..cam4.
  * Not persisted: it is a question about the next press, not a setting. */
 static int s_look_target;
 
-static const char *const LK_CAMS[4] = {"cam1", "cam2", "cam3", "cam4"};
-
 static void look_slot_path(char *out, size_t cap, int cam /* 1..4 */) {
-  snprintf(out, cap, "quad.slots.%s.recipeId", LK_CAMS[cam - 1]);
+  snprintf(out, cap, "quad.slots.%s.recipeId", CAM_IDS[cam - 1]);
 }
 
 /**
@@ -4508,7 +4542,6 @@ static void look_step(int delta) {
  * and where in the list you are - which is also the difference between cycling
  * a list and choosing from one.
  */
-#define LK_DET_COLS 5
 
 /**
  * The look's capture block, cached on its id.
@@ -7072,32 +7105,26 @@ static void draw_storage(void) {
 #define AB_CAM_ROW 40
 
 /**
- * The four cameras, cached, refreshed at most every two seconds.
+ * Refill s_cams, at most every two seconds. ui_pass() only, never a draw.
  *
  * camlink_get_info_ch() bounds its wait at 20 ms per channel and then reads
  * unlocked anyway (cam_link.c), so four channels is up to 80 ms of contention
- * on the channel locks - INSIDE a draw. That matters because the hardware
- * shutter fires from any screen: request() holds a channel lock across a whole
- * round trip, and an information screen does not get to compete with a capture
- * for it once per repaint.
+ * on the channel locks. The hardware shutter fires from any screen and
+ * request() holds a channel lock across a whole round trip, so this runs
+ * between frames, where a wait delays a pass and not a picture.
  *
- * Two seconds because nothing on this row moves faster than that. Node firmware
- * and the sensor model do not change while someone reads a screen, and `online`
- * going stale by two seconds is still news by the time it is shown.
- *
- * Returns the static array rather than filling the caller's - four
- * camlink_info_t is about 512 bytes, and this task has 8 KB and a history of
- * canary panics over exactly that kind of local.
+ * Two seconds because nothing on these rows moves faster than that. Node
+ * firmware and the sensor model do not change while someone reads a screen,
+ * and `online` going stale by two seconds is still news by the time it is
+ * shown.
  */
-static const camlink_info_t *about_cameras(void) {
-  static camlink_info_t s_cam[4];
+static void cams_refresh(void) {
+  assert(!s_in_render && "camlink lock inside a draw");
   static int64_t s_when_us;
   const int64_t now = esp_timer_get_time();
-  if (s_when_us == 0 || now - s_when_us > 2000000) {
-    s_when_us = now;
-    for (int i = 0; i < 4; i++) camlink_get_info_ch(i, &s_cam[i]);
-  }
-  return s_cam;
+  if (s_when_us != 0 && now - s_when_us <= 2000000) return;
+  s_when_us = now;
+  for (int i = 0; i < 4; i++) camlink_get_info_ch(i, &s_cams[i]);
 }
 
 /** "3h 12m", or "4m" under the hour. Boot-relative, which is what uptime is. */
@@ -7189,11 +7216,10 @@ static void draw_about(void) {
   const int ch = 4 * AB_CAM_ROW;
   const int note_y = cy0 + ch + 12;
 
-  const camlink_info_t *cams = about_cameras();
   for (int i = 0; i < 4; i++) {
     /* By pointer, not by value: the struct is about 128 bytes and this loop
      * runs four times in a draw path with 8 KB of stack. */
-    const camlink_info_t *info = &cams[i];
+    const camlink_info_t *info = &s_cams[i];
 
     char label[8];
     snprintf(label, sizeof label, "CAM%d", i + 1);
@@ -7281,7 +7307,7 @@ static void draw_power(void) {
   const bool usb = usb_attached();
   group_box(LIST_X, gy, LIST_W, cap_h + 14 + UI_FONT_M.line_h + 6 + UI_FONT_S.line_h + 16,
             "RUNNING ON", K_INK, NULL);
-  text(&UI_FONT_M, LIST_X + 18, gy + cap_h + 14, usb ? "USB" : "BATTERY", K_INK);
+  text(&UI_FONT_M, LIST_X + 18, gy + cap_h + 14, power_words(usb), K_INK);
   text(&UI_FONT_S, LIST_X + 18, gy + cap_h + 14 + UI_FONT_M.line_h + 6,
        usb ? "Powered from the cable." : "On the cells. This body has no battery gauge.",
        K_INK_QUIET);
@@ -7805,6 +7831,8 @@ static bool s_formatting;
  */
 static volatile int s_calib_result; /* 0 nothing to report, >0 measured, <0 not */
 static bool s_calib_busy;
+/* The measuring task, from its creation until calib_poll() has deleted it. */
+static TaskHandle_t s_calib_task;
 static char s_calib_dir[128];
 static char s_calib_id[48];
 static pure_cam_offset_t s_calib_off[PURE_WIGGLE_FRAMES_MAX];
@@ -7819,18 +7847,31 @@ static void calib_task(void *arg) {
     storage_release(STORAGE_USER_UI);
   }
   s_calib_result = n > 0 ? n : -1;
-#ifdef ESP_PLATFORM
-  vTaskDelete(NULL);
-#endif
+  /*
+   * Parked, and deleted from the UI task by calib_poll().
+   *
+   * A task made by xTaskCreateWithCaps() must go through vTaskDeleteWithCaps()
+   * or its TCB and stack are never freed: the plain vTaskDelete(NULL) this
+   * did leaked the TCB, which is in internal SRAM, and the 8 KB PSRAM stack
+   * on every attempt. vTaskDeleteWithCaps(NULL) does work on 5.5.1,
+   * but only by creating a cleanup task in internal RAM and aborting the
+   * chip when that allocation fails - on the pool this board runs out of
+   * first. IDF recommends deleting from another task; the UI task polls for
+   * the result anyway, so it waits for the park and deletes from there, once
+   * this stack is no longer in use. On the host this returns at once.
+   */
+  vTaskSuspend(NULL);
 }
 
 static void calib_start(const char *dir, const char *id) {
-  if (s_calib_busy || s_calib_result != 0) return;
+  if (s_calib_busy || s_calib_result != 0 || s_calib_task != NULL) return;
   snprintf(s_calib_dir, sizeof s_calib_dir, "%s", dir);
   snprintf(s_calib_id, sizeof s_calib_id, "%s", id);
   s_calib_busy = true;
 #ifdef ESP_PLATFORM
-  if (xTaskCreateWithCaps(calib_task, "calib", 8192, NULL, 3, NULL, MALLOC_CAP_SPIRAM) != pdPASS) {
+  if (xTaskCreateWithCaps(calib_task, "calib", 8192, NULL, 3, &s_calib_task, MALLOC_CAP_SPIRAM) !=
+      pdPASS) {
+    s_calib_task = NULL;
     klog("P4", "no task for the calibration; next photograph tries again");
     s_calib_busy = false;
   }
@@ -7839,10 +7880,17 @@ static void calib_start(const char *dir, const char *id) {
 #endif
 }
 
-/* The result, on the UI task: store, say so. */
+/* The result, on the UI task: free the task, store, say so. */
 static void calib_poll(void) {
   const int res = s_calib_result;
   if (res == 0) return;
+  if (s_calib_task != NULL) {
+    /* The result is written a few instructions before the park. Until the
+     * task is suspended its stack is still in use; the next pass looks again. */
+    if (eTaskGetState(s_calib_task) != eSuspended) return;
+    vTaskDeleteWithCaps(s_calib_task);
+    s_calib_task = NULL;
+  }
   s_calib_result = 0;
   s_calib_busy = false;
   if (res > 0 && calib_store(s_calib_off, s_calib_id) == ESP_OK) {
@@ -9178,7 +9226,7 @@ static void storage_events_poll(void) {
       toast("Card taken out. Photos cannot be saved");
       audio_warning();
     }
-    conditions_scan(about_cameras());
+    conditions_scan(s_cams);
     ui_render(render_screen, NULL);
   }
 }
@@ -9373,6 +9421,12 @@ static uint32_t ui_pass(void) {
     s_ui_pass++;
     s_ui_pass_ms = (uint32_t)(esp_timer_get_time() / 1000);
 
+    /* The camera snapshot every draw reads (s_cams), before anything draws.
+     * Above the move, because the boot field is drawn from it while the
+     * splash owns the pass; not during the other moves, which are short and
+     * should not wait on a channel lock between two frames. */
+    if (!anim_active() || s_anim.kind == ANIM_SPLASH) cams_refresh();
+
     /*
      * A move in flight gets the pass, and nothing else in this function runs.
      *
@@ -9424,18 +9478,18 @@ static uint32_t ui_pass(void) {
     /*
      * The conditions, on a slow schedule of their own.
      *
-     * Never in a draw: about_cameras() holds camlink's channel lock across a
-     * round trip, is cached for two seconds for exactly that reason, and the
-     * chip these feed is on every screen at every repaint. Two seconds is
-     * also as fast as any of this changes - a node does not come back, a card
-     * does not fill and a clock does not get set between two frames.
+     * Never in a draw: the chip these feed is on every screen at every
+     * repaint. The cameras come from s_cams, refreshed at the top of this
+     * pass. Two seconds is as fast as any of this changes - a node does not
+     * come back, a card does not fill and a clock does not get set between
+     * two frames.
      */
     {
       static int64_t scan_us;
       const int64_t now_us = esp_timer_get_time();
       if (scan_us == 0 || now_us - scan_us > 2000000) {
         scan_us = now_us;
-        conditions_scan(about_cameras());
+        conditions_scan(s_cams);
         /* Above the warm line the finder drops to a few frames a second: the
          * four nodes and the PPA are most of the heat. STATUS says why. */
         viewfinder_throttle(conditions_has(COND_WARM));

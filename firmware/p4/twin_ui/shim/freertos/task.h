@@ -17,6 +17,12 @@ static inline BaseType_t xTaskCreatePinnedToCore(void (*fn)(void *), const char 
   return xTaskCreate(fn, name, stack, arg, prio, out);
 }
 static inline void vTaskDelete(TaskHandle_t h) { (void)h; }
+/* The calibration task parks itself and the UI task deletes it (ui.c
+ * calib_task). Nothing is created here, so nothing is ever parked. */
+typedef enum { eRunning = 0, eReady, eBlocked, eSuspended, eDeleted, eInvalid } eTaskState;
+static inline void vTaskSuspend(TaskHandle_t h) { (void)h; }
+static inline eTaskState eTaskGetState(TaskHandle_t h) { (void)h; return eSuspended; }
+static inline void vTaskDeleteWithCaps(TaskHandle_t h) { (void)h; }
 /* Notifications, as in the host shim: nothing waits on anything here. */
 static inline TaskHandle_t xTaskGetCurrentTaskHandle(void) { return (TaskHandle_t)1; }
 static inline uint32_t ulTaskNotifyTake(int clear, uint32_t wait) {

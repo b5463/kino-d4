@@ -37,3 +37,13 @@ static inline uint32_t ulTaskNotifyTake(int clear, uint32_t wait) {
 }
 static inline void xTaskNotifyGive(TaskHandle_t t) { (void)t; }
 static inline void vTaskDelete(TaskHandle_t t) { (void)t; }
+
+/* The calibration task parks itself and the UI task deletes it (ui.c
+ * calib_task). Nothing is created here, so nothing is ever parked. */
+typedef enum { eRunning = 0, eReady, eBlocked, eSuspended, eDeleted, eInvalid } eTaskState;
+static inline void vTaskSuspend(TaskHandle_t t) { (void)t; }
+static inline eTaskState eTaskGetState(TaskHandle_t t) {
+  (void)t;
+  return eSuspended;
+}
+static inline void vTaskDeleteWithCaps(TaskHandle_t t) { (void)t; }
