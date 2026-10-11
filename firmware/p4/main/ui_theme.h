@@ -23,6 +23,18 @@
 #include "ui_palette.h"
 
 /*
+ * The launch shade, the one colour.
+ *
+ * Not a constant. ui.c takes row boot_count % K_LAUNCH_N of K_LAUNCH and
+ * K_LAUNCH_DOWN once per start (ui_set_launch_index) and holds the two in
+ * statics named s_accent and s_accent_down; these names read them. Any other
+ * file that uses K_ACCENT, K_ACCENT_DOWN or K_PAIRS declares the same two
+ * names first (the theme test sets them to each row in turn).
+ */
+#define K_ACCENT s_accent
+#define K_ACCENT_DOWN s_accent_down
+
+/*
  * Type roles. The six faces in ui_font.h by what they set. Smallest first;
  * the number is the face's line height in px.
  *
@@ -78,8 +90,8 @@
   /* inks on the accent, the card and the live colour */                               \
   X(K_SELECT_INK, K_SELECT, 45, "a pressed or selected control's label")               \
   X(K_INK, K_SELECT, 45, "a dialog's action at rest (RESTART, OK)")                    \
-  X(K_ACCENT_INK, K_CARD, 45, "TAP TO OPEN and the status line on the SHOOT card")     \
-  X(K_ACCENT_INK, K_CARD_DOWN, 45, "the SHOOT card's words, pressed")                  \
+  X(K_ACCENT_INK, K_ACCENT, 45, "TAP TO OPEN and the status line on the SHOOT card")     \
+  X(K_ACCENT_INK, K_ACCENT_DOWN, 45, "the SHOOT card's words, pressed")                  \
   X(K_GROUND, K_ACCENT, 45, "a menu row's label, pressed")                             \
   X(K_LIVE, K_MENU_ROW[0], 45, "a menu row's label, top row")                          \
   X(K_LIVE, K_MENU_ROW[K_MENU_ROW_N - 1], 45, "a menu row's label, bottom row")        \
@@ -91,7 +103,7 @@
   /* edges and marks, 3:1 */                                                           \
   X(K_EDGE, K_FACE, 30, "a control's edge on a detail screen")                         \
   X(K_EDGE, K_SURFACE, 30, "a control's edge in a window")                             \
-  X(K_ACCENT_INK, K_CARD, 30, "SHOOT, the XL word on the card")                        \
+  X(K_ACCENT_INK, K_ACCENT, 30, "SHOOT, the XL word on the card")                        \
   X(K_LIVE, K_GROUND, 30, "a four-mark cell whose camera answered")                    \
   X(K_FAULT, K_GROUND, 30, "a four-mark cell whose camera was lost")                   \
   X(K_ACCENT, K_SURFACE, 30, "the storage gauge's fill")

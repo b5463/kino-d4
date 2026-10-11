@@ -13,104 +13,125 @@
 #endif
 
 /* Colours. */
-/* The ground: the shoot and photograph views, the boot field, sleep. */
-#define K_GROUND RGB(0x0b, 0x0d, 0x0c) /* 0x0861 */
-/* The face: the ground of the menu and every detail screen. */
-#define K_FACE RGB(0x0e, 0x12, 0x10) /* 0x0882 */
-/* Darker than the ground. Today only the ROLL lamp when offline. */
-#define K_SHADOW RGB(0x07, 0x09, 0x08) /* 0x0041 */
+/* The ground: every screen's face, the shoot and photograph views, the boot
+ * field, sleep.
+ */
+#define K_GROUND RGB(0x08, 0x08, 0x0a) /* 0x0841 */
 /* Black: the scrim over a screen and the panel going dark. */
 #define K_SCRIM RGB(0x00, 0x00, 0x00) /* 0x0000 */
-/* A window or list ground, and the pane behind a photograph. */
-#define K_SURFACE RGB(0x15, 0x1a, 0x17) /* 0x10C2 */
-/* A row you can press: one flat tone for every row of every list. */
-#define K_ROW RGB(0x1c, 0x24, 0x1f) /* 0x1923 */
-/* A surface that only needs to be a surface: an empty four-mark cell, a track
- * under a bar. 1.3:1 on the face.
+/* A window or list ground, a status panel, the toast plate, the pane behind a
+ * photograph. 1.05:1 on the ground, so it is found by its edge or its content.
  */
-#define K_HAIRLINE RGB(0x22, 0x2a, 0x26) /* 0x2144 */
-/* A neutral press, a toggle that is off, an idle four-mark cell, a tile still
- * loading.
+#define K_SURFACE RGB(0x10, 0x10, 0x10) /* 0x1082 */
+/* A row you can press, and a disabled one: one flat tone for every row of every
+ * list. K_INK on it is 15.5:1.
  */
-#define K_OFF RGB(0x26, 0x2f, 0x2a) /* 0x2165 */
-/* The hairline between two facts in a table, and under a header. */
-#define K_RULE RGB(0x27, 0x30, 0x2b) /* 0x2185 */
-/* The edge of a thing you can press: 3.4:1 on the face, 3.2:1 on a window (WCAG
- * 1.4.11 asks 3:1).
+#define K_ROW RGB(0x18, 0x18, 0x18) /* 0x18C3 */
+/* The hairline between two facts, under a header, round a four-mark cell, and
+ * the track under a bar.
  */
-#define K_EDGE RGB(0x5c, 0x6c, 0x64) /* 0x5B6C */
-/* The light ink: every word on the dark grounds. */
-#define K_INK RGB(0xed, 0xe7, 0xdd) /* 0xEF3B */
-/* The quiet ink: 5.2:1 on the face, 4.8:1 on a window, 5.4:1 on the ground. The
- * small face needs 4.5.
+#define K_RULE RGB(0x28, 0x28, 0x28) /* 0x2945 */
+/* A toggle that is off, a neutral press, Cancel, an empty four-mark cell, a
+ * tile still loading. Only K_INK goes on it (11.5:1).
  */
-#define K_INK_QUIET RGB(0x7a, 0x8a, 0x80) /* 0x7C50 */
-/* The accent: selection, a press, the capture spark, the star, the gauges. */
-#define K_ACCENT RGB(0xe8, 0x73, 0x4a) /* 0xEB89 */
-/* The dark ink set on the accent and on the card. */
-#define K_ACCENT_INK RGB(0x2a, 0x14, 0x0c) /* 0x28A1 */
-/* The SHOOT card, the screen titles and the wordmark. */
-#define K_CARD RGB(0xe8, 0xa1, 0x83) /* 0xED10 */
-/* The SHOOT card, pressed. */
-#define K_CARD_DOWN RGB(0xd0, 0x8b, 0x6f) /* 0xD44D */
-/* Live and fine: a camera that answered, SENT, the menu labels, the toast
- * plate.
+#define K_OFF RGB(0x30, 0x30, 0x30) /* 0x3186 */
+/* The edge of a thing you can press: 5.1:1 on the ground, 4.6:1 on a row, 3.4:1
+ * on K_OFF (WCAG 1.4.11 asks 3:1).
+ */
+#define K_EDGE RGB(0x82, 0x80, 0x7b) /* 0x840F */
+/* The light ink: every word on the dark grounds, the marks, the star, SENT, a
+ * selected segment's fill.
+ */
+#define K_INK RGB(0xf1, 0xec, 0xe2) /* 0xF77C */
+/* The quiet ink: 5.7:1 on the ground, 5.4:1 on a window, 5.1:1 on a row. Never
+ * on K_OFF (3.8:1).
+ */
+#define K_INK_QUIET RGB(0x8f, 0x8b, 0x85) /* 0x8C50 */
+/* The dark ink set on the launch shade: the SHOOT card, a pressed control. 9:1
+ * or more on every shade, 5.6:1 or more pressed.
+ */
+#define K_ACCENT_INK RGB(0x2a, 0x0e, 0x1c) /* 0x2863 */
+/* Red as a mark or a fill: a lost camera, a destructive press, the lens hint.
+ * Ink on it is K_GROUND (5.1:1), never K_INK (3.4:1).
+ */
+#define K_FAULT RGB(0xe5, 0x48, 0x4d) /* 0xE249 */
+/* Red as type on the dark grounds: 6.8:1 on the ground, 6.0:1 on a row. */
+#define K_FAULT_INK RGB(0xf2, 0x6a, 0x60) /* 0xF34C */
+/* Retired in this pass: mint. Still drawn by the four-mark, the toast, the menu
+ * labels, SENT and the ROLL lamp until each moves to K_INK.
  */
 #define K_LIVE RGB(0x86, 0xd6, 0xb4) /* 0x86B6 */
-/* The toast's ink, dark on the live plate, so a remark never reads as a
- * selection.
- */
+/* Retired in this pass: the toast's ink on the mint plate. */
 #define K_TOAST_INK RGB(0x0d, 0x22, 0x1a) /* 0x0903 */
-/* Red as a mark or a fill: a lost camera, a destructive press, the lens hint.
- */
-#define K_FAULT RGB(0xc8, 0x3a, 0x3a) /* 0xC9C7 */
-/* Red as type on the dark grounds: 5.9:1 on a window, where K_FAULT measures
- * 3.5.
- */
-#define K_FAULT_INK RGB(0xf2, 0x6a, 0x60) /* 0xF34C */
 
 /* Roles: what a colour is used for. Each is one of the colours above. */
-/* A selected or pressed control's fill. */
-#define K_SELECT K_ACCENT
-/* The ink on K_SELECT, and the focus ring. */
-#define K_SELECT_INK K_ACCENT_INK
-/* A screen's or a dialog's title, set on the ground. */
-#define K_TITLE K_CARD
-/* The wordmark at boot and at sleep. */
-#define K_MARK K_CARD
-/* The toast's plate. */
+/* The face of the menu and every detail screen: the ground, as on MAO. */
+#define K_FACE K_GROUND
+/* Retired in this pass: the offline ROLL lamp. */
+#define K_SHADOW K_GROUND
+/* Retired in this pass: an empty four-mark cell's keyline, a track under a bar.
+ */
+#define K_HAIRLINE K_RULE
+/* A screen's or a dialog's title. Monochrome at rest. */
+#define K_TITLE K_INK
+/* The wordmark at sleep and at power-down. Marks are ink, never colour. */
+#define K_MARK K_INK
+/* Retired in this pass: the toast's plate. */
 #define K_TOAST K_LIVE
 
-/* The menu's five rows under the SHOOT card, at rest, each a step darker than
- * the one above. The floor stops clear of the ground so the bottom row is still
- * a card.
+/* The launch shade: MAO pink F3A2C4 and seven steps toward lavender C7A6F7, at
+ * most 40 % of the hue gap (OKLCH, L and C of F3A2C4 kept, 20 degrees in all).
+ * ui.c takes row boot_count % 8 once at start (ui_set_launch_index). Each is a
+ * distinct RGB565 code; K_ACCENT_INK on each is 9.0:1 or more, each on the
+ * ground 9.9:1 or more.
+ */
+#define K_LAUNCH_N 8
+static const uint16_t K_LAUNCH[K_LAUNCH_N] = {
+    RGB(0xf3, 0xa2, 0xc4), RGB(0xef, 0xa2, 0xc6), RGB(0xef, 0xa6, 0xce), RGB(0xef, 0xa2, 0xce),
+    RGB(0xef, 0xa2, 0xd6), RGB(0xe7, 0xa6, 0xd6), RGB(0xe7, 0xa2, 0xd6), RGB(0xe7, 0xa6, 0xde),
+};
+
+/* The launch shade, pressed: the same hue at 84 % of its OKLCH lightness.
+ * K_ACCENT_INK on each is 5.6:1 or more.
+ */
+#define K_LAUNCH_DOWN_N 8
+static const uint16_t K_LAUNCH_DOWN[K_LAUNCH_DOWN_N] = {
+    RGB(0xc6, 0x7d, 0x9c), RGB(0xc6, 0x79, 0x9c), RGB(0xc6, 0x7d, 0xa5), RGB(0xc6, 0x79, 0xa5),
+    RGB(0xc6, 0x7d, 0xad), RGB(0xbd, 0x7d, 0xad), RGB(0xbd, 0x79, 0xad), RGB(0xbd, 0x7d, 0xb5),
+};
+
+/* The boot field's four inks per launch shade, in the order the field picks
+ * them: the ink, the shade, the shade half way to the ink, and the shade 55 %
+ * of the way to the ground (ui.c mix() on the RGB565 codes). Row i goes with
+ * K_LAUNCH[i].
+ */
+#define K_BF_WARM_N 8
+#define K_BF_WARM_W 4
+static const uint16_t K_BF_WARM[K_BF_WARM_N][K_BF_WARM_W] = {
+    {RGB(0xf1, 0xec, 0xe2), RGB(0xf3, 0xa2, 0xc4), RGB(0xf6, 0xc6, 0xd5), RGB(0x73, 0x4c, 0x5a)},
+    {RGB(0xf1, 0xec, 0xe2), RGB(0xef, 0xa2, 0xc6), RGB(0xee, 0xc6, 0xd5), RGB(0x6a, 0x4c, 0x5a)},
+    {RGB(0xf1, 0xec, 0xe2), RGB(0xef, 0xa6, 0xce), RGB(0xee, 0xca, 0xd5), RGB(0x6a, 0x4c, 0x5a)},
+    {RGB(0xf1, 0xec, 0xe2), RGB(0xef, 0xa2, 0xce), RGB(0xee, 0xc6, 0xd5), RGB(0x6a, 0x4c, 0x5a)},
+    {RGB(0xf1, 0xec, 0xe2), RGB(0xef, 0xa2, 0xd6), RGB(0xee, 0xc6, 0xde), RGB(0x6a, 0x4c, 0x62)},
+    {RGB(0xf1, 0xec, 0xe2), RGB(0xe7, 0xa6, 0xd6), RGB(0xee, 0xca, 0xde), RGB(0x6a, 0x4c, 0x62)},
+    {RGB(0xf1, 0xec, 0xe2), RGB(0xe7, 0xa2, 0xd6), RGB(0xee, 0xc6, 0xde), RGB(0x6a, 0x4c, 0x62)},
+    {RGB(0xf1, 0xec, 0xe2), RGB(0xe7, 0xa6, 0xde), RGB(0xee, 0xca, 0xde), RGB(0x6a, 0x4c, 0x62)},
+};
+
+/* Cold: the instrument before it knows what it is shooting. The field comes up
+ * in these and travels to the launch shade's inks as the cameras answer.
+ * Code-neutral greys, light to dark.
+ */
+#define K_BF_COLD_N 4
+static const uint16_t K_BF_COLD[K_BF_COLD_N] = {
+    RGB(0x98, 0x98, 0x98), RGB(0x70, 0x70, 0x70), RGB(0x48, 0x48, 0x48), RGB(0x20, 0x20, 0x20),
+};
+
+/* Retired in this pass: the menu's five rows, a green ramp. The rows become
+ * flat K_ROW.
  */
 #define K_MENU_ROW_N 5
 static const uint16_t K_MENU_ROW[K_MENU_ROW_N] = {
     RGB(0x1e, 0x52, 0x40), RGB(0x1a, 0x49, 0x38), RGB(0x16, 0x40, 0x31),
     RGB(0x13, 0x38, 0x2a), RGB(0x10, 0x30, 0x24),
-};
-
-/* The boot field's four inks per look, light to dark. A look picks its row by
- * hashing its id.
- */
-#define K_BF_WARM_N 4
-#define K_BF_WARM_W 4
-static const uint16_t K_BF_WARM[K_BF_WARM_N][K_BF_WARM_W] = {
-    /* the standard look: amber and green, the reference's own warm pair */
-    {RGB(0xf0, 0xea, 0xd8), RGB(0xe8, 0xc0, 0x70), RGB(0x2e, 0xa1, 0x44), RGB(0x1a, 0x5e, 0x31)},
-    /* a warm look: the product's terracotta against its card colour */
-    {RGB(0xf2, 0xe8, 0xdc), RGB(0xe8, 0x73, 0x4a), RGB(0xe8, 0xa1, 0x83), RGB(0x6e, 0x3a, 0x33)},
-    /* a cool look: mint, which is what this interface says live in */
-    {RGB(0xe8, 0xf2, 0xec), RGB(0x86, 0xd6, 0xb4), RGB(0x2e, 0xa1, 0x44), RGB(0x1a, 0x4e, 0x3e)},
-    /* a neutral look, for a look that is not grading much at all */
-    {RGB(0xf0, 0xee, 0xe4), RGB(0xc8, 0xc0, 0xa8), RGB(0x8a, 0x94, 0x8c), RGB(0x33, 0x3b, 0x36)},
-};
-
-/* Cold: the instrument before it knows what it is shooting. The field comes up
- * in this and travels to the look's own inks as the cameras answer.
- */
-#define K_BF_COLD_N 4
-static const uint16_t K_BF_COLD[K_BF_COLD_N] = {
-    RGB(0x9a, 0xa2, 0x9e), RGB(0x6c, 0x76, 0x72), RGB(0x45, 0x4e, 0x4a), RGB(0x23, 0x29, 0x27),
 };

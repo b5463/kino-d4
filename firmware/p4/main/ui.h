@@ -29,6 +29,15 @@
 esp_err_t ui_start(void);
 
 /**
+ * Which launch shade this start wears: row `boot_count % 8` of K_LAUNCH, the
+ * MAO pink and its seven steps toward lavender. Call once, before ui_start().
+ * ui.c touches no NVS (the Twin compiles it to wasm), so main.c, which owns
+ * the boot count, passes it in. The host renderer and the Twin pass 0, so
+ * their pictures do not depend on a counter.
+ */
+void ui_set_launch_index(uint32_t boot_count);
+
+/**
  * The UI task's pulse, for a reader that is NOT the UI task.
  *
  * The once-a-second health line in ui_task() can only report faults the loop is

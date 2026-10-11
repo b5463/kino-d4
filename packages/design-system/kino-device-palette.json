@@ -1,51 +1,58 @@
 {
-  "$comment": "The camera's on-glass palette: the one source for firmware/p4/main/ui_palette.h. Edit here, then run npm run palette:gen. npm run palette:check fails when the header is stale. Values are sRGB hex; the panel shows them as RGB565, so the low 3 bits of red and blue and the low 2 of green are dropped.",
+  "$comment": "The camera's on-glass palette: the one source for firmware/p4/main/ui_palette.h. Edit here, then run npm run palette:gen. npm run palette:check fails when the header is stale. Values are sRGB hex; the panel shows them as RGB565, so the low 3 bits of red and blue and the low 2 of green are dropped. The base is MAO's (mao_ui_type.h: ground 08080A, ink F1ECE2); the one colour is MAO pink F3A2C4, shifted slightly toward lavender on each launch (K_LAUNCH). Greys are neutral in their RGB565 code: G6 = 2 R5 = 2 B5.",
   "colours": {
-    "K_GROUND": { "hex": "0b0d0c", "note": "The ground: the shoot and photograph views, the boot field, sleep." },
-    "K_FACE": { "hex": "0e1210", "note": "The face: the ground of the menu and every detail screen." },
-    "K_SHADOW": { "hex": "070908", "note": "Darker than the ground. Today only the ROLL lamp when offline." },
+    "K_GROUND": { "hex": "08080a", "note": "The ground: every screen's face, the shoot and photograph views, the boot field, sleep." },
     "K_SCRIM": { "hex": "000000", "note": "Black: the scrim over a screen and the panel going dark." },
-    "K_SURFACE": { "hex": "151a17", "note": "A window or list ground, and the pane behind a photograph." },
-    "K_ROW": { "hex": "1c241f", "note": "A row you can press: one flat tone for every row of every list." },
-    "K_HAIRLINE": { "hex": "222a26", "note": "A surface that only needs to be a surface: an empty four-mark cell, a track under a bar. 1.3:1 on the face." },
-    "K_OFF": { "hex": "262f2a", "note": "A neutral press, a toggle that is off, an idle four-mark cell, a tile still loading." },
-    "K_RULE": { "hex": "27302b", "note": "The hairline between two facts in a table, and under a header." },
-    "K_EDGE": { "hex": "5c6c64", "note": "The edge of a thing you can press: 3.4:1 on the face, 3.2:1 on a window (WCAG 1.4.11 asks 3:1)." },
-    "K_INK": { "hex": "ede7dd", "note": "The light ink: every word on the dark grounds." },
-    "K_INK_QUIET": { "hex": "7a8a80", "note": "The quiet ink: 5.2:1 on the face, 4.8:1 on a window, 5.4:1 on the ground. The small face needs 4.5." },
-    "K_ACCENT": { "hex": "e8734a", "note": "The accent: selection, a press, the capture spark, the star, the gauges." },
-    "K_ACCENT_INK": { "hex": "2a140c", "note": "The dark ink set on the accent and on the card." },
-    "K_CARD": { "hex": "e8a183", "note": "The SHOOT card, the screen titles and the wordmark." },
-    "K_CARD_DOWN": { "hex": "d08b6f", "note": "The SHOOT card, pressed." },
-    "K_LIVE": { "hex": "86d6b4", "note": "Live and fine: a camera that answered, SENT, the menu labels, the toast plate." },
-    "K_TOAST_INK": { "hex": "0d221a", "note": "The toast's ink, dark on the live plate, so a remark never reads as a selection." },
-    "K_FAULT": { "hex": "c83a3a", "note": "Red as a mark or a fill: a lost camera, a destructive press, the lens hint." },
-    "K_FAULT_INK": { "hex": "f26a60", "note": "Red as type on the dark grounds: 5.9:1 on a window, where K_FAULT measures 3.5." }
+    "K_SURFACE": { "hex": "101010", "note": "A window or list ground, a status panel, the toast plate, the pane behind a photograph. 1.05:1 on the ground, so it is found by its edge or its content." },
+    "K_ROW": { "hex": "181818", "note": "A row you can press, and a disabled one: one flat tone for every row of every list. K_INK on it is 15.5:1." },
+    "K_RULE": { "hex": "282828", "note": "The hairline between two facts, under a header, round a four-mark cell, and the track under a bar." },
+    "K_OFF": { "hex": "303030", "note": "A toggle that is off, a neutral press, Cancel, an empty four-mark cell, a tile still loading. Only K_INK goes on it (11.5:1)." },
+    "K_EDGE": { "hex": "82807b", "note": "The edge of a thing you can press: 5.1:1 on the ground, 4.6:1 on a row, 3.4:1 on K_OFF (WCAG 1.4.11 asks 3:1)." },
+    "K_INK": { "hex": "f1ece2", "note": "The light ink: every word on the dark grounds, the marks, the star, SENT, a selected segment's fill." },
+    "K_INK_QUIET": { "hex": "8f8b85", "note": "The quiet ink: 5.7:1 on the ground, 5.4:1 on a window, 5.1:1 on a row. Never on K_OFF (3.8:1)." },
+    "K_ACCENT_INK": { "hex": "2a0e1c", "note": "The dark ink set on the launch shade: the SHOOT card, a pressed control. 9:1 or more on every shade, 5.6:1 or more pressed." },
+    "K_FAULT": { "hex": "e5484d", "note": "Red as a mark or a fill: a lost camera, a destructive press, the lens hint. Ink on it is K_GROUND (5.1:1), never K_INK (3.4:1)." },
+    "K_FAULT_INK": { "hex": "f26a60", "note": "Red as type on the dark grounds: 6.8:1 on the ground, 6.0:1 on a row." },
+    "K_LIVE": { "hex": "86d6b4", "note": "Retired in this pass: mint. Still drawn by the four-mark, the toast, the menu labels, SENT and the ROLL lamp until each moves to K_INK." },
+    "K_TOAST_INK": { "hex": "0d221a", "note": "Retired in this pass: the toast's ink on the mint plate." }
   },
   "roles": {
-    "K_SELECT": { "is": "K_ACCENT", "note": "A selected or pressed control's fill." },
-    "K_SELECT_INK": { "is": "K_ACCENT_INK", "note": "The ink on K_SELECT, and the focus ring." },
-    "K_TITLE": { "is": "K_CARD", "note": "A screen's or a dialog's title, set on the ground." },
-    "K_MARK": { "is": "K_CARD", "note": "The wordmark at boot and at sleep." },
-    "K_TOAST": { "is": "K_LIVE", "note": "The toast's plate." }
+    "K_FACE": { "is": "K_GROUND", "note": "The face of the menu and every detail screen: the ground, as on MAO." },
+    "K_SHADOW": { "is": "K_GROUND", "note": "Retired in this pass: the offline ROLL lamp." },
+    "K_HAIRLINE": { "is": "K_RULE", "note": "Retired in this pass: an empty four-mark cell's keyline, a track under a bar." },
+    "K_TITLE": { "is": "K_INK", "note": "A screen's or a dialog's title. Monochrome at rest." },
+    "K_MARK": { "is": "K_INK", "note": "The wordmark at sleep and at power-down. Marks are ink, never colour." },
+    "K_TOAST": { "is": "K_LIVE", "note": "Retired in this pass: the toast's plate." }
   },
   "arrays": {
-    "K_MENU_ROW": {
-      "note": "The menu's five rows under the SHOOT card, at rest, each a step darker than the one above. The floor stops clear of the ground so the bottom row is still a card.",
-      "values": ["1e5240", "1a4938", "164031", "13382a", "103024"]
+    "K_LAUNCH": {
+      "note": "The launch shade: MAO pink F3A2C4 and seven steps toward lavender C7A6F7, at most 40 % of the hue gap (OKLCH, L and C of F3A2C4 kept, 20 degrees in all). ui.c takes row boot_count % 8 once at start (ui_set_launch_index). Each is a distinct RGB565 code; K_ACCENT_INK on each is 9.0:1 or more, each on the ground 9.9:1 or more.",
+      "values": ["f3a2c4", "efa2c6", "efa6ce", "efa2ce", "efa2d6", "e7a6d6", "e7a2d6", "e7a6de"]
+    },
+    "K_LAUNCH_DOWN": {
+      "note": "The launch shade, pressed: the same hue at 84 % of its OKLCH lightness. K_ACCENT_INK on each is 5.6:1 or more.",
+      "values": ["c67d9c", "c6799c", "c67da5", "c679a5", "c67dad", "bd7dad", "bd79ad", "bd7db5"]
     },
     "K_BF_WARM": {
-      "note": "The boot field's four inks per look, light to dark. A look picks its row by hashing its id.",
+      "note": "The boot field's four inks per launch shade, in the order the field picks them: the ink, the shade, the shade half way to the ink, and the shade 55 % of the way to the ground (ui.c mix() on the RGB565 codes). Row i goes with K_LAUNCH[i].",
       "rows": [
-        { "note": "the standard look: amber and green, the reference's own warm pair", "values": ["f0ead8", "e8c070", "2ea144", "1a5e31"] },
-        { "note": "a warm look: the product's terracotta against its card colour", "values": ["f2e8dc", "e8734a", "e8a183", "6e3a33"] },
-        { "note": "a cool look: mint, which is what this interface says live in", "values": ["e8f2ec", "86d6b4", "2ea144", "1a4e3e"] },
-        { "note": "a neutral look, for a look that is not grading much at all", "values": ["f0eee4", "c8c0a8", "8a948c", "333b36"] }
+        { "values": ["f1ece2", "f3a2c4", "f6c6d5", "734c5a"] },
+        { "values": ["f1ece2", "efa2c6", "eec6d5", "6a4c5a"] },
+        { "values": ["f1ece2", "efa6ce", "eecad5", "6a4c5a"] },
+        { "values": ["f1ece2", "efa2ce", "eec6d5", "6a4c5a"] },
+        { "values": ["f1ece2", "efa2d6", "eec6de", "6a4c62"] },
+        { "values": ["f1ece2", "e7a6d6", "eecade", "6a4c62"] },
+        { "values": ["f1ece2", "e7a2d6", "eec6de", "6a4c62"] },
+        { "values": ["f1ece2", "e7a6de", "eecade", "6a4c62"] }
       ]
     },
     "K_BF_COLD": {
-      "note": "Cold: the instrument before it knows what it is shooting. The field comes up in this and travels to the look's own inks as the cameras answer.",
-      "values": ["9aa29e", "6c7672", "454e4a", "232927"]
+      "note": "Cold: the instrument before it knows what it is shooting. The field comes up in these and travels to the launch shade's inks as the cameras answer. Code-neutral greys, light to dark.",
+      "values": ["989898", "707070", "484848", "202020"]
+    },
+    "K_MENU_ROW": {
+      "note": "Retired in this pass: the menu's five rows, a green ramp. The rows become flat K_ROW.",
+      "values": ["1e5240", "1a4938", "164031", "13382a", "103024"]
     }
   }
 }

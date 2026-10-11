@@ -61,6 +61,32 @@ static const char *TAG = "ui";
 
 #define CAPTURES_DIR "/sdcard/KINO/CAPTURES"
 
+/*
+ * The launch shade: K_ACCENT and K_ACCENT_DOWN (ui_theme.h) read these two.
+ *
+ * One row of K_LAUNCH / K_LAUNCH_DOWN, picked once per start by
+ * ui_set_launch_index() and never again, so a session wears one shade from
+ * the boot field to the last press. Two halfwords, not a pointer into the
+ * table: every draw reads them, and the table is in flash. Zero until set;
+ * ui_start() sets row 0 if main.c did not.
+ */
+static uint16_t s_accent, s_accent_down;
+static uint8_t s_launch;
+static bool s_launch_set;
+
+void ui_set_launch_index(uint32_t boot_count) {
+  s_launch = (uint8_t)(boot_count % K_LAUNCH_N);
+  s_accent = K_LAUNCH[s_launch];
+  s_accent_down = K_LAUNCH_DOWN[s_launch];
+  s_launch_set = true;
+}
+_Static_assert(K_LAUNCH_N == K_LAUNCH_DOWN_N && K_LAUNCH_N == K_BF_WARM_N,
+               "one pressed shade and one boot-field row per launch shade");
+
+/* Until the role mapping lands, a selection and a press are still one fill. */
+#define K_SELECT K_ACCENT
+#define K_SELECT_INK K_ACCENT_INK
+
 
 /* ------------------------------------------------------------------ */
 /* Layout                                                              */
@@ -1957,8 +1983,9 @@ static int lerpi(int a, int b, float e) { return a + (int)((float)(b - a) * e + 
  *     squares - and the rim is single dots and short runs. That gradient is
  *     the whole reason it looks like something radiating rather than a
  *     texture someone tiled.
- *   - colour is per CELL, not per band: cream, amber, bright green, dim
- *     green, mixed all through, with the cool ones commoner further out.
+ *   - colour is per CELL, not per band: the ink, the launch shade, its
+ *     light mix and its dark mix, mixed all through, with the shade and its
+ *     mixes commoner further out.
  *
  * The glyphs are the reference's own, read off the sharpest frame in the clip
  * (a 5x5 bitmap drawn three pixels to the bit). The hash, the discs, the
@@ -2066,8 +2093,7 @@ static const uint8_t BF_GLYPH[GL_N][5] = {
  * actually true about this machine while it wakes up:
  *
  *   how far the field reaches   the boot's own clock: it fills the panel
- *   what colour it is           which look the camera is going to shoot with,
- *                               and, per quadrant, whether that camera answered
+ *   what colour it is           per quadrant, whether that camera answered
  *
  * The colour is read off the real device state, not animated on a timer. A
  * body whose third camera never answers boots with a cold grey quadrant where
@@ -2075,15 +2101,15 @@ static const uint8_t BF_GLYPH[GL_N][5] = {
  * on the screen - in the product's own mark, which is four. (The reach used
  * to carry that fact and was changed: see boot_field().)
  *
- * The palettes are the camera's, not the lamp's. Sampled hues from the
- * reference where they fit the product and dropped where they did not: a
- * camera that boots violet is a camera pretending to be somebody else's
- * object. A look is picked by hashing its id, so a given look always brings
- * the same colour up and changing look in Studio changes what the camera
- * looks like when it starts. The inks are K_BF_WARM and K_BF_COLD, from
+ * The palette is the camera's one colour, not the lamp's: the launch shade
+ * this start wears (ui_set_launch_index), with the ink and two mixes of the
+ * shade, so the field and the SHOOT card it gives way to are the same pink.
+ * It used to be picked per look by hashing the look's id, from four rows
+ * that carried amber and green; one colour per product leaves nothing to
+ * pick. The inks are K_BF_WARM (row = the launch index) and K_BF_COLD, from
  * kino-device-palette.json.
  */
-/** Slot `i` of the palette, `warm` of the way from cold to the look's own. */
+/** Slot `i` of the palette, `warm` of the way from cold to the shade's own. */
 static uint16_t bf_ink(int i, int pal, float warm) {
   const int k = warm <= 0.0f ? 0 : (warm >= 1.0f ? 255 : (int)(warm * 255.0f));
   return mix(K_BF_COLD[i], K_BF_WARM[pal][i], k);
@@ -2452,7 +2478,7 @@ static struct {
   uint64_t draw0_us, xpose0_us, vsync0_us; /* gfx_pass_split() when it began */
   int32_t span_ms;
   int row;
-  int pal;          /* which look's colours the boot field is wearing */
+  int pal;          /* the boot field's row of K_BF_WARM: the launch index */
   bool opening;
   screen_t card;    /* the screen drawn inside the card: arriving when opening, leaving when not */
   bool snap;        /* the card is blitted from the stash, drawn there once at the start */
@@ -2508,22 +2534,8 @@ static void anim_start_splash(void) {
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
 
-  /*
-   * The look decides the colour, and it is decided once: a look cannot change
-   * while the camera is starting up, and re-reading it per frame would be a
-   * config lookup on a draw path for an answer that cannot move.
-   *
-   * Hashed rather than tabulated because looks are the operator's, not ours -
-   * they are created in Studio and there is no list here to colour by hand.
-   * What matters is that it is STABLE: the same look brings the same colour
-   * up every time, so the way the camera starts becomes something you know
-   * about your own camera.
-   */
-  char id[KDP_RECIPE_ID_MAX];
-  if (!look_current_id(id, sizeof id)) id[0] = '\0';
-  uint32_t h = 2166136261u;
-  for (const char *c = id; *c != '\0'; c++) h = (h ^ (uint32_t)(unsigned char)*c) * 16777619u;
-  s_anim.pal = (int)(h % K_BF_WARM_N);
+  /* The launch shade's row: the field comes up in the pink the card wears. */
+  s_anim.pal = (int)s_launch;
 
   /* The four start cold and come up with their cameras. */
   for (int i = 0; i < 4; i++) s_bf_cam[i] = 0.0f;
@@ -3451,7 +3463,7 @@ static uint16_t menu_face(int i, bool down) {
    * the bottom of it; the step is smaller now and it stops well clear of the
    * page.
    */
-  if (i == 0) return down ? K_CARD_DOWN : K_CARD;
+  if (i == 0) return down ? K_ACCENT_DOWN : K_ACCENT;
   return down ? K_ACCENT : K_MENU_ROW[i - 1];
 }
 
@@ -9612,6 +9624,7 @@ static void ui_task(void *arg) {
 
 esp_err_t ui_start(void) {
   if (!display_ready()) return ESP_ERR_INVALID_STATE;
+  if (!s_launch_set) ui_set_launch_index(0);
 
   esp_err_t err = gfx_init();
   if (err != ESP_OK) {

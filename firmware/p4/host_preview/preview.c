@@ -1359,7 +1359,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 210
+#define PPMS_PER_HAND 218
 
 void write_ppm_impl_marker(void);
 static void write_ppm(const char *path, const uint16_t *px, int w, int h) {
@@ -1506,6 +1506,17 @@ static void scenes(void) {
   s_focus[SCR_MENU] = 4;
   SHOT(SCR_MENU, "menu_settings_focus");
   s_focus_shown = false;
+
+  /* The launch shades: the menu in each of the eight a start can wear, for
+   * the review strip. main.c picks boot_count % 8; every other picture here
+   * is row 0, the MAO pink itself. */
+  for (uint32_t i = 0; i < K_LAUNCH_N; i++) {
+    char name[32];
+    snprintf(name, sizeof name, "launch_shade_%u", (unsigned)i);
+    ui_set_launch_index(i);
+    SHOT(SCR_MENU, name);
+  }
+  ui_set_launch_index(0);
 
   /* The boot rings, frame by frame. */
   {
@@ -2190,6 +2201,9 @@ static int run_hand(bool right, const char *out) {
   g_canvas = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
   if (g_canvas == NULL) return PASS_HARD;
 
+  /* Row 0, the MAO pink: the camera's pick is boot_count % 8, and a picture
+   * that depended on a counter would be a different picture every run. */
+  ui_set_launch_index(0);
   scenes();
   /* The frame-cost figures are the same for both hands; print them once. */
   if (right) {
