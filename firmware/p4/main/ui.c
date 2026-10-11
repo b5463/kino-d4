@@ -6097,6 +6097,26 @@ static const char *const SET_ROWS[6] = {"Display", "Sound",   "Connection",
 static const screen_t SET_DEST[6] = {SCR_DISPLAY, SCR_SOUND, SCR_CONNECTION,
                                      SCR_STORAGE, SCR_ABOUT, SCR_STATUS};
 
+/* The values the DISPLAY and SOUND bands offer, and the words they are drawn
+ * with. One table each: the SETTINGS summary reads a setting with the same
+ * words its own screen does, and the press writes the same number the band
+ * drew. Durations are in capitals like every other value on a band. */
+static const int DIM_S[3] = {15, 30, 60};
+static const int SLEEP_S[3] = {60, 120, 300};
+static const char *const SECS_15[3] = {"15 S", "30 S", "60 S"};
+static const char *const SECS_60[3] = {"1 MIN", "2 MIN", "5 MIN"};
+static const int VOL_LEVEL[3] = {3, 6, 9};
+static const char *const VOL_NAMES[3] = {"LOW", "MEDIUM", "HIGH"};
+
+static int nearest_idx(int v, const int *opts) {
+  int best = 0, bd = 1 << 30;
+  for (int i = 0; i < 3; i++) {
+    const int d = v > opts[i] ? v - opts[i] : opts[i] - v;
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+
 /*
  * Six rows when the camera has something to say, five when it does not.
  *
@@ -6135,17 +6155,14 @@ static void settings_summary(int i, char *out, size_t cap) {
     return;
   }
   switch (i) {
-    case 0: { /* Display: the sleep timeout, which is the one that changes behaviour */
-      const int s_sleep = config_int("body.sleepS", 120);
-      if (s_sleep >= 60) snprintf(out, cap, "%d min", s_sleep / 60);
-      else snprintf(out, cap, "%d s", s_sleep);
+    case 0: /* Display: the sleep timeout, which is the one that changes behaviour */
+      snprintf(out, cap, "%s", SECS_60[nearest_idx(config_int("body.sleepS", 120), SLEEP_S)]);
       break;
-    }
     case 1: { /* Sound: off when both families are, else the volume it is set to */
       const bool shut = config_bool("body.sounds.save", true);
       const bool ui = config_bool("body.sounds.ui", true);
-      if (!shut && !ui) snprintf(out, cap, "Off");
-      else snprintf(out, cap, "%d", config_int("shoot.volume", 6));
+      if (!shut && !ui) snprintf(out, cap, "OFF");
+      else snprintf(out, cap, "%s", VOL_NAMES[nearest_idx(config_int("shoot.volume", 6), VOL_LEVEL)]);
       break;
     }
     case 2: { /* Connection: the network it is actually on */
@@ -6154,10 +6171,9 @@ static void settings_summary(int i, char *out, size_t cap) {
       else snprintf(out, cap, "Not connected");
       break;
     }
-    case 3: { /* Storage: what is left, in the unit a photographer counts in */
+    case 3: { /* Storage: what is left, in the words the header chip uses */
       const storage_status_t sd = *sd_status();
-      if (!sd.mounted) snprintf(out, cap, "No card");
-      else snprintf(out, cap, "%d shots", (int)(sd.free_bytes / (6ull * 1024 * 1024)));
+      card_words(out, cap, &sd);
       break;
     }
     default: snprintf(out, cap, "%s", KINO_FW_VERSION); break;
@@ -6350,10 +6366,8 @@ static void draw_settings(void) {
 
 _Static_assert(DSP_BOX_H < DSP_PITCH, "the DISPLAY group boxes overlap each other");
 
-static const int DIM_S[3] = {15, 30, 60};
-static const int SLEEP_S[3] = {60, 120, 300};
-static const char *const SECS_15[3] = {"15 s", "30 s", "60 s"};
-static const char *const SECS_60[3] = {"1 min", "2 min", "5 min"};
+/* DIM_S, SLEEP_S and their names sit with SET_ROWS, where the SETTINGS
+ * summary reads them too. */
 
 /* shoot.displayAfterShotS, including the -1 that means HOLD - the result
  * screen stays until it is acknowledged. Written as the contract's own values
@@ -6379,15 +6393,6 @@ static const struct {
     {"AFTER SHOT", SHOT_NAMES, SHOT_S, 5, DSP_IT_SHOT},
     {"CAM IDLE", IDLE_NAMES, IDLE_S, 3, DSP_IT_IDLE},
 };
-
-static int nearest_idx(int v, const int *opts) {
-  int best = 0, bd = 1 << 30;
-  for (int i = 0; i < 3; i++) {
-    const int d = v > opts[i] ? v - opts[i] : opts[i] - v;
-    if (d < bd) { bd = d; best = i; }
-  }
-  return best;
-}
 
 /* Exact match, not nearest.
  *
@@ -6638,10 +6643,8 @@ static void draw_sound(void) {
    * reaches to the window margin the list well uses rather than to the band
    * the band happens to be drawn at. */
   group_box(LIST_X, y, LIST_W, 24 + SN_VOL_H + 6, "VOLUME", K_INK, NULL);
-  static const char *const VOL[3] = {"LOW", "MEDIUM", "HIGH"};
-  static const int VOLV[3] = {3, 6, 9};
-  draw_segments(SN_VOL_X, sn_vol_band_y(), SN_VOL_W, SN_VOL_H, VOL, 3,
-                nearest_idx(config_int("shoot.volume", 6), VOLV), band_rel(s_pressed, SN_IT_VOL, 3),
+  draw_segments(SN_VOL_X, sn_vol_band_y(), SN_VOL_W, SN_VOL_H, VOL_NAMES, 3,
+                nearest_idx(config_int("shoot.volume", 6), VOL_LEVEL), band_rel(s_pressed, SN_IT_VOL, 3),
                 band_rel(s_focus_shown ? s_focus[SCR_SOUND] : -1, SN_IT_VOL, 3));
 
   /*
@@ -6989,7 +6992,8 @@ static void draw_storage(void) {
       snprintf(detail, sizeof detail,
                "Cards over 32 GB come in a format KINO does not read. FORMAT CARD fixes it.");
     } else if (sd.last_error != NULL && sd.last_error[0] != '\0') {
-      snprintf(detail, sizeof detail, "%s, after %u mount attempt%s", sd.last_error,
+      /* The error code goes to the log and the KDP status, not the glass. */
+      snprintf(detail, sizeof detail, "Tried %u time%s. Take the card out and put it back.",
                (unsigned)sd.mount_attempts, sd.mount_attempts == 1 ? "" : "s");
     } else {
       snprintf(detail, sizeof detail, "%u mount attempt%s since boot",
@@ -7252,7 +7256,7 @@ static void draw_power(void) {
   s_list_top = LIST_TOP_DEFAULT;
   draw_list_frame(PW_IT_COUNT);
   draw_row(PW_IT_RESTART, foc(SCR_POWER, PW_IT_RESTART), s_pressed == PW_IT_RESTART, true,
-           "Restart", "Back in a moment", true);
+           "Restart", "Opens the menu after", true);
   /* Drawn disabled: power.c controls the backlight and the camera bank and
    * has no power-off at all, and there is no soft latch in the pin map for
    * one. The slide is the switch. */
@@ -7284,14 +7288,21 @@ typedef struct {
   bool destructive;
 } dlg_spec_t;
 
+_Static_assert(MOTION_UNDO_MS == 30000, "the DELETE dialog says the undo lasts 30 s");
+
 static void dialog_spec(dlg_spec_t *d) {
   static char sub[64];
   switch (s_dialog) {
     case DLG_RESTART:
-      *d = (dlg_spec_t){"RESTART", "Back in a moment?", "KINO restarts and comes back to SHOOT.", "RESTART", false};
+      /* Where it lands, said as it is: a boot opens the menu (s_screen's
+       * first value), not SHOOT. The old line promised SHOOT. */
+      *d = (dlg_spec_t){"RESTART", "Restart the camera?", "KINO restarts and opens the menu.", "RESTART", false};
       break;
     case DLG_DELETE:
-      snprintf(sub, sizeof sub, "%d frames. This cannot be undone.", s_photo_frames);
+      /* The delete goes to the trash and the toast offers UNDO for
+       * MOTION_UNDO_MS. "This cannot be undone" above a thirty-second undo
+       * was a warning the next screen contradicted. */
+      snprintf(sub, sizeof sub, "%d frames. Undo for 30 s after.", s_photo_frames);
       *d = (dlg_spec_t){"DELETE", "Delete this photo?", sub, "DELETE", true};
       break;
     case DLG_DELETE_ALL:
@@ -7323,7 +7334,10 @@ static void dialog_spec(dlg_spec_t *d) {
                         "It measures the cameras. See STATUS.", "GOT IT", false};
       break;
     default:
-      *d = (dlg_spec_t){"SHUT DOWN", "Calling it a night?", "Hold the power slide to wake KINO up again.", "SHUT DOWN", false};
+      /* DLG_NONE, which draw_dialog() is never called with. It used to be a
+       * SHUT DOWN question no row opens; an empty spec cannot put a line on
+       * the glass that nothing else documents. */
+      *d = (dlg_spec_t){"", "", NULL, "OK", false};
       break;
   }
 }
@@ -7836,7 +7850,7 @@ static void calib_poll(void) {
      * list keeps saying they are unmeasured, and the next photograph tries
      * again. */
     klog("P4", "calibration measured nothing off %s", s_calib_id);
-    toast("Not measured: aim at something with detail");
+    toast("Not measured. Aim at a busier scene");
   }
   ui_render(render_screen, NULL);
 }
@@ -8632,7 +8646,7 @@ static void dialog_commit(void) {
        * GOT IT on the first-start note toasted the shutdown line. */
       break;
     default:
-      toast("Hold the power slide to switch off");
+      /* DLG_NONE: nothing was asked, so nothing is said. */
       break;
   }
   ui_render(render_screen, NULL);
@@ -8752,10 +8766,8 @@ static void activate(int item) {
         cfg_set_bool("body.sounds.save", !config_bool("body.sounds.save", true));
       else if (item == SN_IT_BUTTON)
         cfg_set_bool("body.sounds.ui", !config_bool("body.sounds.ui", true));
-      else if (item >= SN_IT_VOL && item < SN_IT_COUNT) {
-        static const int VOLV[3] = {3, 6, 9};
-        cfg_set_int("shoot.volume", VOLV[item - SN_IT_VOL]);
-      }
+      else if (item >= SN_IT_VOL && item < SN_IT_COUNT)
+        cfg_set_int("shoot.volume", VOL_LEVEL[item - SN_IT_VOL]);
       break;
 
     case SCR_STORAGE:
@@ -8855,7 +8867,7 @@ static void fire_shutter(bool long_press) {
     if (!capture_ready()) {
       /* Not "a capture is already running", which is what this used to say to
        * a body whose capture pipeline never started (#210). */
-      toast("The cameras did not start. Restart the camera");
+      toast("Cameras did not start. Restart KINO");
       audio_warning();
       klog("P4", "shutter refused - the capture pipeline did not start");
       ui_render(render_screen, NULL);
