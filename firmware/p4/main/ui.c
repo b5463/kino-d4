@@ -4758,7 +4758,7 @@ static void gal_origin(int slot, int *x, int *y) {
 /* One silhouette, two inks. An outline form was tried first and does   */
 /* not survive: at 11 px a hollow star is six disconnected 1 px runs and */
 /* reads as noise beside the word next to it - checked in the host       */
-/* preview, which is what that tool is for. Gold means it is a           */
+/* preview, which is what that tool is for. Ink means it is a            */
 /* favourite, grey means the control would make it one, and the shape    */
 /* stays the same so the tile mark and the button are one thing.         */
 /* ------------------------------------------------------------------ */
@@ -4877,7 +4877,7 @@ static void draw_gallery(void) {
         /* The Roll has it: safe to delete, which is the one question a
          * person asks a full card. */
         const int bw = text_w(&UI_FONT_T, "SENT") + 14;
-        round_rect(x + 8, y + 8, bw, 20, 6, K_LIVE);
+        round_rect(x + 8, y + 8, bw, 20, 6, K_INK);
         text(&UI_FONT_T, x + 15, y + 11, "SENT", K_GROUND);
       }
     } else if (slots[i].state == TILE_PENDING) {
@@ -4956,7 +4956,7 @@ static void draw_gallery(void) {
     if (slots[i].favorite) {
       const int sx = x + G_TILE_W - STAR_W - 6, sy = y + 5;
       fill(sx - 3, sy - 3, STAR_W + 6, STAR_H + 6, K_SURFACE);
-      star(sx, sy, K_ACCENT);
+      star(sx, sy, K_INK);
     }
   }
 
@@ -5577,7 +5577,7 @@ static void draw_photo(void) {
      * person needed; the date that replaced it on the next line does. */
     char sub[64];
     snprintf(sub, sizeof sub, "%s%s", mode[0] != '\0' ? mode : raw, s_photo_sent ? "  SENT" : "");
-    text(&UI_FONT_T, fx, cy, sub, s_photo_sent ? K_LIVE : K_INK_QUIET);
+    text(&UI_FONT_T, fx, cy, sub, s_photo_sent ? K_INK : K_INK_QUIET);
     if (s_photo_ms > 0) {
       cy += UI_FONT_T.line_h;
       char when[24];
@@ -5951,8 +5951,11 @@ static void draw_roll(void) {
   text(tf, RL_RX, y, title, K_INK);
   y += tf->line_h + 10;
 
+  /* The lamp: ink when online, red when something stops it, and a quiet
+   * ring - nothing lit - when offline. */
   const char *word;
   uint16_t lamp;
+  bool lamp_ring = false;
   if (q.halted) {
     word = "Paused";
     lamp = K_FAULT;
@@ -5961,10 +5964,11 @@ static void draw_roll(void) {
     lamp = K_FAULT;
   } else if (online) {
     word = "Online";
-    lamp = K_LIVE;
+    lamp = K_INK;
   } else {
     word = "Offline";
-    lamp = K_SHADOW;
+    lamp = K_INK_QUIET;
+    lamp_ring = true;
   }
   const int total = gallery_media_count();
   char photos[16], sent[32];
@@ -5986,8 +5990,8 @@ static void draw_roll(void) {
     const int lw = text_w(&UI_FONT_M, word);
     const int lx = RL_RX + RL_RW - lw - 16 - 18;
     const int ly = y + ph + (ph - 10) / 2;
-    fill(lx, ly, 10, 10, K_INK);
-    fill(lx + 2, ly + 2, 6, 6, lamp);
+    fill(lx, ly, 10, 10, lamp);
+    if (lamp_ring) fill(lx + 2, ly + 2, 6, 6, K_FACE);
   }
   fact_row(RL_RX, RL_RW, y + 2 * ph, ph, "Photos", photos, true, false);
   fact_row(RL_RX, RL_RW, y + 3 * ph, ph, "Uploaded", sent, true, true);
@@ -6026,10 +6030,10 @@ static void draw_roll(void) {
 
   if (bar) {
     const int bh = 8;
-    round_rect(RL_RX, y, RL_RW, bh, 4, K_HAIRLINE);
+    round_rect(RL_RX, y, RL_RW, bh, 4, K_RULE);
     if (bar_total > 0) {
       const int fw = (int)((int64_t)RL_RW * bar_done / bar_total);
-      if (fw > 8) round_rect(RL_RX, y, fw, bh, 4, K_ACCENT);
+      if (fw > 8) round_rect(RL_RX, y, fw, bh, 4, K_INK);
     }
     y += bh + 12;
   }
@@ -6942,21 +6946,21 @@ static void draw_storage(void) {
     return;
   }
 
-  /* The gauge. A track and a fill, both with the product's corner on them; the
-   * fill used to carry a bevel of its own in two tones of the selection colour,
-   * which was the one raised surface on the interface that was not face grey
-   * and is now the one rounded surface that is not a card. */
+  /* The gauge. A track and a fill, both with the product's corner on them.
+   * The fill is ink, like every reading; it turns red under 5 % free, where
+   * the card is the next thing that will stop a photograph. */
   const int bx = PAGE_M, bw = UI_W - 2 * PAGE_M, bh = ST_GAUGE_H;
   const uint64_t total_b = sd.capacity_bytes;
   const uint64_t used = total_b > sd.free_bytes ? total_b - sd.free_bytes : 0;
-  round_rect(bx, by, bw, bh, bh / 2, K_SURFACE);
+  round_rect(bx, by, bw, bh, bh / 2, K_RULE);
   if (total_b > 0) {
     /* 64-bit before the divide: a 32 GB card times bw overflows 32 bits. */
     int fw = (int)((used * (uint64_t)(bw - 6)) / total_b);
     /* A card with anything at all on it shows at least one pixel: a bar that
      * is empty at 40 MB used looks like a bar that is not working. */
     if (fw < bh - 6 && used > 0) fw = bh - 6;
-    round_rect(bx + 3, by + 3, fw, bh - 6, (bh - 6) / 2, K_ACCENT);
+    const bool nearly_full = sd.free_bytes < total_b / 20;
+    round_rect(bx + 3, by + 3, fw, bh - 6, (bh - 6) / 2, nearly_full ? K_FAULT : K_INK);
   }
 
   char usedb[24];

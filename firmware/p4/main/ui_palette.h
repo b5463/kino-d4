@@ -57,19 +57,10 @@
 #define K_FAULT RGB(0xe5, 0x48, 0x4d) /* 0xE249 */
 /* Red as type on the dark grounds: 6.8:1 on the ground, 6.0:1 on a row. */
 #define K_FAULT_INK RGB(0xf2, 0x6a, 0x60) /* 0xF34C */
-/* Retired in this pass: mint. Still drawn by the four-mark, SENT and the ROLL
- * lamp until each moves to K_INK.
- */
-#define K_LIVE RGB(0x86, 0xd6, 0xb4) /* 0x86B6 */
 
 /* Roles: what a colour is used for. Each is one of the colours above. */
 /* The face of the menu and every detail screen: the ground, as on MAO. */
 #define K_FACE K_GROUND
-/* Retired in this pass: the offline ROLL lamp. */
-#define K_SHADOW K_GROUND
-/* Retired in this pass: an empty four-mark cell's keyline, a track under a bar.
- */
-#define K_HAIRLINE K_RULE
 /* A selection that stays: the live segment, a toggle that is on, a favourite
  * that is set. Ink, not colour; colour is for a press.
  */

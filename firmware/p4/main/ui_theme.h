@@ -65,50 +65,47 @@
 /*
  * K_PAIRS: every ink-on-fill pair ui.c draws, with the contrast it must clear
  * in tenths (45 = 4.5:1 for text, 30 = 3.0:1 for edges, marks and the one face
- * over 18 pt). The theme test expands it as
+ * over 18 pt). host_tests/test_theme.c expands it as
  *
- *   #define X(ink, fill, min10, where) { ink, fill, min10, where },
- *   static const pair_t pairs[] = { K_PAIRS(X) };
+ *   #define X(ink, fill, min10, where) { ink, fill, min10, #ink " on " #fill, where },
  *
- * and measures each with ui.c's rel_lum() on the RGB565 codes. At these
- * values four pairs are under their floor, the #176 list: K_INK on K_SELECT
- * 2.40, K_SELECT_INK on K_FAULT 3.52, K_INK on K_FAULT 4.03, K_INK_QUIET on
- * K_ROW 4.41. host_preview's audit reports the same four from the pixels. A
- * pair is added here in the same change that first draws it.
+ * once per launch shade (K_ACCENT and K_ACCENT_DOWN set to each row of
+ * K_LAUNCH / K_LAUNCH_DOWN), and measures each with ui.c's rel_lum() on the
+ * RGB565 codes. host_preview's audit measures the same strings from the
+ * pixels. A pair is added here in the same change that first draws it.
  */
-#define K_PAIRS(X)                                                                     \
-  /* the light inks on the dark grounds */                                             \
-  X(K_INK, K_GROUND, 45, "a photograph's name, the sleep line")                        \
-  X(K_INK, K_FACE, 45, "a detail screen's text")                                       \
-  X(K_INK, K_SURFACE, 45, "a value in a window, a dialog's text")                      \
-  X(K_INK, K_ROW, 45, "a row's label")                                                 \
-  X(K_INK, K_OFF, 45, "a neutral press, a toggle that is off, Cancel")                 \
-  X(K_INK_QUIET, K_GROUND, 45, "a photograph's second line")                           \
-  X(K_INK_QUIET, K_FACE, 45, "a caption on a detail screen")                           \
-  X(K_INK_QUIET, K_SURFACE, 45, "a note in a window")                                  \
-  X(K_INK_QUIET, K_ROW, 45, "the ROLL guest address, a NOTE row")                      \
-  X(K_TITLE, K_FACE, 45, "a screen's title")                                           \
-  X(K_TITLE, K_SURFACE, 45, "a dialog's title")                                        \
-  X(K_INK, K_ROW, 45, "a CHECK row's severity word")                                \
-  X(K_FAULT_INK, K_ROW, 45, "a PROBLEM row's severity word")                           \
-  X(K_FAULT_INK, K_SURFACE, 45, "DELETE at rest, a destructive dialog's title")        \
-  X(K_LIVE, K_GROUND, 45, "SENT under a photograph")                                   \
-  /* inks on the accent, the card and the live colour */                               \
-  X(K_PRESS_INK, K_PRESS, 45, "a pressed or selected control's label")               \
-  X(K_INK, K_ROW, 45, "a dialog's action at rest (RESTART, OK)")                    \
-  X(K_ACCENT_INK, K_ACCENT, 45, "TAP TO OPEN and the status line on the SHOOT card")     \
-  X(K_ACCENT_INK, K_ACCENT_DOWN, 45, "the SHOOT card's words, pressed")                  \
-  X(K_PRESS_INK, K_PRESS, 45, "a menu row's label, pressed")                             \
-  X(K_INK, K_ROW, 45, "a menu row's label")                          \
-  X(K_GROUND, K_LIVE, 45, "SENT on a gallery tile")                                    \
-  X(K_INK, K_TOAST, 45, "a toast")                                               \
-  /* inks on red */                                                                    \
-  X(K_INK, K_FAULT, 45, "the lens hint, a destructive dialog's action")                \
-  X(K_GROUND, K_FAULT, 45, "DELETE, pressed")                                      \
-  /* edges and marks, 3:1 */                                                           \
-  X(K_EDGE, K_FACE, 30, "a control's edge on a detail screen")                         \
-  X(K_EDGE, K_SURFACE, 30, "a control's edge in a window")                             \
-  X(K_ACCENT_INK, K_ACCENT, 30, "SHOOT, the XL word on the card")                        \
-  X(K_LIVE, K_GROUND, 30, "a four-mark cell whose camera answered")                    \
-  X(K_FAULT, K_GROUND, 30, "a four-mark cell whose camera was lost")                   \
-  X(K_ACCENT, K_SURFACE, 30, "the storage gauge's fill")
+#define K_PAIRS(X)                                                                      \
+  /* the light inks on the dark grounds */                                              \
+  X(K_INK, K_GROUND, 45, "every screen's text, a photograph's name, the sleep line")    \
+  X(K_INK, K_SURFACE, 45, "a value in a window, a dialog's text, a status panel")       \
+  X(K_INK, K_ROW, 45, "a row's label, a menu row, a dialog's action at rest")           \
+  X(K_INK, K_OFF, 45, "a toggle that is off, Cancel, a neutral press")                  \
+  X(K_INK, K_TOAST, 45, "a toast")                                                      \
+  X(K_INK_QUIET, K_GROUND, 45, "a caption, a photograph's second line")                 \
+  X(K_INK_QUIET, K_SURFACE, 45, "a note in a window")                                   \
+  X(K_INK_QUIET, K_ROW, 45, "a NOTE row's severity word")                               \
+  X(K_TITLE, K_FACE, 45, "a screen's title")                                            \
+  X(K_TITLE, K_SURFACE, 45, "a dialog's title")                                         \
+  X(K_FAULT_INK, K_GROUND, 45, "red words on a screen")                                 \
+  X(K_FAULT_INK, K_SURFACE, 45, "DELETE at rest, a destructive dialog's title")         \
+  X(K_FAULT_INK, K_ROW, 45, "a PROBLEM row, a destructive dialog action at rest")       \
+  /* inks on the fills */                                                               \
+  X(K_ON_INK, K_ON, 45, "the live segment, a toggle's knob, a set favourite")           \
+  X(K_GROUND, K_INK, 45, "SENT on a gallery tile, a QR module on its plate")            \
+  X(K_PRESS_INK, K_PRESS, 45, "a pressed control's label")                              \
+  X(K_ACCENT_INK, K_ACCENT, 45, "TAP TO OPEN and the status line on the SHOOT card")    \
+  X(K_ACCENT_INK, K_ACCENT_DOWN, 45, "the SHOOT card's words, pressed")                 \
+  X(K_GROUND, K_FAULT, 45, "the lens hint, a destructive press, DELETE pressed")        \
+  /* edges and marks, 3:1 */                                                            \
+  X(K_EDGE, K_GROUND, 30, "a control's edge on a screen")                               \
+  X(K_EDGE, K_SURFACE, 30, "a control's edge in a window")                              \
+  X(K_EDGE, K_ROW, 30, "a toggle's edge on a row")                                      \
+  X(K_EDGE, K_OFF, 30, "a toggle that is off")                                          \
+  X(K_ACCENT_INK, K_ACCENT, 30, "SHOOT, the XL word on the card")                       \
+  X(K_INK, K_GROUND, 30, "a four-mark cell in hand, the star, a lamp")                  \
+  X(K_INK, K_RULE, 30, "a bar's fill on its track")                                     \
+  X(K_INK_QUIET, K_GROUND, 30, "the offline ROLL lamp's ring")                          \
+  X(K_FAULT, K_GROUND, 30, "a lost four-mark cell, a red lamp")                         \
+  X(K_FAULT, K_SURFACE, 30, "a failed capture strip's bar")                             \
+  X(K_ACCENT, K_GROUND, 30, "a landed four-mark cell")                                  \
+  X(K_ACCENT, K_SURFACE, 30, "a landed capture strip's bar")

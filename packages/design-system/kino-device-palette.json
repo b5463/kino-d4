@@ -12,13 +12,10 @@
     "K_INK_QUIET": { "hex": "8f8b85", "note": "The quiet ink: 5.7:1 on the ground, 5.4:1 on a window, 5.1:1 on a row. Never on K_OFF (3.8:1)." },
     "K_ACCENT_INK": { "hex": "2a0e1c", "note": "The dark ink set on the launch shade: the SHOOT card, a pressed control. 9:1 or more on every shade, 5.6:1 or more pressed." },
     "K_FAULT": { "hex": "e5484d", "note": "Red as a mark or a fill: a lost camera, a destructive press, the lens hint. Ink on it is K_GROUND (5.1:1), never K_INK (3.4:1)." },
-    "K_FAULT_INK": { "hex": "f26a60", "note": "Red as type on the dark grounds: 6.8:1 on the ground, 6.0:1 on a row." },
-    "K_LIVE": { "hex": "86d6b4", "note": "Retired in this pass: mint. Still drawn by the four-mark, SENT and the ROLL lamp until each moves to K_INK." }
+    "K_FAULT_INK": { "hex": "f26a60", "note": "Red as type on the dark grounds: 6.8:1 on the ground, 6.0:1 on a row." }
   },
   "roles": {
     "K_FACE": { "is": "K_GROUND", "note": "The face of the menu and every detail screen: the ground, as on MAO." },
-    "K_SHADOW": { "is": "K_GROUND", "note": "Retired in this pass: the offline ROLL lamp." },
-    "K_HAIRLINE": { "is": "K_RULE", "note": "Retired in this pass: an empty four-mark cell's keyline, a track under a bar." },
     "K_ON": { "is": "K_INK", "note": "A selection that stays: the live segment, a toggle that is on, a favourite that is set. Ink, not colour; colour is for a press." },
     "K_ON_INK": { "is": "K_GROUND", "note": "The label or knob on K_ON: 17.4:1." },
     "K_TITLE": { "is": "K_INK", "note": "A screen's or a dialog's title. Monochrome at rest." },
