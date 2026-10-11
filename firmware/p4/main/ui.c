@@ -1764,11 +1764,16 @@ static void bolt(int x, int y, int scale, uint16_t c) {
 typedef enum {
   FM_OFF = 0,  /* an empty cell - a frame not yet taken */
   FM_ON,       /* a frame in hand */
-  FM_SPARK,    /* the moment it lands. KINO yellow, and only ever a moment */
+  FM_SPARK,    /* a frame that just landed: the launch shade, for 300 ms */
   FM_LOST,     /* a camera that did not answer */
 } fm_cell_t;
 
 #define FM_GAP 6
+
+/* The ink a landed cell is in on this pass: the launch shade for 120 ms,
+ * then back to K_INK. Set once per pass by land_step(), never inside a
+ * draw, so every tile of a frame agrees. */
+static uint16_t s_land_ink = K_INK;
 
 /**
  * Four cells of `cell` px, left to right, with `st[4]` their states.
@@ -1780,25 +1785,25 @@ typedef enum {
  * one mint. Blue appeared nowhere else in the product, which made the one
  * shape that says "this is a KINO" the one shape that did not look like it.
  *
- * The palette's own two now carry it: mint for a frame in hand, the accent
- * for the one that just arrived, red when a lens lost it, and the pressed
- * tone for a cell that is empty. `dark` no longer selects a second set of
- * tones - the tones read on both grounds, which is what a palette is for.
+ * It is ink now, like every mark: K_INK for a frame in hand, the launch
+ * shade for the moment one lands (s_land_ink, gone again in 300 ms), red
+ * when a lens lost it, and K_OFF for a cell that is empty. `dark` no longer
+ * selects a second set of tones - the tones read on both grounds.
  */
 static void four_mark(int x, int y, int cell, const fm_cell_t *st, bool dark) {
   for (int i = 0; i < 4; i++) {
     const int cx = x + i * (cell + FM_GAP);
     uint16_t fill_c;
     switch (st[i]) {
-      case FM_ON: fill_c = K_LIVE; break;
-      case FM_SPARK: fill_c = K_ACCENT; break;
+      case FM_ON: fill_c = K_INK; break;
+      case FM_SPARK: fill_c = s_land_ink; break;
       case FM_LOST: fill_c = K_FAULT; break;
       default: fill_c = K_OFF; break;
     }
     fill(cx, y, cell, cell, fill_c);
     /* A one-pixel keyline, so an empty cell is still a cell rather than a
      * hole in the background. */
-    outline(cx, y, cell, cell, K_HAIRLINE);
+    outline(cx, y, cell, cell, K_RULE);
   }
 }
 
@@ -7367,9 +7372,10 @@ static void draw_dialog(void) {
  *
  * The cells are driven by the capture's real stages rather than by a timer:
  * one lights when the shutter fires, two when the frames are coming back,
- * three while they are going to the card, and all four spark yellow when
- * they are on it. It is honest progress and it happens to have exactly four
- * steps, which is the whole reason the mark works here.
+ * three while they are going to the card, and all four land in the launch
+ * shade when they are on it, then settle to ink. It is honest progress and
+ * it happens to have exactly four steps, which is the whole reason the mark
+ * works here.
  *
  * The wording is the camera's, not an operating system's: 4/4 SAVED, and a
  * count rather than an apology when a camera missed.
@@ -7523,7 +7529,42 @@ static void render_sleep(void *ctx) {
 
 static void draw_working_banner(const char *line) {
   const fm_cell_t st[4] = {FM_ON, FM_ON, FM_ON, FM_ON};
-  draw_strip(st, line, K_LIVE);
+  draw_strip(st, line, K_INK);
+}
+
+/*
+ * The landing: colour arrives, does its job and leaves.
+ *
+ * The cells that reached the card, and the bar at the strip's end, are in
+ * the launch shade for LAND_HOLD_MS, then return to K_INK over
+ * LAND_BACK_MS on smootherstep - 300 ms in all, MAO's LAND rule. A lost
+ * cell and a failed strip stay K_FAULT for as long as the strip is up: a
+ * lost frame is a fact, not an event.
+ *
+ * `t_us` is the time since the report first existed. Pure: ui_pass calls
+ * it once per pass through land_step(), and host_preview calls it with
+ * chosen times to draw the frames of the move.
+ */
+#define LAND_HOLD_MS 120
+#define LAND_BACK_MS 180
+static uint16_t land_ink(int64_t t_us) {
+  const int64_t t_ms = t_us / 1000;
+  if (t_ms < LAND_HOLD_MS) return K_ACCENT;
+  if (t_ms >= LAND_HOLD_MS + LAND_BACK_MS) return K_INK;
+  const float k = ease_ui((float)(t_ms - LAND_HOLD_MS) / (float)LAND_BACK_MS);
+  return mix(K_ACCENT, K_INK, (int)(k * 255.0f + 0.5f));
+}
+
+/* Advance the landing for this pass. True while it is still moving, so the
+ * loop keeps its 20 ms cadence until the colour has gone. */
+static bool land_step(void) {
+  if (s_shot_seen_us == 0) {
+    s_land_ink = K_INK;
+    return false;
+  }
+  const int64_t t = esp_timer_get_time() - s_shot_seen_us;
+  s_land_ink = land_ink(t);
+  return t < (int64_t)(LAND_HOLD_MS + LAND_BACK_MS) * 1000;
 }
 
 static void draw_capture_banner(void) {
@@ -7535,7 +7576,7 @@ static void draw_capture_banner(void) {
 
   fm_cell_t st[4] = {FM_OFF, FM_OFF, FM_OFF, FM_OFF};
   char line[64];
-  uint16_t accent = K_LIVE;
+  uint16_t accent = K_INK;
   switch (cs) {
     case CAPTURE_TRIGGERING:
       st[0] = FM_ON;
@@ -7567,7 +7608,7 @@ static void draw_capture_banner(void) {
         else
           snprintf(line, sizeof line, "SAVED, %d CAMERA%s MISSED", r.online - r.stored,
                    r.online - r.stored == 1 ? "" : "S");
-        accent = r.stored == r.online ? K_LIVE : K_FAULT;
+        accent = r.stored == r.online ? s_land_ink : K_FAULT;
       }
       break;
   }
@@ -9511,6 +9552,7 @@ static uint32_t ui_pass(void) {
     /* A toast that has run its time leaves here, between frames, and the
      * repaint below is what takes it off the screen. */
     if (toast_expired()) s_toast[0] = '\0';
+    const bool landing = land_step();
     const bool busy = cstage != CAPTURE_IDLE ||
                       (s_screen == SCR_GALLERY && gallery_loading()) ||
                       (s_screen == SCR_STORAGE && gallery_deleting()) || s_toast[0] != '\0';
@@ -9541,7 +9583,9 @@ static uint32_t ui_pass(void) {
        * toast is exactly what FAVOURITE raises on this screen.
        */
       const bool wig_pacing = s_screen == SCR_PHOTO && s_wig_play;
-      return (busy && !wig_pacing) ? 90 : 20;
+      /* And a capture landing: its colour leaves over 180 ms, and at 90 ms a
+       * pass that is two frames, a step and not a fade. */
+      return (busy && !wig_pacing && !landing) ? 90 : 20;
     }
 
     /*
@@ -9630,8 +9674,9 @@ static uint32_t ui_pass(void) {
     if (s_screen == SCR_SHOOT && held == -1) {
       ui_render(render_screen, NULL);
       /* Paced against the link, not the panel: new frames arrive a few times
-       * a second at best. */
-      return 60;
+       * a second at best. A landing capture is paced against the panel
+       * instead, so its 180 ms return is a fade and not three steps. */
+      return landing ? 20 : 60;
     }
     return 20;
   }

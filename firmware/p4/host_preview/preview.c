@@ -1359,7 +1359,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 218
+#define PPMS_PER_HAND 221
 
 void write_ppm_impl_marker(void);
 static void write_ppm(const char *path, const uint16_t *px, int w, int h) {
@@ -1612,6 +1612,21 @@ static void scenes(void) {
   scan_conditions();
   draw_screen();
   shot("capture_saved");
+
+  /* The landing, at three moments of its 300 ms: held in the launch shade,
+   * and two points on the smootherstep back to ink. capture_saved above is
+   * where it ends. land_ink() is the function ui_pass steps it with. */
+  {
+    static const int LAND_AT_MS[3] = {0, 180, 240};
+    for (int i = 0; i < 3; i++) {
+      char name[32];
+      snprintf(name, sizeof name, "capture_landing_%03d", LAND_AT_MS[i]);
+      s_land_ink = land_ink((int64_t)LAND_AT_MS[i] * 1000);
+      draw_screen();
+      shot(name);
+    }
+    s_land_ink = K_INK;
+  }
 
   g_report.stored = 3;
   scan_conditions();
