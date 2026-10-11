@@ -19,7 +19,7 @@
  * runs in its own forked process from the same starting state, so the second
  * pass cannot inherit a toast, a dialog or a stub value from the first.
  *
- *   preview [--strict] <out>    render, audit, exit non-zero on a failure
+ *   preview <out>               render, audit, exit non-zero on a failure
  *   preview --ppms              print how many PPMs a run writes (both hands)
  */
 #include <errno.h>
@@ -1802,8 +1802,8 @@ static void scenes(void) {
 
   /* A list row focused and a list row held. Rows had no press state at all
    * until now - pressing "Connection" put nothing on screen between the finger
-   * landing and the next screen arriving - and the focus rectangle inside a
-   * navy row is drawn in white, which is a case no other control has. */
+   * landing and the next screen arriving - and the focus rectangle on a row
+   * under a finger is drawn in the dark ink, which no other control has. */
   s_focus_shown = true;
   s_focus[SCR_SETTINGS] = 1;
   s_pressed = 3;
@@ -1885,8 +1885,8 @@ static void scenes(void) {
   SHOT(SCR_POWER, "power");
   /* The rows moved 12 px down into the list well to meet the hit rectangles
    * that were always there, so this is the shot that proves the three rows and
-   * the well line up - and the disabled row's grey against a focused row's
-   * navy in one frame. */
+   * the well line up - and the disabled row's dimmed words against a focused
+   * row in one frame. */
   s_focus_shown = true;
   s_focus[SCR_POWER] = 1;
   SHOT(SCR_POWER, "power_focus");
@@ -2182,20 +2182,13 @@ static void bench(void) {
 }
 
 /*
- * The switch for the two judgement checks.
- *
- * Contrast and touch targets are reported on every run. They fail the run
- * only when strict: today's tree has the #176 failures in it (K_INK on K_SELECT
- * 2.45, the red pills 4.03, PHOTO DELETE pressed 3.52, the ROLL address 4.41,
- * the time-zone buttons at 40 px, the SHOOT bar at 34 px), and a check that
- * fails every build gets switched off. The colour pass fixes them and then
- * sets this to 1 (#234/#235). `--strict` turns it on for one run.
- *
- * The structural checks fail the run whatever this says: a string outside the
- * safe area, hand-side chrome off the hand's side, a write that did not land, a
- * PPM count that moved.
+ * Every check fails the run: the structural ones (a string outside the safe
+ * area, hand-side chrome off the hand's side, a write that did not land, a
+ * PPM count that moved) and the two judgement ones, contrast and touch
+ * targets. The judgement checks only reported until the colour pass closed
+ * #176's list (#234); a string under its floor or a target under 52 px on
+ * either hand is now a failed build like any other.
  */
-#define AUDIT_STRICT_DEFAULT 0
 
 /* Exit codes of one hand's pass, to the parent. */
 #define PASS_CLEAN 0
@@ -2251,16 +2244,11 @@ static int run_hand(bool right, const char *out) {
 }
 
 int main(int argc, char **argv) {
-  bool strict = AUDIT_STRICT_DEFAULT;
   const char *out = ".";
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--ppms") == 0) {
       printf("%d\n", 2 * PPMS_PER_HAND);
       return 0;
-    }
-    if (strcmp(argv[i], "--strict") == 0) {
-      strict = true;
-      continue;
     }
     out = argv[i];
   }
@@ -2293,11 +2281,10 @@ int main(int argc, char **argv) {
     else if (rc == PASS_SOFT && worst == PASS_CLEAN) worst = PASS_SOFT;
     else if (rc != PASS_CLEAN && rc != PASS_SOFT) worst = PASS_HARD;
   }
-  if (worst == PASS_HARD) return 1;
-  if (worst == PASS_SOFT) {
-    if (strict) return 1;
-    fprintf(stderr, "\naudit: contrast and target findings reported, not failing "
-                    "(AUDIT_STRICT_DEFAULT 0; --strict to fail on them)\n");
+  if (worst != PASS_CLEAN) {
+    fprintf(stderr, "\naudit: %s\n",
+            worst == PASS_HARD ? "failed" : "failed on contrast or touch targets");
+    return 1;
   }
   return 0;
 }

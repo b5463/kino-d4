@@ -247,9 +247,8 @@ The half that IS a test is the audit, which runs on every render:
   photograph or the finder are skipped.
 - **Touch targets.** Any target under 52 px either way (6.1 mm at 8.5 px/mm).
 
-Contrast and targets are reported and do not fail the run until the colour
-pass sets `AUDIT_STRICT_DEFAULT` to 1 (#234); `./preview --strict out/` fails
-on them now. `make check` / `make approve` compare every PPM with a local
+Contrast and targets fail the run like the structural checks, for both hands
+(#234 closed #176's list). `make check` / `make approve` compare every PPM with a local
 `golden.sha256`, which proves a refactor drew nothing different. The hashes
 are per toolchain and are not committed.
 

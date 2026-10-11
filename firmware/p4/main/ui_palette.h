@@ -58,6 +58,11 @@
 /* Red as type on the dark grounds: 6.8:1 on the ground, 6.0:1 on a row. */
 #define K_FAULT_INK RGB(0xf2, 0x6a, 0x60) /* 0xF34C */
 
+/* Every colour above, for host_tests/test_theme.c. */
+#define K_COLOURS(X) X(K_GROUND) X(K_SCRIM) X(K_SURFACE) X(K_ROW) X(K_RULE) \
+  X(K_OFF) X(K_EDGE) X(K_INK) X(K_INK_QUIET) X(K_ACCENT_INK) X(K_FAULT) \
+  X(K_FAULT_INK)
+
 /* Roles: what a colour is used for. Each is one of the colours above. */
 /* The face of the menu and every detail screen: the ground, as on MAO. */
 #define K_FACE K_GROUND

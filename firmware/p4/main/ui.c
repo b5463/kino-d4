@@ -1443,7 +1443,7 @@ static void draw_bits(const uint8_t *bits, int w, int h, int stride, int x, int 
  * Every glyph is a box of coverage - 0 where the page shows through, 255
  * where the ink is solid, and the real numbers in between along every curve
  * and diagonal. So a letter is a run of mixes into whatever is already on the
- * canvas, which is why it can sit on a terracotta card and a near-black
+ * canvas, which is why it can sit on the pink card and the near-black
  * ground and look like the same letter on both.
  *
  * The header before this one was one bit per pixel, thresholded out of a
@@ -3307,14 +3307,13 @@ static void draw_toggle(int x, int y, bool on, bool focused, uint16_t ground) {
  * control the camera has, which is what makes this one function worth
  * touching rather than six screens.
  *
- * THE LIVE ONE IS THE ACCENT. It was drawn pushed in with a lighter face -
- * the 1998 toolbar's toggled button - and on a row of three that is a
+ * THE LIVE ONE IS FILLED IN INK. It was drawn pushed in with a lighter face
+ * - the 1998 toolbar's toggled button - and on a row of three that is a
  * difference of about ten per cent of a grey. On the DISPLAY screen, four
  * rows of it, you had to hunt for which timeout the camera was actually set
- * to. Selection on this interface already has a colour: every list row on
- * every screen is navy with the type knocked out of it. A row of segments is
- * a list laid sideways, so it gets the same treatment, and the answer to
- * "which one is it" is now the only coloured thing in the group.
+ * to. The live position is now a K_ON pill with the ground's ink knocked
+ * out of it, the brightest thing in the group by 15:1. Not the launch
+ * shade: colour is for the moment of a press, and a setting is not one.
  *
  * THE POSITIONS ARE NUMBERED. A small index in each segment's corner, so a
  * setting is a position you learn rather than a word you read: DIM AFTER is
@@ -3465,10 +3464,8 @@ static void menu_rect(int i, int *x, int *y, int *w, int *h) {
  * what a miniature PC looks like, and none of it is glanceable on a camera.
  * The strip at the FOOT carries the two things that were already down there.
  *
- * Selection stays quiet inside the tile. The label goes into a cobalt chip and
- * a dotted rectangle goes round the stack; the artwork is left alone - no
- * plate behind it, no tint over it - which is the whole reason for using these
- * icons instead of redrawing them.
+ * A press fills the row with the launch shade; focus is a dotted rectangle
+ * round it. The icons are drawn, not artwork (menu_icon), in the row's ink.
  */
 /* The face of one menu item, at any rectangle. Drawn from the rect rather
  * than from its home position so the same code paints the menu and paints it
@@ -4848,8 +4845,8 @@ static void draw_gallery(void) {
     const bool selected = foc(SCR_GALLERY, i);
     const bool down = s_pressed == i;
 
-    /* Every photograph sits in a sunken well; the focused one gets the navy
-     * plate a selected thumbnail had.
+    /* Every photograph sits in a sunken well; the focused one gets an ink
+     * plate (K_ON), a pressed one the launch shade.
      *
      * A press lights the same plate, shifts the caption a pixel, and drops a
      * second sunken edge INSIDE the picture - the well getting deeper, which is
@@ -4858,7 +4855,7 @@ static void draw_gallery(void) {
      * and the picture itself cannot move: the blit is exactly G_TILE_W wide, so
      * a pixel of travel would put its last column on the frame's shadow.
      *
-     * The plate alone was tried and is not enough - it is 3 px of navy behind a
+     * The plate alone was tried and is not enough - it is 3 px of colour behind a
      * bright photograph, invisible next to the focused tile. What the press
      * used to be was a dotted rectangle over the photograph, which says
      * "keyboard focus" and not "your finger is here". */

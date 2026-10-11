@@ -113,6 +113,20 @@ function generate(spec) {
     out.push(`#define ${name} ${rgbCall(c.hex, `colours.${name}`)} /* ${hex4(code)} */`);
   }
 
+  // Every colour by name, for the theme test: it walks this list to prove no
+  // role shares a code with a colour it was not meant to be.
+  out.push('', '/* Every colour above, for host_tests/test_theme.c. */');
+  const list = Object.keys(colours).map((n) => `X(${n})`);
+  let line = '#define K_COLOURS(X)';
+  for (const item of list) {
+    if (line.length + 1 + item.length > WRAP - 2) {
+      out.push(`${line} \\`);
+      line = ' ';
+    }
+    line += ` ${item}`;
+  }
+  out.push(line);
+
   const roles = spec.roles ?? {};
   if (Object.keys(roles).length > 0) {
     out.push('', '/* Roles: what a colour is used for. Each is one of the colours above. */');

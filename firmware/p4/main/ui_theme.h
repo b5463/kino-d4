@@ -100,7 +100,7 @@
   X(K_EDGE, K_GROUND, 30, "a control's edge on a screen")                               \
   X(K_EDGE, K_SURFACE, 30, "a control's edge in a window")                              \
   X(K_EDGE, K_ROW, 30, "a toggle's edge on a row")                                      \
-  X(K_EDGE, K_OFF, 30, "a toggle that is off")                                          \
+  X(K_EDGE, K_OFF, 31, "a toggle that is off: 3:1 and a margin for panel gamma")         \
   X(K_ACCENT_INK, K_ACCENT, 30, "SHOOT, the XL word on the card")                       \
   X(K_INK, K_GROUND, 30, "a four-mark cell in hand, the star, a lamp")                  \
   X(K_INK, K_RULE, 30, "a bar's fill on its track")                                     \

@@ -32,8 +32,8 @@ CFLAGS := -O2 -std=gnu11 -Wall -Wno-unused-function -I shim -I $(MAIN) -I $(KDP_
 # against the pixels it lands on. Every screen's hit map is swept for targets
 # under 52 px and for hand-side chrome on the wrong half or stretched across
 # to the far edge, for both hands.
-# Contrast and targets report without failing until AUDIT_STRICT_DEFAULT in
-# preview.c is 1; `./preview --strict out/` fails on them today. Renderer only:
+# A contrast pair under its floor or a target under 52 px fails the run, like
+# the structural checks (#234 closed #176's list). Renderer only:
 # on the camera it would be a check nobody reads, and here it is a check that
 # runs over every screen the product has every time somebody looks at one.
 CFLAGS += -DKINO_UI_AUDIT=1

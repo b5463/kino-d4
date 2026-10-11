@@ -134,6 +134,11 @@ jobs:
       # a path and opened - and the truncation case can only be tested here,
       # because it only happens when the device has stopped. No dependencies.
       - run: make -C firmware/p4/host_tests test-index
+      # The on-glass palette, measured with ui.c's own rel_lum() on the RGB565
+      # codes: every ink-on-fill pair in K_PAIRS for each of the eight launch
+      # shades, the arc's 7:1 floors, no yellow anywhere, code-neutral greys,
+      # and no shade on a palette colour's code. Headers only.
+      - run: make -C firmware/p4/host_tests test-theme
       # Every suite above is listed one target per line ON PURPOSE, so a failure
       # names what broke. The cost is that a target added to the Makefile is not
       # run here until someone adds a line. `test-all` in
@@ -169,10 +174,10 @@ jobs:
           mkdir -p /tmp/preview
           # Fails on the audit's structural checks: a string outside the safe
           # area, hand-side chrome off the hand's side for either hand, a write
-          # that did not land, a PPM count that moved. Contrast and touch
-          # targets are reported in the log and fail once the colour pass sets
-          # AUDIT_STRICT_DEFAULT to 1 (#234). The golden hashes (make check)
-          # stay local: gcc versions round the anti-aliasing differently.
+          # that did not land, a PPM count that moved; and on contrast under
+          # 4.5:1 (3:1 for XL) or a touch target under 52 px (#234). The
+          # golden hashes (make check) stay local: gcc versions round the
+          # anti-aliasing differently.
           ./firmware/p4/host_preview/preview /tmp/preview > /tmp/preview/preview.log
           # The files on disk against the count the renderer was built with,
           # so a renderer that draws nothing, or half of it, is not a pass.

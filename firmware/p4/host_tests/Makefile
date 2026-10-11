@@ -14,6 +14,7 @@
 #   make -C firmware/p4/host_tests test-recovery # radio_recovery.c, recovery after a C6 reset
 #   make -C firmware/p4/host_tests test-sched  # cam_sched.c, shutter over background node probes
 #   make -C firmware/p4/host_tests test-index  # gallery_index.c, the on-card capture order
+#   make -C firmware/p4/host_tests test-theme  # the on-glass palette's contrast and colour rules
 #   make -C firmware/p4/host_tests test-all    # all of them
 #
 # Several targets because they have different dependencies, not because the
@@ -141,7 +142,7 @@ test_cam_sched: $(SCHED_SRC) $(MAIN)/cam_sched.h
 test_board_pins: $(PINS_SRC) $(MAIN)/board_d4v1.h $(MAIN)/board_d4v1_checks.h
 	$(CC) $(filter-out -std=c99,$(CFLAGS)) -std=c11 -I$(MAIN) $(PINS_SRC) -o $@
 
-.PHONY: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-sched test-recipes test-wav test-index test-all clean
+.PHONY: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-sched test-recipes test-wav test-index test-theme test-all clean
 test: test_pure
 	./test_pure
 
@@ -178,10 +179,10 @@ test-recovery: test_radio_recovery
 test-sched: test_cam_sched
 	./test_cam_sched
 
-test-all: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-sched test-recipes test-wav test-index
+test-all: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-sched test-recipes test-wav test-index test-theme
 
 clean:
-	rm -f test_pure test_roll_queue test_net_link test_net_report test_qr test_meta test_upload_store test_board_pins test_hwv_rules test_bench_c6 test_radio_recovery test_cam_sched test_recipe_rules test_wav_probe test_gallery_index
+	rm -f test_pure test_roll_queue test_net_link test_net_report test_qr test_meta test_upload_store test_board_pins test_hwv_rules test_bench_c6 test_radio_recovery test_cam_sched test_recipe_rules test_wav_probe test_gallery_index test_theme
 
 # recipe_rules.c is the look validator: cJSON only, no ESP-IDF. Same container
 # rule as test-meta, for the same reason - it must agree with the cJSON the
@@ -219,3 +220,15 @@ test_gallery_index: $(INDEX_SRC) $(MAIN)/gallery_index.h
 
 test-index: test_gallery_index
 	./test_gallery_index
+
+# The on-glass palette (ui_theme.h + the generated ui_palette.h), measured with
+# ui.c's own rel_lum(): every K_PAIRS pair per launch shade, the launch arc's
+# floors, no yellow, code-neutral greys, no shade on a palette code. Headers
+# only, no ESP-IDF.
+THEME_SRC = test_theme.c
+
+test_theme: $(THEME_SRC) $(MAIN)/ui_theme.h $(MAIN)/ui_palette.h
+	$(CC) $(CFLAGS) -I$(MAIN) $(THEME_SRC) -o $@ -lm
+
+test-theme: test_theme
+	./test_theme
