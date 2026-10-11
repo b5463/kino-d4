@@ -15,9 +15,10 @@ import { expect, test } from '@playwright/test';
  * control there without moving it here is exactly what this spec catches.
  */
 
-const CARD = [0xe8, 0xa1, 0x83]; // K_CARD: the SHOOT card and the menu rows' ground
-const RULE = [0x27, 0x30, 0x2b]; // K_RULE: the hairline under every detail header
-const SEL = [0xe8, 0x73, 0x4a]; // K_SELECT: a lit segment
+// The Twin wears launch shade 0, MAO pink, so the card is always this colour there.
+const CARD = [0xf3, 0xa2, 0xc4]; // K_LAUNCH[0]: the SHOOT card
+const RULE = [0x28, 0x28, 0x28]; // K_RULE: the hairline under every detail header
+const SEL = [0xf1, 0xec, 0xe2]; // K_ON (K_INK): a lit segment
 
 type Rgb = [number, number, number];
 const near = (p: Rgb, c: number[], tol = 24): boolean => p.every((v, i) => Math.abs(v - c[i]) <= tol);
@@ -102,8 +103,9 @@ test('Twin hand walk: the device UI for the hand on the shutter', async ({ page 
   // The card lands first and the rows follow over the cascade's 700 ms; a tap
   // during the cascade is ignored, as it is on the camera.
   await sleep(900);
-  // A fresh body shows its first-start note once; GOT IT is the lit row.
-  if (near(await px(400, 255), SEL)) await tap(400, 255);
+  // A fresh body shows its first-start note once, and its scrim hides the
+  // card; GOT IT is the top row of the note.
+  if (!(await isMenu())) await tap(400, 255);
 
   await step('SHOOT from the card', () => tap(600, 240), isShoot);
   await step('LOOK from the finder bar', () => tap(740, 462), isLook);

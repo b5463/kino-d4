@@ -3733,9 +3733,16 @@ static int sh_back_x(void) { return from_hand(PAGE_M, SH_BACK_W); }
 #define SH_PN_Y (SH_BAR_Y + 3)
 #define SH_PN_H (SH_BAR_H - 6)
 #define SH_PN_GAP 2    /* the face grey a Win98 status bar divides panels with */
+/* The decisions group is pressed as one control, and its target is taller
+ * than the 34 px bar it is drawn in: 52 px up from the panel's foot, the
+ * thumb floor (8.5 px/mm). The 18 px above the bar is picture nobody frames
+ * with, and the back button is at the top of the screen. */
+#define SH_LOOK_HIT_H 52
 #define SH_PN_PAD 10   /* text to panel edge, as on the menu's bar */
 
 _Static_assert(SH_BACK_Y + SH_BACK_H < SH_BAR_Y, "the back button runs into the status bar");
+_Static_assert(SH_LOOK_HIT_H >= SH_BAR_H && SH_BACK_Y + SH_BACK_H < UI_H - SH_LOOK_HIT_H,
+               "the LOOK target covers the bar and stays clear of the back button");
 
 /*
  * How long a pane waits before it says why it is empty.
@@ -5733,17 +5740,18 @@ static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
   const int side = total * pitch;
   const int x0 = cx - side / 2;
 
-  /* White ground for the symbol and its quiet zone together. K_SURFACE is
-   * 0xffffff and K_INK is 0x000000, so the symbol gets full contrast rather
-   * than the 0xc0 face grey - a QR drawn on the face ground scans poorly. */
-  fill(x0, top, side, side, K_SURFACE);
+  /* Dark modules on a light plate, the polarity every reader expects: the
+   * plate (symbol and quiet zone together) is K_INK and the modules are
+   * K_GROUND, 17.4:1. It was drawn inverted - light modules on a near-black
+   * plate - which some phone readers refuse (#176). */
+  fill(x0, top, side, side, K_INK);
 
   const int m0 = x0 + QR_QUIET * pitch;
   const int n0 = top + QR_QUIET * pitch;
   /* The modules are a 1-bit row-major bitmap, most significant bit first,
    * which is draw_bits()'s format - so the symbol is one command in the
    * display list rather than four hundred fills. Same pixels. */
-  draw_bits(qr->modules[0], qr->size, qr->size, QR_ROW_BYTES, m0, n0, pitch, K_INK);
+  draw_bits(qr->modules[0], qr->size, qr->size, QR_ROW_BYTES, m0, n0, pitch, K_GROUND);
   return side;
 }
 
@@ -5908,8 +5916,10 @@ static void draw_roll(void) {
       else if (strncmp(addr, "http://", 7) == 0) addr += 7;
       text_mid(&UI_FONT_T, RL_QR_CX, RL_TOP + 12 + side + 10, "SCAN TO JOIN", K_INK);
       if (text_w(&UI_FONT_S, addr) <= RL_QR_COL_W - 24) {
+        /* The quiet voice measured on the card it sits on, not a fixed grey:
+         * K_INK_QUIET on the old row was 4.41:1 (#176). */
         text_mid(&UI_FONT_S, RL_QR_CX, RL_TOP + 12 + side + 10 + UI_FONT_T.line_h + 2, addr,
-                 K_INK_QUIET);
+                 dim_ink(K_INK, K_ROW));
       }
     }
   } else {
@@ -6655,14 +6665,26 @@ static void draw_sound(void) {
 #define CN_IT_TZ_MINUS 0
 #define CN_IT_TZ_PLUS 1
 #define CN_IT_COUNT 2
+/*
+ * The stack, computed from the top: six facts at 42 px, a 12 px gap, the
+ * TIME ZONE band with its two 52 px buttons, 8 px, and the one-line note.
+ * The facts are 42 px, under the 52 px floor, because a fact is not a
+ * target; the two buttons are, and they are 64 x 52. A row added above
+ * moves everything below it and the assert says when the note no longer
+ * fits the page.
+ */
+#define CN_FACTS 6
 #define CN_PITCH 42
-#define CN_TZ_Y (LIST_TOP_DEFAULT + 7 * CN_PITCH + 12) /* under the seven facts */
-#define CN_TZ_H 40
+#define CN_TZ_Y (LIST_TOP_DEFAULT + CN_FACTS * CN_PITCH + 12)
+#define CN_TZ_H 52
 #define CN_TZ_BTN 64
+#define CN_NOTE_Y (CN_TZ_Y + CN_TZ_H + 8)
+#define CN_NOTE_H 24 /* UI_FONT_S's line; the renderer's safe-area audit checks the drawn box */
+_Static_assert(CN_NOTE_Y + CN_NOTE_H <= UI_H - PAGE_M, "the CONNECTION note runs off the page");
 static void draw_connection(void) {
   fill(0, 0, UI_W, UI_H, K_FACE);
   draw_header(SCR_CONNECTION);
-  /* Seven rows and the line under them, from the header like every list. */
+  /* Six facts, the zone band and the line under them, from the header. */
   s_list_top = LIST_TOP_DEFAULT;
 
   const net_status_t net = *net_status();
@@ -6717,42 +6739,35 @@ static void draw_connection(void) {
   snprintf(saved, sizeof saved, "%u", (unsigned)wifi_creds_count());
 
   /*
-   * Seven readings at a 46 px pitch rather than five at 52.
+   * Six readings at a 42 px pitch.
    *
-   * The screen showed five rows and 85 px of face grey while net_status_t
-   * carried three facts nothing drew: the address, the channel, and the
-   * coprocessor's firmware version. The address in particular is the first
-   * thing anyone asks at a bench, and "Online" without one is the state this
-   * firmware is careful everywhere else NOT to claim.
+   * The address in particular is the first thing anyone asks at a bench,
+   * and "Online" without one is the state this firmware is careful
+   * everywhere else NOT to claim. The coprocessor's firmware version had a
+   * row and it read "-" on every body: no version exchange happens on this
+   * one, so the row said nothing and is gone.
    *
-   * The tighter pitch is legitimate HERE and would not be on Settings or
-   * Power: this screen has no touch items at all - item_count() falls to 0 and
-   * hit_test() to -1, and only the header band goes anywhere - so no row here
-   * is a target that has to stay 52 px tall.
+   * The tighter pitch is legitimate HERE: a fact is not a target. The two
+   * TIME ZONE buttons under the facts are, and they are 52 px tall.
    */
   const char *addr = net.ip[0] != '\0' ? net.ip : "-";
-  /* Empty until a version exchange has happened, which on this body never
-   * happens - so a dash, not a blank. */
-  const char *c6fw = net.c6_version[0] != '\0' ? net.c6_version : "-";
-
   const struct {
     const char *title;
     const char *value;
     bool enabled;
   } ROWS[] = {
       {"Radio", radio, net.radio_fitted},
-      {"Radio firmware", c6fw, net.c6_version[0] != '\0'},
       {"Link", link, net.radio_routed},
       {"Wi-Fi", wifi, net.radio_routed},
       {"Address", addr, net.ip[0] != '\0'},
       {"Saved networks", saved, true},
       {"USB", usb_attached() ? "Connected" : "Not connected", true},
   };
-  const int n = (int)(sizeof ROWS / sizeof ROWS[0]);
+  _Static_assert(sizeof ROWS / sizeof ROWS[0] == CN_FACTS, "CN_FACTS counts the rows drawn");
+  const int n = CN_FACTS;
   const int pitch = CN_PITCH;
 
   fill(0, BODY_Y, UI_W, UI_H - BODY_Y, K_FACE);
-  const int lh = n * pitch;
   for (int i = 0; i < n; i++) {
     fact_row(LIST_X, LIST_W, LIST_Y + i * pitch, pitch, ROWS[i].title, ROWS[i].value,
              ROWS[i].enabled, i == n - 1);
@@ -6762,10 +6777,8 @@ static void draw_connection(void) {
    * on-screen keyboard on purpose: a passphrase entered on a 480x800 panel
    * with no physical keys is worse than the USB path, and building a bad one
    * to claim independence from Studio would be the wrong trade. */
-  /* One line under the zone band, so the seven facts, the band and the note
-   * share the height that six facts and a two-line note had. */
-  const int y = CN_TZ_Y + CN_TZ_H + 8;
-  (void)lh;
+  /* One line under the zone band. */
+  const int y = CN_NOTE_Y;
   if (!net.radio_fitted) {
     text(&UI_FONT_S, PAGE_M, y, "No radio on this body. Photos leave over USB-C.", K_INK_QUIET);
   } else if (!net.radio_routed) {
@@ -7805,8 +7818,9 @@ static void draw_screen(void) {
     text_mid(&UI_FONT_T, UI_W / 2, UI_H / 2 + h / 2 - 12, "SELF-TIMER.  PRESS TO CANCEL", K_INK);
   } else if (s_screen == SCR_SHOOT && s_lens_hint[0] != '\0') {
     const int w = text_w(&UI_FONT_T, s_lens_hint) + 32, h = 30;
+    /* The ground's ink on the red, 5.1:1; K_INK on it is 3.4:1 (#176). */
     round_rect((UI_W - w) / 2, 12, w, h, UI_R, K_FAULT);
-    text_mid(&UI_FONT_T, UI_W / 2, 12 + (h - UI_FONT_T.line_h) / 2, s_lens_hint, K_INK);
+    text_mid(&UI_FONT_T, UI_W / 2, 12 + (h - UI_FONT_T.line_h) / 2, s_lens_hint, K_GROUND);
   }
   if (s_formatting) draw_working_banner("FORMATTING THE CARD");
   else if (s_cams_restart_us != 0 && esp_timer_get_time() - s_cams_restart_us < CAMS_RESTART_BANNER_US)
@@ -8244,7 +8258,7 @@ static int hit_test(int x, int y) {
       if (hit_hand_button(x, y, sh_back_x(), SH_BACK_Y, SH_BACK_W, SH_BACK_H)) return SH_IT_BACK;
       /* The decisions group on the bar, as one control. Its extent was set
        * by the draw. */
-      if (y >= SH_BAR_Y && x >= s_sh_set_x0 && x < s_sh_set_x1) return SH_IT_LOOK;
+      if (y >= UI_H - SH_LOOK_HIT_H && x >= s_sh_set_x0 && x < s_sh_set_x1) return SH_IT_LOOK;
       return -1;
 
     case SCR_PHOTO: {
