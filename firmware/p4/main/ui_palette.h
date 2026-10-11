@@ -70,6 +70,12 @@
 /* Retired in this pass: an empty four-mark cell's keyline, a track under a bar.
  */
 #define K_HAIRLINE K_RULE
+/* A selection that stays: the live segment, a toggle that is on, a favourite
+ * that is set. Ink, not colour; colour is for a press.
+ */
+#define K_ON K_INK
+/* The label or knob on K_ON: 17.4:1. */
+#define K_ON_INK K_GROUND
 /* A screen's or a dialog's title. Monochrome at rest. */
 #define K_TITLE K_INK
 /* The wordmark at sleep and at power-down. Marks are ink, never colour. */

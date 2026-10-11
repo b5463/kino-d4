@@ -19,6 +19,8 @@
     "K_FACE": { "is": "K_GROUND", "note": "The face of the menu and every detail screen: the ground, as on MAO." },
     "K_SHADOW": { "is": "K_GROUND", "note": "Retired in this pass: the offline ROLL lamp." },
     "K_HAIRLINE": { "is": "K_RULE", "note": "Retired in this pass: an empty four-mark cell's keyline, a track under a bar." },
+    "K_ON": { "is": "K_INK", "note": "A selection that stays: the live segment, a toggle that is on, a favourite that is set. Ink, not colour; colour is for a press." },
+    "K_ON_INK": { "is": "K_GROUND", "note": "The label or knob on K_ON: 17.4:1." },
     "K_TITLE": { "is": "K_INK", "note": "A screen's or a dialog's title. Monochrome at rest." },
     "K_MARK": { "is": "K_INK", "note": "The wordmark at sleep and at power-down. Marks are ink, never colour." },
     "K_TOAST": { "is": "K_SURFACE", "note": "The toast's plate, with a K_EDGE outline and K_INK words. A remark is not an event and carries no colour." }

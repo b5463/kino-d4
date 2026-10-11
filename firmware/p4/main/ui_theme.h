@@ -1,7 +1,7 @@
 /*
  * The on-glass theme: every colour and type role ui.c draws with.
  *
- * ui.c asks for a colour by what it is for (K_INK, K_SELECT, K_FAULT), never
+ * ui.c asks for a colour by what it is for (K_INK, K_PRESS, K_FAULT), never
  * by a value. The values live in one place,
  * packages/design-system/kino-device-palette.json, and reach C through the
  * generated ui_palette.h (npm run palette:gen; npm run palette:check fails
@@ -33,6 +33,12 @@
  */
 #define K_ACCENT s_accent
 #define K_ACCENT_DOWN s_accent_down
+
+/* A control under a finger: the launch shade with the dark ink on it. The
+ * one place colour appears at the touch of a finger; a selection that stays
+ * (a segment, a toggle that is on) is K_ON, in ink. */
+#define K_PRESS K_ACCENT
+#define K_PRESS_INK K_ACCENT_INK
 
 /*
  * Type roles. The six faces in ui_font.h by what they set. Smallest first;
@@ -88,8 +94,8 @@
   X(K_FAULT_INK, K_SURFACE, 45, "DELETE at rest, a destructive dialog's title")        \
   X(K_LIVE, K_GROUND, 45, "SENT under a photograph")                                   \
   /* inks on the accent, the card and the live colour */                               \
-  X(K_SELECT_INK, K_SELECT, 45, "a pressed or selected control's label")               \
-  X(K_INK, K_SELECT, 45, "a dialog's action at rest (RESTART, OK)")                    \
+  X(K_PRESS_INK, K_PRESS, 45, "a pressed or selected control's label")               \
+  X(K_INK, K_ROW, 45, "a dialog's action at rest (RESTART, OK)")                    \
   X(K_ACCENT_INK, K_ACCENT, 45, "TAP TO OPEN and the status line on the SHOOT card")     \
   X(K_ACCENT_INK, K_ACCENT_DOWN, 45, "the SHOOT card's words, pressed")                  \
   X(K_GROUND, K_ACCENT, 45, "a menu row's label, pressed")                             \
@@ -99,7 +105,7 @@
   X(K_INK, K_TOAST, 45, "a toast")                                               \
   /* inks on red */                                                                    \
   X(K_INK, K_FAULT, 45, "the lens hint, a destructive dialog's action")                \
-  X(K_SELECT_INK, K_FAULT, 45, "DELETE, pressed")                                      \
+  X(K_GROUND, K_FAULT, 45, "DELETE, pressed")                                      \
   /* edges and marks, 3:1 */                                                           \
   X(K_EDGE, K_FACE, 30, "a control's edge on a detail screen")                         \
   X(K_EDGE, K_SURFACE, 30, "a control's edge in a window")                             \

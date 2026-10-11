@@ -83,10 +83,6 @@ void ui_set_launch_index(uint32_t boot_count) {
 _Static_assert(K_LAUNCH_N == K_LAUNCH_DOWN_N && K_LAUNCH_N == K_BF_WARM_N,
                "one pressed shade and one boot-field row per launch shade");
 
-/* Until the role mapping lands, a selection and a press are still one fill. */
-#define K_SELECT K_ACCENT
-#define K_SELECT_INK K_ACCENT_INK
-
 
 /* ------------------------------------------------------------------ */
 /* Layout                                                              */
@@ -1287,22 +1283,24 @@ static void button(int x, int y, int w, int h, bool down) {
 /*
  * The edge of a control, for the ground it stands on.
  *
- * K_EDGE was tuned for the dark face and the dark window, where it is
- * 3.3-3.5:1. The same line on a terracotta row measures 1.1:1 - a grey
- * halfway between the dark control and the warm card is invisible against
- * both. On a ground where the keyline does not reach 3:1 the edge is drawn in
- * the row's own quiet ink: the same mix its value text is set in, so a row
- * has two inks, not three, and the control reads as a cut-out in the card.
+ * K_EDGE is 4.6-5.1:1 on the dark grounds and 3.4:1 on K_OFF. On a row
+ * under a finger - the launch shade - it is about 2:1, a grey halfway between
+ * the dark control and the pink row, and invisible against both. There the
+ * edge is the dark ink the row's own words are set in; on any other ground
+ * where the keyline does not reach 3:1, the row's quiet ink. A row keeps two
+ * inks, not three, and the control reads as a cut-out in it.
  */
 static uint16_t edge_ink(uint16_t ground) {
-  return contrast(K_EDGE, ground) >= 3.0f ? K_EDGE : dim_ink(K_INK, ground);
+  if (contrast(K_EDGE, ground) >= 3.0f) return K_EDGE;
+  if (contrast(K_PRESS_INK, ground) >= 3.0f) return K_PRESS_INK;
+  return dim_ink(K_INK, ground);
 }
 
 /* A small control with its own face - a picker's arrow button, a toggle's
  * track - drawn resting or pressed, with the edge that says it is one.
  * `ground` is what it stands on, which decides the edge's ink. */
 static void control(int x, int y, int w, int h, int r, bool down, uint16_t ground) {
-  round_rect(x, y, w, h, r, down ? K_SELECT : K_OFF);
+  round_rect(x, y, w, h, r, down ? K_PRESS : K_OFF);
   if (!down) round_outline(x, y, w, h, r, edge_ink(ground));
 }
 
@@ -3109,10 +3107,9 @@ static void group_box(int x, int y, int w, int h, const char *legend, uint16_t i
  * changed, because "does the value reach the title" was never checked, only
  * observed to be true of the face it was drawn in.
  *
- * `idx` is the row's position, which chooses its tone: the rows step darker
- * down the list, so a list has a top. `numbered` prints that position as
- * well - a settings list is a set of destinations and the number helps; a
- * read-only table has positions but nobody counts them.
+ * `idx` is the row's position. `numbered` prints it - a settings list is a
+ * set of destinations and the number helps; a read-only table has positions
+ * but nobody counts them. `tone` says what kind of row it is (row_tone_t).
  *
  * A row shorter than two lines falls back to one, with the value measured
  * against the title and truncated rather than drawn through it. That is the
@@ -3120,9 +3117,25 @@ static void group_box(int x, int y, int w, int h, const char *legend, uint16_t i
  * this primitive cannot honour degrades to a legible row instead of an
  * illegible one.
  */
+/*
+ * What a row does, which sets its inks. Every row is K_ROW at rest; only the
+ * press and the words differ.
+ *
+ *   ROW_PLAIN    a list row, and a dialog's action that loses nothing. At
+ *                rest K_INK on K_ROW; pressed the launch shade with its ink.
+ *   ROW_DANGER   a dialog's action that erases. At rest red words on K_ROW;
+ *                pressed the red fill with the ground's ink (5.1:1).
+ *   ROW_CANCEL   the way out of a dialog: K_INK on K_OFF, one step up from
+ *                the dialog's own surface so it reads as a row on it.
+ *
+ * The non-destructive action used to sit filled with the accent at rest,
+ * K_INK on it at 2.4:1 (#176); a fill is for the moment of a press.
+ */
+typedef enum { ROW_PLAIN, ROW_DANGER, ROW_CANCEL } row_tone_t;
+
 static void draw_row_face(int x, int w, int y, int h, int idx, bool numbered, bool focused,
                           bool pressed, bool enabled, const char *title, const char *value,
-                          bool arrow, uint16_t override) {
+                          bool arrow, row_tone_t tone) {
   /*
    * A press changes the face; focus only adds the ring.
    *
@@ -3132,24 +3145,27 @@ static void draw_row_face(int x, int w, int y, int h, int idx, bool numbered, bo
    * merely where the keyboard is must not look like the row that is about to
    * happen, and on a destructive question that is not a style point.
    */
-  const uint16_t face = pressed ? K_SELECT : (override != 0 ? override : K_ROW);
+  const uint16_t rest = tone == ROW_CANCEL ? K_OFF : K_ROW;
+  const uint16_t face = !pressed ? rest : tone == ROW_DANGER ? K_FAULT : K_PRESS;
+  const uint16_t lit_ink = tone == ROW_DANGER ? K_GROUND : K_PRESS_INK;
   const bool lit = pressed;
   round_rect(x, y, w, h, UI_R, face);
 
   /* The second voice, measured against the row's OWN tone rather than set to
-   * a fixed grey. The ramp runs from a light terracotta to a near-black one
-   * and one grey cannot be the quiet version of both: at the top of the list
-   * it disappeared into the card. dim_ink() finds the quietest mix that still
-   * clears 4.5:1 on this face, so the value on row one reads like the value
-   * on row six.
+   * a fixed grey. A row can be K_ROW or K_OFF at rest, and one grey cannot be
+   * the quiet version of both: K_INK_QUIET on K_OFF is 3.8:1. dim_ink() finds
+   * the quietest mix that still clears 4.6:1 on this face.
    *
-   * A disabled row is set entirely in that voice. It was K_INK_QUIET, a grey
-   * chosen for the dark face, and on the terracotta of the top row it measured
-   * 1.5:1 - SHUT DOWN's "Hold the power slide" was the one instruction on the
-   * POWER screen and nobody could read it. Quieter than a live row, legible,
-   * and still without the chevron a live row carries. */
-  const uint16_t dim = lit ? K_SELECT_INK : dim_ink(K_INK, face);
-  const uint16_t ink = lit ? K_SELECT_INK : (enabled ? K_INK : dim);
+   * A disabled row is set entirely in that voice, on the same K_ROW, with no
+   * edge and no chevron: it loses presence rather than turning into a grey
+   * box. It was K_INK_QUIET, and on the old top row it measured 1.5:1 -
+   * SHUT DOWN's "Hold the power slide" was the one instruction on the POWER
+   * screen and nobody could read it. */
+  const uint16_t dim = lit ? lit_ink : dim_ink(K_INK, face);
+  const uint16_t ink = lit ? lit_ink
+                           : !enabled ? dim
+                           : tone == ROW_DANGER ? K_FAULT_INK
+                                                : K_INK;
 
   int tx = x + 18;
   /* The position, only where a key could address it. There is no keypad on
@@ -3195,15 +3211,15 @@ static void draw_row_face(int x, int w, int y, int h, int idx, bool numbered, bo
     }
   }
 
-  if (arrow) picker_arrow(x + w - 22, y + h / 2, true, ink);
-  if (focused) focus_inset(x, y, w, h, K_SELECT_INK);
+  if (arrow && enabled) picker_arrow(x + w - 22, y + h / 2, true, ink);
+  if (focused) focus_inset(x, y, w, h, lit ? lit_ink : K_INK);
 }
 
 /* The common case: a row in its list's own tone. */
 static void draw_row_at(int x, int w, int y, int h, int idx, bool numbered, bool focused,
                         bool pressed, bool enabled, const char *title, const char *value,
                         bool arrow) {
-  draw_row_face(x, w, y, h, idx, numbered, focused, pressed, enabled, title, value, arrow, 0);
+  draw_row_face(x, w, y, h, idx, numbered, focused, pressed, enabled, title, value, arrow, ROW_PLAIN);
 }
 
 /* The standard full-width row, which is what every screen but About draws.
@@ -3269,12 +3285,12 @@ static void draw_list_frame(int rows) {
  */
 static void draw_toggle(int x, int y, bool on, bool focused, uint16_t ground) {
   const int w = 52, h = 28, r = h / 2;
-  round_rect(x, y, w, h, r, on ? K_SELECT : K_OFF);
+  round_rect(x, y, w, h, r, on ? K_ON : K_OFF);
   /* Off is a dark track on a dark row: 1.4:1 without an edge. The edge is
    * what makes it a control rather than a shadow, in whichever ink the row
    * it sits on can show. */
   if (!on) round_outline(x, y, w, h, r, edge_ink(ground));
-  disc(on ? x + w - r : x + r, y + r, (float)r - 4.0f, on ? K_SELECT_INK : K_INK);
+  disc(on ? x + w - r : x + r, y + r, (float)r - 4.0f, on ? K_ON_INK : K_INK);
   if (focused) focus_ring(x - 3, y - 3, w + 6, h + 6, (h + 6) / 2, K_INK);
 }
 
@@ -3317,9 +3333,9 @@ static void draw_segments(int x, int y, int w, int h, const char *const *names, 
   for (int i = 0; i < count; i++) {
     const int bx = x + i * cw;
     const bool on = i == selected;
-    if (on) round_rect(bx + 2, y + 2, cw - 4, h - 4, UI_R - 2, K_SELECT);
+    if (on) round_rect(bx + 2, y + 2, cw - 4, h - 4, UI_R - 2, K_ON);
     else if (pressed_idx == i) round_rect(bx + 2, y + 2, cw - 4, h - 4, UI_R - 2, K_OFF);
-    const uint16_t ink = on ? K_SELECT_INK : K_INK;
+    const uint16_t ink = on ? K_ON_INK : K_INK;
     text_mid(&UI_FONT_M, bx + cw / 2, y + (h - UI_FONT_M.line_h) / 2, names[i], ink);
     /*
      * The position number, for the keypad that would jump to it.
@@ -3333,7 +3349,7 @@ static void draw_segments(int x, int y, int w, int h, const char *const *names, 
     if (UI_FOCUS_VISIBLE) {
       char idx[16];
       snprintf(idx, sizeof idx, "%d", i + 1);
-      text(&UI_FONT_S, bx + 10, y + 5, idx, on ? K_SELECT_INK : K_INK_QUIET);
+      text(&UI_FONT_S, bx + 10, y + 5, idx, on ? K_ON_INK : K_INK_QUIET);
     }
     if (focus_idx == i) focus_inset(bx, y, cw - 2, h, K_INK);
   }
@@ -3978,9 +3994,9 @@ static const char *shoot_look_name(void) {
 /** One panel of the status bar: the recess, and its reading inside it.
  *  `down` is the pressed face, for the panels that are a control. */
 static int sh_panel(int x, int w, const char *s, bool down) {
-  round_rect(x, SH_PN_Y, w, SH_PN_H, UI_R, down ? K_SELECT : K_SURFACE);
+  round_rect(x, SH_PN_Y, w, SH_PN_H, UI_R, down ? K_PRESS : K_SURFACE);
   text(&UI_FONT_T, x + SH_PN_PAD, SH_PN_Y + (SH_PN_H - UI_FONT_T.line_h) / 2, s,
-       down ? K_SELECT_INK : K_INK);
+       down ? K_PRESS_INK : K_INK);
   return x + w + SH_PN_GAP;
 }
 
@@ -4156,8 +4172,8 @@ static void draw_shoot(void) {
   sh_panel(mode_x, w_mode, mode, set_down);
   {
     /* The flash panel by hand, because it is the one with a glyph in it. */
-    const uint16_t ink = set_down ? K_SELECT_INK : K_INK;
-    round_rect(flash_x, SH_PN_Y, w_flash, SH_PN_H, UI_R, set_down ? K_SELECT : K_SURFACE);
+    const uint16_t ink = set_down ? K_PRESS_INK : K_INK;
+    round_rect(flash_x, SH_PN_Y, w_flash, SH_PN_H, UI_R, set_down ? K_PRESS : K_SURFACE);
     bolt(flash_x + SH_PN_PAD, SH_PN_Y + (SH_PN_H - 14) / 2, 1, ink);
     text(&UI_FONT_T, flash_x + SH_PN_PAD + bolt_w + bolt_gap,
          SH_PN_Y + (SH_PN_H - UI_FONT_T.line_h) / 2, flash, ink);
@@ -4587,7 +4603,9 @@ static void draw_look(void) {
   look_position(pos, sizeof pos);
 
   const bool have = kdp_recipes_count() > 0;
-  const uint16_t nink = have ? K_INK : K_INK_QUIET;
+  /* Nothing quiet goes on K_OFF (3.8:1): with no looks the arrows are the
+   * quietest mix of the ink that still reads on the button. */
+  const uint16_t nink = have ? K_INK : dim_ink(K_INK, K_OFF);
 
   /* The two picker buttons at the card's foot on the hand's side, and the
    * name filling the rest of it - the name is the subject, so it takes the
@@ -4597,9 +4615,9 @@ static void draw_look(void) {
   const int px2 = lk_prev_x();
   const bool pd = band_rel(p0, LK_IT_PREV, 2) == 0, nd = band_rel(p0, LK_IT_PREV, 2) == 1;
   control(px2, by, LK_PICK_BTN, LK_CTL_H, UI_R, pd, K_SURFACE);
-  picker_arrow(px2 + LK_PICK_BTN / 2, by + LK_CTL_H / 2, false, nink);
+  picker_arrow(px2 + LK_PICK_BTN / 2, by + LK_CTL_H / 2, false, pd ? K_PRESS_INK : nink);
   control(nx, by, LK_PICK_BTN, LK_CTL_H, UI_R, nd, K_SURFACE);
-  picker_arrow(nx + LK_PICK_BTN / 2, by + LK_CTL_H / 2, true, nink);
+  picker_arrow(nx + LK_PICK_BTN / 2, by + LK_CTL_H / 2, true, nd ? K_PRESS_INK : nink);
 
   /* The name, big, hung off the card's far rule with the position above it -
    * the reference anchors a card's content to one corner and leaves the air
@@ -4848,7 +4866,7 @@ static void draw_gallery(void) {
      * last column on the frame's shadow - the frame moves outwards instead.
      * The selection plate moves out with it and reads 2 px wide now rather
      * than 1, which is the only other visible difference. */
-    fill(x - 6, y - 6, G_TILE_W + 12, G_TILE_H + 12, (selected || down) ? K_SELECT : K_FACE);
+    fill(x - 6, y - 6, G_TILE_W + 12, G_TILE_H + 12, down ? K_PRESS : selected ? K_ON : K_FACE);
     well(x - 4, y - 4, G_TILE_W + 8, G_TILE_H + 8);
     const int d = down ? 1 : 0;
     if (slots[i].state == TILE_READY && slots[i].pixels) {
@@ -4910,7 +4928,7 @@ static void draw_gallery(void) {
      * nothing, and a label that never varies stops being read - which is
      * exactly when it fails to be read on the one tile where it differs. */
     if (slots[i].mode[0] && strcmp(slots[i].mode, "wiggle") != 0) {
-      /* In caps and in the interface's light ink. It was set in K_SELECT_INK,
+      /* In caps and in the interface's light ink. It was set in the accent ink,
        * which is the near-black an accent plate is written in, on a near-black
        * strip - so the one word that tells two kinds of photograph apart was
        * the least legible thing on the screen. */
@@ -4923,8 +4941,8 @@ static void draw_gallery(void) {
 
     /* Drawn after the strip so the press reads as the whole well, strip
      * included, going deeper. */
-    if (down) outline(x, y, G_TILE_W, G_TILE_H, K_SELECT);
-    if (selected) focus_inset(x, y, G_TILE_W, G_TILE_H, K_SELECT_INK);
+    if (down) outline(x, y, G_TILE_W, G_TILE_H, K_PRESS);
+    if (selected) focus_inset(x, y, G_TILE_W, G_TILE_H, K_ON_INK);
 
     /* A favourite is marked in the top-right corner of the picture, away from
      * the facts strip along the bottom, which already carries the frame mark
@@ -5654,7 +5672,7 @@ static void draw_photo(void) {
   if (dd) round_rect(bx, dy, bw, bh, UI_R, K_FAULT);
   else button(bx, dy, bw, bh, false);
   text_mid(&UI_FONT_T, bx + bw / 2, dy + (bh - UI_FONT_T.line_h) / 2, "DELETE",
-           dd ? K_SELECT_INK : K_FAULT_INK);
+           dd ? K_GROUND : K_FAULT_INK);
   /* Through foc(), not the raw array. P_IT_DELETE is 0 and s_focus[] starts
    * zeroed, so reading it directly put a focus ring on DELETE the first time
    * any photograph was opened, on a body whose only input is a finger. */
@@ -5667,12 +5685,14 @@ static void draw_photo(void) {
    * same way a live segment does on every other screen here. */
   const int fy = PH_BTN_Y(2);
   const bool fd = s_pressed == P_IT_FAV;
+  /* Pressed is the launch shade; set is the ink, the way a live segment is. */
   const bool on = fd || s_photo_fav;
-  if (on) round_rect(bx, fy, bw, bh, UI_R, K_SELECT);
+  const uint16_t fav_ink = fd ? K_PRESS_INK : s_photo_fav ? K_ON_INK : K_INK;
+  if (on) round_rect(bx, fy, bw, bh, UI_R, fd ? K_PRESS : K_ON);
   else button(bx, fy, bw, bh, false);
-  star(bx + 14, fy + (bh - STAR_H) / 2, on ? K_SELECT_INK : K_INK_QUIET);
+  star(bx + 14, fy + (bh - STAR_H) / 2, on ? fav_ink : K_INK_QUIET);
   text_mid(&UI_FONT_T, bx + 14 + STAR_W + (bw - 14 - STAR_W) / 2, fy + (bh - UI_FONT_T.line_h) / 2,
-           "FAVOURITE", on ? K_SELECT_INK : K_INK);
+           "FAVOURITE", fav_ink);
   if (foc(SCR_PHOTO, P_IT_FAV)) focus_inset(bx, fy, bw, bh, K_INK);
 
   /* Live while the body is on a Roll; asleep, in the same shape, when it is
@@ -5680,11 +5700,11 @@ static void draw_photo(void) {
   const int ry = PH_BTN_Y(1);
   const bool rd = s_pressed == P_IT_ROLL;
   const bool on_roll = roll_state_active();
-  if (rd) round_rect(bx, ry, bw, bh, UI_R, K_SELECT);
+  if (rd) round_rect(bx, ry, bw, bh, UI_R, K_PRESS);
   else if (on_roll) button(bx, ry, bw, bh, false);
   else round_rect(bx, ry, bw, bh, UI_R, K_SURFACE);
   text_mid(&UI_FONT_T, bx + bw / 2, ry + (bh - UI_FONT_T.line_h) / 2, "SEND TO ROLL",
-           rd ? K_SELECT_INK : on_roll ? K_INK : K_INK_QUIET);
+           rd ? K_PRESS_INK : on_roll ? K_INK : K_INK_QUIET);
   if (foc(SCR_PHOTO, P_IT_ROLL)) focus_inset(bx, ry, bw, bh, K_INK);
 }
 
@@ -6540,9 +6560,9 @@ static void draw_sound(void) {
     const int by = sn_btn_y(), nx = sn_next_x(), px = sn_prev_x();
     const bool pd = s_pressed == SN_IT_PREV, nd = s_pressed == SN_IT_NEXT;
     control(px, by, SN_BTN, SN_BTN, UI_R - 2, pd, K_ROW);
-    picker_arrow(px + SN_BTN / 2, by + SN_BTN / 2, false, K_INK);
+    picker_arrow(px + SN_BTN / 2, by + SN_BTN / 2, false, pd ? K_PRESS_INK : K_INK);
     control(nx, by, SN_BTN, SN_BTN, UI_R - 2, nd, K_ROW);
-    picker_arrow(nx + SN_BTN / 2, by + SN_BTN / 2, true, K_INK);
+    picker_arrow(nx + SN_BTN / 2, by + SN_BTN / 2, true, nd ? K_PRESS_INK : K_INK);
     if (foc(SCR_SOUND, SN_IT_PREV)) focus_inset(px, by, SN_BTN, SN_BTN, K_INK);
     if (foc(SCR_SOUND, SN_IT_NEXT)) focus_inset(nx, by, SN_BTN, SN_BTN, K_INK);
   }
@@ -6550,11 +6570,11 @@ static void draw_sound(void) {
   draw_row(1, foc(SCR_SOUND, SN_IT_SHUTTER), s_pressed == SN_IT_SHUTTER, true,
            "Play shutter sound", NULL, false);
   draw_toggle(LIST_X + LIST_W - 18 - 52, LIST_Y + ROW_H + (ROW_H - ROW_GAP - 28) / 2, shut, false,
-              s_pressed == SN_IT_SHUTTER ? K_SELECT : K_ROW);
+              s_pressed == SN_IT_SHUTTER ? K_PRESS : K_ROW);
   draw_row(2, foc(SCR_SOUND, SN_IT_BUTTON), s_pressed == SN_IT_BUTTON, true,
            "Play button sound", NULL, false);
   draw_toggle(LIST_X + LIST_W - 18 - 52, LIST_Y + 2 * ROW_H + (ROW_H - ROW_GAP - 28) / 2, ui, false,
-              s_pressed == SN_IT_BUTTON ? K_SELECT : K_ROW);
+              s_pressed == SN_IT_BUTTON ? K_PRESS : K_ROW);
 
   const int y = sn_vol_y();
   /* The one control on this screen that sat outside the list well, under a
@@ -7320,18 +7340,18 @@ static void draw_dialog(void) {
    *
    * Same function, same shape and same rhythm as the settings list, because
    * a confirm is a list of two things you can do and there is no reason for
-   * it to be a different kind of object. The destructive answer takes the
-   * red; the safe one takes the list's own first tone, so the pair reads as
-   * "an ordinary choice, and one that is not".
+   * it to be a different kind of object. Both answers are dark at rest: the
+   * destructive one says so in red words and turns red under the finger; the
+   * safe one is a list row, and Cancel sits one step lighter on K_OFF.
    *
    * The action is the top row and Cancel the bottom one: see dlg_item_at().
    */
   draw_row_face(DLG_ROW_X, DLG_ROW_W, DLG_ROW_Y(sub, 0), DLG_ROW_H, 1, false, s_dlg_focus == 1,
-                s_pressed == 1, true, d.go, NULL, true, d.destructive ? K_FAULT : K_SELECT);
+                s_pressed == 1, true, d.go, NULL, true, d.destructive ? ROW_DANGER : ROW_PLAIN);
   /* One step lighter than a list row: the dialog's own face is close to the
    * row tone, and Cancel has to read as a row on it. */
   draw_row_face(DLG_ROW_X, DLG_ROW_W, DLG_ROW_Y(sub, 1), DLG_ROW_H, 0, false, s_dlg_focus == 0,
-                s_pressed == 0, true, "Cancel", NULL, false, K_OFF);
+                s_pressed == 0, true, "Cancel", NULL, false, ROW_CANCEL);
 }
 
 /* ------------------------------------------------------------------ */
