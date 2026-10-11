@@ -6,7 +6,7 @@ How to read the table: `N`, `12` or `4571` stands for a number the camera fills 
 
 ## The rule
 
-The person holding the camera has read nothing and will not phone anyone. Each line names what happened and, when there is one, what to do about it. Under 40 characters for a toast, one short line for a banner, two for a dialog. Plain words: lens, photo, card, cells. No codes, no contract names on the glass; those go to the log and the KDP reply. Values on a band or in a reading are in capitals: `15 S`, `2 MIN`, `MEDIUM`.
+The person holding the camera has read nothing and will not phone anyone. Each line names what happened and, when there is one, what to do about it. Under 40 characters for a toast, one short line for a banner, two for a dialog. Plain words: lens, photo, card, cells. No codes, no camera numbers, no contract names on the glass; those go to the log and the KDP reply. Known exceptions still on the glass: the CAM1-CAM4 pane labels on SHOOT, the LOOK TARGET band and the ABOUT lens rows (#235). Values on a band or in a reading are in capitals: `15 S`, `2 MIN`, `MEDIUM`.
 
 ## Header chip
 
