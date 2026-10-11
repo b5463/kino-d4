@@ -57,12 +57,10 @@
 #define K_FAULT RGB(0xe5, 0x48, 0x4d) /* 0xE249 */
 /* Red as type on the dark grounds: 6.8:1 on the ground, 6.0:1 on a row. */
 #define K_FAULT_INK RGB(0xf2, 0x6a, 0x60) /* 0xF34C */
-/* Retired in this pass: mint. Still drawn by the four-mark, the toast, the menu
- * labels, SENT and the ROLL lamp until each moves to K_INK.
+/* Retired in this pass: mint. Still drawn by the four-mark, the menu labels,
+ * SENT and the ROLL lamp until each moves to K_INK.
  */
 #define K_LIVE RGB(0x86, 0xd6, 0xb4) /* 0x86B6 */
-/* Retired in this pass: the toast's ink on the mint plate. */
-#define K_TOAST_INK RGB(0x0d, 0x22, 0x1a) /* 0x0903 */
 
 /* Roles: what a colour is used for. Each is one of the colours above. */
 /* The face of the menu and every detail screen: the ground, as on MAO. */
@@ -76,8 +74,10 @@
 #define K_TITLE K_INK
 /* The wordmark at sleep and at power-down. Marks are ink, never colour. */
 #define K_MARK K_INK
-/* Retired in this pass: the toast's plate. */
-#define K_TOAST K_LIVE
+/* The toast's plate, with a K_EDGE outline and K_INK words. A remark is not an
+ * event and carries no colour.
+ */
+#define K_TOAST K_SURFACE
 
 /* The launch shade: MAO pink F3A2C4 and seven steps toward lavender C7A6F7, at
  * most 40 % of the hue gap (OKLCH, L and C of F3A2C4 kept, 20 degrees in all).

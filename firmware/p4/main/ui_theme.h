@@ -83,7 +83,7 @@
   X(K_INK_QUIET, K_ROW, 45, "the ROLL guest address, a NOTE row")                      \
   X(K_TITLE, K_FACE, 45, "a screen's title")                                           \
   X(K_TITLE, K_SURFACE, 45, "a dialog's title")                                        \
-  X(K_ACCENT, K_ROW, 45, "a CHECK row's severity word")                                \
+  X(K_INK, K_ROW, 45, "a CHECK row's severity word")                                \
   X(K_FAULT_INK, K_ROW, 45, "a PROBLEM row's severity word")                           \
   X(K_FAULT_INK, K_SURFACE, 45, "DELETE at rest, a destructive dialog's title")        \
   X(K_LIVE, K_GROUND, 45, "SENT under a photograph")                                   \
@@ -96,7 +96,7 @@
   X(K_LIVE, K_MENU_ROW[0], 45, "a menu row's label, top row")                          \
   X(K_LIVE, K_MENU_ROW[K_MENU_ROW_N - 1], 45, "a menu row's label, bottom row")        \
   X(K_GROUND, K_LIVE, 45, "SENT on a gallery tile")                                    \
-  X(K_TOAST_INK, K_TOAST, 45, "a toast")                                               \
+  X(K_INK, K_TOAST, 45, "a toast")                                               \
   /* inks on red */                                                                    \
   X(K_INK, K_FAULT, 45, "the lens hint, a destructive dialog's action")                \
   X(K_SELECT_INK, K_FAULT, 45, "DELETE, pressed")                                      \

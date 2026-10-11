@@ -890,10 +890,12 @@ static const char *sev_word(cond_sev_t sev) {
    * yet, a NOTE is information. */
   return sev == COND_FAULT ? "PROBLEM" : sev == COND_WARN ? "CHECK" : "NOTE";
 }
-/* The severity's colour: the interface's red for a fault, its accent for a
- * warning, the quiet ink for a note. Used with the word, never instead of it. */
+/* The severity's ink: red for a fault, the ink for a warning, the quiet ink
+ * for a note. Used with the word, never instead of it. A warning is not an
+ * event, so it does not take the launch shade: colour on this interface is a
+ * press, a landing, or a failure. */
 static uint16_t sev_ink(cond_sev_t sev) {
-  return sev == COND_FAULT ? K_FAULT_INK : sev == COND_WARN ? K_ACCENT : K_INK_QUIET;
+  return sev == COND_FAULT ? K_FAULT_INK : sev == COND_WARN ? K_INK : K_INK_QUIET;
 }
 
 static void outline(int x, int y, int w, int h, uint16_t c) {
@@ -7580,12 +7582,13 @@ static void toast_rect(int *ox, int *oy, int *ow, int *oh) {
 static void draw_toast(void) {
   if (s_toast[0] == '\0' || toast_expired()) return;
   /*
-   * A mint chip, floating.
+   * A dark chip with an edge, floating.
    *
-   * Two versions are behind this one and both were about the register they
-   * were in rather than the job. It is the one cool colour in the set, which
-   * is the whole reason mint is in the set: a transient remark must not be
-   * mistakable for a selection, and everything the finger can act on is warm.
+   * A remark is not an event, so it carries no colour: the surface, the
+   * edge every control has, and the ink. It was a mint plate, the one cool
+   * colour in the set, kept so a remark could not be mistaken for a
+   * selection; with selection in ink and a press in the launch shade, the
+   * plain chip is already neither.
    *
    * Where it rests matters more than what it looks like. It floated 44 px off
    * the bottom on every screen, which on the menu put it across the SETTINGS
@@ -7598,7 +7601,8 @@ static void draw_toast(void) {
   int x, y, w, h;
   toast_rect(&x, &y, &w, &h);
   round_rect(x, y, w, h, UI_R, K_TOAST);
-  text_mid(&UI_FONT_T, x + w / 2, y + (h - UI_FONT_T.line_h) / 2, s_toast, K_TOAST_INK);
+  round_outline(x, y, w, h, UI_R, K_EDGE);
+  text_mid(&UI_FONT_T, x + w / 2, y + (h - UI_FONT_T.line_h) / 2, s_toast, K_INK);
 }
 
 

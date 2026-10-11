@@ -13,8 +13,7 @@
     "K_ACCENT_INK": { "hex": "2a0e1c", "note": "The dark ink set on the launch shade: the SHOOT card, a pressed control. 9:1 or more on every shade, 5.6:1 or more pressed." },
     "K_FAULT": { "hex": "e5484d", "note": "Red as a mark or a fill: a lost camera, a destructive press, the lens hint. Ink on it is K_GROUND (5.1:1), never K_INK (3.4:1)." },
     "K_FAULT_INK": { "hex": "f26a60", "note": "Red as type on the dark grounds: 6.8:1 on the ground, 6.0:1 on a row." },
-    "K_LIVE": { "hex": "86d6b4", "note": "Retired in this pass: mint. Still drawn by the four-mark, the toast, the menu labels, SENT and the ROLL lamp until each moves to K_INK." },
-    "K_TOAST_INK": { "hex": "0d221a", "note": "Retired in this pass: the toast's ink on the mint plate." }
+    "K_LIVE": { "hex": "86d6b4", "note": "Retired in this pass: mint. Still drawn by the four-mark, the menu labels, SENT and the ROLL lamp until each moves to K_INK." }
   },
   "roles": {
     "K_FACE": { "is": "K_GROUND", "note": "The face of the menu and every detail screen: the ground, as on MAO." },
@@ -22,7 +21,7 @@
     "K_HAIRLINE": { "is": "K_RULE", "note": "Retired in this pass: an empty four-mark cell's keyline, a track under a bar." },
     "K_TITLE": { "is": "K_INK", "note": "A screen's or a dialog's title. Monochrome at rest." },
     "K_MARK": { "is": "K_INK", "note": "The wordmark at sleep and at power-down. Marks are ink, never colour." },
-    "K_TOAST": { "is": "K_LIVE", "note": "Retired in this pass: the toast's plate." }
+    "K_TOAST": { "is": "K_SURFACE", "note": "The toast's plate, with a K_EDGE outline and K_INK words. A remark is not an event and carries no colour." }
   },
   "arrays": {
     "K_LAUNCH": {
