@@ -215,9 +215,11 @@ esp_err_t audio_init(void) { return ESP_OK; }
  * amplifier-did-not-start branch and hidden the normal one entirely. */
 static bool g_audio_ready = true;
 bool audio_ready(void) { return g_audio_ready; }
-void audio_shutter(void) {}
+/* Counted, so check_shutter_sound() can say which sound a press made. */
+static int g_shutter_n, g_warning_n;
+void audio_shutter(void) { g_shutter_n++; }
 void audio_tick(void) {}
-void audio_warning(void) {}
+void audio_warning(void) { g_warning_n++; }
 
 esp_err_t touch_init(void) { return ESP_OK; }
 bool touch_ready(void) { return false; }
@@ -497,10 +499,13 @@ bool button_held(button_id_t id) {
 }
 
 /* No cameras and no card, so nothing here takes a picture. The shutter still
- * has to resolve, because ui.c calls it. */
+ * has to resolve, because ui.c calls it. check_shutter_sound() drives both
+ * answers, and the pipeline that did not start. */
+static bool g_capture_accept;
+static bool g_capture_ready = true;
 bool capture_request(const char *source) {
   (void)source;
-  return false;
+  return g_capture_accept;
 }
 /* Driven by the preview so the result banner can be looked at. */
 static capture_stage_t g_stage = CAPTURE_IDLE;
@@ -515,9 +520,10 @@ uint32_t capture_asked_cams(void) { return 0xF; }
 capture_stage_t capture_stage(void) { return g_stage; }
 void capture_ack(void) { g_stage = CAPTURE_IDLE; }
 bool capture_busy(void) { return false; }
-/* Always ready here: the renderer has no pipeline to fail, and a screen that
- * only appears when one did is driven by its own scene, not by this. */
-bool capture_ready(void) { return true; }
+/* Ready here: the renderer has no pipeline to fail, and a screen that only
+ * appears when one did is driven by its own scene. check_shutter_sound()
+ * clears it for the refused press. */
+bool capture_ready(void) { return g_capture_ready; }
 void capture_last(capture_report_t *out) {
   if (out) *out = g_report;
 }
@@ -1367,10 +1373,15 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 222
+#define PPMS_PER_HAND 231
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
+/* Set when a shutter press makes the wrong sound (check_shutter_sound), or a
+ * fade or lift steps backwards or ends anywhere but its end (scenes(), the
+ * power-down and the lifts). Each fails the run. */
+static bool g_sound_failed;
+static bool g_motion_failed;
 
 void write_ppm_impl_marker(void);
 static void write_ppm(const char *path, const uint16_t *px, int w, int h) {
@@ -1460,7 +1471,7 @@ static void shot_anim(const char *name, screen_t from, screen_t to, int pressed)
   g_anim = name;
   g_anim_n = 0;
   prev_vclock_us = 1000000; /* the renderer owns the clock from here */
-  go(to, NAV_OPEN_MS);
+  go(to, MOTION_OPEN_MS);
   /* go() starts the move now rather than running it, so the renderer drives
    * it the way the UI loop does - one frame per tick, on the clock it owns. */
   for (int guard = 0; anim_active() && guard < 4000; guard++) {
@@ -1483,6 +1494,119 @@ static void shot_anim(const char *name, screen_t from, screen_t to, int pressed)
     draw_screen();           \
     shot(name);              \
   } while (0)
+
+/*
+ * The shutter sound belongs to the capture (UI-04, ui_motion.h LAND).
+ *
+ * Four presses through fire_shutter(), the function every shutter goes
+ * through: refused by a pipeline that did not start (the warning, no
+ * shutter), accepted (one shutter), two taken while a capture saves and then
+ * the queued one firing as ui_pass fires it (one shutter, for one picture),
+ * and ignored (nothing). Writes no picture; restores what it touched.
+ */
+static void sound_expect(const char *what, int shutters, int warnings) {
+  if (g_shutter_n != shutters || g_warning_n != warnings) {
+    fprintf(stderr, "shutter sound: %s gave %d shutter and %d warning, expected %d and %d\n", what,
+            g_shutter_n, g_warning_n, shutters, warnings);
+    g_sound_failed = true;
+  }
+  g_shutter_n = g_warning_n = 0;
+}
+
+static void check_shutter_sound(void) {
+  const screen_t scr0 = s_screen;
+  const capture_stage_t stage0 = g_stage;
+  char toast0[sizeof s_toast];
+  memcpy(toast0, s_toast, sizeof toast0);
+  const int64_t toast_us0 = s_toast_us;
+  const bool toast_long0 = s_toast_long;
+  g_audit_off = true; /* the refusal raises a toast; it is not a scene */
+  s_screen = SCR_SHOOT;
+  g_shutter_n = g_warning_n = 0;
+
+  g_capture_ready = false;
+  g_capture_accept = false;
+  g_stage = CAPTURE_IDLE;
+  fire_shutter(false);
+  sound_expect("a press the pipeline refused", 0, 1);
+  g_capture_ready = true;
+
+  g_capture_accept = true;
+  fire_shutter(false);
+  sound_expect("an accepted press", 1, 0);
+
+  g_capture_accept = false;
+  g_stage = CAPTURE_READING;
+  s_shot_queued = false;
+  fire_shutter(false);
+  fire_shutter(false);
+  sound_expect("two presses while saving", 0, 0);
+  if (!s_shot_queued) {
+    fprintf(stderr, "shutter sound: a press while saving was not queued\n");
+    g_sound_failed = true;
+  }
+  /* The report lands: ui_pass acknowledges it and fires the queued press. */
+  g_capture_accept = true;
+  s_shot_queued = false;
+  capture_ack();
+  fire_shutter(false);
+  sound_expect("the queued press firing", 1, 0);
+
+  g_capture_accept = false;
+  g_stage = CAPTURE_IDLE;
+  fire_shutter(false);
+  sound_expect("an ignored press", 0, 0);
+
+  memcpy(s_toast, toast0, sizeof toast0);
+  s_toast_us = toast_us0;
+  s_toast_long = toast_long0;
+  s_shot_queued = false;
+  g_stage = stage0;
+  s_screen = scr0;
+  g_screen_drawn = false;
+  g_audit_off = false;
+}
+
+/*
+ * One frame of a lift or a fade, as a still: the screen under scrim `k`
+ * with the sleep mark at `mark`. Not judged for contrast or targets - type
+ * under a scrim is meant to be faint, and the screen is judged in its own
+ * still.
+ */
+static void lift_frame(screen_t sc, int k, int mark, const char *name) {
+  g_audit_off = true;
+  s_screen = sc;
+  s_dim_k = k;
+  s_lift_mark = mark;
+  scan_conditions();
+  draw_screen();
+  g_screen_drawn = false;
+  shot(name);
+  s_dim_k = 0;
+  s_lift_mark = 0;
+  g_audit_off = false;
+}
+
+/* Every millisecond of a lift: the scrim and the mark only ever go down,
+ * and both end at zero. */
+static void lift_monotone(const char *what, int32_t span_ms, int k0, int mark0) {
+  int pk = k0, pm = mark0;
+  for (int32_t ms = 0; ms <= span_ms; ms++) {
+    int k, m;
+    lift_at((int64_t)ms * 1000, span_ms, k0, mark0, &k, &m);
+    if (k > pk || m > pm || k < 0 || m < 0) {
+      fprintf(stderr, "%s: steps back at %d ms (scrim %d -> %d, mark %d -> %d)\n", what, (int)ms, pk, k, pm, m);
+      g_motion_failed = true;
+      return;
+    }
+    pk = k;
+    pm = m;
+  }
+  if (pk != 0 || pm != 0) {
+    fprintf(stderr, "%s: ends at scrim %d, mark %d, not 0\n", what, pk, pm);
+    g_motion_failed = true;
+  }
+}
 
 /* Every scene, in the order they have always been drawn. Run once per hand,
  * each time in a fresh forked process (main). */
@@ -1673,8 +1797,8 @@ static void scenes(void) {
       const uint32_t wait = anim_tick();
       if (wait > 0) prev_vclock_us += (int64_t)wait * 1000;
     }
-    if (anim_active() || prev_vclock_us - move_from_us < (int64_t)NAV_OPEN_MS * 1000) {
-      fprintf(stderr, "landing: the review move did not run its %d ms\n", NAV_OPEN_MS);
+    if (anim_active() || prev_vclock_us - move_from_us < (int64_t)MOTION_OPEN_MS * 1000) {
+      fprintf(stderr, "landing: the review move did not run its %d ms\n", MOTION_OPEN_MS);
       g_land_failed = true;
     }
     g_screen_drawn = false;
@@ -2140,15 +2264,65 @@ static void scenes(void) {
   }
 
   /* What the camera shows while it is going away: its own mark, centred,
-   * and then the screen letting go of it. Same picture for a restart. */
+   * and then the screen letting go of it. Same picture for a restart. The
+   * fade at four of its MOTION_POWER_FADE_FRAMES frames, drawn from
+   * power_fade_k() the way power_down_anim() draws them, and every frame's
+   * scrim checked to only ever darken, from the mark to black. */
   {
     fill(0, 0, UI_W, UI_H, K_GROUND);
     boot_mark();
     shot("power_down");
-    fill(0, 0, UI_W, UI_H, K_GROUND);
-    boot_mark();
-    scrim(0, 0, UI_W, UI_H, K_SCRIM, 4 * 255 / 7);
-    shot("power_down_fading");
+    int prev = 0;
+    for (int i = 0; i <= MOTION_POWER_FADE_FRAMES; i++) {
+      int k = power_fade_k((float)i / (float)MOTION_POWER_FADE_FRAMES);
+      if (k < prev || (i == 0 && k != 0) || (i == MOTION_POWER_FADE_FRAMES && k != 255)) {
+        fprintf(stderr, "power-down: frame %d scrim %d after %d - not a fade from 0 to 255\n", i, k, prev);
+        g_motion_failed = true;
+      }
+      prev = k;
+      if (i > 0 && i < MOTION_POWER_FADE_FRAMES && i % 4 == 0) {
+        char name[32];
+        snprintf(name, sizeof name, "power_down_fade_%02d", i);
+        ui_render(render_mark_fade, &k);
+        shot(name);
+      }
+    }
+  }
+
+  /*
+   * The lifts: the scrim coming off the screen rather than cutting away
+   * (UI-09). The wake from sleep at three moments of its MOTION_WAKE_MS; a
+   * sleep called off with its mark up, the mark leaving and then the picture
+   * arriving; the undim half way. Every millisecond of each is checked to go
+   * one way and end clear.
+   */
+  {
+    lift_monotone("wake", MOTION_WAKE_MS, 255, 0);
+    lift_monotone("sleep called off, mark up", MOTION_WAKE_MS, 255, 255);
+    lift_monotone("sleep called off, darkening", MOTION_WAKE_MS, 200, 0);
+    lift_monotone("undim", MOTION_UNDIM_MS, DIM_SCRIM_K, 0);
+    s_focus[SCR_MENU] = 0;
+    static const int WAKE_AT_MS[3] = {60, 120, 180};
+    for (int i = 0; i < 3; i++) {
+      int k, m;
+      char name[32];
+      lift_at((int64_t)WAKE_AT_MS[i] * 1000, MOTION_WAKE_MS, 255, 0, &k, &m);
+      snprintf(name, sizeof name, "wake_%03d", WAKE_AT_MS[i]);
+      lift_frame(SCR_MENU, k, m, name);
+    }
+    static const int CANCEL_AT_MS[2] = {40, 160};
+    for (int i = 0; i < 2; i++) {
+      int k, m;
+      char name[32];
+      lift_at((int64_t)CANCEL_AT_MS[i] * 1000, MOTION_WAKE_MS, 255, 255, &k, &m);
+      snprintf(name, sizeof name, "sleep_cancel_%03d", CANCEL_AT_MS[i]);
+      lift_frame(SCR_MENU, k, m, name);
+    }
+    {
+      int k, m;
+      lift_at((int64_t)(MOTION_UNDIM_MS / 2) * 1000, MOTION_UNDIM_MS, DIM_SCRIM_K, 0, &k, &m);
+      lift_frame(SCR_MENU, k, m, "undim_080");
+    }
   }
 
   /* ---- a toast, which every screen can raise ---- */
@@ -2169,6 +2343,9 @@ static void scenes(void) {
   scan_conditions();
   draw_screen();
   shot("toast_gallery");
+
+  /* Last, so nothing it touches reaches a picture. */
+  check_shutter_sound();
 }
 
 /* ---- what a frame costs ---- */
@@ -2307,6 +2484,14 @@ static int run_hand(bool right, const char *out) {
   }
   if (g_land_failed) {
     fprintf(stderr, "the capture landing is not in the shade under the review move\n");
+    hard = true;
+  }
+  if (g_sound_failed) {
+    fprintf(stderr, "a shutter press made the wrong sound\n");
+    hard = true;
+  }
+  if (g_motion_failed) {
+    fprintf(stderr, "a fade or a lift steps back or does not end where it should\n");
     hard = true;
   }
   if (audit_report() > 0) hard = true;

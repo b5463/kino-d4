@@ -42,7 +42,7 @@ LDFLAGS := -Wl,--no-entry -Wl,--initial-memory=33554432 -Wl,--max-memory=1342177
 SRCS := twin_ui.c $(MAIN)/qr.c $(MAIN)/pure.c
 DEPS := $(SRCS) $(MAIN)/ui.c $(MAIN)/ui.h \
         $(MAIN)/ui_font.h $(MAIN)/logo_kino_d4.h \
-        $(MAIN)/ui_theme.h $(MAIN)/ui_palette.h \
+        $(MAIN)/ui_theme.h $(MAIN)/ui_palette.h $(MAIN)/ui_motion.h \
         $(MAIN)/conditions.h $(MAIN)/calibrate.h \
         $(MAIN)/meta.h $(MAIN)/qr.h $(MAIN)/net_link.h \
         $(MAIN)/wifi_creds.h $(MAIN)/roll_state.h $(MAIN)/upload_queue.h \

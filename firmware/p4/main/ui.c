@@ -55,6 +55,7 @@
 #include "touch.h"
 #include "viewfinder.h"
 #include "ui_font.h"
+#include "ui_motion.h"
 #include "ui_theme.h"
 
 static const char *TAG = "ui";
@@ -645,16 +646,24 @@ static char s_toast[48];
 static int64_t s_toast_us;
 static bool s_toast_long;        /* the undo toast: thirty seconds, not two */
 /* The software dim: how dark the scrim over the screen is (0 = awake), and
- * when the DIM stage began, for the 1.6 s eased arrival. 150 of 255 leaves
- * the screen readable and unmistakably dimmed. */
+ * when the DIM stage began, for the MOTION_DIM_MS eased arrival. 150 of 255
+ * leaves the screen readable and unmistakably dimmed. */
 #define DIM_SCRIM_K 150
-#define DIM_RAMP_US 1600000 /* long enough that no frame's step is seen on a dark ground */
 static int s_dim_k;
 static int64_t s_dim_since_us;
+/*
+ * A lift: the scrim coming off the screen, never in one step. The undim
+ * (MOTION_UNDIM_MS), the wake from sleep and a sleep called off part-way
+ * (MOTION_WAKE_MS). s_lift_mark is the sleep mark's visibility over the scrim
+ * while a called-off sleep's mark leaves first; draw_screen() reads it.
+ */
+static int64_t s_lift_us; /* when the lift began, 0 = none running */
+static int32_t s_lift_ms;
+static int s_lift_k0, s_lift_mark0;
+static int s_lift_mark;
 static char s_undo_id[40];       /* a capture in the trash, restorable until s_undo_until_us */
 static int64_t s_undo_ms;
 static int64_t s_undo_until_us;
-#define UNDO_MS 30000
 #define IT_UNDO 201
 static uint16_t *s_photo;        /* PH_W * PH_H, decoded on entering SCR_PHOTO */
 static bool s_photo_ok;
@@ -1933,14 +1942,10 @@ static void flash_cycle(void) {
 
 static bool mode_is_quad(void) { return strcmp(config_str("mode", "wiggle"), "quad") == 0; }
 
-/* Smootherstep: no speed and no acceleration at either end. The same curve
- * gfx.c eases on, because a product whose transitions ease three ways reads
- * as three products. */
-static float ease_ui(float t) {
-  if (t <= 0.0f) return 0.0f;
-  if (t >= 1.0f) return 1.0f;
-  return t * t * t * (t * (t * 6.0f - 15.0f) + 10.0f);
-}
+/* Smootherstep (ui_motion.h): no speed and no acceleration at either end. The
+ * same curve gfx.c eases on, because a product whose transitions ease three
+ * ways reads as three products. */
+static float ease_ui(float t) { return motion_smooth(t); }
 
 static float span01(float t, float from, float to) {
   if (to <= from) return t >= to ? 1.0f : 0.0f;
@@ -2020,7 +2025,6 @@ static int lerpi(int a, int b, float e) { return a + (int)((float)(b - a) * e + 
  * first frame already has cells in it; this is that cluster.
  */
 #define BF_SEED 52.0f
-#define BF_CELL_MS 260 /* how long a cell holds its mark before re-rolling */
 /*
  * The frontier is soft and it is not a circle.
  *
@@ -2258,8 +2262,8 @@ static void boot_field(float reach, int32_t ms, int pal, float warm) {
        * Position is still in the hash, so a cell keeps its own character
        * across a re-roll and the field grows rather than boils.
        */
-      const uint32_t phase = br_hash(gx + 977, gy - 613) % (uint32_t)BF_CELL_MS;
-      const uint32_t gen = (uint32_t)(ms + (int32_t)phase) / (uint32_t)BF_CELL_MS;
+      const uint32_t phase = br_hash(gx + 977, gy - 613) % (uint32_t)MOTION_FIELD_CELL_MS;
+      const uint32_t gen = (uint32_t)(ms + (int32_t)phase) / (uint32_t)MOTION_FIELD_CELL_MS;
       const uint32_t h = br_hash(gx, (int)((uint32_t)gy + gen * 7919u));
       const float d = dist / far; /* 0 in the middle, 1 at the corner */
 
@@ -2432,10 +2436,10 @@ static void render_restarting(void *ctx) {
  * Going back is quicker than going in. Opening something is the interesting
  * direction - it is where you are arriving - and a return trip that takes as
  * long as the outbound one feels like being made to sit through it.
+ *
+ * The three are MOTION_OPEN_MS, MOTION_BACK_MS and MOTION_CASCADE_MS, in
+ * ui_motion.h with every other length the screen moves for.
  */
-#define NAV_OPEN_MS 420
-#define NAV_BACK_MS 340
-#define NAV_CASCADE_MS 700
 static void boot_handoff(void);
 static bool look_current_id(char *out, size_t cap);
 static const camlink_info_t *about_cameras(void);
@@ -2475,7 +2479,7 @@ enum {
  * the cells to re-roll twice, which is the beat that says the field is alive
  * rather than a picture.
  */
-static const int32_t SPL_MS[] = {1820, 860, 1080};
+static const int32_t SPL_MS[] = {MOTION_SPLASH_GROW_MS, MOTION_SPLASH_HOLD_MS, MOTION_SPLASH_BACK_MS};
 
 static struct {
   anim_kind_t kind;
@@ -2688,13 +2692,13 @@ static uint32_t anim_tick(void) {
         const camlink_info_t *cams = about_cameras();
         for (int i = 0; i < 4; i++) {
           const float want = cams[i].online ? 1.0f : BF_DARK;
-          s_bf_cam[i] += (want - s_bf_cam[i]) * 0.10f;
+          s_bf_cam[i] += (want - s_bf_cam[i]) * MOTION_FIELD_CAM_FOLLOW;
         }
       }
       /* The colour travels over most of the growth, not the first half
        * second of it: the camera is finding its look while it wakes, and
        * arriving at it before the field is half out wastes the journey. */
-      const float warm = span01(t_all(), 0.35f, 2.30f);
+      const float warm = span01(t_all(), MOTION_SPLASH_WARM_FROM_MS / 1000.0f, MOTION_SPLASH_WARM_TO_MS / 1000.0f);
       switch (s_anim.phase) {
         case SPL_GROW:
           /* One motion, nothing to nearly the corner. smootherstep starts
@@ -2730,7 +2734,7 @@ static uint32_t anim_tick(void) {
            * arrives on the frame after.
            */
           {
-            field_frame_t f = {(1.0f - t * t) * BF_REACH, ms, s_anim.pal, warm};
+            field_frame_t f = {(1.0f - motion_accel(t)) * BF_REACH, ms, s_anim.pal, warm};
             ui_render(render_field, &f);
           }
           if (done) {
@@ -2807,36 +2811,52 @@ static uint32_t anim_tick(void) {
  */
 static void splash(void) { anim_start_splash(); }
 
+/* The power-down scrim at `t` (0..1) through its fade: 0 is the mark on the
+ * ground, 255 is black. Pure; host_preview draws frames from it. */
+static int power_fade_k(float t) { return (int)(motion_smooth(t) * 255.0f + 0.5f); }
+
 /**
- * Power off: the screen letting go.
+ * Power off and restart: the mark, and then the screen letting go of it.
  *
- * The four go out one at a time, in the order they came up, and then the
- * panel does. The inverse of the boot in the same vocabulary, which is the
- * only thing a shutdown owes anybody.
+ * It used to put the four-cell mark up and take the cells out one at a time,
+ * which is a sentence about the four cameras - the right thing to say while a
+ * capture is happening and the wrong thing to say while the camera is
+ * switching off. What is leaving is the camera, so the camera's own mark is
+ * what is on the screen, and then it is not.
+ *
+ * A blocking loop, and it stays one (UI-09): it runs only on the way to
+ * esp_restart() or power-off, where no input is acted on, and an animation
+ * kind would add state for a screen that ends in a reset.
  */
 static void power_down_anim(void) {
-  /*
-   * The mark, and then the screen letting go of it.
-   *
-   * It used to put the four-cell mark up and take the cells out one at a
-   * time, which is a sentence about the four cameras - the right thing to say
-   * while a capture is happening and the wrong thing to say while the camera
-   * is switching off. What is leaving is the camera, so the camera's own mark
-   * is what is on the screen, and then it is not.
-   */
   ui_render(render_mark, NULL);
-  vTaskDelay(pdMS_TO_TICKS(520));
+  vTaskDelay(pdMS_TO_TICKS(MOTION_POWER_MARK_MS));
 
-  /* Out through the ground rather than to black in one step: the panel's
+  /*
+   * Out through the ground rather than to black in one step: the panel's
    * backlight is still on for a moment after this returns, and a hard cut
-   * leaves it showing an empty lit rectangle. */
-  for (int i = 1; i <= 7; i++) {
-    int k = i * 255 / 7;
+   * leaves it showing an empty lit rectangle. It was seven linear 55 ms
+   * steps, which is a staircase on a dark ground. It is about twenty frames
+   * on motion_smooth now, time-driven: frame i is due at i/N of the span, and
+   * a frame that comes out late is drawn where the clock is, not where the
+   * count is, so a slow panel finishes on time with fewer frames.
+   */
+  const int64_t t0 = esp_timer_get_time();
+  const int64_t span_us = (int64_t)MOTION_POWER_FADE_MS * 1000;
+  for (int i = 1; i <= MOTION_POWER_FADE_FRAMES; i++) {
+    float t = (float)i / (float)MOTION_POWER_FADE_FRAMES;
+    const float by_clock = (float)(esp_timer_get_time() - t0) / (float)span_us;
+    if (by_clock > t) t = by_clock;
+    if (t > 1.0f) t = 1.0f;
+    int k = power_fade_k(t);
     ui_render(render_mark_fade, &k);
-    vTaskDelay(pdMS_TO_TICKS(55));
+    if (t >= 1.0f) break;
+    const int64_t due = t0 + span_us * i / MOTION_POWER_FADE_FRAMES;
+    const int64_t wait_ms = (due - esp_timer_get_time()) / 1000;
+    if (wait_ms > 0) vTaskDelay(pdMS_TO_TICKS((uint32_t)wait_ms));
   }
   ui_render(render_black, NULL);
-  vTaskDelay(pdMS_TO_TICKS(140));
+  vTaskDelay(pdMS_TO_TICKS(MOTION_POWER_BLACK_MS));
 }
 
 /* ------------------------------------------------------------------ */
@@ -3757,7 +3777,7 @@ _Static_assert(SH_LOOK_HIT_H >= SH_BAR_H && SH_BACK_Y + SH_BACK_H < UI_H - SH_LO
  * switched on. Only a pane that is still empty after the grace says why.
  * STALLED and ERROR are not waited out - those are real, and recent.
  */
-#define SH_SETTLE_US (1500 * 1000)
+#define SH_SETTLE_US (MOTION_SHOOT_SETTLE_MS * 1000)
 static int64_t s_shoot_since_us;
 
 static void sh_pane_rect(int cam, int *x, int *y) {
@@ -5445,7 +5465,7 @@ static bool photo_step(int delta) {
   }
   if (slot < 0) {
     gallery_turn(delta);
-    go(SCR_GALLERY, NAV_BACK_MS);
+    go(SCR_GALLERY, MOTION_BACK_MS);
     return true;
   }
   const gallery_item_t *it = &gallery_slots()[slot];
@@ -6177,7 +6197,7 @@ static int sts_action_y(int rows, int k) {
 }
 static int sts_action_count(void) { return config_bool("body.calibration.done", false) ? 2 : 1; }
 static int64_t s_cams_restart_us; /* when RESTART THE CAMERAS was pressed; the banner's clock */
-#define CAMS_RESTART_BANNER_US 3000000
+#define CAMS_RESTART_BANNER_US ((int64_t)MOTION_CAMS_RESTART_BANNER_MS * 1000)
 static void draw_status_action(int rows) {
   const int n = sts_action_count();
   for (int k = 0; k < n; k++) {
@@ -7528,20 +7548,27 @@ static void timer_cancel(const char *why) {
 }
 
 /*
- * Going to sleep, in three frames over a second and a half: the mark with
- * the line under it, then the mark alone and dimmer, then dimmer again -
- * and then the light goes. A screen that shows one thing and cuts to black
- * reads as a crash; one that visibly winds down reads as sleep. `ctx` is the
- * stage, 0..2.
+ * Going to sleep: the mark and the line under it, faded in from the ground,
+ * held, and faded out again, on one continuous timeline (ui_pass, the
+ * MOTION_SLEEP_* lengths) - and then the light goes. A screen that shows one
+ * thing and cuts to black reads as a crash; one that visibly winds down reads
+ * as sleep.
+ *
+ * The mark and its line at visibility `k` (0 = the dark ground alone,
+ * 255 = full), drawn over whatever is there. draw_screen() puts it over the
+ * picture while a called-off sleep's mark leaves.
  */
-/* The mark and its line at visibility `k` (0 = the dark ground alone,
- * 255 = full). One frame of the sleep's fade-in and fade-out. */
-static void render_sleep(void *ctx) {
-  const int k = ctx != NULL ? *(const int *)ctx : 255;
-  fill(0, 0, UI_W, UI_H, K_GROUND);
+static void draw_sleep_mark(int k) {
   boot_mark_ink(mix(K_GROUND, K_MARK, k));
   text_mid(&UI_FONT_T, UI_W / 2, UI_H - PAGE_M - UI_FONT_T.line_h, "GOING TO SLEEP.  TAP TO WAKE",
            mix(K_GROUND, K_INK_QUIET, k));
+}
+
+/* One frame of the sleep's fade-in and fade-out: `ctx` is the visibility. */
+static void render_sleep(void *ctx) {
+  const int k = ctx != NULL ? *(const int *)ctx : 255;
+  fill(0, 0, UI_W, UI_H, K_GROUND);
+  draw_sleep_mark(k);
 }
 
 static void draw_working_banner(const char *line) {
@@ -7553,8 +7580,8 @@ static void draw_working_banner(const char *line) {
  * The landing: colour arrives, does its job and leaves.
  *
  * The cells that reached the card, and the bar at the strip's end, are in
- * the launch shade for LAND_HOLD_MS, then return to K_INK over
- * LAND_BACK_MS on smootherstep - 300 ms in all, MAO's LAND rule. A lost
+ * the launch shade for MOTION_LAND_HOLD_MS, then return to K_INK over
+ * MOTION_LAND_BACK_MS on smootherstep - 300 ms in all, MAO's LAND rule. A lost
  * cell and a failed strip stay K_FAULT for as long as the strip is up: a
  * lost frame is a fact, not an event.
  *
@@ -7563,13 +7590,11 @@ static void draw_working_banner(const char *line) {
  * land_step(), and host_preview calls it with chosen times to draw the
  * frames of the move.
  */
-#define LAND_HOLD_MS 120
-#define LAND_BACK_MS 180
 static uint16_t land_ink(int64_t t_us) {
   const int64_t t_ms = t_us / 1000;
-  if (t_ms < LAND_HOLD_MS) return K_ACCENT;
-  if (t_ms >= LAND_HOLD_MS + LAND_BACK_MS) return K_INK;
-  const float k = ease_ui((float)(t_ms - LAND_HOLD_MS) / (float)LAND_BACK_MS);
+  if (t_ms < MOTION_LAND_HOLD_MS) return K_ACCENT;
+  if (t_ms >= MOTION_LAND_MS) return K_INK;
+  const float k = ease_ui((float)(t_ms - MOTION_LAND_HOLD_MS) / (float)MOTION_LAND_BACK_MS);
   return mix(K_ACCENT, K_INK, (int)(k * 255.0f + 0.5f));
 }
 
@@ -7604,7 +7629,7 @@ static bool land_step(void) {
   if (s_land_us == 0) s_land_us = now;
   const int64_t t = now - s_land_us;
   s_land_ink = land_ink(t);
-  return t < (int64_t)(LAND_HOLD_MS + LAND_BACK_MS) * 1000;
+  return t < (int64_t)MOTION_LAND_MS * 1000;
 }
 
 static void draw_capture_banner(void) {
@@ -7659,9 +7684,8 @@ static void draw_capture_banner(void) {
 /* How long a toast stays. Expiry is decided in ui_pass, once per pass, and
  * never inside a draw: a draw runs once per tile of a frame, and a toast that
  * expired between two tiles would be half on the screen. */
-#define TOAST_MS 2200
 static bool toast_expired(void) {
-  return s_toast[0] != '\0' && esp_timer_get_time() - s_toast_us > (int64_t)(s_toast_long ? (int64_t)UNDO_MS : TOAST_MS) * 1000;
+  return s_toast[0] != '\0' && esp_timer_get_time() - s_toast_us > (int64_t)(s_toast_long ? (int64_t)MOTION_UNDO_MS : MOTION_TOAST_MS) * 1000;
 }
 
 static void toast_rect(int *ox, int *oy, int *ow, int *oh) {
@@ -7853,6 +7877,9 @@ static void draw_screen(void) {
   /* The software dim, last, over everything - it is the room going quiet,
    * not a layer of the interface. */
   if (s_dim_k > 0) scrim(0, 0, UI_W, UI_H, K_GROUND, s_dim_k);
+  /* A called-off sleep's mark, leaving over the ground the scrim has made
+   * of the picture, before the picture comes up (lift_at). */
+  if (s_lift_mark > 0) draw_sleep_mark(s_lift_mark);
 }
 
 /* ------------------------------------------------------------------ */
@@ -7861,9 +7888,9 @@ static void draw_screen(void) {
 
 static void fire_shutter(bool long_press);
 
-/* NAV_OPEN_MS, NAV_BACK_MS and NAV_CASCADE_MS are declared with the animation
- * state near the top of the file: the photograph screen's page step starts a
- * move and is declared long before this section. */
+/* MOTION_OPEN_MS, MOTION_BACK_MS and MOTION_CASCADE_MS are in ui_motion.h,
+ * included at the top: the photograph screen's page step starts a move and
+ * is declared long before this section. */
 
 
 /**
@@ -8174,10 +8201,10 @@ static void go_back(void) {
    * that remembers anything is LOOK opened off the finder's own bar, which
    * goes back to the finder - set on that press and on no other. */
   if (s_screen == SCR_LOOK && s_look_from_shoot) {
-    go(SCR_SHOOT, NAV_BACK_MS);
+    go(SCR_SHOOT, MOTION_BACK_MS);
     return;
   }
-  go(SCREEN_PARENT[s_screen], NAV_BACK_MS);
+  go(SCREEN_PARENT[s_screen], MOTION_BACK_MS);
 }
 
 /* Number of focusable items on a screen. */
@@ -8434,7 +8461,7 @@ static void dialog_commit(void) {
       /* What the camera is doing, not a farewell. It said GOOD NIGHT and
        * then came straight back up, which reads as a shutdown that failed. */
       ui_render(render_restarting, NULL);
-      vTaskDelay(pdMS_TO_TICKS(420));
+      vTaskDelay(pdMS_TO_TICKS(MOTION_RESTARTING_MS));
       power_down_anim();
       esp_restart();
       break;
@@ -8464,7 +8491,7 @@ static void dialog_commit(void) {
       if (trashed) {
         snprintf(s_undo_id, sizeof s_undo_id, "%s", s_photo_id);
         s_undo_ms = s_photo_ms;
-        s_undo_until_us = esp_timer_get_time() + (int64_t)UNDO_MS * 1000;
+        s_undo_until_us = esp_timer_get_time() + (int64_t)MOTION_UNDO_MS * 1000;
       }
       photo_release();
       /* Told, not discovered, and before the refresh: the gallery's order
@@ -8475,7 +8502,7 @@ static void dialog_commit(void) {
       gallery_refresh();
       toast(trashed ? "Deleted.  TAP TO UNDO" : "Deleted");
       s_toast_long = trashed;
-      go(SCR_GALLERY, NAV_BACK_MS);
+      go(SCR_GALLERY, MOTION_BACK_MS);
       return;
     }
     case DLG_DELETE_ALL:
@@ -8515,7 +8542,7 @@ static void dialog_commit(void) {
     case DLG_FACTORY:
       ui_render(render_restarting, NULL);
       factory_reset_erase();
-      vTaskDelay(pdMS_TO_TICKS(420));
+      vTaskDelay(pdMS_TO_TICKS(MOTION_RESTARTING_MS));
       power_down_anim();
       esp_restart();
       break;
@@ -8547,7 +8574,7 @@ static void activate(int item) {
     case SCR_MENU:
       if (item >= 0 && item < 6) {
         s_focus[SCR_MENU] = item;
-        go(MENU_DEST[item], NAV_OPEN_MS);
+        go(MENU_DEST[item], MOTION_OPEN_MS);
       }
       return;
 
@@ -8555,7 +8582,7 @@ static void activate(int item) {
       if (item == SH_IT_BACK) { go_back(); return; }
       if (item == SH_IT_LOOK) {
         s_look_from_shoot = true;
-        go(SCR_LOOK, NAV_OPEN_MS);
+        go(SCR_LOOK, MOTION_OPEN_MS);
         return;
       }
       break;
@@ -8599,7 +8626,7 @@ static void activate(int item) {
           break;
         }
         s_focus[SCR_PHOTO] = P_IT_DELETE;
-        go(SCR_PHOTO, NAV_OPEN_MS);
+        go(SCR_PHOTO, MOTION_OPEN_MS);
         return;
       }
       break;
@@ -8620,7 +8647,7 @@ static void activate(int item) {
       break;
 
     case SCR_SETTINGS:
-      if (item >= 0 && item < settings_rows()) { go(SET_DEST[item], NAV_OPEN_MS); return; }
+      if (item >= 0 && item < settings_rows()) { go(SET_DEST[item], MOTION_OPEN_MS); return; }
       break;
 
     case SCR_DISPLAY: {
@@ -8734,8 +8761,17 @@ static void fire_shutter(bool long_press) {
     ui_render(render_screen, NULL);
     return;
   }
-  if (config_bool("body.sounds.save", true)) audio_shutter();
-  if (!capture_request("shutter")) {
+  /*
+   * The shutter sound is the capture's, not the key's: it plays only once the
+   * pipeline has taken the press (LAND, ui_motion.h). It used to play first,
+   * so a refused press sounded like a photograph and then warned, and a press
+   * queued behind a save played two shutters for one picture. Refused: the
+   * warning alone. Queued: silent now, one shutter when it fires (ui_pass
+   * calls back in here). Ignored: silent.
+   */
+  if (capture_request("shutter")) {
+    if (config_bool("body.sounds.save", true)) audio_shutter();
+  } else {
     if (!capture_ready()) {
       /* Not "a capture is already running", which is what this used to say to
        * a body whose capture pipeline never started (#210). */
@@ -8858,7 +8894,7 @@ static void handle_button(const btn_event_t *ev) {
      * canvas is holding the destination the move is about to reveal. Pushing
      * it to the panel now would show the end of the transition before its
      * first frame. */
-    go(SCR_SHOOT, NAV_OPEN_MS);
+    go(SCR_SHOOT, MOTION_OPEN_MS);
     return;
   }
   fire_shutter(ev->long_press);
@@ -8915,7 +8951,7 @@ static void boot_handoff(void) {
    * the cascade runs on the animation clock and reports like a move, and
    * boot_bench() follows it. Any other first screen dissolves in. */
   if (s_screen == SCR_MENU) {
-    anim_start_cascade(NAV_CASCADE_MS);
+    anim_start_cascade(MOTION_CASCADE_MS);
     return;
   }
   gfx_snapshot();
@@ -8970,7 +9006,7 @@ static void first_review_open(const capture_report_t *r) {
   if (!photo_open(&it)) return; /* the card is still busy with it; a still it is */
   s_focus[SCR_PHOTO] = P_IT_DELETE;
   s_first_review_us = esp_timer_get_time();
-  go(SCR_PHOTO, NAV_OPEN_MS);
+  go(SCR_PHOTO, MOTION_OPEN_MS);
 }
 static void first_review_poll(void) {
   if (s_first_review_us == 0) return;
@@ -8981,7 +9017,7 @@ static void first_review_poll(void) {
   if (s_review_span_us == 0) return; /* HOLD: a finger ends it */
   if (esp_timer_get_time() - s_first_review_us < s_review_span_us) return;
   s_first_review_us = 0;
-  go(SCR_SHOOT, NAV_BACK_MS);
+  go(SCR_SHOOT, MOTION_BACK_MS);
 }
 
 /* The undo: the folder back where it was, the gallery told, the toast
@@ -9159,10 +9195,71 @@ static int s_sleep_stage; /* the mark's visibility last drawn, -1 before the fir
 static int s_sleep_dim0;  /* the dim level the wind-down started from */
 static int64_t s_sleep_mark_us;
 #define SLEEP_DARK_K 245     /* the picture's scrim at the end of its darkening: the ground */
-#define SLEEP_OUT_US 450000  /* the picture darkening */
-#define SLEEP_IN_US 400000   /* the mark fading in */
-#define SLEEP_HOLD_US 550000 /* the mark and the line, still */
-#define SLEEP_FADE_US 500000 /* the mark fading out; power.c cuts the light at 2.0 s */
+#define SLEEP_OUT_US (MOTION_SLEEP_OUT_MS * 1000)   /* the picture darkening */
+#define SLEEP_IN_US (MOTION_SLEEP_IN_MS * 1000)     /* the mark fading in */
+#define SLEEP_HOLD_US (MOTION_SLEEP_HOLD_MS * 1000) /* the mark and the line, still */
+#define SLEEP_FADE_US (MOTION_SLEEP_FADE_MS * 1000) /* the mark fading out; power.c cuts the light at SLEEP_WIND_MS */
+
+/*
+ * The scrim and the sleep mark `t_us` into a lift (s_lift_*). Pure: ui_pass
+ * steps it, host_preview draws frames from it.
+ *
+ * The scrim comes off on motion_ease_out, from k0 to 0. With a mark still on
+ * the glass (mark0 > 0, a sleep called off after its mark came up) the mark
+ * leaves first, over MOTION_WAKE_MARK_MS with the picture still under the
+ * full scrim, and the picture comes up in what is left - so neither the mark
+ * nor the picture ever appears or goes in one frame.
+ */
+static void lift_at(int64_t t_us, int32_t span_ms, int k0, int mark0, int *k, int *mark) {
+  float t = span_ms > 0 ? (float)t_us / ((float)span_ms * 1000.0f) : 1.0f;
+  if (t < 0.0f) t = 0.0f;
+  if (t > 1.0f) t = 1.0f;
+  *mark = 0;
+  if (mark0 > 0) {
+    const float split = (float)MOTION_WAKE_MARK_MS / (float)MOTION_WAKE_MS;
+    if (t < split) {
+      *mark = mark0 - (int)(motion_ease_out(t / split) * (float)mark0 + 0.5f);
+      *k = k0;
+      return;
+    }
+    t = (t - split) / (1.0f - split);
+  }
+  *k = k0 - (int)(motion_ease_out(t) * (float)k0 + 0.5f);
+}
+
+/* Start a lift from scrim `k0`, and from a sleep mark at `mark0` (0: none). */
+static void lift_start(int k0, int mark0, int32_t span_ms) {
+  s_lift_us = esp_timer_get_time();
+  if (s_lift_us == 0) s_lift_us = 1;
+  s_lift_ms = span_ms;
+  s_lift_k0 = k0;
+  s_lift_mark0 = mark0;
+  s_dim_k = k0;
+  s_lift_mark = mark0;
+}
+
+/* Advance a lift by one pass. Repaints when the frame changed and sets *drew,
+ * so the SHOOT tail does not draw the same frame twice. True while the lift
+ * is still running, so the pass comes straight back. */
+static bool lift_step(bool *drew) {
+  if (s_lift_us == 0) return false;
+  const int64_t t = esp_timer_get_time() - s_lift_us;
+  int k, m;
+  lift_at(t, s_lift_ms, s_lift_k0, s_lift_mark0, &k, &m);
+  if (k != s_dim_k || m != s_lift_mark) {
+    s_dim_k = k;
+    s_lift_mark = m;
+    ui_render(render_screen, NULL);
+    *drew = true;
+  }
+  if (t >= (int64_t)s_lift_ms * 1000) {
+    s_lift_us = 0;
+    s_dim_k = 0;
+    s_lift_mark = 0;
+    return false;
+  }
+  return true;
+}
 
 /** One pass of the UI loop. Returns how long the task sleeps before the next. */
 static uint32_t ui_pass(void) {
@@ -9273,10 +9370,13 @@ static uint32_t ui_pass(void) {
     power_get(&pst);
     const bool asleep_now = pst.stage == POWER_ASLEEP;
     if (was_asleep && !asleep_now) {
+      /* The panel was left on the ground by the sleep's fade, so the repaint
+       * starts there - the picture under a full scrim - and the scrim lifts
+       * over MOTION_WAKE_MS. It was one frame from dark to the whole screen. */
       ESP_LOGI(TAG, "woke: repainting");
       klog("P4", "woke, repainting");
       s_sleep_mark = false;
-      s_dim_k = 0;
+      lift_start(255, 0, MOTION_WAKE_MS);
       ui_render(render_screen, NULL);
     }
     was_asleep = asleep_now;
@@ -9286,28 +9386,36 @@ static uint32_t ui_pass(void) {
      * DIM stage changed nothing a person could see: the screen sat at full
      * brightness for the whole idle time and then, at the sleep, went out.
      * The dim is drawn instead - a scrim over whatever is on the screen,
-     * eased in over DIM_RAMP_US (1.6 s) so it reads as the camera settling,
-     * not as a fault - and lifted the moment a touch or the
-     * shutter brings the stage back to AWAKE.
+     * eased in over MOTION_DIM_MS so it reads as the camera settling, not as
+     * a fault - and lifted over MOTION_UNDIM_MS the moment a touch or the
+     * shutter brings the stage back to AWAKE. The lift was a cut.
      */
+    bool lifting = false, lift_drew = false;
     {
       const bool dim_now = pst.stage == POWER_DIM && !power_sleep_pending() && !asleep_now;
       if (dim_now && s_dim_since_us == 0) s_dim_since_us = esp_timer_get_time();
       if (!dim_now) s_dim_since_us = 0;
-      int k = 0;
       if (power_sleep_pending() || s_sleep_mark) {
-        k = s_dim_k; /* the sleep's wind-down owns the scrim from here */
+        s_lift_us = 0; /* the sleep's wind-down owns the scrim from here */
+        s_lift_mark = 0;
       } else if (dim_now) {
-        /* Eased over DIM_RAMP_US on the frame clock, so the room goes quiet
+        /* Eased over MOTION_DIM_MS on the frame clock, so the room goes quiet
          * rather than stepping down. */
+        s_lift_us = 0;
+        s_lift_mark = 0;
         const int64_t up = esp_timer_get_time() - s_dim_since_us;
-        float t = (float)up / (float)DIM_RAMP_US;
+        float t = (float)up / (float)(MOTION_DIM_MS * 1000);
         if (t > 1.0f) t = 1.0f;
-        k = (int)(ease_ui(t) * (float)DIM_SCRIM_K + 0.5f);
-      }
-      if (k != s_dim_k) {
-        s_dim_k = k;
-        ui_render(render_screen, NULL);
+        const int k = (int)(ease_ui(t) * (float)DIM_SCRIM_K + 0.5f);
+        if (k != s_dim_k) {
+          s_dim_k = k;
+          ui_render(render_screen, NULL);
+        }
+      } else {
+        if (s_lift_us == 0 && (s_dim_k > 0 || s_lift_mark > 0)) {
+          lift_start(s_dim_k, s_lift_mark, MOTION_UNDIM_MS);
+        }
+        lifting = lift_step(&lift_drew);
       }
     }
 
@@ -9360,10 +9468,15 @@ static uint32_t ui_pass(void) {
         }
       }
     } else if (s_sleep_mark && !power_sleep_pending() && !asleep_now) {
-      /* Called off by a touch: the screen comes straight back, undimmed. */
+      /* Called off by a touch: the screen comes back over MOTION_WAKE_MS,
+       * from wherever the wind-down had got to. Still darkening: the scrim
+       * lifts from its level. The mark up: the mark leaves first, then the
+       * picture comes up from the ground (lift_at). It was one frame. */
       s_sleep_mark = false;
-      s_dim_k = 0;
+      if (s_sleep_stage >= 0) lift_start(255, s_sleep_stage, MOTION_WAKE_MS);
+      else lift_start(s_dim_k, 0, MOTION_WAKE_MS);
       ui_render(render_screen, NULL);
+      lifting = true;
     }
 
     if (!down) {
@@ -9383,7 +9496,9 @@ static uint32_t ui_pass(void) {
       const int64_t now = esp_timer_get_time();
       if (wake_since_us == 0) wake_since_us = now;
       if (now - wake_since_us < 1200000) {
-        return 20;
+        /* The wake's lift runs under this press: straight back while it does,
+         * or its 240 ms would be a frame every 40 ms. */
+        return lifting ? 0 : 20;
       }
       power_end_wake_gesture();
       wake_since_us = 0;
@@ -9406,7 +9521,7 @@ static uint32_t ui_pass(void) {
       swallow_touch = true;
     }
     if (swallow_touch) {
-      return 20;
+      return lifting ? 0 : 20;
     }
 
     if (down) {
@@ -9557,7 +9672,9 @@ static uint32_t ui_pass(void) {
           if (hold_s != 0) {
             /* One loop of the wiggle is about three seconds with the load;
              * a shorter AFTER SHOT still gets the loop, HOLD gets no clock. */
-            s_review_span_us = hold_s < 0 ? 0 : (int64_t)(hold_s < 3 ? 3 : hold_s) * 1000000 + 800000;
+            s_review_span_us = hold_s < 0 ? 0
+                                          : (int64_t)(hold_s < MOTION_REVIEW_MIN_S ? MOTION_REVIEW_MIN_S : hold_s) * 1000000 +
+                                                (int64_t)MOTION_REVIEW_TAIL_MS * 1000;
             first_review_open(&r);
           }
         }
@@ -9612,7 +9729,7 @@ static uint32_t ui_pass(void) {
     const bool wig_moved = (s_screen == SCR_PHOTO && held == -1) ? wiggle_tick() : false;
 
     if (held == -1 && s_screen != SCR_SHOOT && (busy || wig_moved)) {
-      ui_render(render_screen, NULL);
+      if (!lift_drew || wig_moved) ui_render(render_screen, NULL);
       /*
        * 90 ms is the busy cadence; a wiggle frame that is only waiting for its
        * own deadline goes back round at the loop's own 20 ms so the next
@@ -9627,6 +9744,7 @@ static uint32_t ui_pass(void) {
       const bool wig_pacing = s_screen == SCR_PHOTO && s_wig_play;
       /* And a capture landing: its colour leaves over 180 ms, and at 90 ms a
        * pass that is two frames, a step and not a fade. */
+      if (lifting) return 0;
       return (busy && !wig_pacing && !landing) ? 90 : 20;
     }
 
@@ -9714,13 +9832,17 @@ static uint32_t ui_pass(void) {
     /* The viewfinder repaints on the link's clock, not the panel's: it is the
      * one screen that presents with nothing having been touched. */
     if (s_screen == SCR_SHOOT && held == -1) {
-      ui_render(render_screen, NULL);
+      if (!lift_drew) ui_render(render_screen, NULL);
       /* Paced against the link, not the panel: new frames arrive a few times
        * a second at best. A landing capture is paced against the panel
-       * instead, so its 180 ms return is a fade and not three steps. */
+       * instead, so its 180 ms return is a fade and not three steps, and a
+       * lift goes straight back round so it is one too. */
+      if (lifting) return 0;
       return landing ? 20 : 60;
     }
-    return 20;
+    /* A lift (undim, wake, a sleep called off) repaints every pass it runs;
+     * at the loop's 20 ms on top of the draw it would be a frame every 40. */
+    return lifting ? 0 : 20;
   }
 }
 
