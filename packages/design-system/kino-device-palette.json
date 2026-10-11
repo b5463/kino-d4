@@ -1,0 +1,51 @@
+{
+  "$comment": "The camera's on-glass palette: the one source for firmware/p4/main/ui_palette.h. Edit here, then run npm run palette:gen. npm run palette:check fails when the header is stale. Values are sRGB hex; the panel shows them as RGB565, so the low 3 bits of red and blue and the low 2 of green are dropped.",
+  "colours": {
+    "K_GROUND": { "hex": "0b0d0c", "note": "The ground: the shoot and photograph views, the boot field, sleep." },
+    "K_FACE": { "hex": "0e1210", "note": "The face: the ground of the menu and every detail screen." },
+    "K_SHADOW": { "hex": "070908", "note": "Darker than the ground. Today only the ROLL lamp when offline." },
+    "K_SCRIM": { "hex": "000000", "note": "Black: the scrim over a screen and the panel going dark." },
+    "K_SURFACE": { "hex": "151a17", "note": "A window or list ground, and the pane behind a photograph." },
+    "K_ROW": { "hex": "1c241f", "note": "A row you can press: one flat tone for every row of every list." },
+    "K_HAIRLINE": { "hex": "222a26", "note": "A surface that only needs to be a surface: an empty four-mark cell, a track under a bar. 1.3:1 on the face." },
+    "K_OFF": { "hex": "262f2a", "note": "A neutral press, a toggle that is off, an idle four-mark cell, a tile still loading." },
+    "K_RULE": { "hex": "27302b", "note": "The hairline between two facts in a table, and under a header." },
+    "K_EDGE": { "hex": "5c6c64", "note": "The edge of a thing you can press: 3.4:1 on the face, 3.2:1 on a window (WCAG 1.4.11 asks 3:1)." },
+    "K_INK": { "hex": "ede7dd", "note": "The light ink: every word on the dark grounds." },
+    "K_INK_QUIET": { "hex": "7a8a80", "note": "The quiet ink: 5.2:1 on the face, 4.8:1 on a window, 5.4:1 on the ground. The small face needs 4.5." },
+    "K_ACCENT": { "hex": "e8734a", "note": "The accent: selection, a press, the capture spark, the star, the gauges." },
+    "K_ACCENT_INK": { "hex": "2a140c", "note": "The dark ink set on the accent and on the card." },
+    "K_CARD": { "hex": "e8a183", "note": "The SHOOT card, the screen titles and the wordmark." },
+    "K_CARD_DOWN": { "hex": "d08b6f", "note": "The SHOOT card, pressed." },
+    "K_LIVE": { "hex": "86d6b4", "note": "Live and fine: a camera that answered, SENT, the menu labels, the toast plate." },
+    "K_TOAST_INK": { "hex": "0d221a", "note": "The toast's ink, dark on the live plate, so a remark never reads as a selection." },
+    "K_FAULT": { "hex": "c83a3a", "note": "Red as a mark or a fill: a lost camera, a destructive press, the lens hint." },
+    "K_FAULT_INK": { "hex": "f26a60", "note": "Red as type on the dark grounds: 5.9:1 on a window, where K_FAULT measures 3.5." }
+  },
+  "roles": {
+    "K_SELECT": { "is": "K_ACCENT", "note": "A selected or pressed control's fill." },
+    "K_SELECT_INK": { "is": "K_ACCENT_INK", "note": "The ink on K_SELECT, and the focus ring." },
+    "K_TITLE": { "is": "K_CARD", "note": "A screen's or a dialog's title, set on the ground." },
+    "K_MARK": { "is": "K_CARD", "note": "The wordmark at boot and at sleep." },
+    "K_TOAST": { "is": "K_LIVE", "note": "The toast's plate." }
+  },
+  "arrays": {
+    "K_MENU_ROW": {
+      "note": "The menu's five rows under the SHOOT card, at rest, each a step darker than the one above. The floor stops clear of the ground so the bottom row is still a card.",
+      "values": ["1e5240", "1a4938", "164031", "13382a", "103024"]
+    },
+    "K_BF_WARM": {
+      "note": "The boot field's four inks per look, light to dark. A look picks its row by hashing its id.",
+      "rows": [
+        { "note": "the standard look: amber and green, the reference's own warm pair", "values": ["f0ead8", "e8c070", "2ea144", "1a5e31"] },
+        { "note": "a warm look: the product's terracotta against its card colour", "values": ["f2e8dc", "e8734a", "e8a183", "6e3a33"] },
+        { "note": "a cool look: mint, which is what this interface says live in", "values": ["e8f2ec", "86d6b4", "2ea144", "1a4e3e"] },
+        { "note": "a neutral look, for a look that is not grading much at all", "values": ["f0eee4", "c8c0a8", "8a948c", "333b36"] }
+      ]
+    },
+    "K_BF_COLD": {
+      "note": "Cold: the instrument before it knows what it is shooting. The field comes up in this and travels to the look's own inks as the cameras answer.",
+      "values": ["9aa29e", "6c7672", "454e4a", "232927"]
+    }
+  }
+}

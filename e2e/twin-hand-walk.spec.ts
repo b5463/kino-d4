@@ -15,9 +15,9 @@ import { expect, test } from '@playwright/test';
  * control there without moving it here is exactly what this spec catches.
  */
 
-const CARD = [0xe8, 0xa1, 0x83]; // MZ_CARD: the SHOOT card and the menu rows' ground
-const RULE = [0x27, 0x30, 0x2b]; // W_RULE: the hairline under every detail header
-const SEL = [0xe8, 0x73, 0x4a]; // W_SEL: a lit segment
+const CARD = [0xe8, 0xa1, 0x83]; // K_CARD: the SHOOT card and the menu rows' ground
+const RULE = [0x27, 0x30, 0x2b]; // K_RULE: the hairline under every detail header
+const SEL = [0xe8, 0x73, 0x4a]; // K_SELECT: a lit segment
 
 type Rgb = [number, number, number];
 const near = (p: Rgb, c: number[], tol = 24): boolean => p.every((v, i) => Math.abs(v - c[i]) <= tol);

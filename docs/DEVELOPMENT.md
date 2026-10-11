@@ -42,11 +42,14 @@ These workspaces do not need Docker. The test line is the one `.github/workflows
 npm run lint
 npm run version:check
 npm run license:check
+npm run palette:check
 npm run test -w @kino/studio -w @kino/kdp -w @kino/schemas -w @kino/test-fixtures -w @kino/hardware-profiles -w @kino/simulator-engine -w @kino/three-assets -w @kino/twin -w @kino/design-system -w @kino/media -w @kino/roll-web
 npm run build
 ```
 
 Root `npm run build` uses `--if-present`. Only browser applications currently produce a bundle.
+
+The camera's on-glass colours live in `packages/design-system/kino-device-palette.json`. `npm run palette:gen` writes `firmware/p4/main/ui_palette.h` from it, and `palette:check` fails when the committed header is stale. `firmware/p4/main/ui_theme.h` includes that header and holds the type roles and the contrast pairs. `ui.c` names colours by role only.
 
 ## API stack
 

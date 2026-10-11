@@ -2030,12 +2030,12 @@ static void scenes(void) {
    * node says so on the screen it shows first. */
   {
     for (int q = 0; q < 4; q++) s_bf_cam[q] = 1.0f;
-    fill(0, 0, UI_W, UI_H, MZ_GROUND);
+    fill(0, 0, UI_W, UI_H, K_GROUND);
     boot_field(BF_REACH, 900, 0, 1.0f);
     shot("boot_field_all_four");
 
     s_bf_cam[1] = s_bf_cam[3] = BF_DARK;
-    fill(0, 0, UI_W, UI_H, MZ_GROUND);
+    fill(0, 0, UI_W, UI_H, K_GROUND);
     boot_field(BF_REACH, 900, 0, 1.0f);
     shot("boot_field_two_silent");
     for (int q = 0; q < 4; q++) s_bf_cam[q] = 1.0f;
@@ -2044,12 +2044,12 @@ static void scenes(void) {
   /* What the camera shows while it is going away: its own mark, centred,
    * and then the screen letting go of it. Same picture for a restart. */
   {
-    fill(0, 0, UI_W, UI_H, MZ_GROUND);
+    fill(0, 0, UI_W, UI_H, K_GROUND);
     boot_mark();
     shot("power_down");
-    fill(0, 0, UI_W, UI_H, MZ_GROUND);
+    fill(0, 0, UI_W, UI_H, K_GROUND);
     boot_mark();
-    scrim(0, 0, UI_W, UI_H, RGB(0x00, 0x00, 0x00), 4 * 255 / 7);
+    scrim(0, 0, UI_W, UI_H, K_SCRIM, 4 * 255 / 7);
     shot("power_down_fading");
   }
 
@@ -2137,7 +2137,7 @@ static void bench(void) {
     for (int f = 0; f <= 16; f++) {
       const float reach = ease_ui((float)f / 16.0f) * BF_REACH;
       bench_reset();
-      fill(0, 0, UI_W, UI_H, MZ_GROUND);
+      fill(0, 0, UI_W, UI_H, K_GROUND);
       for (int q = 0; q < 4; q++) s_bf_cam[q] = 1.0f;
       boot_field(reach, 0, 0, 1.0f);
       const double c = bench_screens();
@@ -2159,7 +2159,7 @@ static void bench(void) {
  * The switch for the two judgement checks.
  *
  * Contrast and touch targets are reported on every run. They fail the run
- * only when strict: today's tree has the #176 failures in it (W_TEXT on W_SEL
+ * only when strict: today's tree has the #176 failures in it (K_INK on K_SELECT
  * 2.45, the red pills 4.03, PHOTO DELETE pressed 3.52, the ROLL address 4.41,
  * the time-zone buttons at 40 px, the SHOOT bar at 34 px), and a check that
  * fails every build gets switched off. The colour pass fixes them and then
