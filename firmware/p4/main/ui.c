@@ -6962,7 +6962,10 @@ static void draw_storage(void) {
    * unreadable card by formatting it. */
   draw_row_at(LIST_X, LIST_W, ST_ACT_Y(1), ROW_H - ROW_GAP, 4, false,
               foc(SCR_STORAGE, ST_IT_FORMAT), s_pressed == ST_IT_FORMAT, sd.present && !wiping,
-              "Format card", sd.mounted ? "Erases every photo" : "The card cannot be read", true);
+              "Format card",
+              sd.mounted ? "Erases every photo"
+                         : (sd.present ? "The card cannot be read" : "No card in the slot"),
+              true);
 
   /*
    * The 145 px under the list.
@@ -6982,13 +6985,20 @@ static void draw_storage(void) {
   const int by = ST_GAUGE_Y;
 
   if (!sd.mounted) {
-    /* Why, not just that. mount_attempts separates "no card in the slot" from
+    /* Why, not just that. `present` separates "no card in the slot" from
      * "a card the driver has tried and failed to mount", which are different
-     * problems and the screen used to show the same "None" for both. */
+     * problems and the screen used to show the same "None" for both. An empty
+     * slot and a pulled card both read not present, and storage.c sets an
+     * error for both, so presence is asked first: "take the card out" under
+     * "No card in the slot" would name a card that is not there. */
     text(&UI_FONT_M, PAGE_M, by, sd.present ? "The card cannot be read" : "No card in the slot",
          K_INK);
     char detail[80];
-    if (sd.present && sd.last_error != NULL && strcmp(sd.last_error, "NO_FILESYSTEM") == 0) {
+    if (!sd.present) {
+      /* storage_watch tries the slot every 10 s, so a card put in mounts
+       * without a press. */
+      snprintf(detail, sizeof detail, "Put a microSD card in. KINO finds it.");
+    } else if (sd.last_error != NULL && strcmp(sd.last_error, "NO_FILESYSTEM") == 0) {
       snprintf(detail, sizeof detail,
                "Cards over 32 GB come in a format KINO does not read. FORMAT CARD fixes it.");
     } else if (sd.last_error != NULL && sd.last_error[0] != '\0') {
@@ -6996,8 +7006,9 @@ static void draw_storage(void) {
       snprintf(detail, sizeof detail, "Tried %u time%s. Take the card out and put it back.",
                (unsigned)sd.mount_attempts, sd.mount_attempts == 1 ? "" : "s");
     } else {
-      snprintf(detail, sizeof detail, "%u mount attempt%s since boot",
-               (unsigned)sd.mount_attempts, sd.mount_attempts == 1 ? "" : "s");
+      /* A card in the slot that has not mounted and has not failed yet. The
+       * attempt count stays in the log and the KDP status. */
+      snprintf(detail, sizeof detail, "Take the card out and put it back.");
     }
     text(&UI_FONT_S, PAGE_M, by + 30, detail, K_INK_QUIET);
     return;

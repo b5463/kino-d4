@@ -303,13 +303,14 @@ calls and fails when one of them is not in this table.
 | `Free space` | `12.3 GB` or `850 MB`, in whole units, with `12.3 GB  LOW` under 5 % free. |
 | `Photos` | `120`, or `DELETING 120 OF 500` while DELETE ALL runs. |
 | `Delete all photos` | The row that opens DELETE ALL. |
-| `Format card` | The row that opens FORMAT CARD, with `Erases every photo`, or `The card cannot be read` when the card is in the slot and not mounted. |
+| `Format card` | The row that opens FORMAT CARD, with `Erases every photo`, `The card cannot be read` when a card is in the slot and not mounted, or `No card in the slot` when the slot is empty. |
 | `17.4 GB used` | Under the gauge. |
 | `FAT32, write test pass` | At its right: the card's format and whether the boot write test passed. |
 | `The card cannot be read` / `No card in the slot` | No card mounted: a card is in the slot, or none is. |
 | `Cards over 32 GB come in a format KINO does not read. FORMAT CARD fixes it.` | Under it, for a card with no FAT file system. |
-| `Tried 3 times. Take the card out and put it back.` | Under it, for any other mount failure. The error code goes to the log and the KDP status. |
-| `0 mount attempts since boot` | Under it, when nothing has failed yet. |
+| `Put a microSD card in. KINO finds it.` | Under it, when the slot is empty or the card was pulled. The slot is tried again every 10 s. |
+| `Tried 3 times. Take the card out and put it back.` | Under it, when a card is in the slot and will not mount. The error code goes to the log and the KDP status. |
+| `Take the card out and put it back.` | Under it, when a card is in the slot and has not mounted yet. The attempt count goes to the log and the KDP status. |
 
 ### SETTINGS > ABOUT
 

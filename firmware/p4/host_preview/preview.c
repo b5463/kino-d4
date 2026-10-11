@@ -839,6 +839,10 @@ void camlink_get_info_ch(int cam, camlink_info_t *out) {
  * the new band under the list is a capacity bar when the card is mounted and
  * the mount failure when it is not, and those are different layouts. */
 static bool g_card_mounted = true;
+/* With g_card_mounted false: true is a card the driver failed to mount, false
+ * is an empty slot or a pulled card. storage.c reports the second as not
+ * present with CARD_REMOVED (or a mount error from boot) set. */
+static bool g_card_present = true;
 
 /* The preview stands in for a body that has been plugged into Studio, so its
  * clock has a source and the screens that report one have something to
@@ -852,10 +856,11 @@ void clock_iso8601(char *out, size_t cap) { snprintf(out, cap, "2026-09-16T18:42
 void storage_get_status(storage_status_t *out) {
   memset(out, 0, sizeof *out);
   if (!g_card_mounted) {
-    out->present = true;
+    out->present = g_card_present;
     out->mounted = false;
     out->mount_attempts = 3;
-    out->last_error = "MOUNT_FAILED";
+    out->last_error = g_card_present ? "MOUNT_FAILED" : "CARD_REMOVED";
+    out->removed = !g_card_present;
     out->write_test = "none";
     return;
   }
@@ -1388,7 +1393,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 231
+#define PPMS_PER_HAND 232
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -2320,6 +2325,11 @@ static void scenes(void) {
    * screen from an empty slot and used to show the same "None" as one. */
   g_card_mounted = false;
   SHOT(SCR_STORAGE, "settings_storage_unmounted");
+  /* The slot empty, or the card pulled: the two states a body is most often
+   * in without a card, and the ones that must not say "take the card out". */
+  g_card_present = false;
+  SHOT(SCR_STORAGE, "settings_storage_empty");
+  g_card_present = true;
   g_card_mounted = true;
   SHOT(SCR_STATUS, "settings_status");
   SHOT(SCR_ABOUT, "settings_about");
