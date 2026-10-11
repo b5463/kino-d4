@@ -168,7 +168,7 @@ jobs:
         run: |
           mkdir -p /tmp/preview
           # Fails on the audit's structural checks: a string outside the safe
-          # area, hand-side chrome on the wrong half for either hand, a write
+          # area, hand-side chrome off the hand's side for either hand, a write
           # that did not land, a PPM count that moved. Contrast and touch
           # targets are reported in the log and fail once the colour pass sets
           # AUDIT_STRICT_DEFAULT to 1 (#234). The golden hashes (make check)

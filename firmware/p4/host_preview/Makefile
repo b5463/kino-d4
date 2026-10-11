@@ -30,7 +30,8 @@ CFLAGS := -O2 -std=gnu11 -Wall -Wno-unused-function -I shim -I $(MAIN) -I $(KDP_
 # The audit (preview.c). text() reports every string it sets: its box, which
 # fails the run when it leaves the safe area, and its ink, which is measured
 # against the pixels it lands on. Every screen's hit map is swept for targets
-# under 52 px and for hand-side chrome on the wrong half, for both hands.
+# under 52 px and for hand-side chrome on the wrong half or stretched across
+# to the far edge, for both hands.
 # Contrast and targets report without failing until AUDIT_STRICT_DEFAULT in
 # preview.c is 1; `./preview --strict out/` fails on them today. Renderer only:
 # on the camera it would be a check nobody reads, and here it is a check that

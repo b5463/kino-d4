@@ -1288,11 +1288,21 @@ static void sweep_targets(const char *name) {
     for (int k = 0; k < nr; k++) {
       if (reg[k].id != HAND_SIDE[i].item) continue;
       const int cx = (reg[k].x0 + reg[k].x1 + 1) / 2;
-      if ((cx >= UI_W / 2) == s_right_hand) continue;
+      /* hit_hand_button() stretches a button's hit area out to the hand's
+       * edge. A back button drawn on the wrong side therefore spans the whole
+       * panel, and its centre lands on the left half. A target that reaches
+       * the far margin fails, wherever its centre is. */
+      const bool far = s_right_hand ? reg[k].x0 < PAGE_M : reg[k].x1 >= UI_W - PAGE_M;
+      if ((cx >= UI_W / 2) == s_right_hand && !far) continue;
       char msg[96];
-      snprintf(msg, sizeof msg, "%s centre x %d is on the %s half for a %s hand",
-               HAND_SIDE[i].what, cx, cx >= UI_W / 2 ? "right" : "left",
-               s_right_hand ? "right" : "left");
+      if (far) {
+        snprintf(msg, sizeof msg, "%s spans x %d..%d, across to the far edge for a %s hand",
+                 HAND_SIDE[i].what, reg[k].x0, reg[k].x1, s_right_hand ? "right" : "left");
+      } else {
+        snprintf(msg, sizeof msg, "%s centre x %d is on the %s half for a %s hand",
+                 HAND_SIDE[i].what, cx, cx >= UI_W / 2 ? "right" : "left",
+                 s_right_hand ? "right" : "left");
+      }
       finding(g_hand_bad, &g_hand_bad_n, name, msg);
     }
   }
@@ -2156,7 +2166,7 @@ static void bench(void) {
  * sets this to 1 (#234/#235). `--strict` turns it on for one run.
  *
  * The structural checks fail the run whatever this says: a string outside the
- * safe area, hand-side chrome on the wrong half, a write that did not land, a
+ * safe area, hand-side chrome off the hand's side, a write that did not land, a
  * PPM count that moved.
  */
 #define AUDIT_STRICT_DEFAULT 0
@@ -2202,7 +2212,7 @@ static int run_hand(bool right, const char *out) {
     hard = true;
   }
   if (audit_report() > 0) hard = true;
-  if (list_report("hand-side controls on the wrong half", g_hand_bad, g_hand_bad_n) > 0) hard = true;
+  if (list_report("hand-side controls off the hand's side", g_hand_bad, g_hand_bad_n) > 0) hard = true;
   const int soft = contrast_report() +
                    list_report("touch targets under 52 px", g_small, g_small_n);
   fprintf(stderr, "\ncontrast: %d string draws judged, %d set on a picture and skipped\n",
