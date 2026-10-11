@@ -109,7 +109,15 @@ void gfx_snapshot(void) {}
 void gfx_dissolve(int ms) { (void)ms; }
 /* The renderer writes stills, so a transition is its end state. */
 void gfx_slide_prepare(void) {}
-void gfx_slide_show(int o, int b, bool from_right) { (void)o; (void)b; (void)from_right; }
+/* One slide frame is one panel frame on the camera, so it moves the
+ * renderer's clock like a present; without it a slide driven on that clock
+ * never ends. */
+void gfx_slide_show(int o, int b, bool from_right) {
+  (void)o;
+  (void)b;
+  (void)from_right;
+  if (prev_vclock_us != 0) prev_vclock_us += prev_vclock_step_us;
+}
 /* Drawing passes begun; see gfx_pass_id(). Declared here because the stash
  * render below is the first pass-counting stub in the file. */
 static uint32_t s_pass;
@@ -1359,7 +1367,10 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 221
+#define PPMS_PER_HAND 222
+/* Set when the capture landing under the review move is not in the shade
+ * when it should be (scenes(), capture_review_stash). Fails the run. */
+static bool g_land_failed;
 
 void write_ppm_impl_marker(void);
 static void write_ppm(const char *path, const uint16_t *px, int w, int h) {
@@ -1626,6 +1637,67 @@ static void scenes(void) {
       shot(name);
     }
     s_land_ink = K_INK;
+  }
+
+  /*
+   * The landing under the default AFTER SHOT (2 s). ui_pass sees the report
+   * and opens the review on the same pass; the move stashes PHOTO at once and
+   * owns the panel for 420 ms, with ui_pass returning before land_step(). The
+   * stash has to carry the landed bar in the shade, and the 300 ms have to
+   * start once the move has landed. Driven through the calls ui_pass makes -
+   * land_start(), first_review_open(), land_step() - on the renderer's clock.
+   * The stash is written as capture_review_stash.
+   */
+  {
+    prev_vclock_us = 1000000;
+    land_start();
+    first_review_open(&g_report);
+    const uint16_t *stash = gfx_stash_px();
+    const int bx = PAGE_M + 2, by = SH_PN_Y + SH_PN_H / 2;
+    if (s_screen != SCR_PHOTO || stash == NULL) {
+      fprintf(stderr, "landing: the review did not open on a DONE report\n");
+      g_land_failed = true;
+    } else {
+      if (stash[by * UI_W + bx] != K_ACCENT) {
+        fprintf(stderr, "landing: review stash bar is %04x, not the shade %04x\n",
+                stash[by * UI_W + bx], K_ACCENT);
+        g_land_failed = true;
+      }
+      char path[600];
+      snprintf(path, sizeof path, "%s/capture_review_stash.ppm", g_out);
+      audit_stamp("capture_review_stash");
+      write_ppm(path, stash, UI_W, UI_H);
+    }
+    const int64_t move_from_us = prev_vclock_us;
+    for (int guard = 0; anim_active() && guard < 4000; guard++) {
+      const uint32_t wait = anim_tick();
+      if (wait > 0) prev_vclock_us += (int64_t)wait * 1000;
+    }
+    if (anim_active() || prev_vclock_us - move_from_us < (int64_t)NAV_OPEN_MS * 1000) {
+      fprintf(stderr, "landing: the review move did not run its %d ms\n", NAV_OPEN_MS);
+      g_land_failed = true;
+    }
+    g_screen_drawn = false;
+    /* The first pass after the move: the hold starts here. */
+    const bool moving0 = land_step();
+    const uint16_t ink0 = s_land_ink;
+    prev_vclock_us += 210 * 1000;
+    land_step();
+    const uint16_t ink210 = s_land_ink;
+    prev_vclock_us += 140 * 1000;
+    const bool moving350 = land_step();
+    if (!moving0 || ink0 != K_ACCENT || ink210 == K_ACCENT || ink210 == K_INK || moving350 ||
+        s_land_ink != K_INK) {
+      fprintf(stderr, "landing: after the move %04x/%d, +210 ms %04x, +350 ms %04x/%d\n", ink0,
+              moving0, ink210, s_land_ink, moving350);
+      g_land_failed = true;
+    }
+    prev_vclock_us = 0;
+    s_shot_seen_us = 0;
+    land_step();
+    s_first_review_us = 0;
+    photo_release();
+    s_screen = SCR_SHOOT;
   }
 
   g_report.stored = 3;
@@ -2231,6 +2303,10 @@ static int run_hand(bool right, const char *out) {
             "wrote %d PPMs, expected %d: a scene was added or dropped. Set PPMS_PER_HAND in "
             "preview.c and re-approve the golden hashes (make approve).\n",
             g_ppm_n, PPMS_PER_HAND);
+    hard = true;
+  }
+  if (g_land_failed) {
+    fprintf(stderr, "the capture landing is not in the shade under the review move\n");
     hard = true;
   }
   if (audit_report() > 0) hard = true;

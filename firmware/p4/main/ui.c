@@ -1774,6 +1774,9 @@ typedef enum {
  * then back to K_INK. Set once per pass by land_step(), never inside a
  * draw, so every tile of a frame agrees. */
 static uint16_t s_land_ink = K_INK;
+/* The first pass the landed strip could be on the glass with no move
+ * pending; the 300 ms run from here. 0 = not yet. */
+static int64_t s_land_us;
 
 /**
  * Four cells of `cell` px, left to right, with `st[4]` their states.
@@ -7555,9 +7558,10 @@ static void draw_working_banner(const char *line) {
  * cell and a failed strip stay K_FAULT for as long as the strip is up: a
  * lost frame is a fact, not an event.
  *
- * `t_us` is the time since the report first existed. Pure: ui_pass calls
- * it once per pass through land_step(), and host_preview calls it with
- * chosen times to draw the frames of the move.
+ * `t_us` is the time since the strip was first on the glass with no move
+ * pending (s_land_us). Pure: ui_pass calls it once per pass through
+ * land_step(), and host_preview calls it with chosen times to draw the
+ * frames of the move.
  */
 #define LAND_HOLD_MS 120
 #define LAND_BACK_MS 180
@@ -7569,14 +7573,36 @@ static uint16_t land_ink(int64_t t_us) {
   return mix(K_ACCENT, K_INK, (int)(k * 255.0f + 0.5f));
 }
 
+/*
+ * The report has just been seen. The landed cells go into the shade now,
+ * before anything on this pass draws.
+ *
+ * The default AFTER SHOT opens the review on this same pass, and that move
+ * stashes both screens straight away and owns the panel for 420 ms; ui_pass
+ * returns before land_step() while it runs. Timed from here, the 300 ms were
+ * spent behind the move and the strip was stashed in ink: a good shot never
+ * showed the shade. So the stash carries the shade, and the clock starts on
+ * the first pass with no move pending (land_step).
+ */
+static void land_start(void) {
+  s_shot_seen_us = esp_timer_get_time();
+  s_land_us = 0;
+  s_land_ink = K_ACCENT;
+}
+
 /* Advance the landing for this pass. True while it is still moving, so the
- * loop keeps its 20 ms cadence until the colour has gone. */
+ * loop keeps its 20 ms cadence until the colour has gone. ui_pass calls it
+ * below its anim_active() return, so the first call after land_start() is
+ * the first pass the strip is on the glass without a move. */
 static bool land_step(void) {
   if (s_shot_seen_us == 0) {
+    s_land_us = 0;
     s_land_ink = K_INK;
     return false;
   }
-  const int64_t t = esp_timer_get_time() - s_shot_seen_us;
+  const int64_t now = esp_timer_get_time();
+  if (s_land_us == 0) s_land_us = now;
+  const int64_t t = now - s_land_us;
   s_land_ink = land_ink(t);
   return t < (int64_t)(LAND_HOLD_MS + LAND_BACK_MS) * 1000;
 }
@@ -9475,8 +9501,9 @@ static uint32_t ui_pass(void) {
          * the UI learns that a capture failed or came back short. The strip
          * has said so since draw_capture_banner() was written; a strip in the
          * corner of a viewfinder someone has already lowered says it to
-         * nobody. */
-        s_shot_seen_us = esp_timer_get_time();
+         * nobody. land_start() puts the landed cells in the shade before the
+         * review below can stash them. */
+        land_start();
         capture_report_t r;
         capture_last(&r);
         /* A full or absent card arrives here too - it is a failed report with
