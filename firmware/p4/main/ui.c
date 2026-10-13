@@ -2631,11 +2631,17 @@ static void boot_field(float reach, int32_t ms, int pal, float warm) {
  * This is what the camera shows while it is going away: shutting down or
  * restarting, one mark, centred, until the screen does. A machine that is
  * leaving should say which machine is leaving and nothing else.
+ *
+ * Coverage, not bits: logo_kino_d4.h is the white-on-dark brand raster box-
+ * filtered to 374 x 52 by tools/mkmask.mjs, the size the 1-bit bake had on
+ * the glass, and every edge of the italic is a ramp instead of a staircase.
+ * Centred on its box, not its centroid: the D4 badge is open and light, and
+ * the word reads as centred when the box is.
  */
 static void boot_mark_ink(uint16_t ink) {
   const int lx = (UI_W - KINO_D4_LOGO_W) / 2;
   const int ly = (UI_H - KINO_D4_LOGO_H) / 2;
-  draw_bits(KINO_D4_LOGO, KINO_D4_LOGO_W, KINO_D4_LOGO_H, KINO_D4_LOGO_STRIDE, lx, ly, 1, ink);
+  mask_blit(KINO_D4_LOGO, KINO_D4_LOGO_W, KINO_D4_LOGO_H, KINO_D4_LOGO_W, lx, ly, ink);
 }
 static void boot_mark(void) { boot_mark_ink(K_MARK); }
 

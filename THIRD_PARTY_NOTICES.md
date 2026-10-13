@@ -110,9 +110,21 @@ firmware and the Twin's WebAssembly build both embed.
 The camera previously set its interface in a 1-bit rendering of Tahoma, baked
 through a headless browser, and its menu in Windows 98 shell icons for which
 no licence was held. Both are gone - the type is these two faces and the menu
-is drawn - and issue #134 closes with them. The one baked raster left in the
-interface is the studio's mark, below, and that one is baked because it is a
-drawing and not a shape a program should be guessing at.
+is drawn - and issue #134 closes with them. The baked rasters left in the
+interface are the marks below, and they are baked because they are drawings
+and not shapes a program should be guessing at.
+
+## The KINO wordmark (reserved)
+
+`firmware/p4/main/logo_kino_d4.h` is the KINO D4 wordmark the camera shows
+while it shuts down, restarts or goes to sleep. `tools/mkmask.mjs` bakes it
+from `docs/assets/brand/kino-d4-white-on-dark.png` into a 374x52 8-bit
+coverage table, box-filtered from the raster, which `ui.c` blends in one
+ink. The header names its source and the source's sha256.
+
+It is the brand artwork, not source, and carries the brand's terms:
+REUSE.toml marks it `LicenseRef-KINO-Reserved` over the MIT grant on
+`firmware/**`.
 
 ## The Odd Jobs mark (reserved)
 

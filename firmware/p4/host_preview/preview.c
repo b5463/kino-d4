@@ -1703,6 +1703,76 @@ static void sound_expect(const char *what, int shutters, int warnings) {
   g_shutter_n = g_warning_n = 0;
 }
 
+/* ---- the marks through the tiles (M2b) ----
+ *
+ * The camera never draws a frame whole. gfx_render() replays the display list
+ * once per 48 x 96 tile, each tile its own small target, and a mask clipped
+ * wrong at a tile's edge leaves a seam every 48 px that the whole-canvas
+ * render here would never show. So each mark is recorded at 48 x offsets -
+ * every phase of the tile grid across, and twice that down - replayed tile by
+ * tile into a tile-sized buffer the way gfx.c does it, and compared with the
+ * same list replayed over the whole canvas. Any pixel that differs fails. */
+static bool g_tiles_failed;
+
+typedef struct {
+  const uint8_t *cov;
+  int w, h, x, y;
+} tile_mark_t;
+
+static void tile_mark_frame(void *ctx) {
+  const tile_mark_t *m = ctx;
+  fill(0, 0, UI_W, UI_H, K_GROUND);
+  mask_blit(m->cov, m->w, m->h, m->w, m->x, m->y, K_INK);
+}
+
+static void check_mask_tiles(const char *what, const uint8_t *cov, int w, int h) {
+  enum { TW = 48, TH = 96 };
+  static uint16_t whole[UI_W * UI_H], tiled[UI_W * UI_H], tile[TW * TH];
+  uint16_t *const canvas = g_canvas;
+  for (int d = 0; d < TW; d++) {
+    tile_mark_t m = {cov, w, h, 120 + d, 140 + 2 * d};
+    dl_begin();
+    tile_mark_frame(&m);
+    if (!dl_end()) {
+      fprintf(stderr, "tiles: %s did not fit the display list\n", what);
+      g_tiles_failed = true;
+      return;
+    }
+    g_canvas = whole;
+    g_target = (gfx_target_t){whole, 0, 0, UI_W, UI_H, UI_W};
+    dl_replay(NULL);
+    g_canvas = tile;
+    for (int ty = 0; ty < UI_H; ty += TH) {
+      const int th = UI_H - ty < TH ? UI_H - ty : TH;
+      for (int tx = 0; tx < UI_W; tx += TW) {
+        const int tw = UI_W - tx < TW ? UI_W - tx : TW;
+        g_target = (gfx_target_t){tile, tx, ty, tw, th, tw};
+        dl_replay(NULL);
+        for (int r = 0; r < th; r++) {
+          memcpy(&tiled[(ty + r) * UI_W + tx], &tile[r * tw], (size_t)tw * sizeof(uint16_t));
+        }
+      }
+    }
+    g_canvas = canvas;
+    g_target = (gfx_target_t){0};
+    int inked = 0;
+    for (int i = 0; i < UI_W * UI_H; i++) inked += whole[i] == K_INK;
+    if (inked < w * h / 8) {
+      fprintf(stderr, "tiles: %s at +%d drew %d solid pixels; the check saw nothing\n", what, d, inked);
+      g_tiles_failed = true;
+      return;
+    }
+    for (int i = 0; i < UI_W * UI_H; i++) {
+      if (whole[i] != tiled[i]) {
+        fprintf(stderr, "tiles: %s at +%d differs at x=%d y=%d (%04x whole, %04x tiled)\n", what, d,
+                i % UI_W, i / UI_W, whole[i], tiled[i]);
+        g_tiles_failed = true;
+        return;
+      }
+    }
+  }
+}
+
 static void check_shutter_sound(void) {
   const screen_t scr0 = s_screen;
   const capture_stage_t stage0 = g_stage;
@@ -2926,6 +2996,7 @@ static int run_hand(bool right, const char *out) {
   if (right) {
     g_audit_off = true;
     bench();
+    check_mask_tiles("the wordmark", KINO_D4_LOGO, KINO_D4_LOGO_W, KINO_D4_LOGO_H);
     g_audit_off = false;
   }
 
@@ -2944,6 +3015,10 @@ static int run_hand(bool right, const char *out) {
   }
   if (g_land_failed) {
     fprintf(stderr, "the capture landing is not in the shade under the review move\n");
+    hard = true;
+  }
+  if (g_tiles_failed) {
+    fprintf(stderr, "a mark drawn tile by tile is not the mark drawn whole\n");
     hard = true;
   }
   if (g_sound_failed) {
