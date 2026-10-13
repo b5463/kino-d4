@@ -92,6 +92,7 @@ The rows at the foot of STATUS:
 | `MENU` | The way out, on the back button beside the picture. |
 | `WIGGLE` / `QUAD` | The mode, on the decisions bar. Tapping the bar opens LOOK. |
 | `AUTO` / `ON` / `OFF` | The flash, beside the bolt on the decisions bar. |
+| `TIMER OFF` / `TIMER 10 S` | The self-timer's own panel, at the hand's end of the bar. A tap switches it and says nothing. With TIMER 10 S the next shutter press starts the count. Off at boot and at the sleep. |
 | `NO PICTURE` | A finder pane with no pixels: the lens reported an error, its frames stopped, or it is not linked. One word for all three; the pane's place says which lens. Said once the first 1.5 s of SHOOT have passed. |
 | `RESTART THE CAMERAS` | The button under it, on that pane. The same action as the STATUS row, with no confirm. Not offered while a photograph is being taken: NO PICTURE alone then. |
 | `STARTING` | Instead of both, on a pane with no picture for 7 s after a restart from either place, while the lenses boot. No button then. |
@@ -110,7 +111,7 @@ The rows at the foot of STATUS:
 | `CARD FAILED. CHANGE THE CARD` | The card pill: the card failed its write test. |
 | `CARD FULL. DELETE PHOTOS IN GALLERY` | The card pill: less room than capture.c reserves for one photograph. The shutter is refused there, and the pill pulses. |
 | `CHECK THE SECOND LENS` | On SHOOT, one pane was lit and then went a third as bright as the rest for a second while the others stayed lit. The word is one of `FIRST` / `SECOND` / `THIRD` / `FOURTH`. |
-| `10` .. `1`, `SELF-TIMER.  PRESS TO CANCEL` | The self-timer counting down. Nothing starts it in this firmware: a long press no longer does. It returns with the TIMER panel on SHOOT. |
+| `10` .. `1`, `SELF-TIMER.  PRESS TO CANCEL` | The self-timer counting down over a ring of ten dots, after a shutter press with TIMER 10 S. Any press cancels it. |
 | `SAVED` | Every lens that answered is on the card. Its cells land in the shade; a lens left out stays an outline. |
 | `SAVED, 1 CAMERA MISSED` | A partial photograph; the red cell is the lens that lost its frame. |
 | `No card. Put one in.` | Shutter with no card. |
@@ -144,7 +145,7 @@ The rows at the foot of STATUS:
 | Deleted | One photograph deleted outright, because the trash folder could not take it. |
 | Restored | UNDO tapped in time. |
 | Could not restore it | The folder would not move back. |
-| Timer cancelled | A press during the self-timer. |
+| Timer cancelled | A press during the self-timer, TIMER turned off during it, or SHOOT left while it counts. |
 | Deleting photos | DELETE ALL started on the gallery task. |
 | No photos on the card | DELETE ALL with nothing to delete. |
 | No card in the slot | FORMAT with nothing in the slot. |

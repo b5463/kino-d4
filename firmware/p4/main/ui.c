@@ -4193,11 +4193,13 @@ static void draw_menu(void) {
 /* ------------------------------------------------------------------ */
 
 /* What you can touch on this screen: the way out, the three decisions on the
- * status bar, which open LOOK, and on a pane with no picture its RESTART THE
- * CAMERAS button, SH_IT_PANE0 + the pane. */
+ * status bar, which open LOOK, the self-timer's panel at the bar's hand end,
+ * and on a pane with no picture its RESTART THE CAMERAS button, SH_IT_PANE0 +
+ * the pane. */
 #define SH_IT_BACK 0
 #define SH_IT_LOOK 1
-#define SH_IT_PANE0 2
+#define SH_IT_TIMER 2
+#define SH_IT_PANE0 3
 /* The panes whose button the last draw put up, one bit each. Set by the draw
  * and read by the hit test, the same rule as s_sh_set_x0. */
 static uint8_t s_sh_dead;
@@ -4208,8 +4210,17 @@ static bool capture_in_flight(void);
 #define SH_DEAD_BTN_W 248
 #define SH_DEAD_BTN_H 52
 /* Where the decisions group sits on the bar, set by the draw and read by the
- * hit test - the same rule as s_list_top. */
+ * hit test - the same rule as s_list_top. The timer panel is everything from
+ * the group's hand-side end to the hand's edge. */
 static int s_sh_set_x0, s_sh_set_x1;
+/*
+ * The self-timer setting, TIMER OFF or TIMER 10 S on the bar. Session state
+ * only: off at boot and at the sleep, never written to config, so the next
+ * person to pick the camera up does not get one that waits ten seconds. It
+ * stays on across the review after a shot, so a group can take several in a
+ * row.
+ */
+static bool s_timer_on;
 /* LOOK opened from the finder goes back to the finder, not to the menu: the
  * hand that changed the flash is still holding the camera up. */
 static bool s_look_from_shoot;
@@ -4718,13 +4729,15 @@ static void draw_shoot(void) {
   const int g_pwr = w_pwr > 0 ? SH_PN_GAP : 0;
 
   /*
-   * Two groups, and the hand decides which end each takes.
+   * Two groups and the timer, and the hand decides which end each takes.
    *
    * The three DECISIONS - mode, flash, look - are the group a thumb changes,
    * so they sit at the hand's end of the bar and press as one control that
    * opens LOOK; the READINGS - cameras, link, card - are the group
-   * nobody presses, so they take the far end. The panels start and end on
-   * the page margin, which is where the MENU button above them starts.
+   * nobody presses, so they take the far end. The TIMER panel is outermost
+   * at the hand's end, beyond MODE: its own control, which changes in place,
+   * and the one a thumb reaches first. The panels start and end on the page
+   * margin, which is where the MENU button above them starts.
    *
    * The look takes what is left between the two groups: one elastic panel
    * and the rest sized to their contents, which is the split the menu's
@@ -4733,10 +4746,14 @@ static void draw_shoot(void) {
    * elastic panel is the one that can afford to cut it.
    */
   const bool set_down = s_pressed == SH_IT_LOOK;
+  /* Sized for the longer of its two words, so nothing on the bar moves when
+   * it is pressed. */
+  const int w_tm = text_w(K_TYPE_CAPTION, "TIMER 10 S") + 2 * SH_PN_PAD;
+  const int tm_x = from_hand(PAGE_M, w_tm);
   const int w_read = w_cams + g_pwr + w_pwr + g_card + w_card;
   const int read_x0 = s_right_hand ? PAGE_M : UI_W - PAGE_M - w_read;
-  const int set_x0 = s_right_hand ? read_x0 + w_read + SH_PN_GAP : PAGE_M;
-  const int set_x1 = s_right_hand ? UI_W - PAGE_M : UI_W - PAGE_M - w_read - SH_PN_GAP;
+  const int set_x0 = s_right_hand ? read_x0 + w_read + SH_PN_GAP : tm_x + w_tm + SH_PN_GAP;
+  const int set_x1 = s_right_hand ? tm_x - SH_PN_GAP : UI_W - PAGE_M - w_read - SH_PN_GAP;
   s_sh_set_x0 = set_x0;
   s_sh_set_x1 = set_x1;
 
@@ -4781,6 +4798,17 @@ static void draw_shoot(void) {
     sh_panel(look_x, w_look, look, set_down);
   }
   if (foc(SCR_SHOOT, SH_IT_LOOK)) focus_inset(set_x0, SH_PN_Y, set_x1 - set_x0, SH_PN_H, K_INK);
+  {
+    /* The timer. Monochrome at rest: K_INK when the next press waits ten
+     * seconds, quiet when it does not. Never a bare OFF, which the flash
+     * panel beside it can say too. */
+    const bool tm_down = s_pressed == SH_IT_TIMER;
+    round_rect(tm_x, SH_PN_Y, w_tm, SH_PN_H, UI_R, tm_down ? K_PRESS : K_SURFACE);
+    text(K_TYPE_CAPTION, tm_x + SH_PN_PAD, SH_PN_Y + (SH_PN_H - K_TYPE_CAPTION->line_h) / 2,
+         s_timer_on ? "TIMER 10 S" : "TIMER OFF",
+         tm_down ? K_PRESS_INK : s_timer_on ? K_INK : K_INK_QUIET);
+    if (foc(SCR_SHOOT, SH_IT_TIMER)) focus_inset(tm_x, SH_PN_Y, w_tm, SH_PN_H, K_INK);
+  }
   /*
    * The four, in the one place the four lenses are actually in front of you.
    *
@@ -8255,15 +8283,33 @@ static bool pill_pulsing(void) {
 }
 
 /*
- * The self-timer: ten seconds, counted down on the finder with a tick a
- * second; any press during it cancels. The camera is for groups, and the
- * person holding it wants to be in the picture. Nothing starts it at the
- * moment: it used to be a long press, which every held shutter set off by
- * accident (handle_button). It returns as the TIMER panel on SHOOT (#237).
+ * The self-timer: with TIMER 10 S on SHOOT's bar, a shutter press starts ten
+ * seconds, counted down on the finder with a tick a second and four a second
+ * for the last three; any press during it cancels, and so does leaving the
+ * finder. The camera is for groups, and the person holding it wants to be in
+ * the picture.
+ *
+ * It used to be a long press. Every key acts on its down edge, so a held
+ * shutter took a photograph and then armed the timer 600 ms later: a second
+ * photograph ten seconds on that nobody asked for. A long press does nothing
+ * now (key_acts).
  */
 #define TIMER_S 10
 static int64_t s_timer_end_us;
 static int s_timer_last_s;
+static int s_timer_last_q; /* quarter-seconds left, for the last three seconds' ticks */
+/*
+ * The countdown's ring: ten dots on 300 degrees round the digit, the open
+ * 60 at the foot, over the caption. Offsets from the digit's centre at radius
+ * TIMER_RING_R, clockwise from the gap's left end; dot j goes out in the
+ * (j + 1)th second. A table, so the draw does no trigonometry.
+ */
+#define TIMER_RING_R 56
+#define TIMER_DOT 8
+static const int8_t TIMER_RING[TIMER_S][2] = {
+    {-28, 48}, {-50, 25}, {-56, -7}, {-43, -36}, {-16, -54},
+    {16, -54}, {43, -36}, {56, -7},  {50, 25},   {28, 48},
+};
 static bool s_shot_queued; /* a second press while saving: fired when the report lands */
 static bool capture_in_flight(void) {
   const capture_stage_t c = capture_stage();
@@ -8716,14 +8762,46 @@ static void draw_screen(void) {
   }
   draw_capture_banner();
   if (s_screen == SCR_SHOOT && s_timer_end_us != 0) {
-    /* The countdown, large, over the finder: the one number that matters
-     * for the next ten seconds. */
+    /*
+     * The countdown, over the finder: the one number that matters for the
+     * next ten seconds, the ring that drains with it, and how to stop it, on
+     * one plate centred on the panes' cross. The caption used to sit on the
+     * bare picture under a plate only as wide as the digit.
+     */
     char n[8];
     snprintf(n, sizeof n, "%d", s_timer_last_s);
-    const int w = text_w(K_TYPE_TITLE, n) + 60, h = K_TYPE_TITLE->line_h + 30;
-    scrim((UI_W - w) / 2, UI_H / 2 - h / 2 - 20, w, h, K_GROUND, 160);
-    text_mid(K_TYPE_TITLE, UI_W / 2, UI_H / 2 - K_TYPE_TITLE->line_h / 2 - 20, n, K_INK);
-    text_mid(K_TYPE_CAPTION, UI_W / 2, UI_H / 2 + h / 2 - 12, "SELF-TIMER.  PRESS TO CANCEL", K_INK);
+    const char *const cap = "SELF-TIMER.  PRESS TO CANCEL";
+    const int cap_h = K_TYPE_CAPTION->line_h;
+    /* The plate: 18 px over the ring, the caption 20 px under its lowest
+     * reach, 14 px under the caption. Centred on the cross as a whole. */
+    const int top = TIMER_RING_R + TIMER_DOT / 2 + 18;
+    const int cap_dy = TIMER_RING_R + 20;
+    const int foot = cap_dy + cap_h + 14;
+    const int cx = UI_W / 2, cy = UI_H / 2 - (foot - top) / 2;
+    const int pw = text_w(K_TYPE_CAPTION, cap) + 48;
+    scrim(cx - pw / 2, cy - top, pw, top + foot, K_GROUND, 160);
+    /*
+     * The ring. The dot for the second being spent eases from ink to the
+     * off tone across that second on motion_smooth, so the ring drains
+     * clockwise and never steps. One float a frame. Monochrome: a countdown
+     * is a state, not an event.
+     */
+    const int64_t left = s_timer_end_us - esp_timer_get_time();
+    const int secs = left <= 0 ? 0 : (int)((left + 999999) / 1000000);
+    const int spent = TIMER_S - secs; /* dots already out */
+    int fade = 255;
+    if (secs > 0) {
+      const float into = 1.0f - (float)(left - (int64_t)(secs - 1) * 1000000) / 1000000.0f;
+      fade = (int)(motion_smooth(into) * 255.0f + 0.5f);
+    }
+    for (int j = 0; j < TIMER_S; j++) {
+      const uint16_t c = j < spent ? K_OFF : j == spent ? mix(K_INK, K_OFF, fade) : K_INK;
+      /* A circle from the corner table: no square root a pixel. */
+      round_rect(cx + TIMER_RING[j][0] - TIMER_DOT / 2, cy + TIMER_RING[j][1] - TIMER_DOT / 2,
+                 TIMER_DOT, TIMER_DOT, TIMER_DOT / 2, c);
+    }
+    text_mid(K_TYPE_TITLE, cx, cy - K_TYPE_TITLE->line_h / 2, n, K_INK);
+    text_mid(K_TYPE_CAPTION, cx, cy + cap_dy, cap, K_INK);
   } else if (s_screen == SCR_SHOOT) {
     /* One slot, three claimants: the self-timer above, then the card, then
      * the lens hint. A covered lens costs one picture; the card costs all of
@@ -8757,6 +8835,7 @@ static void draw_screen(void) {
 /* ------------------------------------------------------------------ */
 
 static void fire_shutter(void);
+static void shutter_now(void);
 
 /* MOTION_OPEN_MS, MOTION_BACK_MS and MOTION_CASCADE_MS are in ui_motion.h,
  * included at the top: the photograph screen's page step starts a move and
@@ -9168,7 +9247,7 @@ static void go_back(void) {
 static int item_count(screen_t s) {
   switch (s) {
     case SCR_MENU: return 6;
-    case SCR_SHOOT: return 2;
+    case SCR_SHOOT: return 3;
     /* The TARGET row is the last band, so WIGGLE simply stops short of it
      * and every index below keeps its meaning in both modes. */
     case SCR_LOOK: return mode_is_quad() ? LK_IT_COUNT : LK_IT_TARGET;
@@ -9276,6 +9355,10 @@ static int hit_test(int x, int y) {
       /* The decisions group on the bar, as one control. Its extent was set
        * by the draw. */
       if (y >= UI_H - SH_LOOK_HIT_H && x >= s_sh_set_x0 && x < s_sh_set_x1) return SH_IT_LOOK;
+      /* The timer panel, in the same 52 px band and out to the hand's edge:
+       * the margin beyond it is nothing else's. */
+      if (y >= UI_H - SH_LOOK_HIT_H && (s_right_hand ? x >= s_sh_set_x1 : x < s_sh_set_x0))
+        return SH_IT_TIMER;
       /* A dead pane's button, on the panes the draw put one on: the face
        * only, from the layout the draw used. */
       for (int i = 0; i < 4; i++) {
@@ -9562,6 +9645,14 @@ static void activate(int item) {
         go(SCR_LOOK, MOTION_OPEN_MS);
         return;
       }
+      if (item == SH_IT_TIMER) {
+        /* OFF and 10 S, nothing else, and no toast: the panel's own words
+         * change under the thumb. Turned off while it counts is a cancel,
+         * said the way every other cancel is. */
+        s_timer_on = !s_timer_on;
+        if (!s_timer_on) timer_cancel("Timer cancelled");
+        break;
+      }
       if (item >= SH_IT_PANE0 && item < SH_IT_PANE0 + 4) {
         cams_restart();
         return;
@@ -9720,7 +9811,9 @@ static void activate(int item) {
  *
  * The physical key fires on SHOOT and on the untouched review after a shot
  * (handle_button). Anywhere else it opens the finder first. The capture strip
- * reports a running capture over whatever is on the glass.
+ * reports a running capture over whatever is on the glass. With TIMER 10 S on
+ * the bar the press starts the count instead, and the count's end is the
+ * capture (timer_poll).
  */
 static void fire_shutter(void) {
   if (s_timer_end_us != 0) {
@@ -9728,6 +9821,22 @@ static void fire_shutter(void) {
     timer_cancel("Timer cancelled");
     return;
   }
+  if (s_timer_on) {
+    s_timer_end_us = esp_timer_get_time() + (int64_t)TIMER_S * 1000000;
+    s_timer_last_s = TIMER_S;
+    s_timer_last_q = TIMER_S * 4;
+    audio_tick();
+    ui_render(render_screen, NULL);
+    return;
+  }
+  shutter_now();
+}
+
+/* The capture itself, with no timer in front of it: a press with the timer
+ * off, the count reaching zero, and the press queued behind a save. The
+ * report still up is acknowledged here, on the capture path, whichever of
+ * the three it is. */
+static void shutter_now(void) {
   /*
    * The shutter sound is the capture's, not the key's: it plays only once the
    * pipeline has taken the press (LAND, ui_motion.h). It used to play first,
@@ -9778,17 +9887,23 @@ static void fire_shutter(void) {
 static void timer_poll(void) {
   if (s_timer_end_us == 0) return;
   if (s_screen != SCR_SHOOT) {
-    timer_cancel(NULL);
+    /* Said, not silent: the person walking into the picture has to learn
+     * from the screen that nothing is coming. */
+    timer_cancel("Timer cancelled");
     return;
   }
   const int64_t left = s_timer_end_us - esp_timer_get_time();
   if (left <= 0) {
     s_timer_end_us = 0;
-    fire_shutter();
+    shutter_now();
     return;
   }
   const int secs = (int)((left + 999999) / 1000000);
-  if (secs != s_timer_last_s) {
+  const int q = (int)((left + 249999) / 250000);
+  /* A tick a second, then four a second for the last three. */
+  const bool tick = secs != s_timer_last_s || (secs <= 3 && q != s_timer_last_q);
+  s_timer_last_q = q;
+  if (tick) {
     s_timer_last_s = secs;
     audio_tick();
     ui_render(render_screen, NULL);
@@ -9889,7 +10004,8 @@ static void key_acts(const btn_event_t *ev) {
      * is drawn before the move owns the panel; then the finder slides back
      * in. HOLD (span 0) keeps its rule: the first press acknowledges, the
      * next opens the finder. A finger on the review clears the clock, and
-     * the press goes back to only opening the finder.
+     * the press goes back to only opening the finder. With TIMER 10 S on,
+     * the press starts the count, and it runs on the finder it slides to.
      */
     s_first_review_us = 0;
     fire_shutter();
@@ -10469,6 +10585,11 @@ static uint32_t ui_pass(void) {
         ui_render(render_screen, NULL);
       }
     }
+    if (asleep_now && !was_asleep) {
+      /* The timer setting does not outlive the session it was set in. */
+      s_timer_on = false;
+      s_timer_end_us = 0;
+    }
     was_asleep = asleep_now;
 
     /*
@@ -10783,11 +10904,12 @@ static uint32_t ui_pass(void) {
         }
         if (s_shot_queued) {
           /* The press taken while saving: the next photograph starts now,
-           * review or none. fire_shutter() acknowledges the report and
-           * clears s_shot_seen_us, so the queued shot's own report is seen
-           * when it lands. */
+           * review or none, with no timer in front of it - a timed press
+           * was queued at the count's end. shutter_now() acknowledges the
+           * report and clears s_shot_seen_us, so the queued shot's own
+           * report is seen when it lands. */
           s_shot_queued = false;
-          fire_shutter();
+          shutter_now();
         } else if (r.ok && r.stored >= 2 && s_screen == SCR_SHOOT) {
           const int hold_s = config_int("shoot.displayAfterShotS", 2);
           if (hold_s != 0) {
@@ -10812,7 +10934,7 @@ static uint32_t ui_pass(void) {
        */
       const int hold_s = config_int("shoot.displayAfterShotS", 2);
       if (s_shot_seen_us == 0) {
-        /* fire_shutter() above handed the report to the queued shot: there
+        /* shutter_now() above handed the report to the queued shot: there
          * is nothing left to hold or to time out. */
       } else if (hold_s < 0) {
         s_shot_hold = true;
@@ -10964,9 +11086,10 @@ static uint32_t ui_pass(void) {
        * a second at best. A landing capture is paced against the panel
        * instead, so its 180 ms return is a fade and not three steps, and so
        * is the card pill's pulse, whose 140 ms out would be two frames at
-       * 60. A lift goes straight back round so it is one too. */
+       * 60, and the countdown's ring, which eases every frame. A lift goes
+       * straight back round so it is one too. */
       if (lifting) return 0;
-      return (landing || pill_pulsing()) ? 20 : 60;
+      return (landing || pill_pulsing() || s_timer_end_us != 0) ? 20 : 60;
     }
     /* A lift (undim, wake, a sleep called off) repaints every pass it runs;
      * at the loop's 20 ms on top of the draw it would be a frame every 40. */

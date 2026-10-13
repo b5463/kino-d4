@@ -221,10 +221,11 @@ esp_err_t audio_init(void) { return ESP_OK; }
  * amplifier-did-not-start branch and hidden the normal one entirely. */
 static bool g_audio_ready = true;
 bool audio_ready(void) { return g_audio_ready; }
-/* Counted, so check_shutter_sound() can say which sound a press made. */
-static int g_shutter_n, g_warning_n;
+/* Counted, so check_shutter_sound() can say which sound a press made, and
+ * check_self_timer() how often the count ticked. */
+static int g_shutter_n, g_warning_n, g_tick_n;
 void audio_shutter(void) { g_shutter_n++; }
-void audio_tick(void) {}
+void audio_tick(void) { g_tick_n++; }
 void audio_warning(void) { g_warning_n++; }
 /* ui_pass() calls these; check_wake_into_move() drives ui_pass. */
 void audio_done(void) {}
@@ -1582,7 +1583,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 261
+#define PPMS_PER_HAND 266
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -1591,6 +1592,8 @@ static bool g_land_failed;
  * power-down and the lifts). Each fails the run. */
 static bool g_sound_failed;
 static bool g_motion_failed;
+/* Set when the self-timer breaks one of its rules (check_self_timer). */
+static bool g_timer_failed;
 
 void write_ppm_impl_marker(void);
 static void write_ppm(const char *path, const uint16_t *px, int w, int h) {
@@ -1895,13 +1898,13 @@ static void check_shutter_sound(void) {
     fprintf(stderr, "shutter sound: a press while saving was not queued\n");
     g_sound_failed = true;
   }
-  /* The report lands and ui_pass fires the queued press; fire_shutter()
+  /* The report lands and ui_pass fires the queued press; shutter_now()
    * acknowledges the report first and forgets when it was seen. */
   g_capture_accept = true;
   s_shot_queued = false;
   g_stage = CAPTURE_DONE;
   s_shot_seen_us = 1;
-  fire_shutter();
+  shutter_now();
   sound_expect("the queued press firing", 1, 0);
   if (g_stage != CAPTURE_IDLE || s_shot_seen_us != 0) {
     fprintf(stderr, "shutter sound: the press did not acknowledge the report still up\n");
@@ -2747,6 +2750,98 @@ static void check_review_loop(void) {
   g_audit_off = false;
 }
 
+static void timer_expect(bool ok, const char *what) {
+  if (!ok) {
+    fprintf(stderr, "self-timer: %s\n", what);
+    g_timer_failed = true;
+  }
+}
+
+/*
+ * The self-timer (#237). A tap on TIMER OFF turns it on and says nothing. With
+ * TIMER 10 S the shutter starts the count and takes no photograph; the count
+ * ticks once a second and then every quarter for the last three, 19 ticks
+ * with the press's own, and its end is one capture. A press during it cancels
+ * and says so, leaving the finder does the same, and so does turning the
+ * panel off. Run on the renderer's clock; writes no picture.
+ */
+static void check_self_timer(void) {
+  const screen_t scr0 = s_screen;
+  const capture_stage_t stage0 = g_stage;
+  const bool focus0 = s_focus_shown;
+  const int tfocus0 = s_focus[SCR_SHOOT];
+  g_audit_off = true;
+  s_screen = SCR_SHOOT;
+  s_dialog = DLG_NONE;
+  s_toast[0] = '\0';
+  s_timer_on = false;
+  s_timer_end_us = 0;
+  g_stage = CAPTURE_IDLE;
+  g_capture_accept = true;
+  g_shutter_n = g_warning_n = g_tick_n = 0;
+  const btn_event_t press = {.id = BTN_SHUTTER, .long_press = false};
+
+  scan_conditions();
+  draw_screen();
+  int lx, ly;
+  timer_expect(point_on(SH_IT_TIMER, &lx, &ly), "no point on the TIMER panel");
+  activate(SH_IT_TIMER);
+  timer_expect(s_timer_on && s_toast[0] == '\0', "a tap on TIMER OFF did not turn it on, or it toasted");
+
+  prev_vclock_us = 1000000000;
+  handle_button(&press);
+  timer_expect(s_timer_end_us != 0 && g_shutter_n == 0 && g_tick_n == 1,
+               "a press with TIMER 10 S did not start the count, or it fired");
+  const int64_t end = s_timer_end_us;
+  while (s_timer_end_us != 0 && prev_vclock_us < end + 1000000) {
+    prev_vclock_us += 10000;
+    timer_poll();
+  }
+  if (g_tick_n != 19 || g_shutter_n != 1) {
+    fprintf(stderr, "self-timer: the count made %d ticks and %d shutters, expected 19 and 1\n", g_tick_n,
+            g_shutter_n);
+    g_timer_failed = true;
+  }
+  timer_expect(s_timer_on, "the count's end turned the setting off");
+
+  g_stage = CAPTURE_IDLE;
+  g_shutter_n = 0;
+  handle_button(&press);
+  handle_button(&press);
+  timer_expect(s_timer_end_us == 0 && g_shutter_n == 0 && strcmp(s_toast, "Timer cancelled") == 0,
+               "a press during the count did not cancel it and say so");
+
+  s_toast[0] = '\0';
+  handle_button(&press);
+  s_screen = SCR_MENU;
+  timer_poll();
+  timer_expect(s_timer_end_us == 0 && strcmp(s_toast, "Timer cancelled") == 0,
+               "leaving the finder cancelled the count without saying so");
+
+  s_toast[0] = '\0';
+  s_screen = SCR_SHOOT;
+  handle_button(&press);
+  activate(SH_IT_TIMER);
+  timer_expect(!s_timer_on && s_timer_end_us == 0 && strcmp(s_toast, "Timer cancelled") == 0,
+               "TIMER turned off during the count did not cancel it and say so");
+  timer_expect(g_shutter_n == 0, "a cancelled count took a photograph");
+
+  s_timer_on = false;
+  s_timer_end_us = 0;
+  prev_vclock_us = 0;
+  s_toast[0] = '\0';
+  s_toast_long = false;
+  s_pressed = -1;
+  s_focus_shown = focus0;
+  s_focus[SCR_SHOOT] = tfocus0;
+  g_capture_accept = false;
+  g_shutter_n = g_warning_n = g_tick_n = 0;
+  g_stage = stage0;
+  s_screen = scr0;
+  g_screen_drawn = false;
+  g_audit_off = false;
+}
+
 /* Every scene, in the order they have always been drawn. Run once per hand,
  * each time in a fresh forked process (main). */
 static void scenes(void) {
@@ -2942,6 +3037,32 @@ static void scenes(void) {
   g_free_bytes = 3ULL * 1024 * 1024;
   SHOT(SCR_SHOOT, "shoot_card_full");
   g_free_bytes = PV_FREE_BYTES;
+
+  /* The self-timer (#237): its panel on, and held; then the count as a press
+   * starts it, and with 2.6 s left, the eighth dot caught mid-fade. On the
+   * renderer's clock, so the ring is the same picture every run; the target
+   * sweep in shot() hands the clock back, so it is set for each. */
+  s_timer_on = true;
+  SHOT(SCR_SHOOT, "shoot_timer_on");
+  s_pressed = SH_IT_TIMER;
+  SHOT(SCR_SHOOT, "shoot_timer_pressed");
+  s_pressed = -1;
+  prev_vclock_us = 1000000000;
+  s_timer_end_us = prev_vclock_us + 10LL * 1000000;
+  s_timer_last_s = 10;
+  SHOT(SCR_SHOOT, "shoot_timer_10");
+  prev_vclock_us = 1000000000;
+  s_timer_end_us = prev_vclock_us + 2600000;
+  s_timer_last_s = 3;
+  SHOT(SCR_SHOOT, "shoot_timer_03");
+  s_timer_end_us = 0;
+  prev_vclock_us = 0;
+  s_timer_on = false;
+  /* A look name at the wire's 40 characters, in what the timer panel leaves
+   * the LOOK panel: cut with an ellipsis, inside its own panel. */
+  g_look = "abcdefghij-abcdefghij-abcdefghij-abcdefg";
+  SHOT(SCR_SHOOT, "shoot_long_look");
+  g_look = "party-neg";
 
   /* ---- capture feedback, over the viewfinder it will most often cover ---- */
   s_screen = SCR_SHOOT;
@@ -3730,6 +3851,7 @@ static void scenes(void) {
 
   /* Last, so nothing it touches reaches a picture. */
   check_shutter_sound();
+  check_self_timer();
   check_move_takes_lift();
   check_wake_into_move();
   check_idle_dim();
@@ -3891,6 +4013,10 @@ static int run_hand(bool right, const char *out) {
   }
   if (g_motion_failed) {
     fprintf(stderr, "a fade or a lift steps back or does not end where it should\n");
+    hard = true;
+  }
+  if (g_timer_failed) {
+    fprintf(stderr, "the self-timer broke one of its rules\n");
     hard = true;
   }
   if (g_review_failed) {
