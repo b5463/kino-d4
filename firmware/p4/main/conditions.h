@@ -96,6 +96,12 @@ static inline bool conditions_has(cond_id_t id) {
  * is any good; a card past this is worth a word before it costs a photograph. */
 #define COND_CARD_SLOW_MS 600
 
+/* Under this many photographs left the card is a WARN, and the header and the
+ * SHOOT bar show the count; at or above it they say nothing about the card.
+ * One number, so STATUS and the bars cannot disagree. Six MB a photograph. */
+#define COND_CARD_LOW_SHOTS 50
+#define COND_SHOT_BYTES (6ull * 1024 * 1024)
+
 /**
  * Take a reading. `cams` is camlink's four, already fetched by the caller so
  * this never reaches for the channel itself.
@@ -143,14 +149,14 @@ static void conditions_scan(const camlink_info_t *cams) {
       c->title = "This card is slow";
       snprintf(c->detail, sizeof c->detail, "Photos take longer to save. A faster card helps.");
     }
-    const int shots = (int)(sd.free_bytes / (6ull * 1024 * 1024));
+    const int shots = (int)(sd.free_bytes / COND_SHOT_BYTES);
     if (shots <= 0) {
       cond_t *c = &found[n++];
       c->id = COND_CARD_LOW;
       c->sev = COND_FAULT;
       c->title = "The card is full";
       snprintf(c->detail, sizeof c->detail, "Delete photos or change the card.");
-    } else if (shots < 50) {
+    } else if (shots < COND_CARD_LOW_SHOTS) {
       cond_t *c = &found[n++];
       c->id = COND_CARD_LOW;
       c->sev = COND_WARN;

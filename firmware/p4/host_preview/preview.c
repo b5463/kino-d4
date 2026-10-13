@@ -857,6 +857,10 @@ static bool g_card_mounted = true;
  * is an empty slot or a pulled card. storage.c reports the second as not
  * present with CARD_REMOVED (or a mount error from boot) set. */
 static bool g_card_present = true;
+/* Free space on the mounted card: 4871 photographs by default, so the bars
+ * say nothing about it. A scene sets it under COND_CARD_LOW_SHOTS and back. */
+#define PV_FREE_BYTES 30648041472ULL
+static unsigned long long g_free_bytes = PV_FREE_BYTES;
 
 /* The preview stands in for a body that has been plugged into Studio, so its
  * clock has a source and the screens that report one have something to
@@ -882,7 +886,7 @@ void storage_get_status(storage_status_t *out) {
   out->mounted = true;
   out->filesystem = "FAT";
   out->capacity_bytes = 31914983424ULL;
-  out->free_bytes = 30648041472ULL;
+  out->free_bytes = g_free_bytes;
   out->write_test = "pass";
 }
 
@@ -1540,7 +1544,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 243
+#define PPMS_PER_HAND 245
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -2555,6 +2559,14 @@ static void scenes(void) {
   g_vf_dead = 0;
   g_flash_mode = "auto";
   g_mode = "wiggle";
+
+  /* 31 photographs left, under COND_CARD_LOW_SHOTS: the card panel appears
+   * on the bar, and in a header beside the lens chip, which outranks the
+   * card condition and so does not name it. */
+  g_free_bytes = 31ULL * 6 * 1024 * 1024 + 1000;
+  SHOT(SCR_SHOOT, "shoot_card_low");
+  SHOT(SCR_SETTINGS, "settings_card_low");
+  g_free_bytes = PV_FREE_BYTES;
 
   /* The back button held down, over a bright scene. It is the only control on
    * the screen and its press was an ink change on a fade until 0.4.17. */

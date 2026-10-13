@@ -27,11 +27,11 @@ The chip names the worst open condition when it is a PROBLEM or a CHECK, red on 
 | `NO SERVER` | A Roll is joined and no Roll server is set. |
 | `PROBLEM` / `CHECK` | A condition with no short name. None today. |
 
-Beside the chip, the readings:
+Beside the chip, the readings. The card reading is on the header and the SHOOT bar only when the card is short or missing: under `COND_CARD_LOW_SHOTS` (50) photographs left, full, or not mounted. A healthy card says nothing there.
 
 | Text | When |
 |---|---|
-| `4571 SHOTS` | Card mounted, photographs left at 6 MB each. |
+| `31 LEFT` | Card mounted and under 50 left, at 6 MB a photograph. |
 | `LAST 5` .. `LAST 1` | Five or fewer left. |
 | `CARD FULL` | None left. |
 | `NO CARD` / `CARD OUT` / `CARD UNREADABLE` | No card mounted: none in the slot, pulled while running, or in the slot and not mounted. Not shown while the chip names the card. |
@@ -128,7 +128,8 @@ The rows at the foot of STATUS:
 
 | Text | When |
 |---|---|
-| Card ready, 4571 SHOTS | A card was put in while running and mounted. |
+| Card ready, 4571 left | A card was put in while running and mounted. |
+| Card full. Delete photos | The same, and the card has no room. |
 | Card taken out. Photos cannot be saved | The card was pulled while running. |
 | Card busy. Try again | The card lock was held for two seconds by a capture or an upload. |
 | Card formatted | FORMAT finished. |
@@ -186,7 +187,7 @@ calls and fails when one of them is not in this table.
 |---|---|
 | `SHOOT` / `LOOK` / `GALLERY` / `ROLL` / `SETTINGS` / `POWER` | The six tiles. SHOOT is the large card. |
 | `TAP TO OPEN` | On the menu's large card. |
-| `CAMERA  4571 SHOTS` | The card's line when nothing is wrong: the card in the header chip's words. The worst condition's title takes its place when there is one, over two lines when one is too short. |
+| `CAMERA  4571 LEFT` | The card's line when nothing is wrong: the card in the header's words. The worst condition's title takes its place when there is one, over two lines when one is too short. |
 
 ### LOOK
 
@@ -271,7 +272,7 @@ calls and fails when one of them is not in this table.
 | `1 MIN` / `2 MIN` / `5 MIN` | Display's value: the sleep time, in the DISPLAY band's words. |
 | `OFF` / `LOW` / `MEDIUM` / `HIGH` | Sound's value: OFF when both sounds are off, else the volume in the SOUND band's words. |
 | `Not connected` | Connection's value with no network; otherwise the network's name. |
-| `4571 SHOTS` / `NO CARD` | Storage's value, in the header chip's words. About's value is the firmware version. |
+| `4571 LEFT` / `NO CARD` | Storage's value, in the header's words, always shown. About's value is the firmware version. |
 | `The card is full, and 2 more` | Status's value: the worst condition, and how many others. |
 
 ### SETTINGS > DISPLAY

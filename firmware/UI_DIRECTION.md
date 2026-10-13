@@ -30,7 +30,7 @@ Logical space is `UI_W` x `UI_H`, 800 x 480 px, landscape. The panel's own long 
 | Screen | Opened from | Back goes to | What it does |
 |---|---|---|---|
 | `SCR_MENU` | Boot, and Back from the top level | stays | The SHOOT card and five rows: LOOK, GALLERY, ROLL, SETTINGS, POWER. |
-| `SCR_SHOOT` | The SHOOT card | `SCR_MENU` | The four streams, a quarter of the panel each, edge to edge. A MENU button on the hand's side. A 34 px status bar at the foot with the look, the mode, the flash and the card; a press on the bar opens LOOK. |
+| `SCR_SHOOT` | The SHOOT card | `SCR_MENU` | The four streams, a quarter of the panel each, edge to edge. A MENU button on the hand's side. A 34 px status bar at the foot with the look, the mode, the flash, the four, and the card only when it is missing or under `COND_CARD_LOW_SHOTS` photographs left; a press on the bar opens LOOK. |
 | `SCR_LOOK` | The LOOK row, or the SHOOT bar | `SCR_MENU`, or `SCR_SHOOT` when opened from it | The look picker, COLOUR or B&W, WIGGLE or QUAD, FLASH AUTO, ON or OFF, and in QUAD which lens. |
 | `SCR_GALLERY` | The GALLERY row | `SCR_MENU` | Three by two tiles of 252 x 189 px, the page pair in the header, `n / N` beside the title. |
 | `SCR_PHOTO` | A gallery tile, and after a shot | `SCR_GALLERY`; `SCR_SHOOT` after a shot | The photograph in a 600 x 450 well, playing. A 162 px column on the hand's side: the facts, previous and next, DELETE, SEND TO ROLL, FAVOURITE. |

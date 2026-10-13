@@ -508,19 +508,27 @@ static const net_status_t *net_status(void) {
  *
  * If the list fills, the frame is drawn the old way; nothing is lost.
  */
-/* The card in the words the chips use, from one place: the header chip, the
- * SHOOT bar and the menu card each said it their own way. Six MB a
- * photograph. The last five are counted down, and a full card says so. */
+/* The card in the words the bars use, from one place: the header, the SHOOT
+ * bar and the menu card each said it their own way. Six MB a photograph,
+ * counted as what is LEFT: "4871 SHOTS" beside "14 PHOTOS" read as photographs
+ * taken. The last five are counted down, and a full card says so. */
 static void card_words(char *out, size_t cap, const storage_status_t *sd) {
   if (!sd->mounted) {
     /* A card in the slot that would not mount is not "no card". */
     snprintf(out, cap, "%s", sd->removed ? "CARD OUT" : sd->present ? "CARD UNREADABLE" : "NO CARD");
     return;
   }
-  const int shots = (int)(sd->free_bytes / (6ull * 1024 * 1024));
+  const int shots = (int)(sd->free_bytes / COND_SHOT_BYTES);
   if (shots <= 0) snprintf(out, cap, "CARD FULL");
   else if (shots <= 5) snprintf(out, cap, "LAST %d", shots);
-  else snprintf(out, cap, "%d SHOTS", shots);
+  else snprintf(out, cap, "%d LEFT", shots);
+}
+
+/* Whether the card is worth a word on a bar: none mounted, or under the
+ * COND_CARD_LOW line. A healthy card says nothing at rest; the count is on
+ * SETTINGS and STORAGE for whoever asks. */
+static bool card_abnormal(const storage_status_t *sd) {
+  return !sd->mounted || (int)(sd->free_bytes / COND_SHOT_BYTES) < COND_CARD_LOW_SHOTS;
 }
 
 /* A count whose noun changes with it, "1 photo" or "12 photos", then what
@@ -3386,9 +3394,10 @@ static int chrome_state(int left, int right, int y, uint16_t ink, const char *fi
   char cnt[24] = "";
   if (chip) chip_words(cnt, sizeof cnt, worst);
 
-  /* The card, unless the chip already names it. */
+  /* The card, only when it is short or missing, and not when the chip
+   * already names it. */
   char card[24] = "";
-  if (!(chip && cond_is_card(worst->id))) card_words(card, sizeof card, &sd);
+  if (card_abnormal(&sd) && !(chip && cond_is_card(worst->id))) card_words(card, sizeof card, &sd);
 
   /* Spatial order, left to right, with the priority each one is kept by. */
   struct {
@@ -4548,17 +4557,19 @@ static void draw_shoot(void) {
    * the picture rather than a keyline that belongs to neither. */
 
   /* The card and the power source, in their own panels beside the camera
-   * count. The viewfinder is where someone stands with the body in their
-   * hands deciding whether to keep shooting, and how many photographs are
-   * left and what it is running on are the two facts that decision is made
-   * of. There is no fuel gauge on this board, so the power panel says where
-   * the power comes from and not how much of it there is. */
+   * count, and only when they have something to say. The card speaks when it
+   * is short or missing: a healthy card's count is a number nobody acts on,
+   * and the finder is for the picture. There is no fuel gauge on this board,
+   * so the power panel says where the power comes from and not how much of
+   * it there is. A panel with nothing to say is not drawn: no width, no gap. */
   const storage_status_t sd_bar = *sd_status();
-  char card_bar[24];
-  card_words(card_bar, sizeof card_bar, &sd_bar);
+  char card_bar[24] = "";
+  if (card_abnormal(&sd_bar)) card_words(card_bar, sizeof card_bar, &sd_bar);
   const char *const pwr_bar = power_words(usb_attached());
-  const int w_card = text_w(K_TYPE_CAPTION, card_bar) + 2 * SH_PN_PAD;
-  const int w_pwr = text_w(K_TYPE_CAPTION, pwr_bar) + 2 * SH_PN_PAD;
+  const int w_card = card_bar[0] != '\0' ? text_w(K_TYPE_CAPTION, card_bar) + 2 * SH_PN_PAD : 0;
+  const int w_pwr = pwr_bar != NULL ? text_w(K_TYPE_CAPTION, pwr_bar) + 2 * SH_PN_PAD : 0;
+  const int g_card = w_card > 0 ? SH_PN_GAP : 0;
+  const int g_pwr = w_pwr > 0 ? SH_PN_GAP : 0;
 
   /*
    * Two groups, and the hand decides which end each takes.
@@ -4576,7 +4587,7 @@ static void draw_shoot(void) {
    * elastic panel is the one that can afford to cut it.
    */
   const bool set_down = s_pressed == SH_IT_LOOK;
-  const int w_read = w_cams + SH_PN_GAP + w_pwr + SH_PN_GAP + w_card;
+  const int w_read = w_cams + g_pwr + w_pwr + g_card + w_card;
   const int read_x0 = s_right_hand ? PAGE_M : UI_W - PAGE_M - w_read;
   const int set_x0 = s_right_hand ? read_x0 + w_read + SH_PN_GAP : PAGE_M;
   const int set_x1 = s_right_hand ? UI_W - PAGE_M : UI_W - PAGE_M - w_read - SH_PN_GAP;
@@ -4587,15 +4598,15 @@ static void draw_shoot(void) {
   int cams_x, pwr_x, card_x;
   if (s_right_hand) {
     cams_x = read_x0;
-    pwr_x = cams_x + w_cams + SH_PN_GAP;
-    card_x = pwr_x + w_pwr + SH_PN_GAP;
+    pwr_x = cams_x + w_cams + g_pwr;
+    card_x = pwr_x + w_pwr + g_card;
   } else {
     card_x = read_x0;
-    pwr_x = card_x + w_card + SH_PN_GAP;
-    cams_x = pwr_x + w_pwr + SH_PN_GAP;
+    pwr_x = card_x + w_card + g_card;
+    cams_x = pwr_x + w_pwr + g_pwr;
   }
-  sh_panel(card_x, w_card, card_bar, false);
-  sh_panel(pwr_x, w_pwr, pwr_bar, false);
+  if (w_card > 0) sh_panel(card_x, w_card, card_bar, false);
+  if (w_pwr > 0) sh_panel(pwr_x, w_pwr, pwr_bar, false);
 
   /* The decisions, mode outermost, look nearest the readings. */
   int mode_x, flash_x, look_x;
@@ -9635,10 +9646,11 @@ static void storage_events_poll(void) {
     storage_get_status(&sd);
     gallery_refresh();
     if (ev == STORAGE_EV_MOUNTED) {
-      char w[24];
-      card_words(w, sizeof w, &sd);
+      /* In a sentence, not the bars' capitals: "Card ready, 4871 SHOTS". */
+      const int left = (int)(sd.free_bytes / COND_SHOT_BYTES);
       char line[48];
-      snprintf(line, sizeof line, "Card ready, %s", w);
+      if (left > 0) snprintf(line, sizeof line, "Card ready, %d left", left);
+      else snprintf(line, sizeof line, "Card full. Delete photos");
       toast(line);
       audio_done();
     } else {
