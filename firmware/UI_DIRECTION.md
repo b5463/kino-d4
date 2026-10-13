@@ -47,7 +47,7 @@ Logical space is `UI_W` x `UI_H`, 800 x 480 px, landscape. The panel's own long 
 Rules that hold on every screen:
 
 - Back goes one level, to `SCREEN_PARENT`, never to a remembered screen. LOOK opened from the finder is the one exception.
-- The shutter key takes a photograph from any screen, and the capture strip reports it over whatever is on the glass. A long press starts the self-timer; any press while it runs cancels it.
+- The shutter key takes a photograph from any screen, and the capture strip reports it over whatever is on the glass. Every key acts on its down edge; a long press does nothing. The self-timer has no way in until the TIMER panel lands on SHOOT; any press while it runs cancels it.
 - A screen sets `s_list_top` while it draws, and the hit test reads it afterwards. A rectangle the hit test computes on its own is the bug `ui.c` kept finding.
 - After a good shot on SHOOT the photograph opens for review, for the longer of `shoot.displayAfterShotS` and `MOTION_REVIEW_MIN_S`, plus `MOTION_REVIEW_TAIL_MS`, then returns to the finder. `-1` holds it until a touch.
 

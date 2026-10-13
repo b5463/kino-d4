@@ -1819,19 +1819,19 @@ static void check_shutter_sound(void) {
   g_capture_ready = false;
   g_capture_accept = false;
   g_stage = CAPTURE_IDLE;
-  fire_shutter(false);
+  fire_shutter();
   sound_expect("a press the pipeline refused", 0, 1);
   g_capture_ready = true;
 
   g_capture_accept = true;
-  fire_shutter(false);
+  fire_shutter();
   sound_expect("an accepted press", 1, 0);
 
   g_capture_accept = false;
   g_stage = CAPTURE_READING;
   s_shot_queued = false;
-  fire_shutter(false);
-  fire_shutter(false);
+  fire_shutter();
+  fire_shutter();
   sound_expect("two presses while saving", 0, 0);
   if (!s_shot_queued) {
     fprintf(stderr, "shutter sound: a press while saving was not queued\n");
@@ -1841,13 +1841,34 @@ static void check_shutter_sound(void) {
   g_capture_accept = true;
   s_shot_queued = false;
   capture_ack();
-  fire_shutter(false);
+  fire_shutter();
   sound_expect("the queued press firing", 1, 0);
 
   g_capture_accept = false;
   g_stage = CAPTURE_IDLE;
-  fire_shutter(false);
+  fire_shutter();
   sound_expect("an ignored press", 0, 0);
+
+  /* A long press does nothing, on SHOOT or off it: the down edge already
+   * took the photograph or opened the finder, and the hold is the same
+   * press (buttons.c reports it 600 ms later). */
+  const btn_event_t held = {.id = BTN_SHUTTER, .long_press = true};
+  const btn_event_t held_fn = {.id = BTN_FN, .long_press = true};
+  const bool focus0 = s_focus_shown;
+  const int flash0 = flash_index();
+  g_capture_accept = true;
+  handle_button(&held);
+  handle_button(&held_fn);
+  sound_expect("a long press on SHOOT", 0, 0);
+  s_screen = SCR_MENU;
+  handle_button(&held);
+  if (s_screen != SCR_MENU || s_timer_end_us != 0 || flash_index() != flash0) {
+    fprintf(stderr, "shutter sound: a long press acted (screen %d, timer %lld, flash %d -> %d)\n", (int)s_screen,
+            (long long)s_timer_end_us, flash0, flash_index());
+    g_sound_failed = true;
+  }
+  s_focus_shown = focus0;
+  g_capture_accept = false;
 
   memcpy(s_toast, toast0, sizeof toast0);
   s_toast_us = toast_us0;

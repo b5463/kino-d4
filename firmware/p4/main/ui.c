@@ -7894,10 +7894,11 @@ static void lens_hint_poll(void) {
 }
 
 /*
- * The self-timer: a long press on the shutter starts ten seconds, counted
- * down on the finder with a tick a second; any press during it cancels. The
- * camera is for groups, and the person holding it wants to be in the
- * picture.
+ * The self-timer: ten seconds, counted down on the finder with a tick a
+ * second; any press during it cancels. The camera is for groups, and the
+ * person holding it wants to be in the picture. Nothing starts it at the
+ * moment: it used to be a long press, which every held shutter set off by
+ * accident (handle_button). It returns as the TIMER panel on SHOOT (#237).
  */
 #define TIMER_S 10
 static int64_t s_timer_end_us;
@@ -8272,7 +8273,7 @@ static void draw_screen(void) {
 /* Navigation                                                          */
 /* ------------------------------------------------------------------ */
 
-static void fire_shutter(bool long_press);
+static void fire_shutter(void);
 
 /* MOTION_OPEN_MS, MOTION_BACK_MS and MOTION_CASCADE_MS are in ui_motion.h,
  * included at the top: the photograph screen's page step starts a move and
@@ -9192,17 +9193,10 @@ static void activate(int item) {
  * capture runs, the strip reports it over whatever was on screen, and the
  * screen does not change underneath you.
  */
-static void fire_shutter(bool long_press) {
+static void fire_shutter(void) {
   if (s_timer_end_us != 0) {
     /* Any press while the timer runs is "no". */
     timer_cancel("Timer cancelled");
-    return;
-  }
-  if (long_press) {
-    s_timer_end_us = esp_timer_get_time() + (int64_t)TIMER_S * 1000000;
-    s_timer_last_s = TIMER_S;
-    audio_tick();
-    ui_render(render_screen, NULL);
     return;
   }
   /*
@@ -9244,7 +9238,7 @@ static void timer_poll(void) {
   const int64_t left = s_timer_end_us - esp_timer_get_time();
   if (left <= 0) {
     s_timer_end_us = 0;
-    fire_shutter(false);
+    fire_shutter();
     return;
   }
   const int secs = (int)((left + 999999) / 1000000);
@@ -9321,6 +9315,12 @@ static void on_button(button_id_t id, bool long_press) {
  *
  * Called only from ui_task, via the queue above. */
 static void handle_button(const btn_event_t *ev) {
+  /* A long press does nothing. Every key acts on its down edge, so by the
+   * time buttons.c reports the hold at 600 ms the press has been spent.
+   * Acting on it again took a photograph and then armed the self-timer,
+   * opened SHOOT and then armed it there, cleared a held report and then
+   * armed it, or stepped the flash twice. */
+  if (ev->long_press) return;
   /* A physical key was used: from here on the focus ring is drawn. This is
    * the only place that flips it, matching the contract at s_focus_shown. */
   s_focus_shown = true;
@@ -9341,7 +9341,7 @@ static void handle_button(const btn_event_t *ev) {
     go(SCR_SHOOT, MOTION_OPEN_MS);
     return;
   }
-  fire_shutter(ev->long_press);
+  fire_shutter();
 }
 
 /* Drained once per loop iteration, before anything reads the touch panel: a
@@ -10156,7 +10156,7 @@ static uint32_t ui_pass(void) {
            * the next photograph starts now, review or none. */
           s_shot_queued = false;
           capture_ack();
-          fire_shutter(false);
+          fire_shutter();
         } else if (r.ok && r.stored >= 2 && s_screen == SCR_SHOOT) {
           const int hold_s = config_int("shoot.displayAfterShotS", 2);
           if (hold_s != 0) {

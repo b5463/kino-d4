@@ -87,7 +87,7 @@ The rows at the foot of STATUS:
 | `SAVING - NEXT SHOT QUEUED` | A second shutter press landed while saving; it fires when the report does. |
 | `TAKE THE LENS COVER OFF` | On SHOOT, every pane was lit and then all went dark for a second: the cover went on. A body switched on facing the desk says nothing. |
 | `CHECK THE SECOND LENS` | On SHOOT, one pane was lit and then went a third as bright as the rest for a second while the others stayed lit. The word is one of `FIRST` / `SECOND` / `THIRD` / `FOURTH`. |
-| `10` .. `1`, `SELF-TIMER.  PRESS TO CANCEL` | A long shutter press started the timer. |
+| `10` .. `1`, `SELF-TIMER.  PRESS TO CANCEL` | The self-timer counting down. Nothing starts it in this firmware: a long press no longer does. It returns with the TIMER panel on SHOOT. |
 | `SAVED` | Every lens that answered is on the card. |
 | `SAVED, 1 CAMERA MISSED` | A partial photograph; the cells show which. |
 | `No card. Put one in.` | Shutter with no card. |
