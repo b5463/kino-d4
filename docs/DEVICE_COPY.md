@@ -6,7 +6,7 @@ How to read the table: `N`, `12` or `4571` stands for a number the camera fills 
 
 ## The rule
 
-The person holding the camera has read nothing and will not phone anyone. Each line names what happened and, when there is one, what to do about it. Under 40 characters for a toast, one short line for a banner, two for a dialog. Plain words: lens, photo, card, cells. No codes, no camera numbers, no contract names on the glass; those go to the log and the KDP reply. Known exceptions still on the glass: the LOOK TARGET band and the ABOUT lens rows (#235). Values on a band or in a reading are in capitals: `15 S`, `2 MIN`, `MEDIUM`.
+The person holding the camera has read nothing and will not phone anyone. Each line names what happened and, when there is one, what to do about it. Under 40 characters for a toast, one short line for a banner, two for a dialog. Plain words: lens, photo, card, cells. No codes, no camera numbers, no contract names on the glass; those go to the log and the KDP reply. Known exception still on the glass: the ABOUT lens rows (#235). The LOOK TARGET band names each lens by the four-mark with its cell lit. Values on a band or in a reading are in capitals: `15 S`, `2 MIN`, `MEDIUM`.
 
 ## Header chip
 
@@ -208,7 +208,7 @@ calls and fails when one of them is not in this table.
 | `AUTO` / `ON` / `OFF` | The flash band. |
 | `COLOUR` / `B&W` | The colour band. |
 | `TARGET` | The band that picks which lens the next look lands on. QUAD only. |
-| `CAM1` / `CAM2` / `CAM3` / `CAM4` / `ALL` | The target band's choices, ALL at the hand's end. |
+| `ALL` | The target band's one word, at the hand's end. The four lenses beside it are the four-mark with that lens's cell lit, no words. |
 | `Four cameras, four looks. Pick one to see it.` | QUAD, under the card: what the mode does. |
 | `AT CAPTURE` | The look is applied when the photograph is taken, not to the finder. |
 | `Sets nothing on the sensor.` | A look that carries no sensor settings of its own. |

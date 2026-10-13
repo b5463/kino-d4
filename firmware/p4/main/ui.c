@@ -1918,6 +1918,19 @@ static void four_mark(int x, int y, int cell, const fm_cell_t *st, bool dark) {
   four_mark_gap(x, y, cell, st, FM_GAP);
 }
 
+/*
+ * One lens, named by its place in the row: the four-mark at 14 px with cell
+ * `lens` in `ink` and the other three a quarter tone of it on `bg`, centred
+ * on (cx, cy). It replaced CAM1..CAM4 on LOOK's TARGET band, the last camera
+ * numbers on the glass but ABOUT's.
+ */
+static void lens_glyph(int cx, int cy, int lens, uint16_t ink, uint16_t bg) {
+  const int c = 14, w = 4 * c + 3 * FM_GAP;
+  const int x = cx - w / 2, y = cy - c / 2;
+  const uint16_t quiet = mix(bg, ink, 64);
+  for (int k = 0; k < 4; k++) fill(x + k * (c + FM_GAP), y, c, c, k == lens ? ink : quiet);
+}
+
 /* ------------------------------------------------------------------ */
 /* The icon set                                                        */
 /*                                                                     */
@@ -5129,8 +5142,10 @@ static void draw_look(void) {
 
   static const char *const MODE_NAMES[2] = {"WIGGLE", "QUAD"};
   static const char *const COLOR_NAMES[2] = {"COLOUR", "B&W"};
-  static const char *const TARGET_R[5] = {"CAM1", "CAM2", "CAM3", "CAM4", "ALL"};
-  static const char *const TARGET_L[5] = {"ALL", "CAM1", "CAM2", "CAM3", "CAM4"};
+  /* The four lenses have no words: each is drawn as the four-mark with its
+   * own cell lit (lens_glyph(), after the band). ALL stays a word. */
+  static const char *const TARGET_R[5] = {"", "", "", "", "ALL"};
+  static const char *const TARGET_L[5] = {"ALL", "", "", "", ""};
   const char *const *TARGET_NAMES = s_right_hand ? TARGET_R : TARGET_L;
 
   const int p0 = s_pressed;
@@ -5213,9 +5228,20 @@ static void draw_look(void) {
   if (quad) {
     const int gy = lk_tgt_y(quad);
     text(K_TYPE_CAPTION, PAGE_M, gy, "TARGET", K_INK_QUIET);
-    draw_segments(PAGE_M, gy + LK_CAP_H, LK_W, LK_CTL_H, TARGET_NAMES, 5,
-                  lk_seg_of_target(s_look_target), band_rel(p0, LK_IT_TARGET, 5),
+    const int sel = lk_seg_of_target(s_look_target), pr = band_rel(p0, LK_IT_TARGET, 5);
+    draw_segments(PAGE_M, gy + LK_CAP_H, LK_W, LK_CTL_H, TARGET_NAMES, 5, sel, pr,
                   band_rel(f0, LK_IT_TARGET, 5));
+    /* The segments' own geometry (draw_segments: w / count each), and the
+     * fill each one has under it, so the three quiet cells are a tone of
+     * the ink on that fill. */
+    const int cw = LK_W / 5;
+    for (int seg = 0; seg < 5; seg++) {
+      const int lens = lk_target_of_seg(seg) - 1;
+      if (lens < 0) continue;
+      const bool on = seg == sel;
+      const uint16_t bg = on ? K_ON : seg == pr ? K_OFF : K_SURFACE;
+      lens_glyph(PAGE_M + seg * cw + cw / 2, gy + LK_CAP_H + LK_CTL_H / 2, lens, on ? K_ON_INK : K_INK, bg);
+    }
   }
 }
 
