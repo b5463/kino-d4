@@ -267,7 +267,16 @@ int config_int(const char *path, int fallback) {
   if (strcmp(path, "shoot.volume") == 0) return 6;
   return fallback;
 }
-bool config_bool(const char *path, bool fallback) { return fallback; }
+/* Set by check_self_timer(): SOUND's UI row off, to hear the count go quiet,
+ * and a body already measured, so its reports start no calibration whose
+ * toast would cover the one it checks. Every other flag is its default. */
+static bool g_sounds_ui = true;
+static bool g_calibrated = false;
+bool config_bool(const char *path, bool fallback) {
+  if (!g_sounds_ui && strcmp(path, "body.sounds.ui") == 0) return false;
+  if (g_calibrated && strcmp(path, "body.calibration.done") == 0) return true;
+  return fallback;
+}
 /* Driven from main() so one run can photograph a setting in each of its
  * states. The device reads these back through config_str after writing them;
  * here main() sets them directly, which is the same thing from the drawing
@@ -2757,13 +2766,36 @@ static void timer_expect(bool ok, const char *what) {
   }
 }
 
+/* `n` passes of ui_pass, each on the clock it asks for. */
+static void timer_passes(int n) {
+  for (int i = 0; i < n; i++) {
+    const uint32_t wait = ui_pass();
+    prev_vclock_us += (int64_t)(wait > 0 ? wait : 1) * 1000;
+  }
+}
+
+/* A shutter press while the last photograph is still saving, with TIMER 10 S:
+ * the count starts, and that save's report (g_report) lands `passes` passes
+ * later, mid-count. */
+static void timer_lands_mid_count(int passes) {
+  const btn_event_t press = {.id = BTN_SHUTTER, .long_press = false};
+  g_stage = CAPTURE_READING;
+  handle_button(&press);
+  timer_passes(5);
+  g_stage = CAPTURE_DONE;
+  s_shot_seen_us = 0;
+  timer_passes(passes);
+}
+
 /*
  * The self-timer (#237). A tap on TIMER OFF turns it on and says nothing. With
  * TIMER 10 S the shutter starts the count and takes no photograph; the count
  * ticks once a second and then every quarter for the last three, 19 ticks
- * with the press's own, and its end is one capture. A press during it cancels
- * and says so, leaving the finder does the same, and so does turning the
- * panel off. Run on the renderer's clock; writes no picture.
+ * with the press's own, and its end is one capture. Either key or a tap on
+ * the picture during it cancels and says so, leaving the finder does the
+ * same, and so does turning the panel off. A report landing during the count
+ * opens no review, and under HOLD it does not eat the cancel. With UI sounds
+ * off the count is silent. Run on the renderer's clock; writes no picture.
  */
 static void check_self_timer(void) {
   const screen_t scr0 = s_screen;
@@ -2826,6 +2858,121 @@ static void check_self_timer(void) {
                "TIMER turned off during the count did not cancel it and say so");
   timer_expect(g_shutter_n == 0, "a cancelled count took a photograph");
 
+  /* FN is a press too: it cancels and does not step the flash. */
+  const btn_event_t fn = {.id = BTN_FN, .long_press = false};
+  const int flash0 = flash_index();
+  s_timer_on = true;
+  s_toast[0] = '\0';
+  handle_button(&press);
+  handle_button(&fn);
+  timer_expect(s_timer_end_us == 0 && g_shutter_n == 0 && strcmp(s_toast, "Timer cancelled") == 0 &&
+                   flash_index() == flash0,
+               "FN during the count did not cancel it and say so, or it stepped the flash");
+
+  /* The rest runs through ui_pass, the loop the camera runs. */
+  g_calibrated = true;
+  s_btn_q = xQueueCreate(4, sizeof(btn_event_t));
+  g_power_stage = POWER_AWAKE;
+  s_anim.kind = ANIM_NONE;
+  s_dim_k = 0;
+  s_dim_since_us = 0;
+  s_lift_us = 0;
+  s_sleep_mark = false;
+  s_sleep_stage = -1;
+  was_asleep = false;
+  s_pressed = -1;
+  held = -1;
+  swallow_touch = false;
+
+  /* A tap on the picture cancels, as the caption says. */
+  s_toast[0] = '\0';
+  draw_screen();
+  int px = UI_W / 2, py = UI_H / 2;
+  if (hit_test(px, py) >= 0 || at_hand_edge(px))
+    timer_expect(point_on(-1, &px, &py), "no point on SHOOT's picture outside every target");
+  handle_button(&press);
+  finger_at(px, py);
+  g_touch_ready = true;
+  g_touch_down = true;
+  timer_passes(3);
+  g_touch_down = false;
+  timer_passes(3);
+  g_touch_ready = false;
+  timer_expect(s_screen == SCR_SHOOT && s_timer_end_us == 0 && g_shutter_n == 0 &&
+                   strcmp(s_toast, "Timer cancelled") == 0,
+               "a tap on the picture during the count did not cancel it and say so");
+
+  /* The last photograph's report lands while it counts, with AFTER SHOT 2 S:
+   * no review opens, the count runs on, and its end is the next capture. */
+  memset(&g_report, 0, sizeof g_report);
+  g_report.ok = true;
+  snprintf(g_report.id, sizeof g_report.id, "CAP_000042");
+  g_report.stored = 4;
+  g_report.online = 4;
+  report_cams(0xF, 0xF);
+  s_toast[0] = '\0';
+  timer_lands_mid_count(50);
+  if (s_screen != SCR_SHOOT || anim_active() || s_timer_end_us == 0 || s_toast[0] != '\0') {
+    fprintf(stderr, "self-timer: a report landing during the count left screen %d, move %d, count %s, toast '%s'\n",
+            (int)s_screen, (int)anim_active(), s_timer_end_us != 0 ? "running" : "stopped", s_toast);
+    g_timer_failed = true;
+  }
+  for (int guard = 0; guard < 2000 && s_timer_end_us != 0; guard++) timer_passes(1);
+  timer_expect(s_screen == SCR_SHOOT && g_shutter_n == 1, "the count's end after a landed report took no photograph");
+
+  /* Under HOLD the report is held while it counts. The shutter still cancels,
+   * and so does a tap; the report waits for the next press. */
+  g_after_shot_s = -1;
+  g_shutter_n = 0;
+  s_toast[0] = '\0';
+  timer_lands_mid_count(20);
+  timer_expect(s_shot_hold && s_screen == SCR_SHOOT && s_timer_end_us != 0,
+               "under HOLD a report landing during the count did not wait on SHOOT");
+  on_button(BTN_SHUTTER, false);
+  timer_passes(3);
+  timer_expect(s_timer_end_us == 0 && s_shot_hold && g_shutter_n == 0 && strcmp(s_toast, "Timer cancelled") == 0,
+               "under HOLD the shutter during the count acknowledged the report instead of cancelling");
+  /* That report is still up, so the next press only acknowledges it. */
+  handle_button(&press);
+  timer_expect(!s_shot_hold && s_timer_end_us == 0 && g_shutter_n == 0,
+               "under HOLD the press after a cancel did not only acknowledge the report");
+  s_toast[0] = '\0';
+  timer_lands_mid_count(20);
+  g_touch_ready = true;
+  g_touch_down = true;
+  timer_passes(3);
+  g_touch_down = false;
+  timer_passes(3);
+  g_touch_ready = false;
+  if (s_timer_end_us != 0 || !s_shot_hold || g_shutter_n != 0 || strcmp(s_toast, "Timer cancelled") != 0) {
+    fprintf(stderr, "self-timer: under HOLD a tap during the count left count %s, report %s, %d shutters, toast '%s'\n",
+            s_timer_end_us != 0 ? "running" : "stopped", s_shot_hold ? "held" : "gone", g_shutter_n, s_toast);
+    g_timer_failed = true;
+  }
+  shot_hold_ack();
+  g_after_shot_s = 2;
+
+  /* SOUND's UI OFF: the count is silent and still ends in one capture. */
+  g_sounds_ui = false;
+  g_stage = CAPTURE_IDLE;
+  g_shutter_n = g_tick_n = 0;
+  s_toast[0] = '\0';
+  handle_button(&press);
+  const int64_t quiet_end = s_timer_end_us;
+  while (s_timer_end_us != 0 && prev_vclock_us < quiet_end + 1000000) {
+    prev_vclock_us += 10000;
+    timer_poll();
+  }
+  timer_expect(g_tick_n == 0 && g_shutter_n == 1, "with UI sounds off the count still ticked, or it took no photograph");
+  g_sounds_ui = true;
+  g_calibrated = false;
+
+  s_btn_q = NULL;
+  s_anim.kind = ANIM_NONE;
+  held = -1;
+  swallow_touch = false;
+  s_shot_seen_us = 0;
+  s_shot_hold = false;
   s_timer_on = false;
   s_timer_end_us = 0;
   prev_vclock_us = 0;

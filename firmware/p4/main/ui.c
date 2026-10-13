@@ -8285,8 +8285,8 @@ static bool pill_pulsing(void) {
 /*
  * The self-timer: with TIMER 10 S on SHOOT's bar, a shutter press starts ten
  * seconds, counted down on the finder with a tick a second and four a second
- * for the last three; any press during it cancels, and so does leaving the
- * finder. The camera is for groups, and the person holding it wants to be in
+ * for the last three; either key or a tap on the picture during it cancels
+ * (key_acts, ui_pass), and so does leaving the finder. The camera is for groups, and the person holding it wants to be in
  * the picture.
  *
  * It used to be a long press. Every key acts on its down edge, so a held
@@ -9817,7 +9817,8 @@ static void activate(int item) {
  */
 static void fire_shutter(void) {
   if (s_timer_end_us != 0) {
-    /* Any press while the timer runs is "no". */
+    /* Any press while the timer runs is "no". key_acts() says it first;
+     * this keeps a second count from starting over the first. */
     timer_cancel("Timer cancelled");
     return;
   }
@@ -9825,7 +9826,8 @@ static void fire_shutter(void) {
     s_timer_end_us = esp_timer_get_time() + (int64_t)TIMER_S * 1000000;
     s_timer_last_s = TIMER_S;
     s_timer_last_q = TIMER_S * 4;
-    audio_tick();
+    /* The count's ticks are UI sounds: SOUND's UI OFF silences them too. */
+    if (config_bool("body.sounds.ui", true)) audio_tick();
     ui_render(render_screen, NULL);
     return;
   }
@@ -9905,7 +9907,7 @@ static void timer_poll(void) {
   s_timer_last_q = q;
   if (tick) {
     s_timer_last_s = secs;
-    audio_tick();
+    if (config_bool("body.sounds.ui", true)) audio_tick();
     ui_render(render_screen, NULL);
   }
 }
@@ -9986,6 +9988,14 @@ static void key_acts(const btn_event_t *ev) {
   /* A physical key was used: from here on the focus ring is drawn. This is
    * the only place that flips it, matching the contract at s_focus_shown. */
   s_focus_shown = true;
+  /* While the self-timer counts, any key is "no", FN included: the caption
+   * says PRESS TO CANCEL. Before the held report's ack, so under HOLD a report
+   * that landed during the count does not eat the cancel; the report stays up
+   * for the next key. */
+  if (s_timer_end_us != 0) {
+    timer_cancel("Timer cancelled");
+    return;
+  }
   /* A held report is dismissed by the next key, and that key does nothing
    * else. Before the FN and shutter branches, so a press cannot both clear the
    * report and fire the next photograph. */
@@ -10736,8 +10746,14 @@ static uint32_t ui_pass(void) {
      * picture, so "tap anywhere" is the only gesture that always works.
      */
     if (!down) swallow_touch = false;
-    if (down && s_shot_hold) {
-      shot_hold_ack();
+    if (down && s_shot_hold && !swallow_touch) {
+      /* Under HOLD a report can land while the self-timer counts. The count
+       * owns the finder: the tap cancels it, and the report waits for the
+       * next one, as it does for a key (key_acts). Once per contact: a
+       * finger already swallowed - this one, a palm, a drift - is not a
+       * second tap. */
+      if (s_timer_end_us != 0 && s_screen == SCR_SHOOT) timer_cancel("Timer cancelled");
+      else shot_hold_ack();
       swallow_touch = true;
     }
     if (swallow_touch) {
@@ -10796,6 +10812,14 @@ static uint32_t ui_pass(void) {
        * goes back to only opening the finder. BACK still goes there. */
       if (s_screen == SCR_PHOTO) s_first_review_us = 0;
       region = undo_hit(lx, ly) ? IT_UNDO : hit_test(lx, ly);
+      if (held == -1 && region < 0 && s_screen == SCR_SHOOT && s_timer_end_us != 0) {
+        /* A tap on the picture while it counts is the cancel the caption
+         * asks for. MENU, LOOK and TIMER keep their own answers: leaving
+         * SHOOT and TIMER OFF cancel too, LOOK lets it run. */
+        timer_cancel("Timer cancelled");
+        swallow_touch = true;
+        return 20;
+      }
     }
 
     if (down && region != s_pressed) {
@@ -10910,7 +10934,11 @@ static uint32_t ui_pass(void) {
            * report is seen when it lands. */
           s_shot_queued = false;
           shutter_now();
-        } else if (r.ok && r.stored >= 2 && s_screen == SCR_SHOOT) {
+        } else if (r.ok && r.stored >= 2 && s_screen == SCR_SHOOT && s_timer_end_us == 0) {
+          /* Not while the self-timer counts: the review would leave SHOOT and
+           * cancel the count (timer_poll). The count owns the finder; the
+           * report stays on SHOOT's banner, acknowledged by its own clock or
+           * by shutter_now() at the count's end. */
           const int hold_s = config_int("shoot.displayAfterShotS", 2);
           if (hold_s != 0) {
             /* One loop of the wiggle is about three seconds with the load;
