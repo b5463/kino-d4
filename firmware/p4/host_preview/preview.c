@@ -1582,7 +1582,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 262
+#define PPMS_PER_HAND 264
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -2968,10 +2968,39 @@ static void scenes(void) {
       char name[32];
       snprintf(name, sizeof name, "capture_landing_%03d", LAND_AT_MS[i]);
       s_land_ink = land_ink((int64_t)LAND_AT_MS[i] * 1000);
+      s_strip_gap = (uint8_t)close_gap(LAND_AT_MS[i]);
+      draw_screen();
+      shot(name);
+    }
+    /* The four closing on a point: 60 ms in, two pixels of gap left, and
+     * 150 ms in, one bar while the shade turns. */
+    static const int CLOSE_AT_MS[2] = {60, 150};
+    for (int i = 0; i < 2; i++) {
+      char name[32];
+      snprintf(name, sizeof name, "capture_close_%03d", CLOSE_AT_MS[i]);
+      s_land_ink = land_ink((int64_t)CLOSE_AT_MS[i] * 1000);
+      s_strip_gap = (uint8_t)close_gap(CLOSE_AT_MS[i]);
       draw_screen();
       shot(name);
     }
     s_land_ink = K_INK;
+    s_strip_gap = FM_GAP;
+    /* Closes, holds shut, opens again: open at both ends and never wider. */
+    int prev_gap = FM_GAP;
+    bool shut = false;
+    for (int t = 0; t <= MOTION_LAND_MS; t += 5) {
+      const int g = close_gap(t);
+      if (g < 0 || g > FM_GAP || (!shut && g > prev_gap) || (shut && g < prev_gap)) {
+        fprintf(stderr, "landing: the gap went %d -> %d at %d ms\n", prev_gap, g, t);
+        g_land_failed = true;
+      }
+      if (g == 0) shut = true;
+      prev_gap = g;
+    }
+    if (!shut || close_gap(0) != FM_GAP || close_gap(MOTION_LAND_MS) != FM_GAP) {
+      fprintf(stderr, "landing: the four did not close and open again\n");
+      g_land_failed = true;
+    }
   }
 
   /*
@@ -3019,10 +3048,11 @@ static void scenes(void) {
     prev_vclock_us += 210 * 1000;
     land_step();
     const uint16_t ink210 = s_land_ink;
+    const int gap210 = s_strip_gap;
     prev_vclock_us += 140 * 1000;
     const bool moving350 = land_step();
     if (!moving0 || ink0 != K_ACCENT || ink210 == K_ACCENT || ink210 == K_INK || moving350 ||
-        s_land_ink != K_INK) {
+        s_land_ink != K_INK || gap210 >= FM_GAP || s_strip_gap != FM_GAP) {
       fprintf(stderr, "landing: after the move %04x/%d, +210 ms %04x, +350 ms %04x/%d\n", ink0,
               moving0, ink210, s_land_ink, moving350);
       g_land_failed = true;

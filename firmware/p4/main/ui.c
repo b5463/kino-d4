@@ -1857,6 +1857,9 @@ static int64_t s_land_us;
 static uint16_t s_in_ink[4] = {K_INK, K_INK, K_INK, K_INK};
 static uint8_t s_in_prev;
 static int32_t s_in_at_ms[4];
+/* The strip's gap on this pass, FM_GAP open and 0 one bar: set once per pass
+ * by land_step() from close_gap(). */
+static uint8_t s_strip_gap = FM_GAP;
 
 /**
  * Four cells of `cell` px, left to right, with `st[4]` their states.
@@ -1876,11 +1879,16 @@ static int32_t s_in_at_ms[4];
  * Cell i is always lens i, in slot order, never the i-th frame counted. A
  * lens that was not asked is an outline in K_INK, a sixth of the cell thick:
  * the menu card's 3 px on 56 in proportion, and the same meaning.
+ *
+ * `gap` is FM_GAP everywhere but the landing of a full four-lens shot, where
+ * the strip closes the four into one bar and opens them again (close_gap()).
+ * The mark keeps its centre while it closes, and a closed mark is one bar
+ * with one keyline.
  */
-static void four_mark(int x, int y, int cell, const fm_cell_t *st, bool dark) {
-  (void)dark;
+static void four_mark_gap(int x, int y, int cell, const fm_cell_t *st, int gap) {
+  x += 3 * (FM_GAP - gap) / 2;
   for (int i = 0; i < 4; i++) {
-    const int cx = x + i * (cell + FM_GAP);
+    const int cx = x + i * (cell + gap);
     if (st[i] == FM_ABSENT) {
       const int k = cell / 6 > 0 ? cell / 6 : 1;
       fill(cx, y, cell, k, K_INK);
@@ -1900,8 +1908,14 @@ static void four_mark(int x, int y, int cell, const fm_cell_t *st, bool dark) {
     fill(cx, y, cell, cell, fill_c);
     /* A one-pixel keyline, so an empty cell is still a cell rather than a
      * hole in the background. */
-    outline(cx, y, cell, cell, K_RULE);
+    if (gap > 0) outline(cx, y, cell, cell, K_RULE);
   }
+  if (gap == 0) outline(x, y, 4 * cell, cell, K_RULE);
+}
+
+static void four_mark(int x, int y, int cell, const fm_cell_t *st, bool dark) {
+  (void)dark;
+  four_mark_gap(x, y, cell, st, FM_GAP);
 }
 
 /* ------------------------------------------------------------------ */
@@ -8026,7 +8040,7 @@ static void draw_dialog(void) {
  * FAVOURITE.
  */
 #define PH_STRIP_Y (PH_TOP + PH_H - GRID - SH_PN_H)
-static void draw_strip(const fm_cell_t *st, const char *line, uint16_t accent) {
+static void draw_strip(const fm_cell_t *st, const char *line, uint16_t accent, int gap) {
   AUDIT_CHROME(true);
   int h = SH_PN_H, y = SH_PN_Y, x = PAGE_M, w = UI_W - 2 * PAGE_M;
   if (s_screen == SCR_PHOTO) {
@@ -8040,7 +8054,7 @@ static void draw_strip(const fm_cell_t *st, const char *line, uint16_t accent) {
 
   const int cell = 12;
   const int mx = x + 18;
-  four_mark(mx, y + (h - cell) / 2, cell, st, true);
+  four_mark_gap(mx, y + (h - cell) / 2, cell, st, gap);
   text(K_TYPE_CAPTION, mx + 4 * (cell + FM_GAP) + 12, y + (h - K_TYPE_CAPTION->line_h) / 2, line, K_INK);
   AUDIT_CHROME(false);
 }
@@ -8219,7 +8233,7 @@ static void render_sleep(void *ctx) {
 
 static void draw_working_banner(const char *line) {
   const fm_cell_t st[4] = {FM_ON, FM_ON, FM_ON, FM_ON};
-  draw_strip(st, line, K_INK);
+  draw_strip(st, line, K_INK, FM_GAP);
 }
 
 /*
@@ -8245,6 +8259,27 @@ static uint16_t land_ink(int64_t t_us) {
 }
 
 /*
+ * The strip's gap `t_ms` into the landing of a full four-lens shot: the four
+ * close on a point and open again, inside the same 300 ms the colour takes.
+ * FM_GAP to 0 over MOTION_LAND_HOLD_MS on a quadratic ease-out, shut while
+ * the shade turns, and open again over the last LAND_REOPEN_MS on
+ * smoothstep: at rest the mark is four cells. Whole pixels, integer only,
+ * one call a pass. Pure: host_preview calls it with chosen times.
+ */
+#define LAND_REOPEN_MS 120
+static int close_gap(int32_t t_ms) {
+  if (t_ms <= 0 || t_ms >= MOTION_LAND_MS) return FM_GAP;
+  if (t_ms < MOTION_LAND_HOLD_MS) {
+    const int u = 256 - (int)(t_ms * 256 / MOTION_LAND_HOLD_MS); /* left to close */
+    return (FM_GAP * u * u + 32768) / 65536;
+  }
+  const int32_t open_at = MOTION_LAND_MS - LAND_REOPEN_MS;
+  if (t_ms < open_at) return 0;
+  const int u = (int)((t_ms - open_at) * 256 / LAND_REOPEN_MS);
+  return (FM_GAP * (u * u * (768 - 2 * u) / 256) + 32768) / 65536;
+}
+
+/*
  * The report has just been seen. The landed cells go into the shade now,
  * before anything on this pass draws.
  *
@@ -8259,6 +8294,7 @@ static void land_start(void) {
   s_shot_seen_us = esp_timer_get_time();
   s_land_us = 0;
   s_land_ink = K_ACCENT;
+  s_strip_gap = FM_GAP;
 }
 
 /* Advance the landing for this pass. True while it is still moving, so the
@@ -8269,12 +8305,14 @@ static bool land_step(void) {
   if (s_shot_seen_us == 0) {
     s_land_us = 0;
     s_land_ink = K_INK;
+    s_strip_gap = FM_GAP;
     return false;
   }
   const int64_t now = esp_timer_get_time();
   if (s_land_us == 0) s_land_us = now;
   const int64_t t = now - s_land_us;
   s_land_ink = land_ink(t);
+  s_strip_gap = (uint8_t)close_gap((int32_t)(t < (int64_t)MOTION_LAND_MS * 1000 ? t / 1000 : MOTION_LAND_MS));
   return t < (int64_t)MOTION_LAND_MS * 1000;
 }
 
@@ -8343,6 +8381,7 @@ static void draw_capture_banner(void) {
   fm_cell_t st[4];
   char line[64];
   uint16_t accent = K_INK;
+  int gap = FM_GAP;
   switch (cs) {
     case CAPTURE_TRIGGERING:
     case CAPTURE_READING:
@@ -8385,12 +8424,17 @@ static void draw_capture_banner(void) {
           snprintf(line, sizeof line, "SAVED, %d CAMERA%s MISSED", r.online - r.stored,
                    r.online - r.stored == 1 ? "" : "S");
         accent = r.stored == r.online ? s_land_ink : K_FAULT;
+        /* Four lenses, four frames on the card: the four close into one bar
+         * as the shade lands, and open again. Nothing short of that closes. */
+        int on_card = 0;
+        for (int i = 0; i < 4; i++) on_card += st[i] == FM_SPARK;
+        if (on_card == 4) gap = s_strip_gap;
       }
       break;
     }
   }
 
-  draw_strip(st, line, accent);
+  draw_strip(st, line, accent, gap);
 }
 
 /* How long a toast stays. Expiry is decided in ui_pass, once per pass, and
