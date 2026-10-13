@@ -4800,8 +4800,8 @@ static void draw_shoot(void) {
   if (foc(SCR_SHOOT, SH_IT_LOOK)) focus_inset(set_x0, SH_PN_Y, set_x1 - set_x0, SH_PN_H, K_INK);
   {
     /* The timer. Monochrome at rest: K_INK when the next press waits ten
-     * seconds, quiet when it does not. Never a bare OFF, which the flash
-     * panel beside it can say too. */
+     * seconds, quiet when it does not. Never a bare OFF: the flash panel,
+     * two along past MODE, can say OFF too. */
     const bool tm_down = s_pressed == SH_IT_TIMER;
     round_rect(tm_x, SH_PN_Y, w_tm, SH_PN_H, UI_R, tm_down ? K_PRESS : K_SURFACE);
     text(K_TYPE_CAPTION, tm_x + SH_PN_PAD, SH_PN_Y + (SH_PN_H - K_TYPE_CAPTION->line_h) / 2,
