@@ -802,7 +802,9 @@ void power_activity(void) {}
 void power_wake(void) {}
 bool power_sleep_pending(void) { return false; }
 void power_sleep_shown(void) {}
-void power_cam_bank_cycle(void) {}
+/* Counted, so the harness can check a restart that must not cycle. */
+static int g_bank_cycles;
+void power_cam_bank_cycle(void) { g_bank_cycles++; }
 bool power_wake_gesture(void) { return false; }
 void power_end_wake_gesture(void) {}
 /* KDP traffic in the last 5 s, which power.c reports as usb_attached. Off by
@@ -1554,7 +1556,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 256
+#define PPMS_PER_HAND 257
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -2574,6 +2576,22 @@ static void scenes(void) {
   s_cams_boot_us = esp_timer_get_time();
   SHOT(SCR_SHOOT, "shoot_dead_pane_starting");
   s_cams_boot_us = 0;
+  /* The other three taking a photograph: NO PICTURE and no button, because
+   * the cycle would cut the transfer. A press that beat the repaint is
+   * fenced in cams_restart() and switches nothing. */
+  g_stage = CAPTURE_READING;
+  SHOT(SCR_SHOOT, "shoot_dead_pane_capturing");
+  review_expect(!(s_sh_dead & (1u << 2)), "dead pane offers RESTART THE CAMERAS during a capture");
+  {
+    const int cycles0 = g_bank_cycles;
+    cams_restart();
+    review_expect(g_bank_cycles == cycles0 && s_cams_boot_us == 0,
+                  "RESTART THE CAMERAS cycled the bank during a capture");
+    review_expect(strcmp(s_toast, "Wait for the photo to save") == 0,
+                  "RESTART THE CAMERAS during a capture did not say why");
+    s_toast[0] = '\0';
+  }
+  g_stage = CAPTURE_IDLE;
   /* Two panes out, one on top and one on the bottom: the bottom pane's
    * button sits in what the bar leaves of it. */
   g_vf_dead = (1u << 1) | (1u << 2);

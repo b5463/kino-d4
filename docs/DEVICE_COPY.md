@@ -93,7 +93,7 @@ The rows at the foot of STATUS:
 | `WIGGLE` / `QUAD` | The mode, on the decisions bar. Tapping the bar opens LOOK. |
 | `AUTO` / `ON` / `OFF` | The flash, beside the bolt on the decisions bar. |
 | `NO PICTURE` | A finder pane with no pixels: the lens reported an error, its frames stopped, or it is not linked. One word for all three; the pane's place says which lens. Said once the first 1.5 s of SHOOT have passed. |
-| `RESTART THE CAMERAS` | The button under it, on that pane. The same action as the STATUS row, with no confirm. |
+| `RESTART THE CAMERAS` | The button under it, on that pane. The same action as the STATUS row, with no confirm. Not offered while a photograph is being taken: NO PICTURE alone then. |
 | `STARTING` | Instead of both, on a pane with no picture for 7 s after a restart from either place, while the lenses boot. No button then. |
 
 ## SHOOT banner
@@ -151,6 +151,7 @@ The rows at the foot of STATUS:
 | Not measured. Aim at a busier scene | The measurement found a flat scene. |
 | The next photo measures the cameras | MEASURE AGAIN pressed. |
 | The cameras are starting | RESTART THE CAMERAS on STATUS within 7 s of the last restart. Nothing is switched. |
+| Wait for the photo to save | RESTART THE CAMERAS while a photograph is being taken or one is queued. Nothing is switched: the cycle would lose that photograph. |
 | Sent to the roll | SEND TO ROLL queued the photograph. |
 | Could not send. Try again later | SEND TO ROLL could not queue it. |
 | No active roll | SEND TO ROLL with no Roll joined. |

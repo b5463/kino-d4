@@ -4113,6 +4113,8 @@ static void draw_menu(void) {
 /* The panes whose button the last draw put up, one bit each. Set by the draw
  * and read by the hit test, the same rule as s_sh_set_x0. */
 static uint8_t s_sh_dead;
+/* A photograph between the press and the card, queued shot included. */
+static bool capture_in_flight(void);
 /* That button: the one control style at the thumb floor, wide enough for its
  * words with the control's margins. */
 #define SH_DEAD_BTN_W 248
@@ -4514,6 +4516,7 @@ static int sh_panel(int x, int w, const char *s, bool down) {
 static void draw_shoot(void) {
   s_sh_dead = 0;
   const bool starting = cams_starting();
+  const bool in_flight = capture_in_flight();
   /* Which of the four are on screen, as the mark rather than as a sentence.
    * Filled in by the pane loop below, for the same reason `live` is: what the
    * strip reports is what the screen is showing. */
@@ -4550,6 +4553,13 @@ static void draw_shoot(void) {
       /* Restarted, and the nodes are still booting. No button: a second
        * press now would cycle a node mid-boot. */
       text_mid(K_TYPE_CAPTION, cx, ly + (SH_DEAD_H - K_TYPE_CAPTION->line_h) / 2, "STARTING",
+               K_INK_QUIET);
+      continue;
+    }
+    if (in_flight) {
+      /* The other lenses are taking a photograph. No button: the cycle cuts
+       * all four nodes mid-transfer and that photograph is lost. */
+      text_mid(K_TYPE_CAPTION, cx, ly + (SH_DEAD_H - K_TYPE_CAPTION->line_h) / 2, "NO PICTURE",
                K_INK_QUIET);
       continue;
     }
@@ -6654,8 +6664,15 @@ static int64_t s_cams_restart_us; /* when RESTART THE CAMERAS was pressed; the b
  * action, no confirm from either. Both start the boot grace and re-arm the
  * finder's settle clock, so back on SHOOT the panes wait out the boot instead
  * of offering the restart again. Inside the grace nothing is cycled: the
- * draw hides the pane's button then, and this is the fence for the row. */
+ * draw hides the pane's button then, and this is the fence for the row.
+ * Nor while a photograph is being taken: the cycle cuts all four nodes in
+ * the middle of their transfers. The draw hides the button then too; this
+ * catches a press that beat the repaint, and the row. */
 static void cams_restart(void) {
+  if (capture_in_flight()) {
+    toast("Wait for the photo to save");
+    return;
+  }
   if (cams_starting()) {
     toast("The cameras are starting");
     return;
@@ -8100,6 +8117,10 @@ static int pill_pulse_px(void) {
 static int64_t s_timer_end_us;
 static int s_timer_last_s;
 static bool s_shot_queued; /* a second press while saving: fired when the report lands */
+static bool capture_in_flight(void) {
+  const capture_stage_t c = capture_stage();
+  return (c != CAPTURE_IDLE && c != CAPTURE_DONE) || s_shot_queued;
+}
 
 static void timer_cancel(const char *why) {
   if (s_timer_end_us == 0) return;
