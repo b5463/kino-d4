@@ -96,7 +96,7 @@ From MAO's colour header, mao_ui_type.h in the MAO tree: ground 08080A, ink F1EC
 |---|---|---|---|---|
 | `K_GROUND` | 08080A | 0x0841 | 1.00 | Every screen's face, the finder, the photograph, the boot field, sleep. |
 | `K_SCRIM` | 000000 | 0x0000 | 1.05 | The scrim over a screen, the panel going dark. |
-| `K_SURFACE` | 101010 | 0x1082 | 1.05 | A window or list ground, a status panel, the toast plate. Found by its edge or its content. |
+| `K_SURFACE` | 101010 | 0x1082 | 1.05 | A window or list ground, a status panel, the toast plate, a button at rest on the page. Found by its edge or its content. |
 | `K_ROW` | 181818 | 0x18C3 | 1.13 | Every row you can press, and a disabled one. |
 | `K_RULE` | 282828 | 0x2945 | 1.36 | The hairline between facts, under a header; the track under a bar. |
 | `K_OFF` | 303030 | 0x3186 | 1.52 | A toggle that is off, Cancel, a neutral press, an empty four-mark cell. Only `K_INK` goes on it. |
@@ -145,7 +145,8 @@ The pink shifts slightly on each start. `K_LAUNCH` holds eight shades: MAO pink 
 
 | Event or state | Fill | Ink |
 |---|---|---|
-| A control at rest | `K_ROW` | `K_INK` |
+| A list row at rest | `K_ROW` | `K_INK` |
+| A button at rest (Back, pager, picker, MENU, the photo column) | `K_SURFACE` on the page, `K_OFF` on a surface, `edge_ink()` outline | `K_INK` |
 | A control under a finger | `K_PRESS` | `K_PRESS_INK` |
 | Selected segment, toggle on, favourite set | `K_ON` | `K_ON_INK` |
 | Toggle off, Cancel, a neutral press | `K_OFF`, `K_EDGE` outline | `K_INK` |
