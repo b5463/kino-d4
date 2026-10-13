@@ -33,7 +33,7 @@ Logical space is `UI_W` x `UI_H`, 800 x 480 px, landscape. The panel's own long 
 | `SCR_SHOOT` | The SHOOT card | `SCR_MENU` | The four streams, a quarter of the panel each, edge to edge. A MENU button on the hand's side. A 34 px status bar at the foot with the look, the mode, the flash and the card; a press on the bar opens LOOK. |
 | `SCR_LOOK` | The LOOK row, or the SHOOT bar | `SCR_MENU`, or `SCR_SHOOT` when opened from it | The look picker, COLOUR or B&W, WIGGLE or QUAD, FLASH AUTO, ON or OFF, and in QUAD which lens. |
 | `SCR_GALLERY` | The GALLERY row | `SCR_MENU` | Three by two tiles of 252 x 189 px, the page pair in the header, `n / N` beside the title. |
-| `SCR_PHOTO` | A gallery tile, and after a shot | `SCR_GALLERY` | The photograph in a 600 x 450 well, playing. A 162 px column on the hand's side: the facts, previous and next, DELETE, SEND TO ROLL, FAVOURITE. |
+| `SCR_PHOTO` | A gallery tile, and after a shot | `SCR_GALLERY`; `SCR_SHOOT` after a shot | The photograph in a 600 x 450 well, playing. A 162 px column on the hand's side: the facts, previous and next, DELETE, SEND TO ROLL, FAVOURITE. |
 | `SCR_ROLL` | The ROLL row | `SCR_MENU` | The QR a guest scans, the address, the code, one word for the connection, and the counts from the card. |
 | `SCR_SETTINGS` | The SETTINGS row | `SCR_MENU` | Six rows: Display, Sound, Connection, Storage, About, Status. |
 | `SCR_DISPLAY` | Settings | `SCR_SETTINGS` | Dim after, sleep after, how long a shot stays up, camera idle. |
@@ -46,10 +46,10 @@ Logical space is `UI_W` x `UI_H`, 800 x 480 px, landscape. The panel's own long 
 
 Rules that hold on every screen:
 
-- Back goes one level, to `SCREEN_PARENT`, never to a remembered screen. LOOK opened from the finder is the one exception.
-- The shutter key takes a photograph from any screen, and the capture strip reports it over whatever is on the glass. Every key acts on its down edge; a long press does nothing. The self-timer has no way in until the TIMER panel lands on SHOOT; any press while it runs cancels it.
+- Back goes one level, to `SCREEN_PARENT`, never to a remembered screen. Two exceptions, both back to the finder: LOOK opened from the finder (`s_look_from_shoot`), and the review after a shot (`s_review_from_shot`).
+- The shutter key takes a photograph on SHOOT and on the untouched review after a shot. On any other screen it opens the finder, and the capture strip reports a running capture over whatever is on the glass. Every key acts on its down edge; a long press does nothing. The self-timer has no way in until the TIMER panel lands on SHOOT; any press while it runs cancels it.
 - A screen sets `s_list_top` while it draws, and the hit test reads it afterwards. A rectangle the hit test computes on its own is the bug `ui.c` kept finding.
-- After a good shot on SHOOT the photograph opens for review, for the longer of `shoot.displayAfterShotS` and `MOTION_REVIEW_MIN_S`, plus `MOTION_REVIEW_TAIL_MS`, then returns to the finder. `-1` holds it until a touch.
+- After a good shot on SHOOT the photograph opens for review, for the longer of `shoot.displayAfterShotS` and `MOTION_REVIEW_MIN_S`, plus `MOTION_REVIEW_TAIL_MS`, then returns to the finder as a back move. `-1` holds it until a touch. While its clock runs and nothing has touched it, the shutter fires and the finder slides back in; `fire_shutter()` acknowledges the report still up first. A touch stops the clock, and the shutter then only opens the finder. BACK and a confirmed DELETE end on SHOOT, DELETE with the undo toast; the next photograph clears that toast. The clock never carries an open dialog off. Under HOLD the first press acknowledges and the next opens the finder. PHOTO opened from GALLERY has none of this. On PHOTO the capture strip is a card inside the photo well (`PH_STRIP_Y`), clear of the column, and a toast sits above it.
 
 Dialogs are questions and nothing else. Seven exist: `DLG_RESTART`, `DLG_DELETE`, `DLG_DELETE_ALL`, `DLG_FORMAT`, `DLG_FACTORY`, `DLG_WELCOME` and `DLG_UPDATED`. Focus starts on the safe action. Something the camera is doing, rather than asking, is a strip or a row, never a dialog.
 

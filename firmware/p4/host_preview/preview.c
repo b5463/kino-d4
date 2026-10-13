@@ -512,12 +512,16 @@ bool button_held(button_id_t id) {
  * answers, and the pipeline that did not start. */
 static bool g_capture_accept;
 static bool g_capture_ready = true;
-bool capture_request(const char *source) {
-  (void)source;
-  return g_capture_accept;
-}
 /* Driven by the preview so the result banner can be looked at. */
 static capture_stage_t g_stage = CAPTURE_IDLE;
+/* check_review_loop(): the capture task takes an accepted request before the
+ * UI's next look, DONE straight to TRIGGERING, as capture.c does. */
+static bool g_capture_starts;
+bool capture_request(const char *source) {
+  (void)source;
+  if (g_capture_accept && g_capture_starts) g_stage = CAPTURE_TRIGGERING;
+  return g_capture_accept;
+}
 static capture_report_t g_report;
 /* Which of the four have landed, as the capture task reports it. The guest
  * half fills its bands off this and not off the stage, because four sensors
@@ -1534,7 +1538,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 237
+#define PPMS_PER_HAND 241
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -1837,12 +1841,18 @@ static void check_shutter_sound(void) {
     fprintf(stderr, "shutter sound: a press while saving was not queued\n");
     g_sound_failed = true;
   }
-  /* The report lands: ui_pass acknowledges it and fires the queued press. */
+  /* The report lands and ui_pass fires the queued press; fire_shutter()
+   * acknowledges the report first and forgets when it was seen. */
   g_capture_accept = true;
   s_shot_queued = false;
-  capture_ack();
+  g_stage = CAPTURE_DONE;
+  s_shot_seen_us = 1;
   fire_shutter();
   sound_expect("the queued press firing", 1, 0);
+  if (g_stage != CAPTURE_IDLE || s_shot_seen_us != 0) {
+    fprintf(stderr, "shutter sound: the press did not acknowledge the report still up\n");
+    g_sound_failed = true;
+  }
 
   g_capture_accept = false;
   g_stage = CAPTURE_IDLE;
@@ -2159,6 +2169,270 @@ static void lift_monotone(const char *what, int32_t span_ms, int k0, int mark0) 
   }
 }
 
+/*
+ * The review after a shot (#237): PHOTO opened by first_review_open(), and
+ * what the shutter, BACK, DELETE, a touch and the clock do on it. Driven
+ * through the calls the key handler, the dialog and ui_pass make, on the
+ * renderer's clock. Four pictures; every rule is also checked, and a broken
+ * one fails the run. Restores what it touches.
+ */
+static bool g_review_failed;
+
+static void review_expect(bool ok, const char *what) {
+  if (ok) return;
+  fprintf(stderr, "review (%s hand): %s\n", g_hand, what);
+  g_review_failed = true;
+}
+
+static void review_run_move(void) {
+  for (int guard = 0; anim_active() && guard < 4000; guard++) {
+    const uint32_t wait = anim_tick();
+    if (wait > 0) prev_vclock_us += (int64_t)wait * 1000;
+  }
+}
+
+/* go() hands the slide `!back` as from_right. */
+static bool review_slid_back(void) { return s_anim.kind == ANIM_SLIDE && !s_anim.from_right; }
+
+/* The report lands on SHOOT under the default AFTER SHOT (2 s) and the review
+ * opens, as ui_pass does it; the move runs and the landing finishes. */
+static void review_open(void) {
+  g_stage = CAPTURE_DONE;
+  memset(&g_report, 0, sizeof g_report);
+  g_report.ok = true;
+  snprintf(g_report.id, sizeof g_report.id, "CAP_000042");
+  g_report.stored = 4;
+  g_report.online = 4;
+  s_screen = SCR_SHOOT;
+  s_dialog = DLG_NONE;
+  s_toast[0] = '\0';
+  s_toast_long = false;
+  prev_vclock_us = 1000000;
+  s_review_span_us = (int64_t)MOTION_REVIEW_MIN_S * 1000000 + (int64_t)MOTION_REVIEW_TAIL_MS * 1000;
+  land_start();
+  first_review_open(&g_report);
+  review_run_move();
+  land_step();
+  prev_vclock_us += (int64_t)MOTION_LAND_MS * 1000 + 100000; /* the landing is over */
+  land_step();
+  g_shutter_n = g_warning_n = 0;
+  review_expect(s_screen == SCR_PHOTO && s_review_from_shot && s_first_review_us != 0, "the review did not open");
+}
+
+/* The shutter key, as drain_buttons() hands it over. The preview has no
+ * pipeline, so an accepted request is shown as the capture task shows it on
+ * its next stage. */
+static void review_shutter(void) {
+  const int n0 = g_shutter_n;
+  const btn_event_t ev = {.id = BTN_SHUTTER, .long_press = false};
+  g_capture_accept = true;
+  handle_button(&ev);
+  g_capture_accept = false;
+  if (g_shutter_n > n0) g_stage = CAPTURE_TRIGGERING;
+}
+
+static void review_leave(void) {
+  s_dialog = DLG_NONE;
+  review_run_move();
+  if (s_screen != SCR_SHOOT) {
+    go(SCR_SHOOT, MOTION_BACK_MS);
+    review_run_move();
+  }
+  photo_release();
+  g_stage = CAPTURE_IDLE;
+  s_toast[0] = '\0';
+  s_toast_long = false;
+  s_undo_id[0] = '\0';
+  s_shot_seen_us = 0;
+  s_shot_hold = false;
+  s_first_review_us = 0;
+  s_review_span_us = 0;
+  s_review_from_shot = false;
+  land_step();
+  prev_vclock_us = 0;
+  g_shutter_n = g_warning_n = 0;
+}
+
+static void review_snap(const char *name) {
+  scan_conditions();
+  draw_screen();
+  shot(name);
+}
+
+static void review_scenes(void) {
+  const bool focus0 = s_focus_shown;
+
+  /* The review at rest: the SAVED strip is a card inside the photo well,
+   * clear of the column, and a toast raised now sits above it. */
+  review_open();
+  review_snap("review_strip");
+  {
+    toast("Cameras measured");
+    int tx, ty, tw, th;
+    toast_rect(&tx, &ty, &tw, &th);
+    review_expect(ty + th <= PH_STRIP_Y, "a toast on the review covers the strip");
+    review_expect(tx >= ph_well_x() && tx + tw <= ph_well_x() + PH_W, "a toast on the review leaves the well");
+    s_toast[0] = '\0';
+  }
+  review_leave();
+
+  /* The shutter on the review, with the report still up (DONE): the stale
+   * report is acknowledged, the photograph is taken, and the finder slides
+   * back in. */
+  review_open();
+  review_shutter();
+  review_expect(g_shutter_n == 1, "the shutter on the review took no photograph");
+  review_expect(s_screen == SCR_SHOOT && review_slid_back(), "the shutter on the review did not slide back to SHOOT");
+  review_expect(s_shot_seen_us == 0, "the shutter left the last report's s_shot_seen_us behind");
+  review_run_move();
+  review_snap("review_shutter");
+  review_leave();
+
+  /* BACK on the review goes to the finder it came from. */
+  review_open();
+  go_back();
+  review_expect(s_screen == SCR_SHOOT && review_slid_back(), "BACK on the review did not go back to SHOOT");
+  review_run_move();
+  review_snap("review_back");
+  review_leave();
+
+  /* DELETE, confirmed: the finder, with thirty seconds of UNDO. The next
+   * photograph takes the undo toast with it. */
+  review_open();
+  s_first_review_us = 0; /* the finger that pressed DELETE (ui_pass, touch down) */
+  s_dialog = DLG_DELETE;
+  s_dlg_focus = 0;
+  dialog_commit();
+  review_expect(s_screen == SCR_SHOOT && review_slid_back() && s_toast_long,
+                "DELETE on the review did not end on SHOOT with the undo toast");
+  review_run_move();
+  /* A finger finding DELETE and then the answer takes longer than AFTER
+   * SHOT's 2 s: the report has gone by the time the finder is back. */
+  g_stage = CAPTURE_IDLE;
+  review_snap("review_deleted");
+  review_shutter();
+  review_expect(g_shutter_n == 1 && s_toast[0] == '\0' && !s_toast_long,
+                "the next photograph after a delete left the undo toast up");
+  review_leave();
+
+  /* The clock runs out: back to the finder, as a back move. */
+  review_open();
+  prev_vclock_us += s_review_span_us + 1000;
+  first_review_poll();
+  review_expect(s_screen == SCR_SHOOT && review_slid_back(), "the review's clock did not slide back to SHOOT");
+  review_leave();
+
+  /* The clock runs out under the DELETE question: the question stays. */
+  review_open();
+  s_dialog = DLG_DELETE;
+  s_dlg_focus = 0;
+  prev_vclock_us += s_review_span_us + 1000;
+  first_review_poll();
+  review_expect(s_screen == SCR_PHOTO && s_dialog == DLG_DELETE, "the review's clock carried the DELETE question off");
+  review_leave();
+
+  /* A finger on the review: no clock, and the shutter only opens the
+   * finder. BACK still goes there. */
+  review_open();
+  s_first_review_us = 0; /* ui_pass, touch down on PHOTO */
+  prev_vclock_us += s_review_span_us + 1000;
+  first_review_poll();
+  review_expect(s_screen == SCR_PHOTO, "a touched review was pulled back to the finder");
+  review_shutter();
+  review_expect(g_shutter_n == 0 && s_screen == SCR_SHOOT, "the shutter on a touched review took a photograph");
+  review_leave();
+
+  /* HOLD: the first press acknowledges and does nothing else, the next
+   * opens the finder. */
+  review_open();
+  s_review_span_us = 0;
+  s_shot_hold = true;
+  review_shutter();
+  review_expect(g_shutter_n == 0 && s_screen == SCR_PHOTO && !s_shot_hold, "HOLD's first press did more than acknowledge");
+  review_shutter();
+  review_expect(g_shutter_n == 0 && s_screen == SCR_SHOOT, "HOLD's second press did not only open the finder");
+  review_leave();
+
+  /* PHOTO opened from GALLERY is not the review: BACK goes to GALLERY and
+   * the shutter only opens the finder. */
+  s_screen = SCR_GALLERY;
+  go(SCR_PHOTO, MOTION_OPEN_MS);
+  review_run_move();
+  review_expect(!s_review_from_shot, "PHOTO from GALLERY took the review's rules");
+  go_back();
+  review_expect(s_screen == SCR_GALLERY, "BACK on PHOTO from GALLERY did not go to GALLERY");
+  review_run_move();
+  go(SCR_PHOTO, MOTION_OPEN_MS);
+  review_run_move();
+  review_shutter();
+  review_expect(g_shutter_n == 0 && s_screen == SCR_SHOOT, "the shutter on PHOTO from GALLERY took a photograph");
+  review_leave();
+
+  s_focus_shown = focus0;
+  g_screen_drawn = false;
+}
+
+/*
+ * The same press through ui_pass, the loop the camera runs. The capture task
+ * takes a request at once here (g_capture_starts): capture.c goes from DONE
+ * straight to TRIGGERING, so ui_pass never sees IDLE between two shots. A
+ * press while the last report was still up used to leave s_shot_seen_us
+ * stale, and the next photograph played no sound and opened no review.
+ */
+static bool review_passes_until(screen_t want) {
+  for (int guard = 0; guard < 400; guard++) {
+    const uint32_t wait = ui_pass();
+    prev_vclock_us += (int64_t)(wait > 0 ? wait : 1) * 1000;
+    if (s_screen == want && !anim_active()) return true;
+  }
+  return false;
+}
+
+static void check_review_loop(void) {
+  const screen_t scr0 = s_screen;
+  g_audit_off = true;
+  s_btn_q = xQueueCreate(4, sizeof(btn_event_t));
+  g_power_stage = POWER_AWAKE;
+  s_anim.kind = ANIM_NONE;
+  s_dim_k = 0;
+  s_dim_since_us = 0;
+  s_sleep_mark = false;
+  s_sleep_stage = -1;
+  was_asleep = false;
+  s_pressed = -1;
+  s_screen = SCR_SHOOT;
+  memset(&g_report, 0, sizeof g_report);
+  g_report.ok = true;
+  snprintf(g_report.id, sizeof g_report.id, "CAP_000042");
+  g_report.stored = 4;
+  g_report.online = 4;
+  g_stage = CAPTURE_DONE;
+  s_shot_seen_us = 0;
+  g_capture_starts = true;
+  prev_vclock_us = 1000000;
+  g_shutter_n = g_warning_n = 0;
+
+  review_expect(review_passes_until(SCR_PHOTO), "ui_pass: a report on SHOOT opened no review");
+  on_button(BTN_SHUTTER, false);
+  g_capture_accept = true;
+  review_expect(review_passes_until(SCR_SHOOT), "ui_pass: the shutter on the review did not reach SHOOT");
+  g_capture_accept = false;
+  review_expect(g_shutter_n == 1 && g_stage == CAPTURE_TRIGGERING && s_shot_seen_us == 0,
+                "ui_pass: the shutter on the review left the last report up");
+  /* The next photograph lands: its report is seen, sounds and opens. */
+  g_stage = CAPTURE_DONE;
+  review_expect(review_passes_until(SCR_PHOTO), "ui_pass: the photograph after a review shutter opened no review");
+
+  g_capture_starts = false;
+  review_leave();
+  s_btn_q = NULL;
+  s_anim.kind = ANIM_NONE;
+  s_pressed = -1;
+  s_screen = scr0;
+  g_screen_drawn = false;
+  g_audit_off = false;
+}
+
 /* Every scene, in the order they have always been drawn. Run once per hand,
  * each time in a fresh forked process (main). */
 static void scenes(void) {
@@ -2341,7 +2615,7 @@ static void scenes(void) {
     land_start();
     first_review_open(&g_report);
     const uint16_t *stash = gfx_stash_px();
-    const int bx = PAGE_M + 2, by = SH_PN_Y + SH_PN_H / 2;
+    const int bx = ph_well_x() + GRID + 2, by = PH_STRIP_Y + SH_PN_H / 2;
     if (s_screen != SCR_PHOTO || stash == NULL) {
       fprintf(stderr, "landing: the review did not open on a DONE report\n");
       g_land_failed = true;
@@ -2384,6 +2658,7 @@ static void scenes(void) {
     s_shot_seen_us = 0;
     land_step();
     s_first_review_us = 0;
+    s_review_from_shot = false;
     photo_release();
     s_screen = SCR_SHOOT;
   }
@@ -2936,10 +3211,13 @@ static void scenes(void) {
   draw_screen();
   shot("toast_gallery");
 
+  review_scenes();
+
   /* Last, so nothing it touches reaches a picture. */
   check_shutter_sound();
   check_move_takes_lift();
   check_wake_into_move();
+  check_review_loop();
 }
 
 /* ---- what a frame costs ---- */
@@ -3095,6 +3373,10 @@ static int run_hand(bool right, const char *out) {
   }
   if (g_motion_failed) {
     fprintf(stderr, "a fade or a lift steps back or does not end where it should\n");
+    hard = true;
+  }
+  if (g_review_failed) {
+    fprintf(stderr, "the review after a shot broke one of its rules\n");
     hard = true;
   }
   if (audit_report() > 0) hard = true;

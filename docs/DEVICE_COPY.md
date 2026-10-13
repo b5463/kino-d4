@@ -116,7 +116,7 @@ The rows at the foot of STATUS:
 | Card busy. Try again | The card lock was held for two seconds by a capture or an upload. |
 | Card formatted | FORMAT finished. |
 | The card could not be formatted | FORMAT failed; the log has the reason. |
-| Deleted.  TAP TO UNDO | One photograph moved to the trash; the toast stays thirty seconds and a tap restores it. |
+| Deleted.  TAP TO UNDO | One photograph moved to the trash; the toast stays thirty seconds, or until the next photograph, and a tap restores it. Deleted from the review after a shot, it shows on the finder. |
 | Deleted | One photograph deleted outright, because the trash folder could not take it. |
 | Restored | UNDO tapped in time. |
 | Could not restore it | The folder would not move back. |

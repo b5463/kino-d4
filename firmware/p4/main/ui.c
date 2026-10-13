@@ -4058,6 +4058,21 @@ static int s_sh_set_x0, s_sh_set_x1;
 /* LOOK opened from the finder goes back to the finder, not to the menu: the
  * hand that changed the flash is still holding the camera up. */
 static bool s_look_from_shoot;
+/*
+ * The review after a shot (first_review_open) is PHOTO opened from the
+ * finder, not from GALLERY, and it goes back where it came from: BACK and a
+ * confirmed DELETE end on SHOOT. Set by first_review_open() and by nothing
+ * else; cleared by go() when PHOTO is left. PHOTO opened from a gallery tile
+ * never has it.
+ *
+ * s_first_review_us is when the review opened, 0 once a finger has touched
+ * it or it has gone; s_review_span_us is how long it stays, 0 for HOLD.
+ * While both are set the review is still the camera's, not the person's,
+ * and the shutter on it takes the next photograph (handle_button).
+ */
+static bool s_review_from_shot;
+static int64_t s_first_review_us;
+static int64_t s_review_span_us;
 
 /*
  * The two markings, and the only two.
@@ -7805,10 +7820,21 @@ static void draw_dialog(void) {
  * same corner. The accent stays, as a bar at the card's left end: it is the
  * one thing that says which KIND of work this is, and a colour with no shape
  * to hold it is a stripe.
+ *
+ * On PHOTO it is a card inside the photo well, one grid step in from its
+ * edges, at PH_STRIP_Y. The column beside the well holds FAVOURITE, SEND TO
+ * ROLL and DELETE; drawn across the page, the strip covered the foot of
+ * FAVOURITE.
  */
+#define PH_STRIP_Y (PH_TOP + PH_H - GRID - SH_PN_H)
 static void draw_strip(const fm_cell_t *st, const char *line, uint16_t accent) {
   AUDIT_CHROME(true);
-  const int h = SH_PN_H, y = SH_PN_Y, x = PAGE_M, w = UI_W - 2 * PAGE_M;
+  int h = SH_PN_H, y = SH_PN_Y, x = PAGE_M, w = UI_W - 2 * PAGE_M;
+  if (s_screen == SCR_PHOTO) {
+    x = ph_well_x() + GRID;
+    w = PH_W - 2 * GRID;
+    y = PH_STRIP_Y;
+  }
   round_rect(x, y, w, h, UI_R, K_SURFACE);
   round_rect(x, y, 6 + UI_R, h, UI_R, accent);
   fill(x + 6, y, UI_R, h, K_SURFACE);
@@ -8062,7 +8088,11 @@ static void toast_rect(int *ox, int *oy, int *ow, int *oh) {
     y = MZ_M + MZ_CARD_H / 2 + 50;
     x = mz_card_x() + (MZ_CARD_W - w) / 2;
   }
-  if (s_screen == SCR_PHOTO) x = ph_well_x() + (PH_W - w) / 2;
+  if (s_screen == SCR_PHOTO) {
+    x = ph_well_x() + (PH_W - w) / 2;
+    /* Above the capture strip while it is up, as on SHOOT, not over it. */
+    if (capture_stage() != CAPTURE_IDLE) y = PH_STRIP_Y - h - 10;
+  }
   *ox = x; *oy = y; *ow = w; *oh = h;
 }
 
@@ -8583,7 +8613,8 @@ static void go(screen_t s, int ms) {
   const screen_t from = s_screen;
   /* LOOK opened from the finder returns to the finder: that is a step back
    * too, and the slide has to say so. */
-  const bool back = SCREEN_PARENT[from] == s || (from == SCR_LOOK && s == SCR_SHOOT);
+  const bool back = SCREEN_PARENT[from] == s || (from == SCR_LOOK && s == SCR_SHOOT) ||
+                    (from == SCR_PHOTO && s == SCR_SHOOT && s_review_from_shot);
   /* The row this move is about: the one being opened, or the one being put
    * back. Either way it is the menu row for whichever end is not the menu. */
   const int row = from == SCR_MENU ? menu_item_of(s) : (back && s == SCR_MENU ? menu_item_of(from) : -1);
@@ -8627,6 +8658,7 @@ static void go(screen_t s, int ms) {
   }
 
   if (from == SCR_LOOK && s != SCR_LOOK) s_look_from_shoot = false;
+  if (from == SCR_PHOTO && s != SCR_PHOTO) s_review_from_shot = false;
   s_screen = s;
   s_pressed = -1;
 
@@ -8644,10 +8676,10 @@ static void go(screen_t s, int ms) {
 
 static void go_back(void) {
   /* One level up, deterministically. Back on the viewfinder and back on the
-   * menu both land on the menu, which is the camera's home. The one route
-   * that remembers anything is LOOK opened off the finder's own bar, which
-   * goes back to the finder - set on that press and on no other. */
-  if (s_screen == SCR_LOOK && s_look_from_shoot) {
+   * menu both land on the menu, which is the camera's home. Two routes
+   * remember where they came from, and both go back to the finder: LOOK
+   * opened off the finder's own bar, and the review after a shot. */
+  if ((s_screen == SCR_LOOK && s_look_from_shoot) || (s_screen == SCR_PHOTO && s_review_from_shot)) {
     go(SCR_SHOOT, MOTION_BACK_MS);
     return;
   }
@@ -8949,7 +8981,9 @@ static void dialog_commit(void) {
       gallery_refresh();
       toast(trashed ? "Deleted.  TAP TO UNDO" : "Deleted");
       s_toast_long = trashed;
-      go(SCR_GALLERY, MOTION_BACK_MS);
+      /* The review after a shot ends where it started, on the finder, with
+       * the same thirty seconds of UNDO. */
+      go(s_review_from_shot ? SCR_SHOOT : SCR_GALLERY, MOTION_BACK_MS);
       return;
     }
     case DLG_DELETE_ALL:
@@ -9207,8 +9241,25 @@ static void fire_shutter(void) {
    * warning alone. Queued: silent now, one shutter when it fires (ui_pass
    * calls back in here). Ignored: silent.
    */
+  if (capture_stage() == CAPTURE_DONE) {
+    /* The last report is still up (AFTER SHOT is 2 s by default). It is
+     * acknowledged here, before the next request: capture.c goes from DONE
+     * straight to TRIGGERING, ui_pass never sees IDLE in between, and a
+     * stale s_shot_seen_us made the next report play no sound and open no
+     * review. */
+    capture_ack();
+    s_shot_seen_us = 0;
+    s_shot_hold = false;
+  }
   if (capture_request("shutter")) {
     if (config_bool("body.sounds.save", true)) audio_shutter();
+    /* The undo toast belongs to the photograph before; it does not sit over
+     * the finder through the next ones. The undo itself runs out on its own
+     * clock, as it would have. */
+    if (s_toast_long) {
+      s_toast[0] = '\0';
+      s_toast_long = false;
+    }
   } else {
     if (!capture_ready()) {
       /* Not "a capture is already running", which is what this used to say to
@@ -9333,6 +9384,22 @@ static void handle_button(const btn_event_t *ev) {
     return;
   }
   if (ev->id != BTN_SHUTTER) return;
+  if (s_screen == SCR_PHOTO && s_review_from_shot && s_first_review_us != 0 && s_review_span_us != 0 &&
+      s_dialog == DLG_NONE) {
+    /*
+     * The review after a shot, still on its clock and untouched: the shutter
+     * is the next photograph, not only a way back to the finder. It fires
+     * first, so the press is as quick as one on SHOOT and anything it says
+     * is drawn before the move owns the panel; then the finder slides back
+     * in. HOLD (span 0) keeps its rule: the first press acknowledges, the
+     * next opens the finder. A finger on the review clears the clock, and
+     * the press goes back to only opening the finder.
+     */
+    s_first_review_us = 0;
+    fire_shutter();
+    go(SCR_SHOOT, MOTION_BACK_MS);
+    return;
+  }
   if (s_screen != SCR_SHOOT) {
     /* No present here: go() starts the move, it does not run it, and the
      * canvas is holding the destination the move is about to reveal. Pushing
@@ -9437,8 +9504,6 @@ static void first_start_note(void) {
  * Then back to SHOOT on its own (HOLD stays until a finger moves it), unless
  * a finger got there first.
  */
-static int64_t s_first_review_us; /* when the review opened; 0 when none is up */
-static int64_t s_review_span_us;  /* how long it stays; 0 for HOLD */
 static void first_review_open(const capture_report_t *r) {
   gallery_item_t it;
   memset(&it, 0, sizeof it);
@@ -9450,6 +9515,7 @@ static void first_review_open(const capture_report_t *r) {
   if (!photo_open(&it)) return; /* the card is still busy with it; a still it is */
   s_focus[SCR_PHOTO] = P_IT_DELETE;
   s_first_review_us = esp_timer_get_time();
+  s_review_from_shot = true;
   go(SCR_PHOTO, MOTION_OPEN_MS);
 }
 static void first_review_poll(void) {
@@ -9459,6 +9525,8 @@ static void first_review_poll(void) {
     return;
   }
   if (s_review_span_us == 0) return; /* HOLD: a finger ends it */
+  /* A question on the glass is never carried off to another screen. */
+  if (s_dialog != DLG_NONE) return;
   if (esp_timer_get_time() - s_first_review_us < s_review_span_us) return;
   s_first_review_us = 0;
   go(SCR_SHOOT, MOTION_BACK_MS);
@@ -10051,6 +10119,10 @@ static uint32_t ui_pass(void) {
         s_down_x = lx;
         s_down_y = ly;
       }
+      /* A finger on the review after a shot: the person is looking at it.
+       * It is not pulled back to the finder from under them, and the shutter
+       * goes back to only opening the finder. BACK still goes there. */
+      if (s_screen == SCR_PHOTO) s_first_review_us = 0;
       region = undo_hit(lx, ly) ? IT_UNDO : hit_test(lx, ly);
     }
 
@@ -10152,10 +10224,11 @@ static uint32_t ui_pass(void) {
           calib_start(r.dir, r.id);
         }
         if (s_shot_queued) {
-          /* The press taken while saving: the report is acknowledged and
-           * the next photograph starts now, review or none. */
+          /* The press taken while saving: the next photograph starts now,
+           * review or none. fire_shutter() acknowledges the report and
+           * clears s_shot_seen_us, so the queued shot's own report is seen
+           * when it lands. */
           s_shot_queued = false;
-          capture_ack();
           fire_shutter();
         } else if (r.ok && r.stored >= 2 && s_screen == SCR_SHOOT) {
           const int hold_s = config_int("shoot.displayAfterShotS", 2);
@@ -10180,7 +10253,10 @@ static uint32_t ui_pass(void) {
        * satisfies.
        */
       const int hold_s = config_int("shoot.displayAfterShotS", 2);
-      if (hold_s < 0) {
+      if (s_shot_seen_us == 0) {
+        /* fire_shutter() above handed the report to the queued shot: there
+         * is nothing left to hold or to time out. */
+      } else if (hold_s < 0) {
         s_shot_hold = true;
       } else if (esp_timer_get_time() - s_shot_seen_us > (int64_t)hold_s * 1000000) {
         capture_ack();
