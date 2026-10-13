@@ -6283,6 +6283,12 @@ static void draw_roll(void) {
   const int64_t now = esp_timer_get_time() / 1000;
   const bool server_quiet = online && q.server_state == UPLOAD_SERVER_UNREACHABLE;
   const bool can_send = online && !server_quiet && !q.halted;
+  /* A Roll joined and no server to send to: every upload parks FAILED, and
+   * the screen said "Online" and "All uploaded" over it. Gated on the
+   * condition alone, not on `failed`: that count also holds captures retired
+   * off any Roll, which park whether or not there is a server. Radio builds
+   * only raise it. */
+  const bool no_server = conditions_has(COND_ROLL_NO_SERVER);
   const int waiting = q.pending + q.card_pending;
 
   /*
@@ -6307,6 +6313,9 @@ static void draw_roll(void) {
   if (q.halted) {
     word = "Paused";
     lamp = K_FAULT;
+  } else if (no_server) {
+    word = "No server";
+    lamp = K_FAULT;
   } else if (server_quiet) {
     word = "KINO not answering";
     lamp = K_FAULT;
@@ -6325,7 +6334,8 @@ static void draw_roll(void) {
   if (total < 0 || !q.scan_complete) {
     snprintf(sent, sizeof sent, "counting");
   } else {
-    int done = total - waiting - q.uploading;
+    /* Parked uploads are on the card and not on the Roll: they are not done. */
+    int done = total - waiting - q.uploading - q.failed;
     if (done < 0) done = 0;
     snprintf(sent, sizeof sent, "%d of %d", done, total);
   }
@@ -6351,6 +6361,10 @@ static void draw_roll(void) {
   if (q.halted) {
     snprintf(l1, sizeof l1, "%d waiting, saved on the camera.", waiting);
     snprintf(l2, sizeof l2, "Check the roll in Studio.");
+  } else if (no_server) {
+    /* Ahead of every "All uploaded": with nowhere to send, nothing went. */
+    snprintf(l1, sizeof l1, "%d saved on the camera.", waiting + q.uploading + q.failed);
+    snprintf(l2, sizeof l2, "Set the Roll server in Studio.");
   } else if (waiting > 0 || q.uploading > 0) {
     if (can_send) {
       bar = true;

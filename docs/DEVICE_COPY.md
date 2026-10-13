@@ -222,12 +222,14 @@ calls and fails when one of them is not in this table.
 | `SCAN TO JOIN` | Over the QR, when a Roll is active. |
 | `Code` / `Enter this code to join` | The short code under the QR, for someone who cannot scan. |
 | `Status` | The row naming what the Roll is doing. |
-| `Online` / `Offline` / `Paused` / `KINO not answering` | Its value: uploading normally, no network, halted by the server, or the Roll server not answering. |
+| `Online` / `Offline` / `Paused` / `No server` / `KINO not answering` | Its value: uploading normally, no network, halted by the server, no Roll server set (`COND_ROLL_NO_SERVER`), or the Roll server not answering. |
 | `Photos` | The count of photographs on the card. |
-| `Uploaded` | The count of frames the Roll already holds. |
+| `Uploaded` | The count of photographs the Roll already holds. Parked uploads are not counted. |
 | `12 of 40` / `counting` | Its value, or `counting` while the card is still being read. |
 | `3 waiting, saved on the camera.` | Photographs not yet sent. |
 | `Check the roll in Studio.` | Under it, when the server halted uploads. |
+| `14 saved on the camera.` | No Roll server set: every photograph not on the Roll, parked ones included. Said before any `All uploaded` line. |
+| `Set the Roll server in Studio.` | Under it. |
 | `They go when KINO answers.` / `They go when Wi-Fi returns.` | Under it, when there is no route to send them. |
 | `Uploading, 12 to go.` / `Starting, 12 to go.` | Uploads running, over the progress bar. |
 | `Counting the card.` | The upload queue has not finished reading the card. |

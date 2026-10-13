@@ -2779,7 +2779,8 @@ static void scenes(void) {
   {
     g_roll_server = false;
     upload_queue_report_t saved = g_queue;
-    g_queue.failed = 34;
+    /* All fourteen on the card parked: a park cannot outnumber the photos. */
+    g_queue.failed = 14;
     g_queue.pending = 0;
     g_queue.uploading = 0;
     SHOT(SCR_STATUS, "status_roll_no_server");
