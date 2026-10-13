@@ -1718,6 +1718,14 @@ static void scan_conditions(void) {
   conditions_scan(s_cams);
 }
 
+/* go() as a tap's release calls it: inside the by-hand bracket, so the move
+ * runs on motion_by_hand() as it does on the glass. */
+static void tap_go(screen_t to, int ms) {
+  s_by_hand = true;
+  go(to, ms);
+  s_by_hand = false;
+}
+
 /*
  * A transition, as a sequence of pictures.
  *
@@ -1728,14 +1736,6 @@ static void scan_conditions(void) {
  * the renderer owns - so every frame of it is a still that can be held up
  * against the one before it.
  */
-/* go() as a tap's release calls it: inside the by-hand bracket, so the move
- * runs on motion_by_hand() as it does on the glass. */
-static void tap_go(screen_t to, int ms) {
-  s_by_hand = true;
-  go(to, ms);
-  s_by_hand = false;
-}
-
 static void shot_anim(const char *name, screen_t from, screen_t to, int pressed) {
   s_screen = from;
   s_pressed = pressed;
