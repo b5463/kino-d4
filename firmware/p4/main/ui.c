@@ -8067,9 +8067,11 @@ static void lens_hint_poll(void) {
  * the pass's cached sd_status(), so no card access in a draw, and in the
  * words of the STATUS conditions.
  *
- * It states and never gates. capture.c stays the one gate on the shutter; a
- * press in any of these states is refused there with its own strip line and
- * audio_warning, as before, and the pill pulses (s_pill_pulse_us). So FULL is
+ * It states and never gates. capture.c stays the one gate on the shutter.
+ * With no card mounted or no room, a press is refused there with its own
+ * strip line and audio_warning, as before, and the pill pulses
+ * (s_pill_pulse_us). A card that failed its write test still shoots; the
+ * pill only says to change it, and pulses if the write then fails. So FULL is
  * capture.c's own test, not the 6 MB a photograph the bars count in: the
  * reserve pure_capture_reserve_bytes() bounds a capture at, for four frames
  * at the configured size. With a lens out a capture needs one frame less, so
@@ -8104,6 +8106,11 @@ static int pill_pulse_px(void) {
                       : 1.0f - motion_smooth((float)(ms - MOTION_PILL_PULSE_UP_MS) /
                                              MOTION_PILL_PULSE_BACK_MS);
   return (int)(k * MOTION_PILL_PULSE_PX + 0.5f);
+}
+/* Whether that pulse is running, so ui_pass paces SHOOT for it. */
+static bool pill_pulsing(void) {
+  return s_pill_pulse_us != 0 &&
+         esp_timer_get_time() - s_pill_pulse_us < (int64_t)MOTION_PILL_PULSE_MS * 1000;
 }
 
 /*
@@ -10615,10 +10622,11 @@ static uint32_t ui_pass(void) {
       if (!lift_drew) ui_render(render_screen, NULL);
       /* Paced against the link, not the panel: new frames arrive a few times
        * a second at best. A landing capture is paced against the panel
-       * instead, so its 180 ms return is a fade and not three steps, and a
-       * lift goes straight back round so it is one too. */
+       * instead, so its 180 ms return is a fade and not three steps, and so
+       * is the card pill's pulse, whose 140 ms out would be two frames at
+       * 60. A lift goes straight back round so it is one too. */
       if (lifting) return 0;
-      return landing ? 20 : 60;
+      return (landing || pill_pulsing()) ? 20 : 60;
     }
     /* A lift (undim, wake, a sleep called off) repaints every pass it runs;
      * at the loop's 20 ms on top of the draw it would be a frame every 40. */
