@@ -30,7 +30,7 @@ Logical space is `UI_W` x `UI_H`, 800 x 480 px, landscape. The panel's own long 
 | Screen | Opened from | Back goes to | What it does |
 |---|---|---|---|
 | `SCR_MENU` | Boot, and Back from the top level | stays | The SHOOT card and five rows: LOOK, GALLERY, ROLL, SETTINGS, POWER. |
-| `SCR_SHOOT` | The SHOOT card | `SCR_MENU` | The four streams, a quarter of the panel each, edge to edge. A MENU button on the hand's side. A 34 px status bar at the foot with the look, the mode, the flash, the four (with a count such as 3/4 beside them only when one is missing), STUDIO while Studio talks, and the card only when it is missing or under `COND_CARD_LOW_SHOTS` photographs left; a press on the bar opens LOOK. |
+| `SCR_SHOOT` | The SHOOT card | `SCR_MENU` | The four streams, a quarter of the panel each, edge to edge. A MENU button on the hand's side. A 34 px status bar at the foot with the look, the mode, the flash, the four (with a count such as 3/4 beside them only when one is missing), STUDIO while Studio talks, and the card only when it is missing or under `COND_CARD_LOW_SHOTS` photographs left; a press on the bar opens LOOK. A pane with no picture says NO PICTURE over a 248 x 52 RESTART THE CAMERAS button; the button is the target, not the pane. |
 | `SCR_LOOK` | The LOOK row, or the SHOOT bar | `SCR_MENU`, or `SCR_SHOOT` when opened from it | The look picker, COLOUR or B&W, WIGGLE or QUAD, FLASH AUTO, ON or OFF, and in QUAD which lens. |
 | `SCR_GALLERY` | The GALLERY row | `SCR_MENU` | Three by two tiles of 252 x 189 px, the page pair in the header, `n / N` beside the title. |
 | `SCR_PHOTO` | A gallery tile, and after a shot | `SCR_GALLERY`; `SCR_SHOOT` after a shot | The photograph in a 600 x 450 well, playing. A 162 px column on the hand's side: the facts, previous and next, DELETE, SEND TO ROLL, FAVOURITE. |
@@ -312,7 +312,7 @@ Outside `draw_screen()`, whole-panel renders replace it: the boot field, the wor
 | Capture | SHOOTING, READING, SAVING, then SAVED, or how many cameras missed. Cells land in the shade, or stay red where a lens lost its frame. |
 | Delete all photos | The Photos row on STORAGE reads DELETING 120 OF 500 from `gallery_delete_progress()`, repainted while `gallery_deleting()` holds. Both destructive rows are disabled until it ends. The menu and other screens show nothing of it. |
 | Formatting | FORMATTING THE CARD on the working strip. |
-| Cameras restarting | RESTARTING THE CAMERAS for `MOTION_CAMS_RESTART_BANNER_MS`. |
+| Cameras restarting | From the STATUS row or a dead pane's button, the same action and no confirm. RESTARTING THE CAMERAS for `MOTION_CAMS_RESTART_BANNER_MS`. For `CAM_RESTART_GRACE_MS` (7 s, a guess until the node boot is timed on the bench) a pane with no picture says STARTING and has no button, and the STATUS row only toasts. Both entry points re-arm the finder's settle clock. |
 | Dim | After `body.autoDimS` (30 s by default) the scrim arrives over `MOTION_DIM_MS` to `DIM_SCRIM_K`. A touch lifts it over `MOTION_UNDIM_MS` and is acted on: a dim screen is still readable. |
 | Sleep | After `body.sleepS` (120 s by default) the picture darkens, the wordmark fades in, holds and fades out inside `SLEEP_WIND_MS`, and `power.c` cuts the backlight. A touch brings the screen back over `MOTION_WAKE_MS`; that touch presses nothing. |
 | Restart, power-down | RESTARTING for `MOTION_RESTARTING_MS`, the wordmark, a fade over `MOTION_POWER_FADE_FRAMES` frames, then black. A blocking loop: it only runs on the way to a reset. |

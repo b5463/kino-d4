@@ -106,7 +106,7 @@ _Static_assert(MOTION_LAND_HOLD_MS + MOTION_LAND_BACK_MS == MOTION_LAND_MS,
 #define MOTION_CAMS_RESTART_BANNER_MS 3000 /* RESTART THE CAMERAS, said */
 /* A SHOOT pane that has never had a frame holds its ground this long before
  * it says why, so the picture arrives on black rather than after a false
- * NO CAMERA. */
+ * NO PICTURE. */
 #define MOTION_SHOOT_SETTLE_MS 1500
 
 /* ---- the light -------------------------------------------------------- */

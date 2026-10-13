@@ -6,7 +6,7 @@ How to read the table: `N`, `12` or `4571` stands for a number the camera fills 
 
 ## The rule
 
-The person holding the camera has read nothing and will not phone anyone. Each line names what happened and, when there is one, what to do about it. Under 40 characters for a toast, one short line for a banner, two for a dialog. Plain words: lens, photo, card, cells. No codes, no camera numbers, no contract names on the glass; those go to the log and the KDP reply. Known exceptions still on the glass: the CAM1-CAM4 pane labels on SHOOT, the LOOK TARGET band and the ABOUT lens rows (#235). Values on a band or in a reading are in capitals: `15 S`, `2 MIN`, `MEDIUM`.
+The person holding the camera has read nothing and will not phone anyone. Each line names what happened and, when there is one, what to do about it. Under 40 characters for a toast, one short line for a banner, two for a dialog. Plain words: lens, photo, card, cells. No codes, no camera numbers, no contract names on the glass; those go to the log and the KDP reply. Known exceptions still on the glass: the LOOK TARGET band and the ABOUT lens rows (#235). Values on a band or in a reading are in capitals: `15 S`, `2 MIN`, `MEDIUM`.
 
 ## Header chip
 
@@ -92,9 +92,9 @@ The rows at the foot of STATUS:
 | `MENU` | The way out, on the back button beside the picture. |
 | `WIGGLE` / `QUAD` | The mode, on the decisions bar. Tapping the bar opens LOOK. |
 | `AUTO` / `ON` / `OFF` | The flash, beside the bolt on the decisions bar. |
-| `NO PICTURE` / `NO RECENT FRAME` / `NO CAMERA` | A finder pane with no pixels: the lens reported an error, its frames stopped, or it is not linked. Said once the first second of SHOOT has passed. |
-| `CAM1` / `CAM2` / `CAM3` / `CAM4` | Under that word, which pane it is. |
-| `RESTART THE CAMERAS IN STATUS` | Under those two, in ink: what to do. STATUS carries the RESTART THE CAMERAS row. |
+| `NO PICTURE` | A finder pane with no pixels: the lens reported an error, its frames stopped, or it is not linked. One word for all three; the pane's place says which lens. Said once the first 1.5 s of SHOOT have passed. |
+| `RESTART THE CAMERAS` | The button under it, on that pane. The same action as the STATUS row, with no confirm. |
+| `STARTING` | Instead of both, on a pane with no picture for 7 s after a restart from either place, while the lenses boot. No button then. |
 
 ## SHOOT banner
 
@@ -145,6 +145,7 @@ The rows at the foot of STATUS:
 | Cameras measured | The first photograph's measurement stored. |
 | Not measured. Aim at a busier scene | The measurement found a flat scene. |
 | The next photo measures the cameras | MEASURE AGAIN pressed. |
+| The cameras are starting | RESTART THE CAMERAS on STATUS within 7 s of the last restart. Nothing is switched. |
 | Sent to the roll | SEND TO ROLL queued the photograph. |
 | Could not send. Try again later | SEND TO ROLL could not queue it. |
 | No active roll | SEND TO ROLL with no Roll joined. |

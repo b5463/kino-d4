@@ -1354,6 +1354,8 @@ static const struct {
 } HAND_SIDE[] = {
     {SCR_MENU, 0, "menu card"},
     {SCR_SHOOT, SH_IT_BACK, "SHOOT back"},
+    /* A dead pane's RESTART THE CAMERAS is that pane's content, centred on
+     * it wherever it is, not chrome on the hand's side. */
     {SCR_PHOTO, IT_BACK, "PHOTO back"},
     {SCR_PHOTO, P_IT_DELETE, "PHOTO delete"},
     {SCR_PHOTO, P_IT_FAV, "PHOTO favourite"},
@@ -1547,7 +1549,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 247
+#define PPMS_PER_HAND 250
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -2552,13 +2554,25 @@ static void scenes(void) {
   SHOT(SCR_SHOOT, "shoot");
   g_flash_mode = "on";
   SHOT(SCR_SHOOT, "shoot_flash_on");
-  /* QUAD, flash off, and CAM3 not answering: the strip's count on something
-   * other than 4/4, and draw_shoot()'s no-picture branch - the pane that says
-   * NO CAMERA - which no screenshot has ever contained either. */
+  /* QUAD, flash off, and the third lens not answering: the strip's count on
+   * something other than 4/4, and draw_shoot()'s no-picture branch - NO
+   * PICTURE and its RESTART THE CAMERAS button. */
   g_flash_mode = "off";
   g_mode = "quad";
   g_vf_dead = 1u << 2;
   SHOT(SCR_SHOOT, "shoot_quad_flash_off");
+  /* The button held, and the same pane inside the boot grace after a
+   * restart: STARTING and no button. */
+  s_pressed = SH_IT_PANE0 + 2;
+  SHOT(SCR_SHOOT, "shoot_dead_pane_pressed");
+  s_pressed = -1;
+  s_cams_boot_us = esp_timer_get_time();
+  SHOT(SCR_SHOOT, "shoot_dead_pane_starting");
+  s_cams_boot_us = 0;
+  /* Two panes out, one on top and one on the bottom: the bottom pane's
+   * button sits in what the bar leaves of it. */
+  g_vf_dead = (1u << 1) | (1u << 2);
+  SHOT(SCR_SHOOT, "shoot_two_dead");
   g_vf_dead = 0;
   g_flash_mode = "auto";
   g_mode = "wiggle";

@@ -4104,10 +4104,19 @@ static void draw_menu(void) {
 /* Viewfinder                                                          */
 /* ------------------------------------------------------------------ */
 
-/* Two things you can touch on this screen: the way out, and the three
- * decisions on the status bar, which open LOOK. */
+/* What you can touch on this screen: the way out, the three decisions on the
+ * status bar, which open LOOK, and on a pane with no picture its RESTART THE
+ * CAMERAS button, SH_IT_PANE0 + the pane. */
 #define SH_IT_BACK 0
 #define SH_IT_LOOK 1
+#define SH_IT_PANE0 2
+/* The panes whose button the last draw put up, one bit each. Set by the draw
+ * and read by the hit test, the same rule as s_sh_set_x0. */
+static uint8_t s_sh_dead;
+/* That button: the one control style at the thumb floor, wide enough for its
+ * words with the control's margins. */
+#define SH_DEAD_BTN_W 248
+#define SH_DEAD_BTN_H 52
 /* Where the decisions group sits on the bar, set by the draw and read by the
  * hit test - the same rule as s_list_top. */
 static int s_sh_set_x0, s_sh_set_x1;
@@ -4204,9 +4213,41 @@ _Static_assert(SH_LOOK_HIT_H >= SH_BAR_H && SH_BACK_Y + SH_BACK_H < UI_H - SH_LO
 #define SH_SETTLE_US (MOTION_SHOOT_SETTLE_MS * 1000)
 static int64_t s_shoot_since_us;
 
+/*
+ * After RESTART THE CAMERAS the four nodes are switched off and boot again.
+ * Their panes stay dark for longer than the settle above and longer than the
+ * 3 s strip, and a pane that offered the button again in that time would ask
+ * for a second power cycle into a node that is still booting. For this long a
+ * pane with no picture says STARTING and carries no button, and the STATUS
+ * row answers with a toast instead of cycling the bank.
+ *
+ * 7 s is a guess, not a measurement. Time a node on the bench from the bank
+ * cycle to its first finder frame and set this to that plus a second.
+ */
+#define CAM_RESTART_GRACE_MS 7000
+static int64_t s_cams_boot_us; /* the last restart, from either entry point; 0 for none */
+static bool cams_starting(void) {
+  return s_cams_boot_us != 0 &&
+         esp_timer_get_time() - s_cams_boot_us < (int64_t)CAM_RESTART_GRACE_MS * 1000;
+}
+
 static void sh_pane_rect(int cam, int *x, int *y) {
   *x = (cam % 2) * SH_PANE_W;
   *y = (cam / 2) * SH_PANE_H;
+}
+
+/* A dead pane's two pieces, centred in the part of the pane the status bar
+ * leaves: the bottom two lose SH_BAR_H to it. One function for the draw and
+ * the hit test, so the button is pressed where it is drawn. `ly` is the
+ * caption's top, `bx`/`by` the button's corner. */
+#define SH_DEAD_H (K_TYPE_CAPTION->line_h + GRID + SH_DEAD_BTN_H)
+static void sh_dead_layout(int cam, int *ly, int *bx, int *by) {
+  int px, py;
+  sh_pane_rect(cam, &px, &py);
+  const int vis_h = py + SH_PANE_H > SH_BAR_Y ? SH_BAR_Y - py : SH_PANE_H;
+  *ly = py + (vis_h - SH_DEAD_H) / 2;
+  *bx = px + (SH_PANE_W - SH_DEAD_BTN_W) / 2;
+  *by = *ly + K_TYPE_CAPTION->line_h + GRID;
 }
 
 /* Scaled to fill and cropped, rather than fitted and bordered.
@@ -4462,21 +4503,17 @@ static int sh_panel(int x, int w, const char *s, bool down) {
  * is not part of seeing. But a viewfinder that cannot tell you what it is set
  * to makes you leave it to check, which is worse than a 34 px bar. So the
  * finder states them and changes none of them: everything on the strip is a
- * reading, and the only thing on this screen that can be pressed is the way
- * out.
+ * reading, and a press on it opens LOOK. The only other things that can be
+ * pressed are the way out and, on a pane with no picture, its restart.
  *
  * Nothing on the strip is invented. Mode and flash are the config fields LOOK
  * writes, the look is the string LOOK's picker shows, and the count is the
  * panes that decoded a frame this pass - the same fact that decided whether
  * each quarter got a picture or a reason.
  */
-/* An empty pane's three caption lines: 18 px lines 20 apart, and a grid step
- * more before the action line. */
-#define SH_EMPTY_LEAD 20
-#define SH_EMPTY_H (3 * SH_EMPTY_LEAD + GRID - 2)
-_Static_assert(SH_EMPTY_H <= SH_PANE_H / 2, "an empty pane's three lines do not fit its middle");
 static void draw_shoot(void) {
-  static const char *const NAMES[4] = {"CAM1", "CAM2", "CAM3", "CAM4"};
+  s_sh_dead = 0;
+  const bool starting = cams_starting();
   /* Which of the four are on screen, as the mark rather than as a sentence.
    * Filled in by the pane loop below, for the same reason `live` is: what the
    * strip reports is what the screen is showing. */
@@ -4500,27 +4537,34 @@ static void draw_shoot(void) {
       continue;
     }
 
-    /* No pixels. Say which of the several reasons it is - a black quarter
-     * could mean any of them - and say it quietly, because this is the one
-     * state where the screen has nothing better to show. */
+    /* No pixels. Say so quietly, because this is the one state where the
+     * screen has nothing better to show, and offer the fix. */
     fill(px, py, SH_PANE_W, SH_PANE_H, K_GROUND);
     const bool settling = st.state == VF_NO_LINK &&
                           esp_timer_get_time() - s_shoot_since_us < SH_SETTLE_US;
     if (settling) continue;
-    const char *why = st.state == VF_ERROR     ? "NO PICTURE"
-                      : st.state == VF_STALLED ? "NO RECENT FRAME"
-                                               : "NO CAMERA";
-    /* Quiet, and in the palette: two blue-greys lived here that were in no
-     * other place on the panel and measured under 2:1 - a reason nobody
-     * could read on the one pane that had nothing else to say. */
-    /* Three lines on the pane's centre: what is wrong, which one, and what
-     * to do. The third is the one a person can act on; it is in ink, the
-     * two that describe are quiet. */
-    const int ly = py + (SH_PANE_H - SH_EMPTY_H) / 2;
-    text_mid(K_TYPE_CAPTION, px + SH_PANE_W / 2, ly, why, K_INK_QUIET);
-    text_mid(K_TYPE_CAPTION, px + SH_PANE_W / 2, ly + SH_EMPTY_LEAD, NAMES[i], K_INK_QUIET);
-    text_mid(K_TYPE_CAPTION, px + SH_PANE_W / 2, ly + 2 * SH_EMPTY_LEAD + GRID,
-             "RESTART THE CAMERAS IN STATUS", K_INK);
+    int ly, bx, by;
+    sh_dead_layout(i, &ly, &bx, &by);
+    const int cx = px + SH_PANE_W / 2;
+    if (starting) {
+      /* Restarted, and the nodes are still booting. No button: a second
+       * press now would cycle a node mid-boot. */
+      text_mid(K_TYPE_CAPTION, cx, ly + (SH_DEAD_H - K_TYPE_CAPTION->line_h) / 2, "STARTING",
+               K_INK_QUIET);
+      continue;
+    }
+    /* One reason for no link, no recent frame and an error alike: a person
+     * cannot tell them apart and the fix is the same. Which lens it is, is
+     * where the pane is. Quiet, and in the palette: two blue-greys lived here
+     * that measured under 2:1. Under it, the fix as a button in the one
+     * control style, doing what the STATUS row does. The button is the
+     * target, not the pane: a thumb resting on the rest of it presses
+     * nothing. */
+    text_mid(K_TYPE_CAPTION, cx, ly, "NO PICTURE", K_INK_QUIET);
+    btn_text(bx, by, SH_DEAD_BTN_W, SH_DEAD_BTN_H,
+             s_pressed == SH_IT_PANE0 + i ? CTL_DOWN : CTL_REST, K_GROUND, "RESTART THE CAMERAS",
+             ICON_N);
+    s_sh_dead |= (uint8_t)(1u << i);
   }
 
   /* ---- the way out ---- */
@@ -6606,6 +6650,20 @@ static int sts_action_y(int rows, int k) {
 static int sts_action_count(void) { return config_bool("body.calibration.done", false) ? 2 : 1; }
 static int64_t s_cams_restart_us; /* when RESTART THE CAMERAS was pressed; the banner's clock */
 #define CAMS_RESTART_BANNER_US ((int64_t)MOTION_CAMS_RESTART_BANNER_MS * 1000)
+/* RESTART THE CAMERAS, from the STATUS row or a dead pane's button: one
+ * action, no confirm from either. Both start the boot grace and re-arm the
+ * finder's settle clock, so back on SHOOT the panes wait out the boot instead
+ * of offering the restart again. Inside the grace nothing is cycled: the
+ * draw hides the pane's button then, and this is the fence for the row. */
+static void cams_restart(void) {
+  if (cams_starting()) {
+    toast("The cameras are starting");
+    return;
+  }
+  power_cam_bank_cycle();
+  s_cams_restart_us = s_cams_boot_us = s_shoot_since_us = esp_timer_get_time();
+  audio_done();
+}
 static void draw_status_action(int rows) {
   const int n = sts_action_count();
   for (int k = 0; k < n; k++) {
@@ -8855,6 +8913,14 @@ static int hit_test(int x, int y) {
       /* The decisions group on the bar, as one control. Its extent was set
        * by the draw. */
       if (y >= UI_H - SH_LOOK_HIT_H && x >= s_sh_set_x0 && x < s_sh_set_x1) return SH_IT_LOOK;
+      /* A dead pane's button, on the panes the draw put one on: the face
+       * only, from the layout the draw used. */
+      for (int i = 0; i < 4; i++) {
+        if (!(s_sh_dead & (1u << i))) continue;
+        int ly, bx, by;
+        sh_dead_layout(i, &ly, &bx, &by);
+        if (in(x, y, bx, by, SH_DEAD_BTN_W, SH_DEAD_BTN_H)) return SH_IT_PANE0 + i;
+      }
       return -1;
 
     case SCR_PHOTO: {
@@ -9133,6 +9199,10 @@ static void activate(int item) {
         go(SCR_LOOK, MOTION_OPEN_MS);
         return;
       }
+      if (item >= SH_IT_PANE0 && item < SH_IT_PANE0 + 4) {
+        cams_restart();
+        return;
+      }
       break;
 
     case SCR_LOOK:
@@ -9262,11 +9332,7 @@ static void activate(int item) {
         cfg_set_bool("body.calibration.done", false);
         toast("The next photo measures the cameras");
       }
-      if (item == STS_IT_RESTART_CAMS) {
-        power_cam_bank_cycle();
-        s_cams_restart_us = esp_timer_get_time();
-        audio_done();
-      }
+      if (item == STS_IT_RESTART_CAMS) cams_restart();
       break;
 
     case SCR_POWER:
