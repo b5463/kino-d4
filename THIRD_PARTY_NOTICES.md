@@ -87,8 +87,9 @@ Source: <https://www.dafont.com/W95FA.font>.
 ## Inter and Oxanium (OFL-1.1)
 
 `firmware/p4/main/ui_font.h` is the camera's type, rasterised to 8-bit
-coverage by `tools/mkfont.swift` for ASCII 32..126 at the five sizes `ui.c`
-puts on the screen.
+coverage by `tools/mkfont.swift` for ASCII 32..126 at the six sizes `ui.c`
+puts on the screen. The largest, 75 px, sets one word on the menu card and
+carries only its letters; `tools/subset-font.mjs` cuts the rest.
 
 Two faces, with two jobs:
 

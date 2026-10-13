@@ -51,6 +51,10 @@
  *   TITLE    L   41  Oxanium  a screen's title, a menu row, a look's name
  *   HERO     XL  75  Oxanium  SHOOT on the card, and nothing else
  *
+ * HERO carries S, H, O and T and no other letter (tools/subset-font.mjs): the
+ * other 90 glyphs were 159 KB of flash. A new HERO word with another letter
+ * needs that letter added to the cut; host_preview fails until it is.
+ *
  * Caps go in Oxanium and sentences in Inter, and nothing switches family to
  * make a string fit: fit_face() falls back TITLE -> LABEL and then cuts at
  * LABEL with text_fit(). A value that arrives as data takes its face from

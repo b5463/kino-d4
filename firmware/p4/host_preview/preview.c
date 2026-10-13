@@ -1143,7 +1143,67 @@ static int caps_report(void) {
   return g_caps_n;
 }
 
+/* ---- the dropped-glyph audit (F1) ----
+ *
+ * tools/subset-font.mjs cuts a face down to the letters the interface sets in
+ * it: XL keeps " HOST", for SHOOT on the menu card, and every other glyph is
+ * NULL with its advance kept. A string that later sets another letter in XL
+ * draws a gap the width of that letter, which on a screenshot reads as a
+ * typo and on the glass as a broken camera. Every string text() draws comes
+ * through here, moves included: a character that is not a space and has no
+ * coverage in its face fails the run, named with the face and the string. */
+#define NULLG_MAX 32
+static struct {
+  char s[64];
+  char ch;
+  const char *face;
+  char screen[32];
+} g_nullg[NULLG_MAX];
+static int g_nullg_n;
+
+static const char *face_name(const ui_font_t *f) {
+  if (f == &UI_FONT_T) return "T";
+  if (f == &UI_FONT_S) return "S";
+  if (f == &UI_FONT_R) return "R";
+  if (f == &UI_FONT_M) return "M";
+  if (f == &UI_FONT_L) return "L";
+  if (f == &UI_FONT_XL) return "XL";
+  return "?";
+}
+
+static void null_glyph_audit(const ui_font_t *f, const char *s) {
+  for (const char *q = s; *q; q++) {
+    if (*q == ' ') continue;
+    const int gi = (unsigned char)*q - f->first;
+    if (gi >= 0 && gi < f->count && f->glyphs[gi].cov != NULL) continue;
+    for (int i = 0; i < g_nullg_n; i++) {
+      if (g_nullg[i].face == face_name(f) && strncmp(g_nullg[i].s, s, sizeof g_nullg[0].s - 1) == 0)
+        return;
+    }
+    if (g_nullg_n >= NULLG_MAX) return;
+    snprintf(g_nullg[g_nullg_n].s, sizeof g_nullg[0].s, "%s", s);
+    g_nullg[g_nullg_n].ch = *q;
+    g_nullg[g_nullg_n].face = face_name(f);
+    g_nullg[g_nullg_n].screen[0] = '\0';
+    g_nullg_n++;
+    return;
+  }
+}
+
+static int null_glyph_report(void) {
+  if (g_nullg_n == 0) return 0;
+  fprintf(stderr, "\n%d string%s set a letter its face does not carry (NULL GLYPH):\n", g_nullg_n,
+          g_nullg_n == 1 ? "" : "s");
+  for (int i = 0; i < g_nullg_n; i++) {
+    fprintf(stderr, "  %-30s %-2s '%c'  \"%s\"\n",
+            g_nullg[i].screen[0] != '\0' ? g_nullg[i].screen : "?", g_nullg[i].face, g_nullg[i].ch,
+            g_nullg[i].s);
+  }
+  return g_nullg_n;
+}
+
 void ui_audit_ink(const ui_font_t *f, int x, int y, const char *s, uint16_t ink) {
+  null_glyph_audit(f, s);
   if (g_anim != NULL || g_audit_off) return;
   caps_audit(f, s);
   const gfx_target_t *t = TG;
@@ -1545,6 +1605,11 @@ static void audit_stamp(const char *name) {
   for (int i = 0; i < g_caps_n; i++) {
     if (g_caps[i].screen[0] == '\0') {
       snprintf(g_caps[i].screen, sizeof g_caps[0].screen, "%s", name);
+    }
+  }
+  for (int i = 0; i < g_nullg_n; i++) {
+    if (g_nullg[i].screen[0] == '\0') {
+      snprintf(g_nullg[i].screen, sizeof g_nullg[0].screen, "%s", name);
     }
   }
 }
@@ -2891,6 +2956,7 @@ static int run_hand(bool right, const char *out) {
   }
   if (audit_report() > 0) hard = true;
   if (caps_report() > 0) hard = true;
+  if (null_glyph_report() > 0) hard = true;
   if (list_report("hand-side controls off the hand's side", g_hand_bad, g_hand_bad_n) > 0) hard = true;
   const int soft = contrast_report() +
                    list_report("touch targets under 52 px", g_small, g_small_n) +

@@ -131,8 +131,8 @@ SPDX-License-Identifier = "Apache-2.0"
 # everything the camera says as a machine: the titles, the technical caps, the
 # word on the card. Both are under the SIL Open Font License 1.1.
 #
-# The generated header is those typefaces rasterised to coverage at five sizes
-# for ASCII 32..126: a derivative of the fonts, which the OFL permits, and
+# The generated header is those typefaces rasterised to coverage at six sizes
+# for ASCII 32..126, the largest cut to the letters it sets: a derivative of the fonts, which the OFL permits, and
 # which stays under the OFL - it is not ours to relabel MIT. The OFL's Reserved
 # Font Name clause does not apply because the derivative is not distributed
 # under either font's name.

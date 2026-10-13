@@ -282,19 +282,26 @@ jobs:
       # RAISED 1200 -> 1350 when the interface stopped being a bitmap.
       #
       # The type is the whole of it. ui_font.h is Inter and Oxanium rasterised
-      # to 8-BIT COVERAGE at five sizes for ASCII 32..126 - 304 KB of rodata
-      # where the 1-bit bitmaps it replaced were a fraction of that. That is
-      # the cost of glyphs that blend into what is behind them instead of
-      # being thresholded, and at 19 px it is most of what makes a face
-      # legible; the alternative is the staircase on every diagonal that the
-      # old header had. The studio's mark adds 25 KB as a 160x160 coverage
-      # map (logo_odd_jobs.h), and deleting icons_w98.h and ui_labels.h gave
-      # some back.
+      # to 8-BIT COVERAGE for ASCII 32..126 - 304 KB of rodata at the first
+      # five sizes, where the 1-bit bitmaps it replaced were a fraction of
+      # that. That is the cost of glyphs that blend into what is behind them
+      # instead of being thresholded, and at 19 px it is most of what makes a
+      # face legible; the alternative is the staircase on every diagonal that
+      # the old header had. The studio's mark added 25 KB as a 160x160
+      # coverage map (logo_odd_jobs.h, removed in 0.4.58), and deleting
+      # icons_w98.h and ui_labels.h gave some back.
       #
       # 1,222 KB measured against a 3,072 KB ota_0. The new limit keeps about
       # 10% of headroom over that, which is what makes this a trigger that
       # still fires on the next surprise rather than a number moved to
       # wherever the build happens to be.
+      #
+      # CUT (#234): a sixth face, XL at 75 px, came in for the one word SHOOT
+      # on the menu card and carried all 95 glyphs, 159 KB of them.
+      # tools/subset-font.mjs keeps " HOST" and NULLs the rest; host_preview
+      # fails on any string that sets a dropped letter. Measured in the IDF
+      # 5.5.1 container: 1,297,152 B before the cut, 1,134,432 B (1,107 KB)
+      # after. The limit stays at 1350 KB; the smooth marks come next.
       - name: Guard firmware size
         if: matrix.app == 'p4'
         shell: bash
@@ -368,6 +375,9 @@ jobs:
       # above: the font table is in both images and costs the same in each.
       # 1,821 KB measured, against a 3,072 KB slot that the radio stack sized
       # in the first place.
+      # CUT (#234): the XL subset above takes the same 159 KB out of this
+      # image. Measured in the IDF 5.5.1 container: 1,902,608 B (1,858 KB,
+      # 42 KB under this guard) before, 1,739,888 B (1,699 KB) after.
       - name: Guard radio firmware size
         shell: bash
         run: |
