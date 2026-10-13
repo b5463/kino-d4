@@ -2887,6 +2887,26 @@ static void check_self_timer(void) {
   swallow_touch = false;
   s_touch_was_down = false;
 
+  /* A count that starts under a transfer: while the frames cross the links
+   * the ring eases on SHOOT's 60 ms pass, not 20 (#158). From SAVING it is
+   * back at 20. Ten passes first, so no cell is still easing in. */
+  s_toast[0] = '\0';
+  g_stage = CAPTURE_READING;
+  handle_button(&press);
+  timer_passes(10);
+  const uint32_t reading_wait = ui_pass();
+  g_stage = CAPTURE_WRITING;
+  timer_passes(10);
+  const uint32_t saving_wait = ui_pass();
+  if (s_timer_end_us == 0 || reading_wait != 60 || saving_wait != 20) {
+    fprintf(stderr, "self-timer: the count under a capture paced READING at %u ms and SAVING at %u ms, expected 60 and 20\n",
+            (unsigned)reading_wait, (unsigned)saving_wait);
+    g_timer_failed = true;
+  }
+  timer_cancel("Timer cancelled");
+  g_stage = CAPTURE_IDLE;
+  timer_passes(2);
+
   /* A tap on the picture cancels, as the caption says. */
   s_toast[0] = '\0';
   draw_screen();

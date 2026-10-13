@@ -11143,9 +11143,15 @@ static uint32_t ui_pass(void) {
        * instead, so its 180 ms return is a fade and not three steps, and so
        * is the card pill's pulse, whose 140 ms out would be two frames at
        * 60, and the countdown's ring, which eases every frame. A lift goes
-       * straight back round so it is one too. */
+       * straight back round so it is one too. The ring gives up its 20 ms
+       * while a capture's frames cross the links (TRIGGERING, READING): a
+       * count can start under a transfer, and a present every 20 ms there
+       * puts the compositor's cache writeback in the UART window (#158). It
+       * eases on the 60 ms pass until SAVING. */
       if (lifting) return 0;
-      return (landing || pill_pulsing() || s_timer_end_us != 0) ? 20 : 60;
+      const bool ring_paced = s_timer_end_us != 0 && (cstage == CAPTURE_IDLE || cstage == CAPTURE_DONE ||
+                                                      cstage == CAPTURE_WRITING);
+      return (landing || pill_pulsing() || ring_paced) ? 20 : 60;
     }
     /* A lift (undim, wake, a sleep called off) repaints every pass it runs;
      * at the loop's 20 ms on top of the draw it would be a frame every 40. */
