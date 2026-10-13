@@ -11159,11 +11159,15 @@ static uint32_t ui_pass(void) {
        * while a capture's frames cross the links (TRIGGERING, READING): a
        * count can start under a transfer, and a present every 20 ms there
        * puts the compositor's cache writeback in the UART window (#158). It
-       * eases on the 60 ms pass until SAVING. */
+       * eases on the 60 ms pass until SAVING. The pill's pulse gives up its
+       * 20 ms there too: a card refusal can raise it on the pass that starts
+       * a queued shot, and even a refused capture probes the nodes. The stage
+       * is read again here: that shot started after cstage was taken. */
       if (lifting) return 0;
-      const bool ring_paced = s_timer_end_us != 0 && (cstage == CAPTURE_IDLE || cstage == CAPTURE_DONE ||
-                                                      cstage == CAPTURE_WRITING);
-      return (landing || pill_pulsing() || ring_paced) ? 20 : 60;
+      const capture_stage_t st = capture_stage();
+      const bool links_busy = st == CAPTURE_TRIGGERING || st == CAPTURE_READING;
+      const bool ring_paced = s_timer_end_us != 0 && !links_busy;
+      return (landing || (pill_pulsing() && !links_busy) || ring_paced) ? 20 : 60;
     }
     /* A lift (undim, wake, a sleep called off) repaints every pass it runs;
      * at the loop's 20 ms on top of the draw it would be a frame every 40. */
