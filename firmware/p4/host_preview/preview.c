@@ -1438,7 +1438,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 233
+#define PPMS_PER_HAND 234
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -1485,6 +1485,52 @@ static void write_ppm(const char *path, const uint16_t *px, int w, int h) {
 }
 
 /* Findings carry the scene they were drawn in, stamped once it has a name. */
+/* ---- left edges (UI-14) ----
+ *
+ * Every left-set string's x on the scene being drawn (text() reports it,
+ * centred and right-set strings excluded). A screen whose type starts at
+ * more than EDGES_MAX different x is a column of type that wobbles: the
+ * grid says a page margin, a card's text inset and at most one more. */
+#define EDGES_MAX 3
+static int g_edge[48];
+static int g_edge_n;
+static finding_t g_edges[FINDING_MAX];
+static int g_edges_n;
+
+void ui_audit_edge(int x) {
+  if (g_anim != NULL || g_audit_off) return;
+  for (int i = 0; i < g_edge_n; i++) {
+    if (g_edge[i] == x) return;
+  }
+  if (g_edge_n < (int)(sizeof g_edge / sizeof g_edge[0])) g_edge[g_edge_n++] = x;
+}
+
+/* Screens allowed more, each with the reason. A column of controls starts
+ * its own edge; that is a grid, not a wobble. */
+static const struct {
+  screen_t sc;
+  int max;
+  const char *why;
+} EDGE_ALLOW[] = {
+    {SCR_LOOK, 5, "the title, the card's type, and three control columns, each with a caption"},
+};
+
+static void edges_judge(const char *name) {
+  int max = EDGES_MAX;
+  for (size_t i = 0; i < sizeof EDGE_ALLOW / sizeof EDGE_ALLOW[0]; i++) {
+    if (EDGE_ALLOW[i].sc == s_screen) max = EDGE_ALLOW[i].max;
+  }
+  if (g_edge_n > max && s_dialog == DLG_NONE) {
+    char msg[96];
+    int n = snprintf(msg, sizeof msg, "%d left edges:", g_edge_n);
+    for (int i = 0; i < g_edge_n && n < (int)sizeof msg - 6; i++) {
+      n += snprintf(msg + n, sizeof msg - (size_t)n, " %d", g_edge[i]);
+    }
+    finding(g_edges, &g_edges_n, name, msg);
+  }
+  g_edge_n = 0;
+}
+
 static void audit_stamp(const char *name) {
   audit_name(name);
   for (int i = 0; i < g_contrast_n; i++) {
@@ -1504,6 +1550,7 @@ static void shot(const char *name) {
   char path[600];
   snprintf(path, sizeof path, "%s/%s.ppm", g_out, name);
   audit_stamp(name);
+  edges_judge(name);
   if (g_screen_drawn) sweep_targets(name);
   g_screen_drawn = false;
   write_ppm(path, g_canvas, UI_W, UI_H);
@@ -1540,6 +1587,7 @@ static void shot_anim(const char *name, screen_t from, screen_t to, int pressed)
   /* The still the move starts from is judged like any still; name what it
    * found after the move, not after whichever shot comes next. */
   audit_stamp(name);
+  edges_judge(name);
 
   g_anim = name;
   g_anim_n = 0;
@@ -2498,6 +2546,12 @@ static void scenes(void) {
     wiggle_tick();
     s_wig_pos = 2;
     SHOT(SCR_PHOTO, "photo_partial");
+    /* The same, dated: the tallest the facts well gets - number, mode, date,
+     * MISSING, CAMERAS and the mark - which no other shot has, because the
+     * preview's photographs carry no time. The well must hold all of it. */
+    s_photo_ms = 1787000000000LL;
+    SHOT(SCR_PHOTO, "photo_partial_dated");
+    s_photo_ms = 0;
     photo_release();
     g_frame_have = 0xf;
 
@@ -2822,7 +2876,8 @@ static int run_hand(bool right, const char *out) {
   if (caps_report() > 0) hard = true;
   if (list_report("hand-side controls off the hand's side", g_hand_bad, g_hand_bad_n) > 0) hard = true;
   const int soft = contrast_report() +
-                   list_report("touch targets under 52 px", g_small, g_small_n);
+                   list_report("touch targets under 52 px", g_small, g_small_n) +
+                   list_report("screens whose type starts at more than 3 left edges", g_edges, g_edges_n);
   fprintf(stderr, "\ncontrast: %d string draws judged, %d set on a picture and skipped\n",
           g_judged_n, g_over_image_n);
   if (hard) return PASS_HARD;

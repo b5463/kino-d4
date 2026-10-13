@@ -224,7 +224,7 @@ static int hd_next_x(void) { return s_right_hand ? hd_pair_inner_x() : hd_pair_o
  * rather than computed twice: a layout the touch map derives separately is
  * the one bug this file keeps finding.
  */
-#define LIST_TOP_DEFAULT (BODY_Y + 12)
+#define LIST_TOP_DEFAULT (BODY_Y + 2 * GRID)
 static int s_list_top = LIST_TOP_DEFAULT;
 #define LIST_Y s_list_top
 
@@ -310,8 +310,11 @@ static int ph_well_x(void) { return s_right_hand ? PAGE_M : UI_W - PAGE_M - PH_W
  * under it, so the column has one left edge and one right edge rather than a
  * container 8 px proud of its own contents and 8 px over the page margin.
  * Its type is inset instead. */
-#define PH_FPAD 10
-#define PH_CAP_Y (HD_BTN_Y + HD_BTN + 12) /* the first caption line, under the back button */
+#define PH_FPAD INSET_TEXT
+#define PH_BLK_PAD 12 /* the well's padding above and below its type */
+/* The first caption line, under the back button: the well starts where the
+ * button ends, because its tallest state needs every pixel (below). */
+#define PH_CAP_Y (HD_BTN_Y + HD_BTN + PH_BLK_PAD)
 /* K_TYPE_BODY->line_h, which _Static_assert cannot read. It said 18 - the bitmap
  * face's line - for as long as the assert below has existed, so the one check
  * standing between the caption and the buttons was measuring a column a third
@@ -328,7 +331,7 @@ static int ph_well_x(void) { return s_right_hand ? PAGE_M : UI_W - PAGE_M - PH_W
  * with the two page buttons above the stack. */
 #define PH_BTN_H 52
 #define PH_BTN_W PH_COL_W
-#define PH_BTN_GAP 10     /* between buttons */
+#define PH_BTN_GAP GRID   /* between buttons */
 #define PH_BTN_BOT PAGE_M /* below the last button, to the bottom edge */
 #define PH_BTN_Y(i) (UI_H - PH_BTN_BOT - (3 - (i)) * PH_BTN_H - (2 - (i)) * PH_BTN_GAP)
 /* The previous and next photograph, side by side above the stack. Reviewing
@@ -343,6 +346,12 @@ _Static_assert(PH_TOP >= 2 && PH_TOP + PH_H + 2 <= UI_H, "the photo well's bevel
 _Static_assert(2 * PAGE_M + PH_W + 6 + PH_COL_W <= UI_W, "the control column runs into the well");
 _Static_assert(PH_CAP_Y + PH_CAP_LINES * PH_LINE + 8 <= PH_PN_Y,
                "the caption runs into the page buttons");
+/* The facts well at its tallest - number (LABEL, 27), mode, date, the
+ * MISSING line, CAMERAS and the mark (CAPTION lines of 18) - a grid step
+ * clear of the page buttons. draw_photo() sizes the well the same way. */
+#define PH_WELL_MAX_H (2 * PH_BLK_PAD + 27 + 18 + 18 + (6 + 18) + (18 + 18 + 6 + 14))
+_Static_assert(PH_CAP_Y - PH_BLK_PAD + PH_WELL_MAX_H + GRID <= PH_PN_Y,
+               "the photo facts well runs into the page buttons");
 _Static_assert(PH_BTN_Y(0) < PH_BTN_Y(1) && PH_BTN_Y(1) < PH_BTN_Y(2) &&
                    PH_BTN_Y(2) + PH_BTN_H < UI_H,
                "the buttons are out of order or fall off the bottom");
@@ -1516,8 +1525,17 @@ void ui_audit_text(int x, int y, int w, int h, const char *s);
 void ui_audit_ink(const ui_font_t *f, int x, int y, const char *s, uint16_t ink);
 void ui_audit_image(int x, int y, int w, int h);
 #define AUDIT_IMAGE(x, y, w, h) ui_audit_image((x), (y), (w), (h))
+/* The left edges (UI-14). text() reports where a left-set string starts;
+ * text_mid, text_right and the right-packed chrome hold s_audit_align up
+ * while they set one, because a centred or right-set string has no left
+ * edge to line up. text_ink reports the edge its ink starts at. */
+void ui_audit_edge(int x);
+static int s_audit_align;
+static int s_audit_ink_x = -1;
+#define AUDIT_ALIGN(d) (s_audit_align += (d))
 #else
 #define AUDIT_IMAGE(x, y, w, h) ((void)0)
+#define AUDIT_ALIGN(d) ((void)0)
 #endif
 #if KINO_UI_AUDIT
 /* Set while drawing a band that paints its own ground edge to edge - the
@@ -1583,6 +1601,9 @@ static void text(const ui_font_t *f, int x, int y, const char *s, uint16_t ink) 
     if (over_side || over_end) {
       ui_audit_text(x, y, w, f->line_h, s);
     }
+    /* Chrome - the finder's bar, the capture strip, a banner - is a row of
+     * chips, each its own surface; it has no column to line up with. */
+    if (s_audit_align == 0 && !s_audit_chrome) ui_audit_edge(s_audit_ink_x >= 0 ? s_audit_ink_x : x);
   }
 #endif
   const int baseline = y + f->ascent;
@@ -1625,7 +1646,9 @@ static void text(const ui_font_t *f, int x, int y, const char *s, uint16_t ink) 
 }
 
 static void text_right(const ui_font_t *f, int x, int y, const char *s, uint16_t ink) {
+  AUDIT_ALIGN(1);
   text(f, x - text_w(f, s), y, s, ink);
+  AUDIT_ALIGN(-1);
 }
 
 /**
@@ -1813,7 +1836,9 @@ static const ui_font_t *text_face(const ui_font_t *f, const char *s) {
 }
 
 static void text_mid(const ui_font_t *f, int cx, int y, const char *s, uint16_t ink) {
+  AUDIT_ALIGN(1);
   text(f, cx - text_w(f, s) / 2, y, s, ink);
+  AUDIT_ALIGN(-1);
 }
 
 /**
@@ -1831,7 +1856,13 @@ static void text_mid(const ui_font_t *f, int cx, int y, const char *s, uint16_t 
 static void text_ink(const ui_font_t *f, int x, int y, const char *s, uint16_t ink) {
   const int i = (unsigned char)*s - f->first;
   const int bx = (i >= 0 && i < f->count) ? f->glyphs[i].bx : 0;
+#if KINO_UI_AUDIT
+  s_audit_ink_x = x;
+#endif
   text(f, x - bx, y, s, ink);
+#if KINO_UI_AUDIT
+  s_audit_ink_x = -1;
+#endif
 }
 
 /* Uppercase in place, ASCII only.
@@ -3170,12 +3201,14 @@ static int chrome_state(int left, int right, int y, uint16_t ink, const char *fi
 
   /* And place them, right to left, in spatial order. */
   int x = right;
+  AUDIT_ALIGN(1); /* packed from the right: no left edge */
   for (int i = 4; i >= 0; i--) {
     if (!it[i].keep) continue;
     x -= it[i].w;
     text(K_TYPE_CAPTION, x, y, it[i].s, ink);
     x -= BAR_READ_GAP;
   }
+  AUDIT_ALIGN(-1);
   return kept > 0 ? x + BAR_READ_GAP : right;
 }
 
@@ -3442,13 +3475,15 @@ static void fact_row(int x, int w, int y, int h, const char *title, const char *
   char name[48];
   snprintf(name, sizeof name, "%s", title);
   upcase(name);
-  text(K_TYPE_CAPTION, x + 4, y + (h - K_TYPE_CAPTION->line_h) / 2, name, K_INK_QUIET);
+  /* Flush with the hairline under it and with the page's other type: the
+   * 4 px indent was a fourth left edge on every screen with a table. */
+  text(K_TYPE_CAPTION, x, y + (h - K_TYPE_CAPTION->line_h) / 2, name, K_INK_QUIET);
   if (value != NULL && value[0] != '\0') {
-    const int room = w - 8 - text_w(K_TYPE_CAPTION, name) - 16;
+    const int room = w - text_w(K_TYPE_CAPTION, name) - 2 * GRID;
     const ui_font_t *vf = text_face(K_TYPE_BODY_L, value);
     char v[64];
     text_fit(v, sizeof v, vf, value, room > 24 ? room : 24);
-    text_right(vf, x + w - 4, y + (h - vf->line_h) / 2, v, enabled ? K_INK : K_INK_QUIET);
+    text_right(vf, x + w, y + (h - vf->line_h) / 2, v, enabled ? K_INK : K_INK_QUIET);
   }
   if (!last) fill(x, y + h - 1, w, 1, K_RULE);
 }
@@ -3585,20 +3620,26 @@ static void human_bytes(char *out, size_t n, uint64_t bytes) {
  * The stack was one card over five rows, all full width, and the card - the
  * one thing on the screen the shooting hand wants - was as far from the thumb
  * as the rows were. Now the card takes the hand's half of the panel at the
- * panel's full height, and the five rows are a column on the far side, 84 px
- * each: 9.9 mm, which is a target the other hand cannot miss either.
+ * panel's full height, and the five rows are a column on the far side, 83 px
+ * each: 9.8 mm, which is a target the other hand cannot miss either.
+ *
+ * On the grid (UI-14): 8 px between rows and 16 between the columns. Five
+ * 83 px rows and four gaps are 447 px, so the stack and the card end 1 px
+ * above the bottom margin rather than a row being a pixel taller.
  */
 #define MZ_M PAGE_M                 /* the margin round the stack */
 #define MZ_PAD 24                   /* the one left rule, and the right one */
-#define MZ_GAP 7
-#define MZ_COL_GAP 12
+#define MZ_GAP GRID
+#define MZ_COL_GAP (2 * GRID)
 #define MZ_ROW_W 352
 #define MZ_W (UI_W - 2 * MZ_M)
-#define MZ_CARD_W (MZ_W - MZ_ROW_W - MZ_COL_GAP)   /* 404 */
-#define MZ_CARD_H (UI_H - 2 * MZ_M)                /* 448 */
-#define MZ_ROW_H ((MZ_CARD_H - 4 * MZ_GAP) / 5)     /* 84 */
+#define MZ_CARD_W (MZ_W - MZ_ROW_W - MZ_COL_GAP)   /* 400 */
+#define MZ_ROW_H ((UI_H - 2 * MZ_M - 4 * MZ_GAP) / 5) /* 83 */
+#define MZ_CARD_H (5 * MZ_ROW_H + 4 * MZ_GAP)          /* 447 */
 #define MZ_ROW_Y(i) (MZ_M + ((i) - 1) * (MZ_ROW_H + MZ_GAP))
-_Static_assert(5 * MZ_ROW_H + 4 * MZ_GAP == MZ_CARD_H, "the five rows do not fill the card's height");
+_Static_assert(MZ_M + MZ_CARD_H <= UI_H - MZ_M && MZ_M + MZ_CARD_H >= UI_H - MZ_M - 4,
+               "the menu stack does not fill the page between its margins");
+_Static_assert(MZ_ROW_H >= 52, "a menu row is under the 52 px floor");
 
 static int mz_card_x(void) { return from_hand(MZ_M, MZ_CARD_W); }
 static int mz_rows_x(void) { return s_right_hand ? MZ_M : UI_W - MZ_M - MZ_ROW_W; }
@@ -4278,8 +4319,10 @@ static void draw_shoot(void) {
     const int tw = text_w(K_TYPE_CAPTION, "MENU");
     const int gx = sbx + (SH_BACK_W - (gw + gap + tw)) / 2 + d;
     back_glyph(gx + gw / 2, SH_BACK_Y + SH_BACK_H / 2 + d, K_INK);
+    AUDIT_ALIGN(1); /* the glyph and the word are centred as one */
     text(K_TYPE_CAPTION, gx + gw + gap, SH_BACK_Y + (SH_BACK_H - K_TYPE_CAPTION->line_h) / 2 + d, "MENU",
          K_INK);
+    AUDIT_ALIGN(-1);
   }
   if (foc(SCR_SHOOT, SH_IT_BACK)) focus_inset(sbx, SH_BACK_Y, SH_BACK_W, SH_BACK_H, K_INK);
 
@@ -4469,8 +4512,8 @@ static void look_set_mono(bool mono) {
  * card takes the row's room, so the screen is full either way rather than
  * a card over a third of empty ground. */
 #define LK_HERO_MIN 168
-#define LK_GAP 18
-#define LK_COL_GAP 12
+#define LK_GAP (2 * GRID)
+#define LK_COL_GAP (2 * GRID)
 #define LK_W (UI_W - 2 * PAGE_M)
 #define LK_COL_W ((LK_W - 2 * LK_COL_GAP) / 3)
 #define LK_PICK_BTN 60
@@ -4480,12 +4523,12 @@ static void look_set_mono(bool mono) {
  * the two x positions the card's type is laid between - the far margin and
  * the picker's near edge.
  */
-static int lk_next_x(void) { return from_hand(PAGE_M + 16, LK_PICK_BTN); }
-static int lk_prev_x(void) { return from_hand(PAGE_M + 16 + LK_PICK_BTN + 8, LK_PICK_BTN); }
+static int lk_next_x(void) { return from_hand(PAGE_M + 2 * GRID, LK_PICK_BTN); }
+static int lk_prev_x(void) { return from_hand(PAGE_M + 2 * GRID + LK_PICK_BTN + GRID, LK_PICK_BTN); }
 static int lk_text_x0(void) {
-  return s_right_hand ? PAGE_M + 24 : lk_prev_x() + LK_PICK_BTN + 24;
+  return s_right_hand ? PAGE_M + INSET_TEXT : lk_prev_x() + LK_PICK_BTN + 3 * GRID;
 }
-static int lk_text_x1(void) { return s_right_hand ? lk_prev_x() - 24 : UI_W - PAGE_M - 24; }
+static int lk_text_x1(void) { return s_right_hand ? lk_prev_x() - 3 * GRID : UI_W - PAGE_M - INSET_TEXT; }
 
 /*
  * The three columns under the card, in the order the hand wants them.
@@ -4527,7 +4570,7 @@ static int lk_trio_y(bool quad) { return lk_hero_y(quad) + lk_hero_h(quad) + LK_
 /* The picker row, inset from the hero card's foot. The draw and the hit test
  * both come through here: this screen has had a hit map outlive its layout
  * twice, and both times it was this row. */
-static int lk_pick_y(bool quad) { return lk_hero_y(quad) + lk_hero_h(quad) - 16 - LK_CTL_H; }
+static int lk_pick_y(bool quad) { return lk_hero_y(quad) + lk_hero_h(quad) - 2 * GRID - LK_CTL_H; }
 static int lk_tgt_y(bool quad) { return lk_trio_y(quad) + LK_CAP_H + LK_CTL_H + LK_GAP; }
 /** Column `i` of the three-up row. */
 static int lk_col_x(int i) { return PAGE_M + i * (LK_COL_W + LK_COL_GAP); }
@@ -4830,7 +4873,7 @@ static void draw_look(void) {
      * foot, whatever the card's height: the air is between the two facts,
      * where it reads as room and not as a gap. */
     const int ny = hy + 52;
-    if (pos[0] != '\0') text(K_TYPE_CAPTION, tx0, ny - K_TYPE_CAPTION->line_h - 10, pos, K_INK_QUIET);
+    if (pos[0] != '\0') text(K_TYPE_CAPTION, tx0, ny - K_TYPE_CAPTION->line_h - GRID, pos, K_INK_QUIET);
     char fitted[KDP_RECIPE_ID_MAX + 4];
     const ui_font_t *nf = fit_face(fitted, sizeof fitted, look, tw);
     text_ink(nf, tx0, ny, fitted, nink);
@@ -4838,14 +4881,14 @@ static void draw_look(void) {
 
   /* And what the look actually sets, inside the card it belongs to. It was a
    * strip at the foot of the screen under nothing at all. */
-  lk_detail_row(tx0, hy + hh - 16 - K_TYPE_CAPTION->line_h - K_TYPE_BODY->line_h, tw);
+  lk_detail_row(tx0, hy + hh - 2 * GRID - K_TYPE_CAPTION->line_h - K_TYPE_BODY->line_h, tw);
 
   /* ---- the three that modify it ---- */
   const int ty = lk_trio_y(quad);
   static const char *const CAPS[3] = {"MODE", "FLASH", "COLOUR"};
   for (int c = 0; c < 3; c++) {
     const int g = lk_group_of_col(c);
-    text(K_TYPE_CAPTION, lk_col_x(c) + 4, ty, CAPS[g], K_INK_QUIET);
+    text(K_TYPE_CAPTION, lk_col_x(c), ty, CAPS[g], K_INK_QUIET);
     switch (g) {
       case LK_G_MODE:
         draw_segments(lk_col_x(c), ty + LK_CAP_H, LK_COL_W, LK_CTL_H, MODE_NAMES, 2, quad ? 1 : 0,
@@ -4869,7 +4912,7 @@ static void draw_look(void) {
    * are drawn positions on this row; the SELECTED one is a value. */
   if (quad) {
     const int gy = lk_tgt_y(quad);
-    text(K_TYPE_CAPTION, PAGE_M + 4, gy, "TARGET", K_INK_QUIET);
+    text(K_TYPE_CAPTION, PAGE_M, gy, "TARGET", K_INK_QUIET);
     draw_segments(PAGE_M, gy + LK_CAP_H, LK_W, LK_CTL_H, TARGET_NAMES, 5,
                   lk_seg_of_target(s_look_target), band_rel(p0, LK_IT_TARGET, 5),
                   band_rel(f0, LK_IT_TARGET, 5));
@@ -5734,8 +5777,12 @@ static void draw_photo(void) {
    */
   const bool short_wiggle = (s_wig_len >= 2 || s_quad_ready) && s_wig_count > 0 &&
                             s_wig_count < GALLERY_FRAME_MAX;
-  const int blk_pad = 12;
+  const int blk_pad = PH_BLK_PAD;
   int blk_h = blk_pad + K_TYPE_LABEL->line_h + K_TYPE_CAPTION->line_h;
+  /* The date line. It was left out, so on a dated photograph - every one the
+   * camera takes once the clock is set - the four-mark hung 18 px out of the
+   * bottom of its well. */
+  if (s_photo_ms > 0) blk_h += K_TYPE_CAPTION->line_h;
   if (short_wiggle) blk_h += 6 + K_TYPE_CAPTION->line_h;
   blk_h += 18 + K_TYPE_CAPTION->line_h + 6 + 14; /* CAMERAS, then the mark */
   blk_h += blk_pad;
@@ -5981,7 +6028,7 @@ static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
  */
 #define RL_M PAGE_M                            /* outer margin */
 #define RL_QR_COL_W 400                        /* left column */
-#define RL_TOP (BODY_Y + 12)
+#define RL_TOP LIST_TOP_DEFAULT
 /* The right column's stack, in px: the title at TITLE's 41 px line, the four
  * facts, and under them the bar and two BODY lines (24 px). */
 #define RL_TITLE_H (41 + 2 * GRID)
@@ -6200,7 +6247,7 @@ static void draw_roll(void) {
   /* The lamp, left of the status word: colour beside the word, never instead. */
   {
     const int lw = text_w(K_TYPE_BODY_L, word);
-    const int lx = RL_RX + RL_RW - lw - 16 - 18;
+    const int lx = RL_RX + RL_RW - lw - 2 * GRID - 10;
     const int ly = y + ph + (ph - 10) / 2;
     fill(lx, ly, 10, 10, lamp);
     if (lamp_ring) fill(lx + 2, ly + 2, 6, 6, K_FACE);
@@ -6515,18 +6562,22 @@ static void draw_settings(void) {
  * each other. Four bands and the brightness note end at 433 of 480. */
 #define DSP_PITCH 82
 #define DSP_BAND_H 52 /* 6.1 mm on this glass; 44 was 5.2 */
-#define DSP_X (PAGE_M + 8)
+#define DSP_X (PAGE_M + INSET_TEXT)
 #define DSP_W (UI_W - 2 * DSP_X)
 #define DSP_LABEL_Y(r) (DSP_Y0 + (r) * DSP_PITCH)
 #define DSP_BAND_Y(r) (DSP_LABEL_Y(r) + 22)
 /* The group box round each band, on the same rule as LOOK's: 8 px wider than
  * the control on each side, starting on the legend's line, 6 px of air under
  * the buttons. */
-#define DSP_BOX_X (DSP_X - 8)
-#define DSP_BOX_W (DSP_W + 16)
+#define DSP_BOX_X (DSP_X - INSET_TEXT)
+#define DSP_BOX_W (DSP_W + 2 * INSET_TEXT)
 #define DSP_BOX_H (22 + DSP_BAND_H + 6)
+/* The brightness note's box under the fourth band: its legend line and one
+ * BODY line (24 px). */
+#define DSP_NOTE_Y (DSP_BAND_Y(DSP_ROWS - 1) + DSP_BAND_H + 18)
 
 _Static_assert(DSP_BOX_H < DSP_PITCH, "the DISPLAY group boxes overlap each other");
+_Static_assert(DSP_NOTE_Y + 22 + 24 <= UI_H - PAGE_M, "the DISPLAY note runs off the page");
 
 /* DIM_S, SLEEP_S and their names sit with SET_ROWS, where the SETTINGS
  * summary reads them too. */
@@ -6601,7 +6652,7 @@ static void draw_display(void) {
    * this screen and not a footnote about the other four. An empty box with one
    * grey sentence in it is also the clearest possible statement that there is
    * nothing here to press. */
-  const int ny = DSP_BAND_Y(DSP_ROWS - 1) + DSP_BAND_H + 18;
+  const int ny = DSP_NOTE_Y;
   /* One line, inside the safe area: what the backlight cannot do, and the
    * two things about it a person has to know. */
   group_box(DSP_BOX_X, ny, DSP_BOX_W, 22 + K_TYPE_BODY->line_h + 10, "BRIGHTNESS AND POWER",
@@ -6736,8 +6787,8 @@ static int sn_btn_y(void) { return LIST_Y + (ROW_H - ROW_GAP - SN_BTN) / 2; }
  * 24 px into it, and the draw and the hit test both read them from here - the
  * convention the picker buttons above already keep, and the one this band
  * skipped. */
-#define SN_VOL_X (LIST_X + 8)
-#define SN_VOL_W (LIST_W - 16)
+#define SN_VOL_X (LIST_X + INSET_TEXT) /* on the VOLUME legend's edge, as DISPLAY's bands are */
+#define SN_VOL_W (LIST_W - 2 * INSET_TEXT)
 static int sn_vol_y(void) { return LIST_Y + 3 * ROW_H + 26; }
 static int sn_vol_band_y(void) { return sn_vol_y() + 24; }
 static int sn_vol_seg_w(void) { return SN_VOL_W / 3; }
@@ -7359,7 +7410,7 @@ static void draw_about(void) {
    * group box now, and the box encloses the well AND the two lines of note
    * under it - the note is about these four rows and nothing else, and there
    * was no mark on the screen that said so. */
-  text(K_TYPE_CAPTION, AB_RX + 4, LIST_Y + (AB_ROW - K_TYPE_CAPTION->line_h) / 2, "CAMERAS", K_INK_QUIET);
+  text(K_TYPE_CAPTION, AB_RX, LIST_Y + (AB_ROW - K_TYPE_CAPTION->line_h) / 2, "CAMERAS", K_INK_QUIET);
   fill(AB_RX, LIST_Y + AB_ROW - 1, AB_RW, 1, K_RULE);
   const int cy0 = LIST_Y + AB_ROW;
   const int ch = 4 * AB_CAM_ROW;
@@ -7549,13 +7600,13 @@ static void dialog_spec(dlg_spec_t *d) {
 /* Centred, like every other device's confirm. It sat on the hand's side for
  * a while and read as a panel that had slid in, not a question. */
 static int dlg_x(void) { return (UI_W - DLG_W) / 2; }
-#define DLG_PAD 20
+#define DLG_PAD (3 * GRID)
 #define DLG_ROW_H (ROW_H - ROW_GAP)
 #define DLG_ROW_GAP 8
-#define DLG_TOP 20
+#define DLG_TOP (3 * GRID)
 /* Title, question, optional line, then the two rows and the bottom pad. */
-#define DLG_H(sub) (DLG_TOP + K_TYPE_CAPTION->line_h + 10 + K_TYPE_BODY_L->line_h + \
-                    ((sub) ? K_TYPE_BODY->line_h + 6 : 0) + 18 + 2 * DLG_ROW_H + DLG_ROW_GAP + \
+#define DLG_H(sub) (DLG_TOP + K_TYPE_CAPTION->line_h + GRID + K_TYPE_BODY_L->line_h + \
+                    ((sub) ? K_TYPE_BODY->line_h + GRID : 0) + 3 * GRID + 2 * DLG_ROW_H + DLG_ROW_GAP + \
                     DLG_PAD)
 #define DLG_Y(sub) ((UI_H - DLG_H(sub)) / 2)
 #define DLG_ROW_X (dlg_x() + DLG_PAD)
@@ -7590,7 +7641,7 @@ static void draw_dialog(void) {
    * says what it costs. */
   int ty = y0 + DLG_TOP;
   text(K_TYPE_CAPTION, dx + DLG_PAD, ty, d.title, d.destructive ? K_FAULT_INK : K_TITLE);
-  ty += K_TYPE_CAPTION->line_h + 10;
+  ty += K_TYPE_CAPTION->line_h + GRID;
   text(K_TYPE_BODY_L, dx + DLG_PAD, ty, d.body, K_INK);
   ty += K_TYPE_BODY_L->line_h;
   if (sub) text(K_TYPE_BODY, dx + DLG_PAD, ty + 4, d.sub, K_INK_QUIET);

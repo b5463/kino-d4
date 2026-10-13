@@ -82,7 +82,8 @@ test('Twin hand walk: the device UI for the hand on the shutter', async ({ page 
   }
 
   // The menu: the SHOOT card fills the right, the rows the left.
-  const isMenu = async (): Promise<boolean> => near(await px(700, 300), CARD) && near(await px(500, 440), CARD);
+  // Both points clear of the card's type: TAP TO OPEN ends near x 535.
+  const isMenu = async (): Promise<boolean> => near(await px(700, 300), CARD) && near(await px(700, 440), CARD);
   // SHOOT: dark panes under the MENU plate and along the bar.
   const isShoot = async (): Promise<boolean> => dark(await px(676, 14)) && dark(await px(760, 462)) && !(await isMenu());
   // Every detail screen draws one hairline under its header; the menu, SHOOT and PHOTO do not.
