@@ -5454,11 +5454,12 @@ static void draw_gallery(void) {
 /* ------------------------------------------------------------------ */
 
 /*
- * The photograph screen's three controls, left to right as they are drawn.
+ * The photograph screen's three controls, top to bottom in the hand column:
+ * DELETE (PH_BTN_Y(0)), SEND TO ROLL (PH_BTN_Y(1)), FAVOURITE (PH_BTN_Y(2)).
  *
- * FAVOURITE was inserted between DELETE and SEND TO ROLL, which moved
- * P_IT_ROLL from 1 to 2. SEND TO ROLL is drawn dead while the body is on no
- * Roll (press_dead()).
+ * The item numbers are not the drawn order: FAVOURITE was added as item 1,
+ * which moved P_IT_ROLL from 1 to 2. SEND TO ROLL is drawn dead while the
+ * body is on no Roll (press_dead()).
  *
  * item_count(SCR_PHOTO) is 3: DELETE, FAVOURITE and SEND TO ROLL all act.
  */
