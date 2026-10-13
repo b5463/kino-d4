@@ -128,7 +128,7 @@ _Static_assert(K_LAUNCH_N == K_LAUNCH_DOWN_N && K_LAUNCH_N == K_BF_WARM_N,
  *   INSET_TEXT 18   type inside a card or a well, from the card's edge
  *   FACT_PITCH 46   one fact row in a table (CONNECTION: 42, see there)
  *   R_CARD     10   the corner of a card, a button, a row
- *   R_PILL(h)  h/2  the corner of a pill: a badge, a bar, a lamp
+ *   R_PILL(h)  h/2  the corner of a pill: a badge, a progress bar
  *
  * A stack of rows on a screen is checked against the page with a
  * _Static_assert beside the screen's own constants.
@@ -1298,7 +1298,7 @@ static void stroke(float x0, float y0, float x1, float y1, float width, uint16_t
  *
  * There were three before this: 10 here, 14 on the menu, and 14 again on the
  * dialog, in a file whose comment claimed "the product's one radius".
- * A pill - a badge, a bar, a lamp - is the one other shape: R_PILL(h).
+ * A pill - a badge, a progress bar - is the one other shape: R_PILL(h).
  */
 #define UI_R R_CARD
 
@@ -3271,8 +3271,10 @@ static void group_box(int x, int y, int w, int h, const char *legend, uint16_t i
                       const char *note) {
   const int cap_h = (legend != NULL || note != NULL) ? K_TYPE_CAPTION->line_h + 4 : 0;
   round_rect(x, y + cap_h, w, h - cap_h, UI_R, K_SURFACE);
-  if (legend != NULL) text(K_TYPE_CAPTION, x + 10, y, legend, ink);
-  if (note != NULL) text_right(K_TYPE_BODY, x + w - 10, y - 2, note, K_INK_QUIET);
+  /* The legend on the inset its contents are set at, so a box and what is
+   * in it share one left edge. */
+  if (legend != NULL) text(K_TYPE_CAPTION, x + INSET_TEXT, y, legend, ink);
+  if (note != NULL) text_right(K_TYPE_BODY, x + w - INSET_TEXT, y - 2, note, K_INK_QUIET);
 }
 
 
@@ -3351,7 +3353,7 @@ static void draw_row_face(int x, int w, int y, int h, int idx, bool numbered, bo
                            : tone == ROW_DANGER ? K_FAULT_INK
                                                 : K_INK;
 
-  int tx = x + 18;
+  int tx = x + INSET_TEXT;
   /* The position, only where a key could address it. There is no keypad on
    * this body - BTN_FN has no pin - and the segmented rows already dropped
    * their numbers for that reason (draw_segments); the lists kept theirs, in
@@ -3365,7 +3367,7 @@ static void draw_row_face(int x, int w, int y, int h, int idx, bool numbered, bo
   }
 
   const bool has_value = value != NULL && value[0] != '\0';
-  const int right = x + w - 18 - (arrow ? 26 : 0);
+  const int right = x + w - INSET_TEXT - (arrow ? 26 : 0);
 
   char name[48];
   snprintf(name, sizeof name, "%s", title);
@@ -3454,8 +3456,7 @@ static void fact_row(int x, int w, int y, int h, const char *title, const char *
 /* The window a list sits in: face ground, sunken white well. */
 /* The body behind a list. The rows are separate cards and carry their own
  * ground, so there is nothing to put them in any more. */
-static void draw_list_frame(int rows) {
-  (void)rows;
+static void draw_list_frame(void) {
   fill(0, BODY_Y, UI_W, UI_H - BODY_Y, K_FACE);
 }
 
@@ -5074,9 +5075,10 @@ static void draw_gallery(void) {
       if (slots[i].sent) {
         /* The Roll has it: safe to delete, which is the one question a
          * person asks a full card. */
-        const int bw = text_w(K_TYPE_CAPTION, "SENT") + 14;
-        round_rect(x + 8, y + 8, bw, 20, 6, K_INK);
-        text(K_TYPE_CAPTION, x + 15, y + 11, "SENT", K_GROUND);
+        const int bw = text_w(K_TYPE_CAPTION, "SENT") + 2 * GRID;
+        round_rect(x + GRID, y + GRID, bw, 20, R_PILL(20), K_INK);
+        text(K_TYPE_CAPTION, x + 2 * GRID, y + GRID + (20 - K_TYPE_CAPTION->line_h) / 2, "SENT",
+             K_GROUND);
       }
     } else if (slots[i].state == TILE_PENDING) {
       /* Not yet decoded is not the same state as will not decode, and they
@@ -5977,9 +5979,14 @@ static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
  * wants: the roll's name, the code to type when scanning fails, what is on the
  * card, what has left it, and whether anything is moving.
  */
-#define RL_M 16                                /* outer margin */
+#define RL_M PAGE_M                            /* outer margin */
 #define RL_QR_COL_W 400                        /* left column */
 #define RL_TOP (BODY_Y + 12)
+/* The right column's stack, in px: the title at TITLE's 41 px line, the four
+ * facts, and under them the bar and two BODY lines (24 px). */
+#define RL_TITLE_H (41 + 2 * GRID)
+#define RL_FACTS_H (4 * FACT_PITCH + 2 * GRID)
+#define RL_TAIL_H (8 + 2 * GRID + 24 + 8 + 24)
 /*
  * The caption under the symbol, and the margin under that.
  *
@@ -5993,13 +6000,15 @@ static int draw_qr_centred(const qr_t *qr, int cx, int top, int box) {
 #define RL_CAP_H (8 + 24 + PAGE_M)
 #define RL_QR_BOX (UI_H - RL_TOP - RL_CAP_H)
 #define RL_QR_CX (RL_M + RL_QR_COL_W / 2)
-#define RL_RX (RL_M + RL_QR_COL_W + 24)        /* right column */
+#define RL_RX (RL_M + RL_QR_COL_W + 3 * GRID)  /* right column */
 #define RL_RW (UI_W - RL_M - RL_RX)
 /* The symbol has to clear the panel with its caption under it. Checked rather
  * than trusted: RL_QR_BOX is the only number here that a change to HEAD_H
  * silently invalidates, and the failure mode is a QR running off the bottom. */
 _Static_assert(RL_TOP + RL_QR_BOX + RL_CAP_H <= UI_H, "the ROLL QR falls off the bottom");
 _Static_assert(RL_RW > 300, "the ROLL right column is too narrow for its numbers");
+_Static_assert(RL_TOP + RL_TITLE_H + RL_FACTS_H + RL_TAIL_H <= UI_H - PAGE_M,
+               "the ROLL right column runs off the page");
 
 
 static void draw_roll(void) {
@@ -6152,7 +6161,7 @@ static void draw_roll(void) {
   char fitted_title[sizeof roll.name + sizeof roll.slug];
   const ui_font_t *tf = fit_face(fitted_title, sizeof fitted_title, title, RL_RW);
   text(tf, RL_RX, y, fitted_title, K_INK);
-  y += tf->line_h + 10;
+  y += tf->line_h + 2 * GRID;
 
   /* The lamp: ink when online, red when something stops it, and a quiet
    * ring - nothing lit - when offline. */
@@ -6185,7 +6194,7 @@ static void draw_roll(void) {
     snprintf(sent, sizeof sent, "%d of %d", done, total);
   }
 
-  const int ph = 44;
+  const int ph = FACT_PITCH;
   fact_row(RL_RX, RL_RW, y, ph, "Code", roll.slug, true, false);
   fact_row(RL_RX, RL_RW, y + ph, ph, "Status", word, true, false);
   /* The lamp, left of the status word: colour beside the word, never instead. */
@@ -6198,7 +6207,7 @@ static void draw_roll(void) {
   }
   fact_row(RL_RX, RL_RW, y + 2 * ph, ph, "Photos", photos, true, false);
   fact_row(RL_RX, RL_RW, y + 3 * ph, ph, "Uploaded", sent, true, true);
-  y += 4 * ph + 16;
+  y += 4 * ph + 2 * GRID;
 
   char l1[48] = "", l2[48] = "";
   bool bar = false;
@@ -6233,14 +6242,14 @@ static void draw_roll(void) {
 
   if (bar) {
     const int bh = 8;
-    round_rect(RL_RX, y, RL_RW, bh, 4, K_RULE);
+    round_rect(RL_RX, y, RL_RW, bh, R_PILL(bh), K_RULE);
     if (bar_total > 0) {
       const int fw = (int)((int64_t)RL_RW * bar_done / bar_total);
-      if (fw > 8) round_rect(RL_RX, y, fw, bh, 4, K_INK);
+      if (fw > bh) round_rect(RL_RX, y, fw, bh, R_PILL(bh), K_INK);
     }
-    y += bh + 12;
+    y += bh + 2 * GRID;
   }
-  if (l1[0]) y += text_block(K_TYPE_BODY, RL_RX, y, RL_RW, l1, K_INK) + 6;
+  if (l1[0]) y += text_block(K_TYPE_BODY, RL_RX, y, RL_RW, l1, K_INK) + GRID;
   if (l2[0]) text_block(K_TYPE_BODY, RL_RX, y, RL_RW, l2, K_INK_QUIET);
 }
 
@@ -6436,7 +6445,7 @@ static void draw_status(void) {
      * reads across the room, and the word at the right, which reads up
      * close. An alert is not a destination, so no chevron. */
     fill(LIST_X, y + 10, 4, h - 20, sev_ink(c->sev));
-    text_right(K_TYPE_CAPTION, LIST_X + LIST_W - 18, y + 12, sev_word(c->sev), sev_ink(c->sev));
+    text_right(K_TYPE_CAPTION, LIST_X + LIST_W - INSET_TEXT, y + 12, sev_word(c->sev), sev_ink(c->sev));
     if (c->id == COND_CAMERA_DOWN) {
       /* Which ones: the four cells the SHOOT bar uses, left to right as the
        * lenses are on the body. */
@@ -6444,19 +6453,19 @@ static void draw_status(void) {
       for (int k = 0; k < 4; k++) st[k] = (c->mask & (1u << k)) ? FM_LOST : FM_ON;
       const int cell = 12;
       const int mw = 4 * cell + 3 * FM_GAP;
-      four_mark(LIST_X + LIST_W - 18 - text_w(K_TYPE_CAPTION, sev_word(c->sev)) - 16 - mw, y + 12, cell,
+      four_mark(LIST_X + LIST_W - INSET_TEXT - text_w(K_TYPE_CAPTION, sev_word(c->sev)) - 2 * GRID - mw, y + 12, cell,
                 st, false);
     }
 
     char name[48];
     snprintf(name, sizeof name, "%s", c->title);
     upcase(name);
-    const int tx = LIST_X + 18;
+    const int tx = LIST_X + INSET_TEXT;
     text(K_TYPE_LABEL, tx, y + 6, name, K_INK);
     /* What to do about it, which is the only reason to list a condition at
      * all - a fault a person can do nothing about is a log line. */
     char det[64];
-    text_fit(det, sizeof det, K_TYPE_BODY, c->detail, LIST_W - 18 - 18 - 70);
+    text_fit(det, sizeof det, K_TYPE_BODY, c->detail, LIST_W - 2 * INSET_TEXT - 70);
     text(K_TYPE_BODY, tx, y + 6 + K_TYPE_LABEL->line_h - 4, det, dim_ink(K_INK, K_ROW));
   }
   draw_status_action(rows);
@@ -6467,7 +6476,7 @@ static void draw_settings(void) {
   draw_header(SCR_SETTINGS);
   const int rows = settings_rows();
   s_list_top = LIST_TOP_DEFAULT;
-  draw_list_frame(5);
+  draw_list_frame();
   for (int i = 0; i < rows; i++) {
     char v[40];
     settings_summary(i, v, sizeof v);
@@ -6743,7 +6752,7 @@ static void draw_sound(void) {
   const bool shut = config_bool("body.sounds.save", true);
   const bool ui = config_bool("body.sounds.ui", true);
 
-  draw_list_frame(3);
+  draw_list_frame();
 
   /* Which sound the shutter makes, above the two rows that decide whether a
    * sound is made at all. Those two used to be titled "Shutter sound" and
@@ -6783,11 +6792,11 @@ static void draw_sound(void) {
 
   draw_row(1, foc(SCR_SOUND, SN_IT_SHUTTER), s_pressed == SN_IT_SHUTTER, true,
            "Play shutter sound", NULL, false);
-  draw_toggle(LIST_X + LIST_W - 18 - 52, LIST_Y + ROW_H + (ROW_H - ROW_GAP - 28) / 2, shut, false,
+  draw_toggle(LIST_X + LIST_W - INSET_TEXT - 52, LIST_Y + ROW_H + (ROW_H - ROW_GAP - 28) / 2, shut, false,
               s_pressed == SN_IT_SHUTTER ? K_PRESS : K_ROW);
   draw_row(2, foc(SCR_SOUND, SN_IT_BUTTON), s_pressed == SN_IT_BUTTON, true,
            "Play button sound", NULL, false);
-  draw_toggle(LIST_X + LIST_W - 18 - 52, LIST_Y + 2 * ROW_H + (ROW_H - ROW_GAP - 28) / 2, ui, false,
+  draw_toggle(LIST_X + LIST_W - INSET_TEXT - 52, LIST_Y + 2 * ROW_H + (ROW_H - ROW_GAP - 28) / 2, ui, false,
               s_pressed == SN_IT_BUTTON ? K_PRESS : K_ROW);
 
   const int y = sn_vol_y();
@@ -6862,7 +6871,7 @@ static void draw_sound(void) {
 #define CN_IT_TZ_PLUS 1
 #define CN_IT_COUNT 2
 /*
- * The stack, computed from the top: six facts at 42 px, a 12 px gap, the
+ * The stack, computed from the top: six facts at 42 px, a 16 px gap, the
  * TIME ZONE band with its two 52 px buttons, 8 px, and the one-line note.
  * The facts are 42 px, under the 52 px floor, because a fact is not a
  * target; the two buttons are, and they are 64 x 52. A row added above
@@ -6870,11 +6879,14 @@ static void draw_sound(void) {
  * fits the page.
  */
 #define CN_FACTS 6
+/* The one fact table not at FACT_PITCH (UI-14). Six rows at 46 fit today;
+ * with the MAO row ODD-17 adds above them they do not, and a pitch that
+ * changes when a row arrives is two layouts. Facts are not targets. */
 #define CN_PITCH 42
-#define CN_TZ_Y (LIST_TOP_DEFAULT + CN_FACTS * CN_PITCH + 12)
+#define CN_TZ_Y (LIST_TOP_DEFAULT + CN_FACTS * CN_PITCH + 2 * GRID)
 #define CN_TZ_H 52
 #define CN_TZ_BTN 64
-#define CN_NOTE_Y (CN_TZ_Y + CN_TZ_H + 8)
+#define CN_NOTE_Y (CN_TZ_Y + CN_TZ_H + GRID)
 #define CN_NOTE_H 24 /* K_TYPE_BODY's line; the renderer's safe-area audit checks the drawn box */
 _Static_assert(CN_NOTE_Y + CN_NOTE_H <= UI_H - PAGE_M, "the CONNECTION note runs off the page");
 static void draw_connection(void) {
@@ -7022,13 +7034,19 @@ static void draw_connection(void) {
  * full it is - and the actions are another; the gauge used to sit under the
  * action rows, 150 px from the numbers it illustrated.
  */
-#define ST_FACT_H 46
-#define ST_GAUGE_H 18  /* the capacity bar */
-#define ST_READ_GAP 8  /* gauge to its two readings */
-#define ST_GAUGE_Y (LIST_Y + 3 * ST_FACT_H + 14)
+#define ST_FACT_H FACT_PITCH
+#define ST_GAUGE_H 18     /* the capacity bar */
+#define ST_READ_GAP GRID  /* gauge to its two readings */
+#define ST_READ_H 24      /* K_TYPE_BODY's line, which _Static_assert cannot read */
+#define ST_GAUGE_Y_AT(top) ((top) + 3 * ST_FACT_H + 2 * GRID)
+#define ST_ACT_Y_AT(top, i) \
+  (ST_GAUGE_Y_AT(top) + ST_GAUGE_H + ST_READ_GAP + ST_READ_H + 3 * GRID + (i) * ROW_H)
+#define ST_GAUGE_Y ST_GAUGE_Y_AT(LIST_Y)
 /* The action rows, from the readings' baseline down. Draw and hit test both
  * read this. */
-#define ST_ACT_Y(i) (ST_GAUGE_Y + ST_GAUGE_H + ST_READ_GAP + K_TYPE_BODY->line_h + 20 + (i) * ROW_H)
+#define ST_ACT_Y(i) ST_ACT_Y_AT(LIST_Y, i)
+_Static_assert(ST_ACT_Y_AT(LIST_TOP_DEFAULT, ST_IT_COUNT - 1) + ROW_H - ROW_GAP <= UI_H - PAGE_M,
+               "the STORAGE action rows run off the page");
 
 static void draw_storage(void) {
   fill(0, 0, UI_W, UI_H, K_FACE);
@@ -7093,7 +7111,7 @@ static void draw_storage(void) {
   }
   const bool wiping = busy[0] != '\0';
 
-  draw_list_frame(5);
+  draw_list_frame();
   fact_row(LIST_X, LIST_W, LIST_Y, ST_FACT_H, "Card", sd.mounted ? capb : "None", true, false);
   /* Low space is said where the number is, not discovered at a failed
    * shutter. 512 MB is about 650 four-camera captures at the bench median of
@@ -7173,7 +7191,7 @@ static void draw_storage(void) {
   const int bx = PAGE_M, bw = UI_W - 2 * PAGE_M, bh = ST_GAUGE_H;
   const uint64_t total_b = sd.capacity_bytes;
   const uint64_t used = total_b > sd.free_bytes ? total_b - sd.free_bytes : 0;
-  round_rect(bx, by, bw, bh, bh / 2, K_RULE);
+  round_rect(bx, by, bw, bh, R_PILL(bh), K_RULE);
   if (total_b > 0) {
     /* 64-bit before the divide: a 32 GB card times bw overflows 32 bits. */
     int fw = (int)((used * (uint64_t)(bw - 6)) / total_b);
@@ -7181,7 +7199,7 @@ static void draw_storage(void) {
      * is empty at 40 MB used looks like a bar that is not working. */
     if (fw < bh - 6 && used > 0) fw = bh - 6;
     const bool nearly_full = sd.free_bytes < total_b / 20;
-    round_rect(bx + 3, by + 3, fw, bh - 6, (bh - 6) / 2, nearly_full ? K_FAULT : K_INK);
+    round_rect(bx + 3, by + 3, fw, bh - 6, R_PILL(bh - 6), nearly_full ? K_FAULT : K_INK);
   }
 
   char usedb[24];
@@ -7219,10 +7237,21 @@ static void draw_storage(void) {
  */
 #define AB_LX LIST_X
 #define AB_LW 470
-#define AB_RX (AB_LX + AB_LW + 16)
+#define AB_RX (AB_LX + AB_LW + 2 * GRID)
 #define AB_RW (UI_W - AB_RX - LIST_X)
-#define AB_ROW 46              /* seven of these fit where six of ROW_H do */
-#define AB_CAM_ROW 40
+#define AB_ROW FACT_PITCH      /* seven of these fit where six of ROW_H do */
+/* The four camera rows are the second exception to FACT_PITCH (UI-14). At 46
+ * the help QR under them drops from 3 px modules to 2, and at 2 px it does
+ * not decode from a render, let alone through a phone's lens. The help URL
+ * is a version-5 symbol at level M, 37 modules and a 4-module quiet zone each side:
+ * 45 x 3 = 135 px. */
+#define AB_CAM_ROW (5 * GRID)
+#define AB_QR_MIN 135
+/* Eight body rows when a name is set; the cameras' heading, four rows and the
+ * help QR at 3 px a module with its 18 px caption on the right. */
+_Static_assert(LIST_TOP_DEFAULT + 8 * AB_ROW <= UI_H - PAGE_M, "the ABOUT body rows run off the page");
+_Static_assert(LIST_TOP_DEFAULT + AB_ROW + 4 * AB_CAM_ROW + GRID + AB_QR_MIN + 18 + 6 <= UI_H - PAGE_M,
+               "the ABOUT help QR has no room for 3 px modules under the cameras");
 
 /**
  * Refill s_cams, at most every two seconds. ui_pass() only, never a draw.
@@ -7334,7 +7363,7 @@ static void draw_about(void) {
   fill(AB_RX, LIST_Y + AB_ROW - 1, AB_RW, 1, K_RULE);
   const int cy0 = LIST_Y + AB_ROW;
   const int ch = 4 * AB_CAM_ROW;
-  const int note_y = cy0 + ch + 12;
+  const int note_y = cy0 + ch + GRID;
 
   for (int i = 0; i < 4; i++) {
     /* By pointer, not by value: the struct is about 128 bytes and this loop
@@ -7411,7 +7440,7 @@ static void draw_power(void) {
   fill(0, 0, UI_W, UI_H, K_FACE);
   draw_header(SCR_POWER);
   s_list_top = LIST_TOP_DEFAULT;
-  draw_list_frame(PW_IT_COUNT);
+  draw_list_frame();
   draw_row(PW_IT_RESTART, foc(SCR_POWER, PW_IT_RESTART), s_pressed == PW_IT_RESTART, true,
            "Restart", "Opens the menu after", true);
   /* Drawn disabled: power.c controls the backlight and the camera bank and
@@ -7422,7 +7451,7 @@ static void draw_power(void) {
   draw_row(PW_IT_RESET, foc(SCR_POWER, PW_IT_RESET), s_pressed == PW_IT_RESET, true,
            "Factory reset", "Settings, networks, roll", true);
 
-  const int gy = LIST_Y + PW_IT_COUNT * ROW_H + 14;
+  const int gy = LIST_Y + PW_IT_COUNT * ROW_H + 2 * GRID;
   const int cap_h = K_TYPE_CAPTION->line_h + 4;
   const bool usb = usb_attached();
   /* USB or BATTERY: a caps word, so LABEL, not the reading face. */
