@@ -150,11 +150,13 @@ The camera runs its own interface on the 4.3-inch panel. No phone, no laptop, no
 
 ![The D4 home screen, rendered by the firmware](docs/assets/product/firmware-menu-render.png)
 
-<p align="center"><sub>The home screen at 800 × 480. Drawn by the firmware's own code through <code>firmware/p4/host_preview</code> — not a photograph of the panel. The chip above SHOOT is the conditions list: this render has two of its four camera stubs silent, and the screen says so before you ask it anything.</sub></p>
+<p align="center"><sub>The home screen at 800 × 480. Drawn by the firmware's own code through <code>firmware/p4/host_preview</code> — not a photograph of the panel. The line at the top of the card is the worst condition: this render has two of its four camera stubs silent, the line says so, and the four-mark shows which two — a filled cell answers, an outline does not.</sub></p>
 
-SHOOT is a card three times the height of anything else because the camera is not a sibling of SETTINGS. The geometry says the hierarchy, so the screen needs no status strip at all — the card carries the worst condition when there is one and how many photographs are left when there is not.
+SHOOT is a card the full height of the panel, beside five rows a fifth of its height, because the camera is not a sibling of SETTINGS. The geometry says the hierarchy, so the screen needs no status strip at all — the card carries the worst condition when there is one and how many photographs are left when there is not. The card sits on the side of the hand that holds the body, so the thumb that rests there lands on it.
 
-Type is Inter and Oxanium, rasterised to 8-bit coverage: Inter for everything a person reads as language, Oxanium for everything the camera says as a machine. Every corner, disc and chevron is drawn with per-pixel coverage rather than stamped from a bitmap, so no curve on the panel has a hard edge on it. The six menu marks are drawn too. The two brand marks, the KINO wordmark and the ODD JOBS symbol on ABOUT, are baked from the brand artwork to the same coverage by tools/mkmask.mjs.
+Type is Inter and Oxanium, rasterised to 8-bit coverage: Inter for everything a person reads as language, Oxanium for everything the camera says as a machine. Every corner, disc and chevron is drawn with per-pixel coverage rather than stamped from a bitmap, so no curve on the panel has a hard edge on it. The six menu marks are drawn too. The two brand marks, the KINO wordmark and the ODD JOBS symbol on ABOUT, are baked from the brand artwork to the same coverage by `tools/mkmask.mjs`.
+
+Colour is one pink, and it means something happened. At rest the screen is ink on near-black, the same base as MAO, the studio's controller. The pink fills the SHOOT card, a control under a finger, and the four-mark for the 300 ms after a capture lands. Red is for a fault. The pink is not quite the same on every start: the camera takes one of eight shades from MAO pink a short way toward lavender, by its boot count, and wears it until it restarts. The palette, the eight shades and the rules for using them are in [`firmware/UI_DIRECTION.md`](firmware/UI_DIRECTION.md).
 
 #### It boots by showing you the camera
 
@@ -169,7 +171,7 @@ The startup screen is not a logo. It is a field of small glyphs on a square latt
 
 **How far the field reaches is how many of the four cameras have answered** — one quadrant each, cam 1 top left, the way the four sit on the viewfinder and on the body. A node that answers part-way through the boot opens its quarter out instead of appearing. So a camera with a dead node says so on the first screen it shows, without a word of type, in the product's own mark.
 
-**What colour it is, is the look it will shoot with.** The field comes up cold and travels to the look's own colours as the cameras answer. A given look brings the same colour up every time, so the way your camera starts becomes something you know about it.
+**What colour it warms to is this start's shade.** The field comes up in neutral greys and travels to the launch shade's inks as the cameras answer: the same pink the SHOOT card wears until the next restart.
 
 #### The rest of it
 
@@ -187,13 +189,13 @@ ROLL is the screen that matters at a party. It shows the QR a guest scans, the a
 
 <p align="center"><sub>ABOUT: what this unit is, what each of the four cameras is running, and who made it.</sub></p>
 
-All of these come out of a program that compiles `ui.c` and draws the screens on a workstation. It renders 190 of them, including every failure state — a card that will not mount, a server that has stopped answering, a capture that saved three frames out of four. Looking at the interface used to mean a build, a flash and a serial capture; now it is one command:
+All of these come out of a program that compiles `ui.c` and draws the screens on a workstation. It renders every screen for both hands, with the frames of every move, including every failure state — a card that will not mount, a server that has stopped answering, a capture that saved three frames out of four. Looking at the interface used to mean a build, a flash and a serial capture; now it is one command:
 
 ```bash
 make -C firmware/p4/host_preview && firmware/p4/host_preview/preview out/
 ```
 
-The same program is a gate, not just a viewer: it fails the run if any screen sets type outside the page margin. Clipping is the obvious fault, but the one an interface actually has is a sentence ending two pixels from the bezel — that does not look broken, it looks cheap, and it is much harder to catch by eye. It found four screens doing it the day it was written.
+The same program is a gate, not just a viewer: it fails the run if any screen sets type outside the page margin, sets a word under its contrast floor, or leaves a touch target under 52 px. Clipping is the obvious fault, but the one an interface actually has is a sentence ending two pixels from the bezel — that does not look broken, it looks cheap, and it is much harder to catch by eye. It found four screens doing it the day it was written.
 
 ## One cable, five controllers
 

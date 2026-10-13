@@ -14,23 +14,7 @@ argument that lost.
 
 ## What shipped instead
 
-**One camera, one interface, six screens.** SHOOT, LOOK, GALLERY, ROLL,
-SETTINGS, POWER, reached from a home screen of six rows. The register is
-settled and is not the Windows-era shell this document was written against:
-warm terracotta cards on near-black ground, Oxanium for anything set in caps
-and Inter for anything set as a sentence, every corner and every edge drawn
-with per-pixel coverage rather than snapped to the pixel grid.
-
-The four questions §6 held open are answered, and were answered by looking at
-real renders at the panel's real size rather than by a specimen sheet:
-
-- **Legible across a dark room.** Reading type starts at 19 px, display type
-  at 25, and the value on a row is never smaller than its name.
-- **One object with the body.** The ground is darker than the case and the
-  cards are the colour of the case, so the screen reads as a window in the
-  object rather than a display bolted to it.
-- **The four is the product's mark.** It is four rows on ABOUT, four bars on a
-  capture, four lenses on SHOOT. It is never decoration.
+One interface. Its current spec is [UI_DIRECTION.md](UI_DIRECTION.md).
 
 ## Why the guest half lost
 

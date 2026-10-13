@@ -16,6 +16,7 @@
     "copy:check": "node scripts/check-device-copy.mjs",
     "palette:gen": "node scripts/gen-device-palette.mjs",
     "palette:check": "node scripts/gen-device-palette.mjs --check",
+    "ui:doc:check": "node scripts/check-ui-direction.mjs",
     "firmware:daemon": "node scripts/firmware-daemon.mjs",
     "firmware:publish": "tsx infra/scripts/publish-firmware.ts",
     "test:uploader": "tsx infra/scripts/test-uploader.ts",

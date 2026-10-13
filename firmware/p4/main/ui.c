@@ -2479,7 +2479,7 @@ static void bf_glyph(int x, int y, int g, uint16_t ink) {
  * on the viewfinder, in the gallery's mark and on the body. A camera that has
  * not answered holds its quarter at BF_DARK, which boot_field() reads as
  * cold: the quarter keeps the greys the field came up in while the others
- * warm to the look. The shape is the whole field either way.
+ * warm to the launch shade. The shape is the whole field either way.
  */
 #define BF_DARK 0.42f
 static float s_bf_cam[4];
@@ -2549,7 +2549,7 @@ static void boot_field(float reach, int32_t ms, int pal, float warm) {
        * read as a boot that had failed, not as four cameras that were quiet.
        * The field fills the screen now whatever the cameras are doing, and a
        * quadrant whose camera has not answered stays in the cold greys while
-       * the others take the look's colours. Same fact, said with the one
+       * the others take the launch shade's inks. Same fact, said with the one
        * quantity that cannot be mistaken for a fault in the drawing.
        */
       const float k = (reach - (dist + jit * spread)) / BF_FADE;
@@ -3419,8 +3419,8 @@ static char s_head_last[32];
 static void draw_header(screen_t s) {
   fill(0, 0, UI_W, HEAD_H, K_FACE);
 
-  /* No plate. The screen's name sits on the ground in the menu card's
-   * colour, the readings beside it in the quiet ink, and one hairline under
+  /* No plate. The screen's name sits on the ground in K_TITLE, the ink,
+   * the readings beside it in the quiet ink, and one hairline under
    * the whole band separates the header from the page. The plate was the
    * brightest object on every screen and it carried one word. */
   const int cap_x = hd_plate_x(s);
@@ -3674,7 +3674,7 @@ static void draw_list_frame(void) {
  * On or off, as a switch.
  *
  * A tick in a sunken box was the 1998 answer and a good one; with no sunken
- * boxes left it has nothing to sit in, and a tick drawn on a terracotta row
+ * boxes left it has nothing to sit in, and a tick drawn on a coloured row
  * reads as a mark rather than as a state. A track with the knob at one end is
  * legible at arm's length by its shape alone - which side the knob is on -
  * before the colour is read at all, and colour is the thing a dark room takes
@@ -4101,7 +4101,7 @@ static bool s_look_from_shoot;
 #define SH_BACK_W 116
 #define SH_BACK_H HD_BTN
 static int sh_back_x(void) { return from_hand(PAGE_M, SH_BACK_W); }
-#define SH_BAR_H 34    /* == M_STATUS_H: this is the menu's status bar */
+#define SH_BAR_H 34    /* the status bar along the finder's foot */
 #define SH_BAR_Y (UI_H - SH_BAR_H)
 #define SH_PN_Y (SH_BAR_Y + 3)
 #define SH_PN_H (SH_BAR_H - 6)
