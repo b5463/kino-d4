@@ -3265,9 +3265,8 @@ static uint32_t anim_tick(void) {
       }
       ui_render(render_open, &p);
       if (done) {
-        /* The exact end: the destination drawn as itself. The last composited
-         * frame is a pixel short of it - the ease does not land on 1.0 to the
-         * pixel - and going back the destination has never been drawn at all. */
+        /* The exact end: the destination drawn as itself, not as the move's
+         * last frame. Going back, the destination has never been drawn at all. */
         ui_render(render_screen, NULL);
         anim_report(s_anim.opening ? "open move" : "back move");
         s_anim.kind = ANIM_NONE;
