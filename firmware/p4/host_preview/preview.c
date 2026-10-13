@@ -1582,7 +1582,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 264
+#define PPMS_PER_HAND 265
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -2960,6 +2960,14 @@ static void scenes(void) {
   s_in_prev = 0x1;
   draw_screen();
   shot("capture_reading_3cam");
+  /* The same body at SHOOTING: capture.c names the lenses it asked before
+   * the room check and the sensor settings, so the outline is there from
+   * the first word, not only from TAKEN. */
+  g_stage = CAPTURE_TRIGGERING;
+  g_frames_in = 0;
+  s_in_prev = 0;
+  draw_screen();
+  shot("capture_shooting_3cam");
   g_asked = 0xF;
   g_frames_in = 0xF;
   s_in_prev = 0;
