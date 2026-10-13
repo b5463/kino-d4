@@ -3954,13 +3954,27 @@ static void menu_words(int i, int x, int y, int w, int h, uint16_t ink, bool wit
 
     /* The four, large, in the card's upper middle: the card is the panel's
      * full height now and the mark is the one thing on it that can carry
-     * that much room without becoming a headline. */
-    const int cell = 56, gap = 12;
+     * that much room without becoming a headline.
+     *
+     * Each cell is a camera, CAM1 to CAM4 in reading order, and says whether
+     * it answers: filled when it does, a 3 px outline when it does not. Read
+     * from s_cams, the snapshot ui_pass() refreshes every two seconds - never
+     * from camlink inside a draw - in the card's own ink, so no new colour.
+     * Four filled cells was a picture of a camera that might not be there. */
+    const int cell = 56, gap = 12, keyline = 3;
     const int mw = 2 * cell + gap;
     const int mx = x + (w - mw) / 2;
     const int my = y + 18 + K_TYPE_CAPTION->line_h + 52;
     for (int k = 0; k < 4; k++) {
-      fill(mx + (k % 2) * (cell + gap), my + (k / 2) * (cell + gap), cell, cell, ink);
+      const int cx = mx + (k % 2) * (cell + gap), cy = my + (k / 2) * (cell + gap);
+      if (s_cams[k].online) {
+        fill(cx, cy, cell, cell, ink);
+      } else {
+        fill(cx, cy, cell, keyline, ink);
+        fill(cx, cy + cell - keyline, cell, keyline, ink);
+        fill(cx, cy + keyline, keyline, cell - 2 * keyline, ink);
+        fill(cx + cell - keyline, cy + keyline, keyline, cell - 2 * keyline, ink);
+      }
     }
 
     text(K_TYPE_CAPTION, lx, y + h - 18 - K_TYPE_CAPTION->line_h, "TAP TO OPEN", ink);

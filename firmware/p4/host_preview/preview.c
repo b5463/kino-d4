@@ -818,16 +818,20 @@ void camlink_get_info(camlink_info_t *out) {
   out->latency_ms = 4;
 }
 
-/* Per-camera, for the About screen's CAMERAS column.
+/* Per-camera, for the About screen's CAMERAS column and the menu card's
+ * four-mark.
  *
  * CAM1 and CAM3 answer and CAM2 and CAM4 do not, deliberately: this body has
  * one camera fitted today, and a screenshot in which all four rows look the
  * same would not show whether the online and offline rows are distinguishable
  * at a glance. CAM3 carries a different node version because nodes are
- * reflashed one at a time, which is exactly why this is four rows. */
+ * reflashed one at a time, which is exactly why this is four rows.
+ * g_cam_online is the set that answers, bit i for CAM(i+1); a scene that
+ * needs another set changes it and puts it back. */
+static unsigned g_cam_online = 0x5u;
 void camlink_get_info_ch(int cam, camlink_info_t *out) {
   memset(out, 0, sizeof *out);
-  if (cam != 0 && cam != 2) return;
+  if (cam < 0 || cam > 3 || !(g_cam_online & (1u << cam))) return;
   out->online = true;
   snprintf(out->sensor, sizeof out->sensor, "OV3660");
   snprintf(out->firmware, sizeof out->firmware, cam == 0 ? "0.9.0" : "0.8.4");
@@ -1438,7 +1442,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 234
+#define PPMS_PER_HAND 235
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -2000,6 +2004,19 @@ static void scenes(void) {
   s_focus[SCR_MENU] = 4;
   SHOT(SCR_MENU, "menu_settings_focus");
   s_focus_shown = false;
+
+  /* The card's four-mark with three cameras answering: CAM3's cell is an
+   * outline. The snapshot is refilled by hand, because cams_refresh() keeps
+   * its own two-second clock. */
+  g_cam_online = 0xBu;
+  for (int i = 0; i < 4; i++) camlink_get_info_ch(i, &s_cams[i]);
+  conditions_scan(s_cams);
+  s_screen = SCR_MENU;
+  draw_screen();
+  shot("menu_cams_3of4");
+  g_cam_online = 0x5u;
+  for (int i = 0; i < 4; i++) camlink_get_info_ch(i, &s_cams[i]);
+  conditions_scan(s_cams);
 
   /* The launch shades: the menu in each of the eight a start can wear, for
    * the review strip. main.c picks boot_count % 8; every other picture here
