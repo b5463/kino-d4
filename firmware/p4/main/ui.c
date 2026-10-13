@@ -1885,8 +1885,9 @@ static uint8_t s_strip_gap = FM_GAP;
  * selects a second set of tones - the tones read on both grounds.
  *
  * Cell i is always lens i, in slot order, never the i-th frame counted. A
- * lens that was not asked is an outline in K_INK, a sixth of the cell thick:
- * the menu card's 3 px on 56 in proportion, and the same meaning.
+ * lens that was not asked is an outline in K_INK, a sixth of the cell thick
+ * (cell / 6, at least 1 px). That is heavier than the menu card's 3 px on 56,
+ * so it still reads as a ring at 8 to 14 px. It has the menu card's meaning.
  *
  * `gap` is FM_GAP everywhere but the landing of a full four-lens shot, where
  * the strip closes the four into one bar and opens them again (close_gap()).
