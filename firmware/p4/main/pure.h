@@ -912,4 +912,30 @@ const char *pure_lid_state_name(int state);
  */
 bool pure_shoot_dim_due(uint32_t idle_s, int dim_s, int sleep_s);
 
+/* ------------------------------------------------------------------ */
+/* Touch: what is a tap                                                */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A press held longer than this is not a tap: a resting thumb, a water bead
+ * or a sleeve. It is released with nothing fired, the way a drift is. 2.5 s,
+ * not less: a slow, deliberate press from an older hand runs to 2 s and must
+ * still fire.
+ */
+#define PURE_TAP_MAX_MS 2500
+
+typedef enum {
+  PURE_TAP_OPEN = 0, /* still a tap: it fires on the lift */
+  PURE_TAP_DRIFTED,  /* travelled further than the drift radius */
+  PURE_TAP_HELD,     /* down longer than PURE_TAP_MAX_MS */
+} pure_tap_t;
+
+/**
+ * Whether a contact on a control is still a tap: `dx`, `dy` from where it
+ * landed, in px, against `drift_px`, and `held_ms` since it landed. Drift is
+ * judged first. Both limits are exclusive: exactly `drift_px` away, or
+ * exactly PURE_TAP_MAX_MS down, is still a tap.
+ */
+pure_tap_t pure_tap_check(int dx, int dy, int drift_px, int64_t held_ms);
+
 #endif

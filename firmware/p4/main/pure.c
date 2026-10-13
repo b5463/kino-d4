@@ -682,3 +682,9 @@ bool pure_shoot_dim_due(uint32_t idle_s, int dim_s, int sleep_s) {
   if (from < dim_s) from = dim_s;
   return idle_s >= (uint32_t)from;
 }
+
+pure_tap_t pure_tap_check(int dx, int dy, int drift_px, int64_t held_ms) {
+  if (dx * dx + dy * dy > drift_px * drift_px) return PURE_TAP_DRIFTED;
+  if (held_ms > PURE_TAP_MAX_MS) return PURE_TAP_HELD;
+  return PURE_TAP_OPEN;
+}

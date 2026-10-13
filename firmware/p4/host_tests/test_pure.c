@@ -1304,6 +1304,35 @@ static void test_shoot_dim(void) {
   CHECK(!pure_shoot_dim_due(119, 0, 120), "SHOOT dimmed with dim off");
 }
 
+/* ------------------------------------------------------------------ */
+/* pure_tap_check                                                      */
+/* ------------------------------------------------------------------ */
+
+static void test_tap(void) {
+  /* A quick tap, a slow deliberate press, and the limit itself all fire. */
+  CHECK(pure_tap_check(0, 0, 40, 80) == PURE_TAP_OPEN, "an 80 ms tap is not a tap");
+  CHECK(pure_tap_check(3, -2, 40, 2000) == PURE_TAP_OPEN, "a slow 2 s press is not a tap");
+  CHECK(pure_tap_check(0, 0, 40, PURE_TAP_MAX_MS) == PURE_TAP_OPEN,
+        "a press of exactly %d ms is not a tap", PURE_TAP_MAX_MS);
+  /* One millisecond past the limit is a rest, not a tap. */
+  CHECK(pure_tap_check(0, 0, 40, PURE_TAP_MAX_MS + 1) == PURE_TAP_HELD,
+        "a press of %d ms still fires", PURE_TAP_MAX_MS + 1);
+  CHECK(pure_tap_check(0, 0, 40, 600000) == PURE_TAP_HELD, "a 10 min contact still fires");
+
+  /* The drift rule is unchanged: exactly the radius is a tap, past it is not. */
+  CHECK(pure_tap_check(40, 0, 40, 100) == PURE_TAP_OPEN, "40 px of drift is not a tap");
+  CHECK(pure_tap_check(0, -41, 40, 100) == PURE_TAP_DRIFTED, "41 px of drift is a tap");
+  CHECK(pure_tap_check(29, 29, 40, 100) == PURE_TAP_DRIFTED, "41 px diagonal drift is a tap");
+  CHECK(pure_tap_check(28, 28, 40, 100) == PURE_TAP_OPEN, "39.6 px diagonal drift is not a tap");
+
+  /* Both at once reads as a drift: the finger moved before it rested. */
+  CHECK(pure_tap_check(60, 0, 40, 5000) == PURE_TAP_DRIFTED, "drift and hold together did not read as a drift");
+
+  /* No time at all is a tap, and a clock that steps back does not cancel. */
+  CHECK(pure_tap_check(0, 0, 40, 0) == PURE_TAP_OPEN, "a 0 ms press is not a tap");
+  CHECK(pure_tap_check(0, 0, 40, -5) == PURE_TAP_OPEN, "a negative hold cancelled the press");
+}
+
 int main(void) {
   test_sync_classify();
   test_quality();
@@ -1331,6 +1360,7 @@ int main(void) {
   test_json_depth();
   test_lid();
   test_shoot_dim();
+  test_tap();
 
   if (failures != 0) {
     printf("p4 host tests: %d of %d checks FAILED\n", failures, checks);

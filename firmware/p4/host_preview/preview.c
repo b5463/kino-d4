@@ -231,11 +231,16 @@ void audio_done(void) {}
 void audio_sync(void) {}
 
 esp_err_t touch_init(void) { return ESP_OK; }
-bool touch_ready(void) { return false; }
+/* A finger check_tap_limit() puts down and lifts, in panel coordinates. Off
+ * for every scene. */
+static bool g_touch_ready = false, g_touch_down = false;
+static uint16_t g_touch_x, g_touch_y;
+bool touch_ready(void) { return g_touch_ready; }
 bool touch_get(uint16_t *x, uint16_t *y) {
-  (void)x;
-  (void)y;
-  return false;
+  if (!g_touch_ready || !g_touch_down) return false;
+  if (x != NULL) *x = g_touch_x;
+  if (y != NULL) *y = g_touch_y;
+  return true;
 }
 uint32_t touch_count(void) { return 0; }
 
@@ -2216,6 +2221,104 @@ static void check_idle_dim(void) {
   s_screen = scr0;
 }
 
+/* A point on `item` of the screen now, clear of the hand's edge, in logical
+ * px. False when there is none. */
+static bool point_on(int item, int *lx, int *ly) {
+  for (int y = 4; y < UI_H; y += 4) {
+    for (int x = 4; x < UI_W; x += 4) {
+      if (hit_test(x, y) == item && !at_hand_edge(x)) {
+        *lx = x;
+        *ly = y;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/* The finger at logical (lx, ly), as touch.c reports it: panel space, the
+ * reverse of ui_pass()'s quarter turn. */
+static void finger_at(int lx, int ly) {
+  g_touch_x = (uint16_t)(DISPLAY_H_RES - 1 - ly);
+  g_touch_y = (uint16_t)lx;
+}
+
+/*
+ * A finger on the menu card held `hold_ms` and lifted, through ui_pass().
+ * Returns whether the lift fired. *paint_at_lift is s_pressed on the last pass
+ * before the lift: the item when it still looked pressed, -1 when it had been
+ * released under the finger.
+ */
+static bool tap_fires(int hold_ms, int *paint_at_lift) {
+  s_screen = SCR_MENU;
+  s_pressed = -1;
+  held = -1;
+  swallow_touch = false;
+  s_anim.kind = ANIM_NONE;
+  s_dim_k = 0;
+  s_lift_us = 0;
+  g_power_stage = POWER_AWAKE;
+  scan_conditions();
+  draw_screen();
+  int lx, ly;
+  if (!point_on(0, &lx, &ly)) {
+    fprintf(stderr, "tap: no point on the menu card\n");
+    g_motion_failed = true;
+    return false;
+  }
+  finger_at(lx, ly);
+  g_touch_ready = true;
+  g_touch_down = true;
+  prev_vclock_us = 1000000;
+  const int64_t t0 = prev_vclock_us;
+  while (prev_vclock_us - t0 < (int64_t)hold_ms * 1000) {
+    ui_pass();
+    prev_vclock_us += 15000;
+  }
+  *paint_at_lift = s_pressed;
+  g_touch_down = false;
+  bool fired = false;
+  for (int i = 0; i < 20 && !fired; i++) {
+    ui_pass();
+    fired = anim_active() || s_screen != SCR_MENU;
+    prev_vclock_us += 15000;
+  }
+  printf("tap held %d ms: paint at lift %d, %s\n", hold_ms, *paint_at_lift, fired ? "fired" : "nothing fired");
+  s_anim.kind = ANIM_NONE;
+  s_anim.scrim0 = s_anim.scrim_k = 0;
+  s_screen = SCR_MENU;
+  s_pressed = -1;
+  held = -1;
+  swallow_touch = false;
+  g_touch_ready = false;
+  prev_vclock_us = 0;
+  return fired;
+}
+
+/*
+ * A press held past PURE_TAP_MAX_MS is released while the finger is still
+ * down and fires nothing on the lift. One just inside it still fires.
+ */
+static void check_tap_limit(void) {
+  const screen_t scr0 = s_screen;
+  const int focus0 = s_focus[SCR_MENU];
+  g_audit_off = true;
+  int paint;
+  if (!tap_fires(PURE_TAP_MAX_MS - 100, &paint) || paint != 0) {
+    fprintf(stderr, "tap: a %d ms press did not fire, or did not look pressed (%d)\n", PURE_TAP_MAX_MS - 100,
+            paint);
+    g_motion_failed = true;
+  }
+  if (tap_fires(PURE_TAP_MAX_MS + 100, &paint) || paint != -1) {
+    fprintf(stderr, "tap: a %d ms press fired, or still looked pressed at the lift (%d)\n", PURE_TAP_MAX_MS + 100,
+            paint);
+    g_motion_failed = true;
+  }
+  g_audit_off = false;
+  s_focus[SCR_MENU] = focus0;
+  s_screen = scr0;
+}
+
 static void check_wake_into_move(void) {
   const screen_t scr0 = s_screen;
   g_audit_off = true;
@@ -3398,6 +3501,7 @@ static void scenes(void) {
   check_move_takes_lift();
   check_wake_into_move();
   check_idle_dim();
+  check_tap_limit();
   check_review_loop();
 }
 

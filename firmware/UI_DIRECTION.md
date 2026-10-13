@@ -71,6 +71,7 @@ The shutter sits on the body's top wall at the +X end. The right hand holds that
 | `HIT_SLOP` | 12 | How far a target reaches past a button drawn on a picture. |
 | `HAND_EDGE` | 6 | A contact that begins this close to the hand's edge is a palm, not a finger. |
 | `TOUCH_DRIFT` | 40 | A contact that travels further than this is not a tap and fires nothing. |
+| `PURE_TAP_MAX_MS` | 2500 | A contact held longer than this, ms, is not a tap. The pressed paint clears while the finger is still down, nothing fires on the lift, and one klog line says so. Not shorter: a slow, deliberate press runs to 2 s. |
 | `SH_LOOK_HIT_H` | 52 | The SHOOT bar's target, taller than the 34 px bar it covers. |
 
 ## Colour

@@ -9912,8 +9912,10 @@ static bool was_asleep = false;
  * so the dismissal does not also press whatever was underneath it. Also set
  * by the palm rules below, for the same reason. */
 static bool swallow_touch = false;
-/* Where the current contact landed, for the drift rule. */
+/* Where and when the current contact landed, for the drift and hold rules
+ * (pure_tap_check()). */
 static int s_down_x, s_down_y;
+static int64_t s_down_us;
 #define TOUCH_DRIFT 40
 /* The camera's mark is on the panel because sleep is coming (power.c asked).
  * Touches are swallowed while it is, and the screen is redrawn when the sleep
@@ -10325,11 +10327,14 @@ static uint32_t ui_pass(void) {
        * The palm.
        *
        * With the chrome on the hand's side, the base of the thumb rests where
-       * the controls now are. Two rules keep a rest from being a press: a
+       * the controls now are. Three rules keep a rest from being a press: a
        * contact that begins on the hand's edge is not a finger, and a contact
-       * that travels more than TOUCH_DRIFT px from where it landed is not a
-       * tap - it is released with nothing fired and ignored until it lifts.
-       * A tap rocks by a millimetre or two; 40 px is 4.7 mm.
+       * that travels more than TOUCH_DRIFT px from where it landed, or stays
+       * down longer than PURE_TAP_MAX_MS, is not a tap - it is released with
+       * nothing fired and ignored until it lifts. A tap rocks by a millimetre
+       * or two; 40 px is 4.7 mm. The release happens while the finger is
+       * still down, so the pressed paint goes and the person sees the press
+       * drop rather than finding out at the lift.
        */
       if (held == -1 && (at_hand_edge(lx) || s_sleep_mark)) {
         /* A palm on the edge, or a tap on the going-to-sleep mark: the
@@ -10339,9 +10344,15 @@ static uint32_t ui_pass(void) {
         return 20;
       }
       if (held != -1) {
-        const int ddx = lx - s_down_x, ddy = ly - s_down_y;
-        if (ddx * ddx + ddy * ddy > TOUCH_DRIFT * TOUCH_DRIFT) {
-          klog("P4", "touch drifted %d,%d from %d,%d - not a tap", lx, ly, s_down_x, s_down_y);
+        const int64_t held_ms = (esp_timer_get_time() - s_down_us) / 1000;
+        const pure_tap_t tap = pure_tap_check(lx - s_down_x, ly - s_down_y, TOUCH_DRIFT, held_ms);
+        if (tap != PURE_TAP_OPEN) {
+          /* One line per contact: swallow_touch holds until the lift. */
+          if (tap == PURE_TAP_DRIFTED) {
+            klog("P4", "touch drifted %d,%d from %d,%d - not a tap", lx, ly, s_down_x, s_down_y);
+          } else {
+            klog("P4", "touch held %d ms at %d,%d - not a tap", (int)held_ms, s_down_x, s_down_y);
+          }
           s_pressed = -1;
           held = -1;
           swallow_touch = true;
@@ -10351,6 +10362,7 @@ static uint32_t ui_pass(void) {
       } else {
         s_down_x = lx;
         s_down_y = ly;
+        s_down_us = esp_timer_get_time();
       }
       /* A finger on the review after a shot: the person is looking at it.
        * It is not pulled back to the finder from under them, and the shutter
