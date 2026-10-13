@@ -519,10 +519,9 @@ static void card_words(char *out, size_t cap, const storage_status_t *sd) {
   else snprintf(out, cap, "%d SHOTS", shots);
 }
 
-/* A count and its noun, "1 photo" or "12 photos", then what follows it. Every
- * count the glass spells goes through here: GALLERY's header and ROLL's card
- * line (PHOTO, PHOTOS), and the DELETE and DELETE ALL dialogs' sub lines
- * (frame, frames; photo, photos). Each used to spell its own plural, and the
+/* A count whose noun changes with it, "1 photo" or "12 photos", then what
+ * follows it. GALLERY's header, ROLL's card line and the DELETE and DELETE ALL
+ * sub lines go through here; each used to spell its own plural, and the
  * dialogs said "1 photos". Pass the nouns and the tail as literals at the
  * call: scripts/check-device-copy.mjs reads them there. */
 static void count_words(char *out, size_t cap, int n, const char *one, const char *many,
@@ -6571,9 +6570,9 @@ static void draw_settings(void) {
 #define DSP_W (UI_W - 2 * DSP_X)
 #define DSP_LABEL_Y(r) (DSP_Y0 + (r) * DSP_PITCH)
 #define DSP_BAND_Y(r) (DSP_LABEL_Y(r) + 22)
-/* The group box round each band, on the same rule as LOOK's: 8 px wider than
- * the control on each side, starting on the legend's line, 6 px of air under
- * the buttons. */
+/* The group box round each band: INSET_TEXT wider than the control on each
+ * side, so the band sits on its legend's left edge; it starts on the legend's
+ * line, with 6 px of air under the buttons. */
 #define DSP_BOX_X (DSP_X - INSET_TEXT)
 #define DSP_BOX_W (DSP_W + 2 * INSET_TEXT)
 #define DSP_BOX_H (22 + DSP_BAND_H + 6)
