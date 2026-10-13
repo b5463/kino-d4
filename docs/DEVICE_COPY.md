@@ -76,6 +76,7 @@ The rows at the foot of STATUS:
 | `AUTO` / `ON` / `OFF` | The flash, beside the bolt on the decisions bar. |
 | `NO PICTURE` / `NO RECENT FRAME` / `NO CAMERA` | A finder pane with no pixels: the lens reported an error, its frames stopped, or it is not linked. Said once the first second of SHOOT has passed. |
 | `CAM1` / `CAM2` / `CAM3` / `CAM4` | Under that word, which pane it is. |
+| `RESTART THE CAMERAS IN STATUS` | Under those two, in ink: what to do. STATUS carries the RESTART THE CAMERAS row. |
 
 ## SHOOT banner
 
@@ -167,7 +168,7 @@ calls and fails when one of them is not in this table.
 |---|---|
 | `SHOOT` / `LOOK` / `GALLERY` / `ROLL` / `SETTINGS` / `POWER` | The six tiles. SHOOT is the large card. |
 | `TAP TO OPEN` | On the menu's large card. |
-| `CAMERA  4571 SHOTS` | The card's line when nothing is wrong: the card in the header chip's words. The worst condition's title takes its place when there is one. |
+| `CAMERA  4571 SHOTS` | The card's line when nothing is wrong: the card in the header chip's words. The worst condition's title takes its place when there is one, over two lines when one is too short. |
 
 ### LOOK
 

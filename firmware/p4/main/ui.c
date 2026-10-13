@@ -510,6 +510,13 @@ static void card_words(char *out, size_t cap, const storage_status_t *sd) {
   else snprintf(out, cap, "%d SHOTS", shots);
 }
 
+/* A count of photographs, "1 PHOTO" or "12 PHOTOS", and what follows it.
+ * GALLERY's header and ROLL's card line each spelled the plural their own
+ * way; one place now. */
+static void shots_words(char *out, size_t cap, int n, const char *tail) {
+  snprintf(out, cap, "%d PHOTO%s%s", n, n == 1 ? "" : "S", tail);
+}
+
 /* "TODAY 18:01" or "21 SEP 18:01", in the zone the clock prints with. The
  * capture id stays where it is; this is what a person reads first. */
 static void date_words(char *out, size_t cap, int64_t ms) {
@@ -1715,6 +1722,46 @@ static void text_fit(char *out, size_t cap, const ui_font_t *f, const char *s, i
     if (text_w(f, out) <= budget) break;
   }
   snprintf(out + n, cap - n, "...");
+}
+
+/**
+ * `s` on at most two lines of `w` pixels, `lead` apart: broken at the last
+ * space that fits, and the rest cut with an ellipsis on the second line.
+ * One line when it fits on one. Returns the lines used.
+ */
+static int text_two_lines(const ui_font_t *f, int x, int y, int w, int lead, const char *s,
+                          uint16_t ink) {
+  char a[64];
+  snprintf(a, sizeof a, "%s", s);
+  if (text_w(f, a) <= w) {
+    text(f, x, y, a, ink);
+    return 1;
+  }
+  /* The longest run of whole words that fits the first line. */
+  size_t brk = 0;
+  for (size_t i = 1; a[i] != '\0'; i++) {
+    if (a[i] != ' ') continue;
+    a[i] = '\0';
+    const bool fits = text_w(f, a) <= w;
+    a[i] = ' ';
+    if (!fits) break;
+    brk = i;
+  }
+  if (brk == 0) {
+    /* One word wider than the line: cut it there. */
+    char cut[64];
+    text_fit(cut, sizeof cut, f, a, w);
+    text(f, x, y, cut, ink);
+    return 1;
+  }
+  a[brk] = '\0';
+  text(f, x, y, a, ink);
+  const char *rest = a + brk + 1;
+  while (*rest == ' ') rest++;
+  char cut[64];
+  text_fit(cut, sizeof cut, f, rest, w);
+  text(f, x, y + lead, cut, ink);
+  return 2;
 }
 
 /**
@@ -3730,11 +3777,10 @@ static void menu_words(int i, int x, int y, int w, int h, uint16_t ink, bool wit
       text(K_TYPE_CAPTION, tx, y + 18, sw, ink);
       tx += text_w(K_TYPE_CAPTION, sw) + 14;
     }
-    /* Cut to the card's own right rule. The card is half the panel now, and
-     * a condition title is written for a full-width row. */
-    char fitted[64];
-    text_fit(fitted, sizeof fitted, K_TYPE_CAPTION, line, rx - tx);
-    text(K_TYPE_CAPTION, tx, y + 18, fitted, ink);
+    /* Over two lines, both on the title's own left edge, and cut only on the
+     * second. A condition title is written for a full-width row and the card
+     * is half the panel: on one line LENSES ARE NOT ANSWERING lost its verb. */
+    text_two_lines(K_TYPE_CAPTION, tx, y + 18, rx - tx, K_TYPE_CAPTION->line_h + 2, line, ink);
 
     /* The four, large, in the card's upper middle: the card is the panel's
      * full height now and the mark is the one thing on it that can carry
@@ -4163,6 +4209,11 @@ static int sh_panel(int x, int w, const char *s, bool down) {
  * panes that decoded a frame this pass - the same fact that decided whether
  * each quarter got a picture or a reason.
  */
+/* An empty pane's three caption lines: 18 px lines 20 apart, and a grid step
+ * more before the action line. */
+#define SH_EMPTY_LEAD 20
+#define SH_EMPTY_H (3 * SH_EMPTY_LEAD + GRID - 2)
+_Static_assert(SH_EMPTY_H <= SH_PANE_H / 2, "an empty pane's three lines do not fit its middle");
 static void draw_shoot(void) {
   static const char *const NAMES[4] = {"CAM1", "CAM2", "CAM3", "CAM4"};
   /* Which of the four are on screen, as the mark rather than as a sentence.
@@ -4201,8 +4252,14 @@ static void draw_shoot(void) {
     /* Quiet, and in the palette: two blue-greys lived here that were in no
      * other place on the panel and measured under 2:1 - a reason nobody
      * could read on the one pane that had nothing else to say. */
-    text_mid(K_TYPE_CAPTION, px + SH_PANE_W / 2, py + SH_PANE_H / 2 - 14, why, K_INK_QUIET);
-    text_mid(K_TYPE_CAPTION, px + SH_PANE_W / 2, py + SH_PANE_H / 2 + 6, NAMES[i], K_INK_QUIET);
+    /* Three lines on the pane's centre: what is wrong, which one, and what
+     * to do. The third is the one a person can act on; it is in ink, the
+     * two that describe are quiet. */
+    const int ly = py + (SH_PANE_H - SH_EMPTY_H) / 2;
+    text_mid(K_TYPE_CAPTION, px + SH_PANE_W / 2, ly, why, K_INK_QUIET);
+    text_mid(K_TYPE_CAPTION, px + SH_PANE_W / 2, ly + SH_EMPTY_LEAD, NAMES[i], K_INK_QUIET);
+    text_mid(K_TYPE_CAPTION, px + SH_PANE_W / 2, ly + 2 * SH_EMPTY_LEAD + GRID,
+             "RESTART THE CAMERAS IN STATUS", K_INK);
   }
 
   /* ---- the way out ---- */
@@ -4943,7 +5000,7 @@ static void draw_gallery(void) {
       else snprintf(s_head_last, sizeof s_head_last, "READING CARD");
     } else {
       const int n = gallery_total();
-      snprintf(s_head_last, sizeof s_head_last, "%d PHOTO%s", n, n == 1 ? "" : "S");
+      shots_words(s_head_last, sizeof s_head_last, n, "");
     }
   }
   draw_header(SCR_GALLERY);
@@ -6000,7 +6057,7 @@ static void draw_roll(void) {
     well(RL_M, wy, UI_W - 2 * RL_M, wh);
     if (n > 0) {
       char line[56];
-      snprintf(line, sizeof line, "%d PHOTO%s ON THE CARD", n, n == 1 ? "" : "S");
+      shots_words(line, sizeof line, n, " ON THE CARD");
       text_mid(K_TYPE_LABEL, UI_W / 2, wy + 12, line, K_INK);
       text_mid(K_TYPE_BODY, UI_W / 2, wy + 44,
                "They import over USB-C, and upload if a roll is assigned later.", K_INK_QUIET);
