@@ -3405,7 +3405,7 @@ static int head_state_right(screen_t s) { return hd_plate_right(s) - 4; }
 
 /* What the screen wants at the two ends of the readout group, set before
  * draw_header() runs - it lays the whole group and nothing else may. */
-static char s_head_first[24];
+static char s_head_first[32]; /* "%d / %d": two ints and a separator, 25 at most */
 static char s_head_last[32];
 
 
