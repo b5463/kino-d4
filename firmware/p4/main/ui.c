@@ -1853,7 +1853,10 @@ static uint16_t s_land_ink = K_INK;
 static int64_t s_land_us;
 /* A running capture's cells, one per lens: the ink each FM_IN cell is in on
  * this pass, set once per pass by in_step(), and what it is stepped from -
- * the frames seen last pass and when each one came in. 25 bytes. */
+ * the frames seen last pass and when each one came in. 25 bytes. The strip
+ * draws a cell as in only when s_in_prev has it, never from the capture
+ * module's live word alone: a frame in_step() has not stepped yet has no ink
+ * of its own. */
 static uint16_t s_in_ink[4] = {K_INK, K_INK, K_INK, K_INK};
 static uint8_t s_in_prev;
 static int32_t s_in_at_ms[4];
@@ -8377,7 +8380,11 @@ static bool in_step(capture_stage_t cs) {
   bool easing = false;
   for (int i = 0; i < 4; i++) {
     if (fresh & (1u << i)) s_in_at_ms[i] = now;
-    if (!(in & (1u << i))) continue;
+    if (!(in & (1u << i))) {
+      /* The ease's first value, so a cell is never left at a stale K_INK. */
+      s_in_ink[i] = K_OFF;
+      continue;
+    }
     s_in_ink[i] = in_ink(now - s_in_at_ms[i]);
     if (now - s_in_at_ms[i] < IN_EASE_MS) easing = true;
   }
@@ -8413,8 +8420,13 @@ static void draw_capture_banner(void) {
     case CAPTURE_READING:
     case CAPTURE_WRITING: {
       /* 0 until the probe has decided: every lens counts as asked until then. */
-      const uint32_t asked = capture_asked_cams() != 0 ? capture_asked_cams() : 0xFu;
-      const uint32_t in = capture_frames_in();
+      const uint32_t asked_raw = capture_asked_cams();
+      const uint32_t asked = asked_raw != 0 ? asked_raw : 0xFu;
+      /* Only the frames in_step() has seen, and that are still in: a frame
+       * that lands after in_step(), or a render before it this pass, stays
+       * K_OFF until its ease starts; a bit left from the last capture of a
+       * queued pair is gone from the live word and is not drawn. */
+      const uint32_t in = (uint32_t)s_in_prev & capture_frames_in();
       for (int i = 0; i < 4; i++) {
         const uint32_t b = 1u << i;
         st[i] = !(asked & b) ? FM_ABSENT : (in & b) ? FM_IN : FM_OFF;

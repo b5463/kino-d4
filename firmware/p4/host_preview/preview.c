@@ -2853,6 +2853,7 @@ static void scenes(void) {
    * the cycle would cut the transfer. A press that beat the repaint is
    * fenced in cams_restart() and switches nothing. */
   g_stage = CAPTURE_READING;
+  s_in_prev = (uint8_t)g_frames_in; /* what in_step() would have seen */
   SHOT(SCR_SHOOT, "shoot_dead_pane_capturing");
   review_expect(!(s_sh_dead & (1u << 2)), "dead pane offers RESTART THE CAMERAS during a capture");
   {
@@ -2922,6 +2923,9 @@ static void scenes(void) {
   /* ---- capture feedback, over the viewfinder it will most often cover ---- */
   s_screen = SCR_SHOOT;
   g_stage = CAPTURE_READING;
+  /* The strip draws the frames in_step() has seen (s_in_prev), so each scene
+   * sets that as the pass before the draw would have. */
+  s_in_prev = (uint8_t)g_frames_in;
   scan_conditions();
   draw_screen();
   shot("capture_running");
@@ -2929,22 +2933,36 @@ static void scenes(void) {
    * and third still on it. It used to light two cells for READING, which
    * read as two lenses down. */
   g_frames_in = 0x9;
+  s_in_prev = 0x9;
   draw_screen();
+  uint16_t *const ref_2of4 = malloc(sizeof(uint16_t) * UI_W * UI_H);
+  if (ref_2of4 != NULL) memcpy(ref_2of4, g_canvas, sizeof(uint16_t) * UI_W * UI_H);
   shot("capture_reading_2of4");
   /* The second arriving, 60 ms into its 120 ms ease. */
   g_frames_in = 0xB;
+  s_in_prev = 0xB;
   s_in_ink[1] = in_ink(60);
   draw_screen();
   shot("capture_arrive_060");
+  /* A frame that landed after in_step() looked, with the cell's ink left at
+   * K_INK: in the live word but not yet seen, so it must still draw as the
+   * 2-of-4 strip and not as a full cell for one frame. */
   s_in_ink[1] = K_INK;
+  s_in_prev = 0x9;
+  draw_screen();
+  review_expect(ref_2of4 != NULL && memcmp(ref_2of4, g_canvas, sizeof(uint16_t) * UI_W * UI_H) == 0,
+                "a frame in_step() has not seen drew differently from one not in");
+  free(ref_2of4);
   /* A body with the third lens off: three asked, the first in. The third
    * is an outline, as on the menu card. */
   g_asked = 0xB;
   g_frames_in = 0x1;
+  s_in_prev = 0x1;
   draw_screen();
   shot("capture_reading_3cam");
   g_asked = 0xF;
   g_frames_in = 0xF;
+  s_in_prev = 0;
 
   g_stage = CAPTURE_DONE;
   memset(&g_report, 0, sizeof g_report);
