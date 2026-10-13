@@ -111,7 +111,7 @@ The rows at the foot of STATUS:
 | `CARD FAILED. CHANGE THE CARD` | The card pill: the card failed its write test. |
 | `CARD FULL. DELETE PHOTOS IN GALLERY` | The card pill: less room than capture.c reserves for one photograph. The shutter is refused there, and the pill pulses. |
 | `CHECK THE SECOND LENS` | On SHOOT, one pane was lit and then went a third as bright as the rest for a second while the others stayed lit. The word is one of `FIRST` / `SECOND` / `THIRD` / `FOURTH`. |
-| `10` .. `1`, `SELF-TIMER.  PRESS TO CANCEL` | The self-timer counting down over a ring of ten dots, after a shutter press with TIMER 10 S. Either key or a tap on the picture cancels it. |
+| `10` .. `1`, `SELF-TIMER.  PRESS TO CANCEL` | The self-timer counting down over a ring of ten dots, after a shutter press with TIMER 10 S. Either key or a tap that lands on the picture cancels it. A thumb already resting there does not. |
 | `SAVED` | Every lens that answered is on the card. Its cells land in the shade; a lens left out stays an outline. |
 | `SAVED, 1 CAMERA MISSED` | A partial photograph; the red cell is the lens that lost its frame. |
 | `No card. Put one in.` | Shutter with no card. |
@@ -145,7 +145,7 @@ The rows at the foot of STATUS:
 | Deleted | One photograph deleted outright, because the trash folder could not take it. |
 | Restored | UNDO tapped in time. |
 | Could not restore it | The folder would not move back. |
-| Timer cancelled | Either key or a tap on the picture during the self-timer, TIMER turned off during it, or SHOOT left while it counts. |
+| Timer cancelled | Either key or a tap that lands on the picture during the self-timer, TIMER turned off during it, or SHOOT left while it counts. |
 | Deleting photos | DELETE ALL started on the gallery task. |
 | No photos on the card | DELETE ALL with nothing to delete. |
 | No card in the slot | FORMAT with nothing in the slot. |

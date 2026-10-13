@@ -10339,6 +10339,9 @@ static bool was_asleep = false;
  * so the dismissal does not also press whatever was underneath it. Also set
  * by the palm rules below, for the same reason. */
 static bool swallow_touch = false;
+/* Whether the last pass saw a contact, so a contact that lands can be told
+ * from one that was already resting (the self-timer cancel). */
+static bool s_touch_was_down = false;
 /* Where and when the current contact landed, for the drift and hold rules
  * (pure_tap_check()). */
 static int s_down_x, s_down_y;
@@ -10562,6 +10565,11 @@ static uint32_t ui_pass(void) {
     uint16_t tx = 0, ty = 0;
     int region = -1;
     const bool down = touch_ready() && touch_get(&tx, &ty);
+    /* True on the first pass of a contact only. A thumb resting on the
+     * picture when the count starts never sets `held`, so without this every
+     * pass would read it as a new tap. */
+    const bool landed = down && !s_touch_was_down;
+    s_touch_was_down = down;
 
     /* A touch that wakes a sleeping screen wakes it and does nothing else.
      * Reaching into a bag for a camera whose backlight has timed out and
@@ -10746,13 +10754,16 @@ static uint32_t ui_pass(void) {
      * picture, so "tap anywhere" is the only gesture that always works.
      */
     if (!down) swallow_touch = false;
-    if (down && s_shot_hold && !swallow_touch) {
+    const bool counting = s_timer_end_us != 0 && s_screen == SCR_SHOOT;
+    if (down && s_shot_hold && !swallow_touch && (!counting || landed)) {
       /* Under HOLD a report can land while the self-timer counts. The count
-       * owns the finder: the tap cancels it, and the report waits for the
-       * next one, as it does for a key (key_acts). Once per contact: a
+       * owns the finder: a tap that lands during it cancels it, and the
+       * report waits for the next one, as it does for a key (key_acts). A
+       * thumb that was already resting is not a tap: the report stays held
+       * and shutter_now() clears it when the count ends. Once per contact: a
        * finger already swallowed - this one, a palm, a drift - is not a
        * second tap. */
-      if (s_timer_end_us != 0 && s_screen == SCR_SHOOT) timer_cancel("Timer cancelled");
+      if (counting) timer_cancel("Timer cancelled");
       else shot_hold_ack();
       swallow_touch = true;
     }
@@ -10812,10 +10823,13 @@ static uint32_t ui_pass(void) {
        * goes back to only opening the finder. BACK still goes there. */
       if (s_screen == SCR_PHOTO) s_first_review_us = 0;
       region = undo_hit(lx, ly) ? IT_UNDO : hit_test(lx, ly);
-      if (held == -1 && region < 0 && s_screen == SCR_SHOOT && s_timer_end_us != 0) {
+      if (landed && held == -1 && region < 0 && s_screen == SCR_SHOOT && s_timer_end_us != 0) {
         /* A tap on the picture while it counts is the cancel the caption
-         * asks for. MENU, LOOK and TIMER keep their own answers: leaving
-         * SHOOT and TIMER OFF cancel too, LOOK lets it run. */
+         * asks for. Only a contact that lands during the count: a thumb
+         * already resting on the picture when it starts is the framing grip.
+         * MENU, LOOK and TIMER keep their own answers, and each ends the
+         * count too: MENU and LOOK leave SHOOT (timer_poll), TIMER OFF
+         * cancels in activate(). */
         timer_cancel("Timer cancelled");
         swallow_touch = true;
         return 20;

@@ -2794,8 +2794,10 @@ static void timer_lands_mid_count(int passes) {
  * with the press's own, and its end is one capture. Either key or a tap on
  * the picture during it cancels and says so, leaving the finder does the
  * same, and so does turning the panel off. A report landing during the count
- * opens no review, and under HOLD it does not eat the cancel. With UI sounds
- * off the count is silent. Run on the renderer's clock; writes no picture.
+ * opens no review, and under HOLD it does not eat the cancel. A thumb already
+ * resting on the picture when the count starts does not cancel it, with or
+ * without a held report. With UI sounds off the count is silent. Run on the
+ * renderer's clock; writes no picture.
  */
 static void check_self_timer(void) {
   const screen_t scr0 = s_screen;
@@ -2883,6 +2885,7 @@ static void check_self_timer(void) {
   s_pressed = -1;
   held = -1;
   swallow_touch = false;
+  s_touch_was_down = false;
 
   /* A tap on the picture cancels, as the caption says. */
   s_toast[0] = '\0';
@@ -2901,6 +2904,27 @@ static void check_self_timer(void) {
   timer_expect(s_screen == SCR_SHOOT && s_timer_end_us == 0 && g_shutter_n == 0 &&
                    strcmp(s_toast, "Timer cancelled") == 0,
                "a tap on the picture during the count did not cancel it and say so");
+
+  /* A thumb already resting on the picture when the count starts is the
+   * framing grip, not a tap: the count runs on. A fresh tap still cancels. */
+  s_toast[0] = '\0';
+  g_touch_ready = true;
+  g_touch_down = true;
+  timer_passes(2);
+  handle_button(&press);
+  timer_passes(3);
+  timer_expect(s_timer_end_us != 0 && s_toast[0] == '\0',
+               "a thumb resting on the picture when the count started cancelled it");
+  g_touch_down = false;
+  timer_passes(2);
+  timer_expect(s_timer_end_us != 0, "lifting a resting thumb cancelled the count");
+  g_touch_down = true;
+  timer_passes(3);
+  g_touch_down = false;
+  timer_passes(3);
+  g_touch_ready = false;
+  timer_expect(s_timer_end_us == 0 && g_shutter_n == 0 && strcmp(s_toast, "Timer cancelled") == 0,
+               "a fresh tap after a resting thumb lifted did not cancel the count");
 
   /* The last photograph's report lands while it counts, with AFTER SHOT 2 S:
    * no review opens, the count runs on, and its end is the next capture. */
@@ -2950,6 +2974,26 @@ static void check_self_timer(void) {
     g_timer_failed = true;
   }
   shot_hold_ack();
+
+  /* Under HOLD with a thumb resting on the picture: the report that lands
+   * mid-count is held and the count runs on. Its end acknowledges the report
+   * and takes the photograph. */
+  s_toast[0] = '\0';
+  g_touch_ready = true;
+  g_touch_down = true;
+  timer_passes(2);
+  timer_lands_mid_count(20);
+  if (s_timer_end_us == 0 || !s_shot_hold || s_toast[0] != '\0') {
+    fprintf(stderr, "self-timer: under HOLD a resting thumb left count %s, report %s, toast '%s'\n",
+            s_timer_end_us != 0 ? "running" : "stopped", s_shot_hold ? "held" : "gone", s_toast);
+    g_timer_failed = true;
+  }
+  for (int guard = 0; guard < 2000 && s_timer_end_us != 0; guard++) timer_passes(1);
+  timer_expect(!s_shot_hold && g_shutter_n == 1 && s_screen == SCR_SHOOT,
+               "under HOLD the count's end under a resting thumb did not clear the report and shoot");
+  g_touch_down = false;
+  timer_passes(2);
+  g_touch_ready = false;
   g_after_shot_s = 2;
 
   /* SOUND's UI OFF: the count is silent and still ends in one capture. */
