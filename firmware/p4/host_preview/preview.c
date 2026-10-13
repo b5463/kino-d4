@@ -1582,7 +1582,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 265
+#define PPMS_PER_HAND 266
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -2484,15 +2484,16 @@ static void review_run_move(void) {
 static bool review_slid_back(void) { return s_anim.kind == ANIM_SLIDE && !s_anim.from_right; }
 
 /* The report lands on SHOOT under the default AFTER SHOT (2 s) and the review
- * opens, as ui_pass does it; the move runs and the landing finishes. */
-static void review_open(void) {
+ * opens, as ui_pass does it; the move runs and the landing finishes. `asked`
+ * and `ok` are the lenses the shot asked and stored, bit i for C(i+1). */
+static void review_open_cams(uint32_t asked, uint32_t ok) {
   g_stage = CAPTURE_DONE;
   memset(&g_report, 0, sizeof g_report);
   g_report.ok = true;
   snprintf(g_report.id, sizeof g_report.id, "CAP_000042");
-  g_report.stored = 4;
-  g_report.online = 4;
-  report_cams(0xF, 0xF);
+  g_report.stored = __builtin_popcount(ok & asked);
+  g_report.online = __builtin_popcount(asked);
+  report_cams(asked, ok & asked);
   s_screen = SCR_SHOOT;
   s_dialog = DLG_NONE;
   s_toast[0] = '\0';
@@ -2508,6 +2509,8 @@ static void review_open(void) {
   g_shutter_n = g_warning_n = 0;
   review_expect(s_screen == SCR_PHOTO && s_review_from_shot && s_first_review_us != 0, "the review did not open");
 }
+
+static void review_open(void) { review_open_cams(0xF, 0xF); }
 
 /* The shutter key, as drain_buttons() hands it over. The preview has no
  * pipeline, so an accepted request is shown as the capture task shows it on
@@ -2564,6 +2567,16 @@ static void review_scenes(void) {
     review_expect(tx >= ph_well_x() && tx + tw <= ph_well_x() + PH_W, "a toast on the review leaves the well");
     s_toast[0] = '\0';
   }
+  review_leave();
+
+  /* A body with the third lens left out loses the second lens's frame. The
+   * strip says 1 CAMERA MISSED, the second cell red and the third an
+   * outline, and the column agrees: 1 MISSING, the same two cells. It said
+   * 2 MISSING with both red, because the card cannot say what was asked. */
+  review_open_cams(0xB, 0x9);
+  review_expect(s_photo_asked == 0xB && s_photo_have == 0x9 && s_photo_partial,
+                "the review of a 3-lens partial shot lost which lenses were asked");
+  review_snap("review_partial_3cam");
   review_leave();
 
   /* The shutter on the review, with the report still up (DONE): the stale

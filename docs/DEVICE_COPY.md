@@ -238,7 +238,7 @@ calls and fails when one of them is not in this table.
 | `SENT` | After the mode, once the Roll holds every frame. |
 | `TODAY 18:01` | When it was taken, in the clock's zone; `21 SEP 18:01` on any other day. |
 | `JAN` / `FEB` / `MAR` / `APR` / `MAY` / `JUN` / `JUL` / `AUG` / `SEP` / `OCT` / `NOV` / `DEC` | The month in that date. |
-| `2 MISSING` | A photo whose capture lost frames: how many lenses have no file on the card. The red cells under CAMERAS say which. |
+| `2 MISSING` | A photo whose capture lost frames: how many lenses that were asked have no file on the card. The red cells under CAMERAS say which. The card does not record which were asked, so in the gallery every lens counts. |
 | `1 DAMAGED` | A frame is on the card and would not open. Shown when no lens is missing. The red cell under CAMERAS says which. |
 | `MISSING` / `DAMAGED` | A quad's empty quarter: the four cells with that lens red, and why. |
 | `NO IMAGE` | The photograph's frames could not be decoded. |

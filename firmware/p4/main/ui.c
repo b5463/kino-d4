@@ -726,6 +726,11 @@ static int s_photo_frames;
  * whether its capture lost any: gallery.c's answer, taken from the item. */
 static uint8_t s_photo_have;
 static bool s_photo_partial;
+/* Which lenses the capture asked, bit i for C(i+1). The card does not record
+ * it, so it is all four from the gallery; the review after a shot has it from
+ * the report, so a lens left out stays an outline there and is not counted
+ * MISSING, as on the strip beside it. */
+static uint8_t s_photo_asked = 0xF;
 /* The open photograph's favourite flag. Read from META.JSON when the screen
  * opens and kept here, not re-read on every draw: a draw runs many times a
  * second and this would be an SD read and a JSON parse in each of them. */
@@ -5605,6 +5610,7 @@ static bool photo_open(const gallery_item_t *it) {
   s_photo_frames = it->frames;
   s_photo_have = it->have;
   s_photo_partial = it->partial;
+  s_photo_asked = 0xF; /* the card cannot say; first_review_open() can */
   /* The gallery already read META.JSON for this tile, so the flag is taken
    * from the item rather than read off the card a second time. The screen owns
    * its own copy from here on because the toggle below changes it and the
@@ -6026,7 +6032,9 @@ static void draw_photo(void) {
         fm_cell_t gst[4];
         for (int k = 0; k < 4; k++) gst[k] = (s_wig_have & (1u << k)) ? FM_ON : FM_OFF;
         /* Red when the lens was asked; an outline when it was never asked. */
-        gst[i] = ((s_photo_have & (1u << i)) || s_photo_partial) ? FM_LOST : FM_ABSENT;
+        const uint32_t qb = 1u << i;
+        const bool asked_short = s_photo_partial && (s_photo_asked & qb);
+        gst[i] = ((s_photo_have & qb) || asked_short) ? FM_LOST : FM_ABSENT;
         const int gc = 14, gw = 4 * gc + 3 * FM_GAP;
         const int gy = qy + (qh - (gc + 8 + K_TYPE_CAPTION->line_h)) / 2;
         four_mark(qx + (qw - gw) / 2, gy, gc, gst, true);
@@ -6079,13 +6087,13 @@ static void draw_photo(void) {
    * The height is computed from the same conditions the drawing below uses,
    * because the well has to be painted before the type that sits on it.
    */
-  /* MISSING counts the lenses a partial capture has no file for, from the
-   * card, so it is there from the first frame. DAMAGED counts files on the
-   * card that would not decode, once the decode has tried them all. One line:
-   * a lens missing outranks a frame damaged. */
+  /* MISSING counts the lenses a partial capture asked and has no file for,
+   * from the card, so it is there from the first frame. DAMAGED counts files
+   * on the card that would not decode, once the decode has tried them all.
+   * One line: a lens missing outranks a frame damaged. */
   int missing = 0, damaged = 0;
   if (s_photo_partial) {
-    for (int k = 0; k < 4; k++) missing += !(s_photo_have & (1u << k));
+    for (int k = 0; k < 4; k++) missing += (s_photo_asked & (1u << k)) && !(s_photo_have & (1u << k));
   }
   const bool decoded = (s_wig_len >= 2 || s_quad_ready) && s_wig_count > 0;
   if (decoded) {
@@ -6189,7 +6197,7 @@ static void draw_photo(void) {
     for (int k = 0; k < 4; k++) {
       const uint32_t b = 1u << k;
       if (s_photo_have & b) st[k] = (decoded && !(s_wig_have & b)) ? FM_LOST : FM_ON;
-      else st[k] = s_photo_partial ? FM_LOST : FM_ABSENT;
+      else st[k] = (s_photo_partial && (s_photo_asked & b)) ? FM_LOST : FM_ABSENT;
     }
     /* Flowed from the caption rather than pinned to a constant. PH_FOUR_Y was
      * 132 and the caption grew past it the day the typeface changed, which put
@@ -9956,6 +9964,12 @@ static void first_review_open(const capture_report_t *r) {
     if (r->ok && r->cam[i].ok) it.have |= (uint8_t)(1u << i);
   it.captured_ms = r->captured_at_ms;
   if (!photo_open(&it)) return; /* the card is still busy with it; a still it is */
+  /* The lenses this shot asked, which the card does not keep: a lens left
+   * out is an outline here as on the strip, and only a lens asked and short
+   * counts as MISSING. */
+  s_photo_asked = 0;
+  for (int i = 0; i < CAPTURE_CAMS && i < 4; i++)
+    if (r->cam[i].attempted) s_photo_asked |= (uint8_t)(1u << i);
   s_focus[SCR_PHOTO] = P_IT_DELETE;
   s_first_review_us = esp_timer_get_time();
   s_review_from_shot = true;
