@@ -146,13 +146,15 @@ _Static_assert(K_LAUNCH_N == K_LAUNCH_DOWN_N && K_LAUNCH_N == K_BF_WARM_N,
  *
  * The panel's active area is 93.6 x 56.2 mm for 800 x 480 px - 8.5 px/mm -
  * so the 44 px square this file called "the floor a thumb needs" was 5.2 mm,
- * a figure carried over from phone density. 64 x 52 is 7.5 x 6.1 mm, the
- * most the 58 px bar can hold. The hit target is bigger still: the whole
- * band on a list screen, the button plus 12 px and out to the edge on the
- * two screens that have no band.
+ * a figure carried over from phone density. BTN_SQ, 52 x 52, is 6.1 mm a
+ * side, the most the 58 px bar can hold, and every icon button is that
+ * square: back, the page pair, a picker's two buttons. The hit target is
+ * bigger still: the whole band on a list screen, the button plus 12 px and
+ * out to the edge on the two screens that have no band.
  */
-#define HD_BTN 52     /* height */
-#define HD_BTN_W 64   /* width */
+#define BTN_SQ 52
+#define HD_BTN BTN_SQ   /* height */
+#define HD_BTN_W BTN_SQ /* width */
 #define HD_BTN_Y (HD_BAR_Y + (HD_BAR_H - HD_BTN) / 2)
 #define HD_BTN_GAP 8  /* between the button cluster and the plate, and back and the pair */
 #define G_PG_GAP 4    /* between PREV and NEXT, so they read as one control with two ends */
@@ -1221,21 +1223,6 @@ static void disc(int cx, int cy, float r, uint16_t c) {
  */
 #define UI_R R_CARD
 
-/**
- * A thing you press.
- *
- * It was byte-identical to well() below - same fill, same corner - so a
- * control and a readout were the same object until you touched one. A press
- * still darkens the whole face, but the resting state now carries a keyline
- * one step lighter than the ground it sits on: enough to say "this is a
- * surface standing up" at arm's length, and not so much that a screen of them
- * becomes a screen of outlines.
- */
-static void button(int x, int y, int w, int h, bool down) {
-  round_rect(x, y, w, h, UI_R, down ? K_OFF : K_SURFACE);
-  if (!down) round_outline(x, y, w, h, UI_R, K_EDGE);
-}
-
 /*
  * The edge of a control, for the ground it stands on.
  *
@@ -1250,14 +1237,6 @@ static uint16_t edge_ink(uint16_t ground) {
   if (contrast(K_EDGE, ground) >= 3.0f) return K_EDGE;
   if (contrast(K_PRESS_INK, ground) >= 3.0f) return K_PRESS_INK;
   return dim_ink(K_INK, ground);
-}
-
-/* A small control with its own face - a picker's arrow button, a toggle's
- * track - drawn resting or pressed, with the edge that says it is one.
- * `ground` is what it stands on, which decides the edge's ink. */
-static void control(int x, int y, int w, int h, int r, bool down, uint16_t ground) {
-  round_rect(x, y, w, h, r, down ? K_PRESS : K_OFF);
-  if (!down) round_outline(x, y, w, h, r, edge_ink(ground));
 }
 
 /** A thing you read. Flat, and no edge - it is not going anywhere. */
@@ -2076,6 +2055,105 @@ static void icon(icon_t id, int cx, int cy, uint16_t ink) {
   if (m->x1 <= m->x0) return;
   mask_blit(m->cov + (size_t)m->y0 * ICON_PX + m->x0, m->x1 - m->x0, m->y1 - m->y0, ICON_PX,
             cx - ICON_PX / 2 + m->x0, cy - ICON_PX / 2 + m->y0, ink);
+}
+
+/* ------------------------------------------------------------------ */
+/* The shared controls                                                 */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A thing you press, in one of six states, and the ink its mark is set in.
+ *
+ * There were five treatments of it: button() went K_OFF under a finger and
+ * moved its mark a pixel, control() went to the launch shade, PHOTO's
+ * column painted its own round_rect faces, DELETE its own red, and a gallery
+ * tile drew a square outline inside the picture. One function now, and one
+ * rule each:
+ *
+ *   REST         one step lighter than its ground, with the edge that says
+ *                it is a control (edge_ink): K_SURFACE on the page, K_OFF
+ *                on a card or a row
+ *   DOWN         the launch shade with its dark ink, the press everywhere
+ *   ON           K_INK with the ground's ink: a state that stays
+ *   DEAD         the resting face with no edge, and a quiet ink: there is
+ *                nothing to press (a page at the end, no Roll)
+ *   DANGER       resting, the word in red
+ *   DANGER_DOWN  the red face with the ground's ink
+ *
+ * Nothing moves under a finger: the colour is the press.
+ */
+typedef enum {
+  CTL_REST,
+  CTL_DOWN,
+  CTL_ON,
+  CTL_DEAD,
+  CTL_DANGER,
+  CTL_DANGER_DOWN,
+} ctl_t;
+
+static uint16_t ctl_rest_face(uint16_t ground) { return ground == K_GROUND ? K_SURFACE : K_OFF; }
+
+static uint16_t ctl_face(int x, int y, int w, int h, int r, ctl_t st, uint16_t ground) {
+  switch (st) {
+    case CTL_DOWN:
+      round_rect(x, y, w, h, r, K_PRESS);
+      return K_PRESS_INK;
+    case CTL_ON:
+      round_rect(x, y, w, h, r, K_ON);
+      return K_ON_INK;
+    case CTL_DANGER_DOWN:
+      round_rect(x, y, w, h, r, K_FAULT);
+      return K_GROUND;
+    case CTL_DEAD: {
+      const uint16_t face = ctl_rest_face(ground);
+      round_rect(x, y, w, h, r, face);
+      return contrast(K_INK_QUIET, face) >= 4.5f ? K_INK_QUIET : dim_ink(K_INK, face);
+    }
+    default: {
+      round_rect(x, y, w, h, r, ctl_rest_face(ground));
+      round_outline(x, y, w, h, r, edge_ink(ground));
+      return st == CTL_DANGER ? K_FAULT_INK : K_INK;
+    }
+  }
+}
+
+/* A control whose face carries one mark. */
+static void ctl_icon(int x, int y, int w, int h, int r, ctl_t st, uint16_t ground, icon_t id) {
+  icon(id, x + w / 2, y + h / 2, ctl_face(x, y, w, h, r, st, ground));
+}
+
+/** The way out of a screen: ICON_BACK on a 52 px square, on the page. */
+static void btn_back(int x, int y, bool down) {
+  ctl_icon(x, y, BTN_SQ, BTN_SQ, UI_R, down ? CTL_DOWN : CTL_REST, K_GROUND, ICON_BACK);
+}
+
+/** The item or page before or after. Dead at the end rather than gone: a
+ *  control that disappears moves the other one and teaches nothing. */
+static void btn_pager(int x, int y, int w, int h, bool next, bool live, bool down, uint16_t ground) {
+  ctl_icon(x, y, w, h, UI_R, down ? CTL_DOWN : live ? CTL_REST : CTL_DEAD, ground,
+           next ? ICON_NEXT : ICON_PREV);
+}
+
+/** A picker's two buttons, 52 px squares at `y`, on a card or a row. */
+static void picker_pair(int prev_x, int next_x, int y, int r, uint16_t ground, bool live, bool pd,
+                        bool nd) {
+  ctl_icon(prev_x, y, BTN_SQ, BTN_SQ, r, pd ? CTL_DOWN : live ? CTL_REST : CTL_DEAD, ground, ICON_PREV);
+  ctl_icon(next_x, y, BTN_SQ, BTN_SQ, r, nd ? CTL_DOWN : live ? CTL_REST : CTL_DEAD, ground, ICON_NEXT);
+}
+
+/** A control with a word, and a mark before it when `id` is not ICON_N: the
+ *  two centred as one group, so the face is padded evenly whatever the word
+ *  measures. */
+static void btn_text(int x, int y, int w, int h, ctl_t st, uint16_t ground, const char *label, icon_t id) {
+  const uint16_t ink = ctl_face(x, y, w, h, UI_R, st, ground);
+  const int gap = GRID;
+  const int iw = id < ICON_N ? ICON_BOX + gap : 0;
+  const int tw = text_w(K_TYPE_CAPTION, label);
+  const int gx = x + (w - (iw + tw)) / 2;
+  if (id < ICON_N) icon(id, gx + ICON_BOX / 2, y + h / 2, ink);
+  AUDIT_ALIGN(1); /* centred on its face */
+  text(K_TYPE_CAPTION, gx + iw, y + (h - K_TYPE_CAPTION->line_h) / 2, label, ink);
+  AUDIT_ALIGN(-1);
 }
 
 /* ------------------------------------------------------------------ */
@@ -3229,8 +3307,9 @@ static int hd_cluster_w(screen_t s) {
  *
  *   1 the condition chip   the only reading a person has to act on
  *   2 the screen's own     what you came to this screen to see
- *   3 the card             how many photographs are left
- *   4 the page position    where you are in what you are looking at
+ *   3 the page position    where you are, and what the page pair beside it
+ *                          will change: it labels two buttons
+ *   4 the card             how many photographs are left
  *   5 the power source     true, and the least urgent thing on the bar
  *
  * Returns the group's left edge, so the screen can keep its title clear of it.
@@ -3267,8 +3346,8 @@ static int chrome_state(int left, int right, int y, uint16_t ink, const char *fi
     bool keep;
     int w;
   } it[5] = {
-      {last, 2, false, 0},  {NULL, 1, false, 0}, {card, 3, false, 0},
-      {pwr, 5, false, 0},   {first, 4, false, 0},
+      {last, 2, false, 0},  {NULL, 1, false, 0}, {card, 4, false, 0},
+      {pwr, 5, false, 0},   {first, 3, false, 0},
   };
   it[1].s = cond_n > 0 ? cnt : NULL;
 
@@ -3343,11 +3422,8 @@ static void draw_header(screen_t s) {
   /* Back, as a system button on the hand's side. The mark is ICON_BACK, an
    * arrow: the pager's chevrons are the item before and after, and the way
    * out of a screen is not the item before. */
-  const bool down = s_pressed == IT_BACK;
-  const int d = down ? 1 : 0;
   const int bx = hd_btn_x();
-  button(bx, HD_BTN_Y, HD_BTN_W, HD_BTN, down);
-  icon(ICON_BACK, bx + HD_BTN_W / 2 + d, HD_BTN_Y + HD_BTN / 2 + d, K_INK);
+  btn_back(bx, HD_BTN_Y, s_pressed == IT_BACK);
   /* Nothing sets focus to IT_BACK today - touch deliberately does not, and
    * there are no direction keys on this body - but the button is a focusable
    * control the moment there are, and a header that cannot show focus is the
@@ -4357,24 +4433,10 @@ static void draw_shoot(void) {
 
   /* ---- the way out ---- */
 
-  /* A system button, pressed the way every other button on this interface is:
-   * the bevel inverts and the face goes in a pixel, taking the mark and the
-   * word with it. The glyph and the label are centred as one group, so the
-   * plate is padded evenly whatever the face measures the word at. */
-  const bool down = s_pressed == SH_IT_BACK;
-  const int d = down ? 1 : 0;
+  /* The back button with its word, pressed the way every control is. */
   const int sbx = sh_back_x();
-  button(sbx, SH_BACK_Y, SH_BACK_W, SH_BACK_H, down);
-  {
-    const int gw = ICON_BOX, gap = 8;
-    const int tw = text_w(K_TYPE_CAPTION, "MENU");
-    const int gx = sbx + (SH_BACK_W - (gw + gap + tw)) / 2 + d;
-    icon(ICON_BACK, gx + gw / 2, SH_BACK_Y + SH_BACK_H / 2 + d, K_INK);
-    AUDIT_ALIGN(1); /* the glyph and the word are centred as one */
-    text(K_TYPE_CAPTION, gx + gw + gap, SH_BACK_Y + (SH_BACK_H - K_TYPE_CAPTION->line_h) / 2 + d, "MENU",
-         K_INK);
-    AUDIT_ALIGN(-1);
-  }
+  btn_text(sbx, SH_BACK_Y, SH_BACK_W, SH_BACK_H, s_pressed == SH_IT_BACK ? CTL_DOWN : CTL_REST,
+           K_GROUND, "MENU", ICON_BACK);
   if (foc(SCR_SHOOT, SH_IT_BACK)) focus_inset(sbx, SH_BACK_Y, SH_BACK_W, SH_BACK_H, K_INK);
 
   /* ---- how it will shoot ---- */
@@ -4565,7 +4627,7 @@ static void look_set_mono(bool mono) {
 #define LK_COL_GAP (2 * GRID)
 #define LK_W (UI_W - 2 * PAGE_M)
 #define LK_COL_W ((LK_W - 2 * LK_COL_GAP) / 3)
-#define LK_PICK_BTN 60
+#define LK_PICK_BTN BTN_SQ
 
 /*
  * The picker's two buttons, at the hero card's foot on the hand's side, and
@@ -4619,7 +4681,7 @@ static int lk_trio_y(bool quad) { return lk_hero_y(quad) + lk_hero_h(quad) + LK_
 /* The picker row, inset from the hero card's foot. The draw and the hit test
  * both come through here: this screen has had a hit map outlive its layout
  * twice, and both times it was this row. */
-static int lk_pick_y(bool quad) { return lk_hero_y(quad) + lk_hero_h(quad) - 2 * GRID - LK_CTL_H; }
+static int lk_pick_y(bool quad) { return lk_hero_y(quad) + lk_hero_h(quad) - 2 * GRID - LK_PICK_BTN; }
 static int lk_tgt_y(bool quad) { return lk_trio_y(quad) + LK_CAP_H + LK_CTL_H + LK_GAP; }
 /** Column `i` of the three-up row. */
 static int lk_col_x(int i) { return PAGE_M + i * (LK_COL_W + LK_COL_GAP); }
@@ -4896,10 +4958,8 @@ static void draw_look(void) {
   char pos[24];
   look_position(pos, sizeof pos);
 
+  /* With no looks the pair is dead: no edge, the quietest ink that reads. */
   const bool have = kdp_recipes_count() > 0;
-  /* Nothing quiet goes on K_OFF (3.8:1): with no looks the arrows are the
-   * quietest mix of the ink that still reads on the button. */
-  const uint16_t nink = have ? K_INK : dim_ink(K_INK, K_OFF);
 
   /* The two picker buttons at the card's foot on the hand's side, and the
    * name filling the rest of it - the name is the subject, so it takes the
@@ -4908,10 +4968,7 @@ static void draw_look(void) {
   const int nx = lk_next_x();
   const int px2 = lk_prev_x();
   const bool pd = band_rel(p0, LK_IT_PREV, 2) == 0, nd = band_rel(p0, LK_IT_PREV, 2) == 1;
-  control(px2, by, LK_PICK_BTN, LK_CTL_H, UI_R, pd, K_SURFACE);
-  icon(ICON_PREV, px2 + LK_PICK_BTN / 2, by + LK_CTL_H / 2, pd ? K_PRESS_INK : nink);
-  control(nx, by, LK_PICK_BTN, LK_CTL_H, UI_R, nd, K_SURFACE);
-  icon(ICON_NEXT, nx + LK_PICK_BTN / 2, by + LK_CTL_H / 2, nd ? K_PRESS_INK : nink);
+  picker_pair(px2, nx, by, UI_R, K_SURFACE, have, pd, nd);
 
   /* The name, big, hung off the card's far rule with the position above it -
    * the reference anchors a card's content to one corner and leaves the air
@@ -4925,7 +4982,7 @@ static void draw_look(void) {
     if (pos[0] != '\0') text(K_TYPE_CAPTION, tx0, ny - K_TYPE_CAPTION->line_h - GRID, pos, K_INK_QUIET);
     char fitted[KDP_RECIPE_ID_MAX + 4];
     const ui_font_t *nf = fit_face(fitted, sizeof fitted, look, tw);
-    text_ink(nf, tx0, ny, fitted, nink);
+    text_ink(nf, tx0, ny, fitted, have ? K_INK : dim_ink(K_INK, K_OFF));
   }
 
   /* And what the look actually sets, inside the card it belongs to. It was a
@@ -5054,7 +5111,7 @@ static void draw_gallery(void) {
    * before the header draws, because the header lays the whole readout. */
   {
     const int pg = gallery_pages();
-    if (pg > 1) snprintf(s_head_first, sizeof s_head_first, "%d/%d", gallery_page() + 1, pg);
+    if (pg > 1) snprintf(s_head_first, sizeof s_head_first, "%d / %d", gallery_page() + 1, pg);
     else s_head_first[0] = '\0';
 
     /* And the count, at the group's other end. While a rebuild walks the card
@@ -5106,20 +5163,14 @@ static void draw_gallery(void) {
     const bool selected = foc(SCR_GALLERY, i);
     const bool down = s_pressed == i;
 
-    /* Every photograph sits in a sunken well; the focused one gets an ink
-     * plate (K_ON), a pressed one the launch shade.
-     *
-     * A press lights the same plate, shifts the caption a pixel, and drops a
-     * second sunken edge INSIDE the picture - the well getting deeper, which is
-     * this grammar's press applied to the one surface that cannot invert. A
-     * recess that turned raised would read as the frame popping off the screen,
-     * and the picture itself cannot move: the blit is exactly G_TILE_W wide, so
-     * a pixel of travel would put its last column on the frame's shadow.
-     *
-     * The plate alone was tried and is not enough - it is 3 px of colour behind a
-     * bright photograph, invisible next to the focused tile. What the press
-     * used to be was a dotted rectangle over the photograph, which says
-     * "keyboard focus" and not "your finger is here". */
+    /* Every photograph sits in a well; the focused one gets an ink plate
+     * (K_ON). A pressed one is the shared controls' press (ctl_face): its
+     * face, here the plate and the mat together, 6 px round the picture, goes
+     * to the launch shade. The picture cannot take the press itself - the
+     * blit is exactly G_TILE_W wide - and nothing on the tile moves. The 2 px
+     * plate alone was tried and is not enough behind a bright photograph; a
+     * square outline inside the picture was the press until the controls
+     * became one. */
     /* The frame was a bevel drawn tight against the picture: 2 px of shadow
      * with the photograph's own edge immediately inside it, which is a keyline
      * that happens to be bevelled rather than a well. Every other reading
@@ -5133,9 +5184,9 @@ static void draw_gallery(void) {
      * last column on the frame's shadow - the frame moves outwards instead.
      * The selection plate moves out with it and reads 2 px wide now rather
      * than 1, which is the only other visible difference. */
-    fill(x - 6, y - 6, G_TILE_W + 12, G_TILE_H + 12, down ? K_PRESS : selected ? K_ON : K_FACE);
-    well(x - 4, y - 4, G_TILE_W + 8, G_TILE_H + 8);
-    const int d = down ? 1 : 0;
+    fill(x - 6, y - 6, G_TILE_W + 12, G_TILE_H + 12, selected && !down ? K_ON : K_FACE);
+    if (down) round_rect(x - 6, y - 6, G_TILE_W + 12, G_TILE_H + 12, UI_R, K_PRESS);
+    else well(x - 4, y - 4, G_TILE_W + 8, G_TILE_H + 8);
     if (slots[i].state == TILE_READY && slots[i].pixels) {
       gal_blit(slots[i].pixels, x, y);
       if (slots[i].sent) {
@@ -5161,7 +5212,7 @@ static void draw_gallery(void) {
       fill(x, y, G_TILE_W, G_TILE_H, K_OFF);
     } else {
       fill(x, y, G_TILE_W, G_TILE_H, K_SURFACE);
-      text_mid(K_TYPE_CAPTION, x + G_TILE_W / 2 + d, y + G_TILE_H / 2 - 9 + d, "NO IMAGE", K_INK_QUIET);
+      text_mid(K_TYPE_CAPTION, x + G_TILE_W / 2, y + G_TILE_H / 2 - 9, "NO IMAGE", K_INK_QUIET);
     }
     /* The facts, on a plate along the picture's bottom edge rather than in a
      * strip under it. No filename, no size, no path: the picture is the
@@ -5190,7 +5241,7 @@ static void draw_gallery(void) {
     /* The mark is 8 px in a 20 px strip and the type is 18, so each sits in
      * the strip's middle on its own terms: 6 above the cells, 1 above the
      * line. Dark-ground cells, which is the variant the capture banner uses. */
-    four_mark(x + 6 + d, sy0 + (G_STRIP - 8) / 2 + d, 8, st, true);
+    four_mark(x + 6, sy0 + (G_STRIP - 8) / 2, 8, st, true);
     /* The mode, only when it is not the one every photograph has. Six tiles
      * that all say `wiggle` is six copies of a word that distinguishes
      * nothing, and a label that never varies stops being read - which is
@@ -5203,13 +5254,10 @@ static void draw_gallery(void) {
       char mode[16];
       snprintf(mode, sizeof mode, "%s", slots[i].mode);
       upcase(mode);
-      text_right(K_TYPE_CAPTION, x + G_TILE_W - 8 + d, sy0 + (G_STRIP - K_TYPE_CAPTION->line_h) / 2 + d,
+      text_right(K_TYPE_CAPTION, x + G_TILE_W - 8, sy0 + (G_STRIP - K_TYPE_CAPTION->line_h) / 2,
                  mode, K_INK);
     }
 
-    /* Drawn after the strip so the press reads as the whole well, strip
-     * included, going deeper. */
-    if (down) outline(x, y, G_TILE_W, G_TILE_H, K_PRESS);
     if (selected) focus_inset(x, y, G_TILE_W, G_TILE_H, K_ON_INK);
 
     /* A favourite is marked in the top-right corner of the picture, away from
@@ -5235,18 +5283,13 @@ static void draw_gallery(void) {
   const int pages = gallery_pages();
 
   if (pages > 1) {
-    const int pd = s_pressed == G_IT_PREV ? 1 : 0, nd = s_pressed == G_IT_NEXT ? 1 : 0;
-    /* Greyed at the ends rather than hidden. A control that disappears moves
+    /* Dead at the ends rather than hidden. A control that disappears moves
      * the other one and teaches nothing; a dead one shows you where you are. */
     const bool has_prev = gallery_page() > 0;
     const bool has_next = gallery_page() < pages - 1;
     const int px = hd_prev_x(), nx = hd_next_x();
-    button(px, HD_BTN_Y, HD_BTN_W, HD_BTN, pd);
-    icon(ICON_PREV, px + HD_BTN_W / 2 + pd, HD_BTN_Y + HD_BTN / 2 + pd,
-         has_prev ? K_INK : K_INK_QUIET);
-    button(nx, HD_BTN_Y, HD_BTN_W, HD_BTN, nd);
-    icon(ICON_NEXT, nx + HD_BTN_W / 2 + nd, HD_BTN_Y + HD_BTN / 2 + nd,
-         has_next ? K_INK : K_INK_QUIET);
+    btn_pager(px, HD_BTN_Y, HD_BTN_W, HD_BTN, false, has_prev, s_pressed == G_IT_PREV, K_GROUND);
+    btn_pager(nx, HD_BTN_Y, HD_BTN_W, HD_BTN, true, has_next, s_pressed == G_IT_NEXT, K_GROUND);
     if (foc(SCR_GALLERY, G_IT_PREV)) focus_inset(px, HD_BTN_Y, HD_BTN_W, HD_BTN, K_INK);
     if (foc(SCR_GALLERY, G_IT_NEXT)) focus_inset(nx, HD_BTN_Y, HD_BTN_W, HD_BTN, K_INK);
   }
@@ -5772,11 +5815,8 @@ static void draw_photo(void) {
    * hd_btn_x() - three treatments of the one control that is on every screen.
    * It is the same button in the same place everywhere now. */
   {
-    const bool bdown = s_pressed == IT_BACK;
-    const int bd = bdown ? 1 : 0;
     const int bx0 = hd_btn_x();
-    button(bx0, HD_BTN_Y, HD_BTN_W, HD_BTN, bdown);
-    icon(ICON_BACK, bx0 + HD_BTN_W / 2 + bd, HD_BTN_Y + HD_BTN / 2 + bd, K_INK);
+    btn_back(bx0, HD_BTN_Y, s_pressed == IT_BACK);
     if (foc(SCR_PHOTO, IT_BACK)) focus_inset(bx0, HD_BTN_Y, HD_BTN_W, HD_BTN, K_INK);
   }
 
@@ -5923,14 +5963,11 @@ static void draw_photo(void) {
     int ignored;
     const bool has_prev = photo_neighbour(-1, &ignored);
     const bool has_next = photo_neighbour(1, &ignored);
-    const int ppd = s_pressed == P_IT_PREV ? 1 : 0, nnd = s_pressed == P_IT_NEXT ? 1 : 0;
+    /* Half the column each, not 52 px squares: the pair is one row of the
+     * column, on the same two edges as the three buttons under it. */
     const int nx0 = bx + PH_PN_W + PH_BTN_GAP;
-    button(bx, PH_PN_Y, PH_PN_W, PH_PN_H, ppd != 0);
-    icon(ICON_PREV, bx + PH_PN_W / 2 + ppd, PH_PN_Y + PH_PN_H / 2 + ppd,
-         has_prev ? K_INK : K_INK_QUIET);
-    button(nx0, PH_PN_Y, PH_PN_W, PH_PN_H, nnd != 0);
-    icon(ICON_NEXT, nx0 + PH_PN_W / 2 + nnd, PH_PN_Y + PH_PN_H / 2 + nnd,
-         has_next ? K_INK : K_INK_QUIET);
+    btn_pager(bx, PH_PN_Y, PH_PN_W, PH_PN_H, false, has_prev, s_pressed == P_IT_PREV, K_GROUND);
+    btn_pager(nx0, PH_PN_Y, PH_PN_W, PH_PN_H, true, has_next, s_pressed == P_IT_NEXT, K_GROUND);
   }
 
   /* The three controls, stacked at the foot of the column: DELETE at the top,
@@ -5941,10 +5978,7 @@ static void draw_photo(void) {
   const bool dd = s_pressed == P_IT_DELETE;
   /* Deleting a photograph is the one destructive thing a finger can reach on
    * this screen, and it is the only red on it. */
-  if (dd) round_rect(bx, dy, bw, bh, UI_R, K_FAULT);
-  else button(bx, dy, bw, bh, false);
-  text_mid(K_TYPE_CAPTION, bx + bw / 2, dy + (bh - K_TYPE_CAPTION->line_h) / 2, "DELETE",
-           dd ? K_GROUND : K_FAULT_INK);
+  btn_text(bx, dy, bw, bh, dd ? CTL_DANGER_DOWN : CTL_DANGER, K_GROUND, "DELETE", ICON_N);
   /* Through foc(), not the raw array. P_IT_DELETE is 0 and s_focus[] starts
    * zeroed, so reading it directly put a focus ring on DELETE the first time
    * any photograph was opened, on a body whose only input is a finger. */
@@ -5958,13 +5992,8 @@ static void draw_photo(void) {
   const int fy = PH_BTN_Y(2);
   const bool fd = s_pressed == P_IT_FAV;
   /* Pressed is the launch shade; set is the ink, the way a live segment is. */
-  const bool on = fd || s_photo_fav;
-  const uint16_t fav_ink = fd ? K_PRESS_INK : s_photo_fav ? K_ON_INK : K_INK;
-  if (on) round_rect(bx, fy, bw, bh, UI_R, fd ? K_PRESS : K_ON);
-  else button(bx, fy, bw, bh, false);
-  icon(ICON_STAR, bx + 14 + ICON_BOX / 2, fy + bh / 2, on ? fav_ink : K_INK_QUIET);
-  text_mid(K_TYPE_CAPTION, bx + 14 + ICON_BOX + (bw - 14 - ICON_BOX) / 2, fy + (bh - K_TYPE_CAPTION->line_h) / 2,
-           "FAVOURITE", fav_ink);
+  btn_text(bx, fy, bw, bh, fd ? CTL_DOWN : s_photo_fav ? CTL_ON : CTL_REST, K_GROUND, "FAVOURITE",
+           ICON_STAR);
   if (foc(SCR_PHOTO, P_IT_FAV)) focus_inset(bx, fy, bw, bh, K_INK);
 
   /* Live while the body is on a Roll; asleep, in the same shape, when it is
@@ -5972,11 +6001,8 @@ static void draw_photo(void) {
   const int ry = PH_BTN_Y(1);
   const bool rd = s_pressed == P_IT_ROLL;
   const bool on_roll = roll_state_active();
-  if (rd) round_rect(bx, ry, bw, bh, UI_R, K_PRESS);
-  else if (on_roll) button(bx, ry, bw, bh, false);
-  else round_rect(bx, ry, bw, bh, UI_R, K_SURFACE);
-  text_mid(K_TYPE_CAPTION, bx + bw / 2, ry + (bh - K_TYPE_CAPTION->line_h) / 2, "SEND TO ROLL",
-           rd ? K_PRESS_INK : on_roll ? K_INK : K_INK_QUIET);
+  btn_text(bx, ry, bw, bh, rd ? CTL_DOWN : on_roll ? CTL_REST : CTL_DEAD, K_GROUND, "SEND TO ROLL",
+           ICON_N);
   if (foc(SCR_PHOTO, P_IT_ROLL)) focus_inset(bx, ry, bw, bh, K_INK);
 }
 
@@ -6801,7 +6827,7 @@ static void snd_step(int delta) {
 /* The picker's two buttons, at the right-hand end of the row. 44, not 36:
  * they were the last two controls on the interface under the thumb floor,
  * and the 58 px row has room for them. */
-#define SN_BTN 52 /* 6.1 mm on this glass, the most a 58 px row holds */
+#define SN_BTN BTN_SQ /* 6.1 mm on this glass, the most a 58 px row holds */
 #define SN_VOL_H 52 /* the volume band, at the same floor as DISPLAY's */
 
 /* The picker's two buttons and the value beside them, right-aligned in the
@@ -6859,10 +6885,7 @@ static void draw_sound(void) {
   {
     const int by = sn_btn_y(), nx = sn_next_x(), px = sn_prev_x();
     const bool pd = s_pressed == SN_IT_PREV, nd = s_pressed == SN_IT_NEXT;
-    control(px, by, SN_BTN, SN_BTN, UI_R - 2, pd, K_ROW);
-    icon(ICON_PREV, px + SN_BTN / 2, by + SN_BTN / 2, pd ? K_PRESS_INK : K_INK);
-    control(nx, by, SN_BTN, SN_BTN, UI_R - 2, nd, K_ROW);
-    icon(ICON_NEXT, nx + SN_BTN / 2, by + SN_BTN / 2, nd ? K_PRESS_INK : K_INK);
+    picker_pair(px, nx, by, UI_R - 2, K_ROW, true, pd, nd);
     if (foc(SCR_SOUND, SN_IT_PREV)) focus_inset(px, by, SN_BTN, SN_BTN, K_INK);
     if (foc(SCR_SOUND, SN_IT_NEXT)) focus_inset(nx, by, SN_BTN, SN_BTN, K_INK);
   }
@@ -8720,8 +8743,8 @@ static int hit_test(int x, int y) {
 
       /* The picker, at the hero card's foot on the hand's side. */
       const int by = lk_pick_y(quad);
-      if (in(x, y, lk_prev_x(), by, LK_PICK_BTN, LK_CTL_H)) return LK_IT_PREV;
-      if (in(x, y, lk_next_x(), by, LK_PICK_BTN, LK_CTL_H)) return LK_IT_NEXT;
+      if (in(x, y, lk_prev_x(), by, LK_PICK_BTN, LK_PICK_BTN)) return LK_IT_PREV;
+      if (in(x, y, lk_next_x(), by, LK_PICK_BTN, LK_PICK_BTN)) return LK_IT_NEXT;
 
       /* The three columns under it, in the order the draw put them. */
       const int ty = lk_trio_y(quad) + LK_CAP_H;

@@ -53,7 +53,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DRAWS = [
   'text', 'text_mid', 'text_right', 'text_ink', 'text_block', 'text_wrap', 'text_fit',
   'fact_row', 'draw_row', 'draw_row_at', 'draw_row_face', 'group_box',
-  'draw_working_banner', 'sh_panel', 'draw_strip',
+  'draw_working_banner', 'sh_panel', 'draw_strip', 'btn_text',
 ];
 
 /** The calls whose string is a toast: held to TOAST_MAX as well. */
@@ -114,7 +114,6 @@ const NOT_COPY = new Map([
   ['routl', 'a UI_DRAW_PROFILE op name in the log'],
   ['cut', 'a UI_DRAW_PROFILE op name in the log'],
   ['disc', 'a UI_DRAW_PROFILE op name in the log'],
-  ['stroke', 'a UI_DRAW_PROFILE op name in the log'],
   ['scrim', 'a UI_DRAW_PROFILE op name in the log'],
   ['text', 'a UI_DRAW_PROFILE op name in the log'],
   ['field', 'a UI_DRAW_PROFILE op name in the log'],
@@ -122,7 +121,7 @@ const NOT_COPY = new Map([
   ['blit', 'a UI_DRAW_PROFILE op name in the log'],
   ['bits', 'a UI_DRAW_PROFILE op name in the log'],
   ['focus', 'a UI_DRAW_PROFILE op name in the log'],
-  ['ring', 'a UI_DRAW_PROFILE op name in the log'],
+  ['mask', 'a UI_DRAW_PROFILE op name in the log'],
   ['%s%s %lu.%lu+%lu.%lu/%d', 'the boot tile-timing log line'],
   ['%st=%d.%02d %lu.%lu+%lu.%lu/%d', 'the boot tile-timing log line'],
 ]);

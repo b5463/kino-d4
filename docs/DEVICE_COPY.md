@@ -27,6 +27,7 @@ The person holding the camera has read nothing and will not phone anyone. Each l
 | `LOOK` / `GALLERY` / `PHOTO` / `ROLL` / `SETTINGS` / `POWER` | The header of each screen the menu opens. MENU and SHOOT have no header. |
 | `DISPLAY` / `SOUND` / `CONNECTION` / `STORAGE` / `ABOUT` / `STATUS` | The header of each screen SETTINGS opens. |
 | `12 PHOTOS` / `1 PHOTO` | GALLERY's header: how many photographs the card holds. |
+| `2 / 3` | GALLERY's header, beside the page buttons: the page shown, of how many. Only with more than one page. |
 | `READING CARD 120` / `READING CARD` | GALLERY's header while the card is still being counted, with the count once there is one. |
 
 ## STATUS rows

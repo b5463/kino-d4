@@ -88,8 +88,9 @@ test('Twin hand walk: the device UI for the hand on the shutter', async ({ page 
   const isShoot = async (): Promise<boolean> => dark(await px(676, 14)) && dark(await px(760, 462)) && !(await isMenu());
   // Every detail screen draws one hairline under its header; the menu, SHOOT and PHOTO do not.
   const hasHeader = async (): Promise<boolean> => near(await px(400, 60), RULE, 12);
-  // LOOK: the header, the lit COLOUR segment, the back button.
-  const isLook = async (): Promise<boolean> => (await hasHeader()) && near(await px(128, 438), SEL) && dark(await px(752, 31));
+  // LOOK: the header, the lit COLOUR segment, the back button's face (732..784,
+  // clear of its arrow, which runs 749..767 on y 31).
+  const isLook = async (): Promise<boolean> => (await hasHeader()) && near(await px(128, 438), SEL) && dark(await px(740, 31));
   const isDetail = async (): Promise<boolean> => (await hasHeader()) && !(await isMenu());
 
   const step = async (name: string, action: () => Promise<void>, check: () => Promise<boolean>): Promise<void> => {
