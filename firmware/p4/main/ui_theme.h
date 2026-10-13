@@ -41,24 +41,29 @@
 #define K_PRESS_INK K_ACCENT_INK
 
 /*
- * Type roles. The six faces in ui_font.h by what they set. Smallest first;
- * the number is the face's line height in px.
+ * Type roles. The six faces in ui_font.h by what they set, and the family
+ * each one is cut from. Smallest first; the number is the line height in px.
  *
- *   CAPTION  T   18  captions, group labels, the toast, dialog titles
- *   BODY     S   24  a row's value and note, a screen's sentences
- *   BODY_L   R   27  a two-line row's name, a photograph's name
- *   LABEL    M   32  a one-line row's name, segments, menu row labels
- *   TITLE    L   41  a screen's title, a full-screen word
- *   HERO     XL  75  SHOOT on the card, and nothing else
+ *   CAPTION  T   18  Oxanium  captions, readings, group labels, the toast
+ *   BODY     S   24  Inter    a screen's sentences, a value in words
+ *   LABEL    R   27  Oxanium  a row's name, segments, a caps value on a row
+ *   BODY_L   M   32  Inter    a fact's value, a sentence that must carry
+ *   TITLE    L   41  Oxanium  a screen's title, a menu row, a look's name
+ *   HERO     XL  75  Oxanium  SHOOT on the card, and nothing else
+ *
+ * Caps go in Oxanium and sentences in Inter, and nothing switches family to
+ * make a string fit: fit_face() falls back TITLE -> LABEL and then cuts at
+ * LABEL with text_fit(). A value that arrives as data takes its face from
+ * what it is - text_face() sets a caps reading in the Oxanium role of the
+ * same weight - and host_preview's audit fails any caps string set in Inter.
  *
  * Expanded where used, so this header needs no ui_font.h of its own. ui.c
- * still names the faces directly; moving its call sites onto these roles is a
- * separate change.
+ * names faces by these roles only; UI_FONT_* appears in it nowhere else.
  */
 #define K_TYPE_CAPTION (&UI_FONT_T)
 #define K_TYPE_BODY (&UI_FONT_S)
-#define K_TYPE_BODY_L (&UI_FONT_R)
-#define K_TYPE_LABEL (&UI_FONT_M)
+#define K_TYPE_LABEL (&UI_FONT_R)
+#define K_TYPE_BODY_L (&UI_FONT_M)
 #define K_TYPE_TITLE (&UI_FONT_L)
 #define K_TYPE_HERO (&UI_FONT_XL)
 

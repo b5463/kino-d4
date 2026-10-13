@@ -120,7 +120,25 @@ _Static_assert(K_LAUNCH_N == K_LAUNCH_DOWN_N && K_LAUNCH_N == K_BF_WARM_N,
  * stays tighter than the sides on purpose: a title bar is flush to the top of
  * a screen, and 480 px of panel cannot spare a 16 px band above it.
  */
-#define PAGE_M 16
+/*
+ * The spacing grid. One set of numbers for every screen (UI-14):
+ *
+ *   GRID        8   the step every gap and stack is a multiple of
+ *   PAGE_M     16   the page margin: header, cards, wells, page buttons
+ *   INSET_TEXT 18   type inside a card or a well, from the card's edge
+ *   FACT_PITCH 46   one fact row in a table (CONNECTION: 42, see there)
+ *   R_CARD     10   the corner of a card, a button, a row
+ *   R_PILL(h)  h/2  the corner of a pill: a badge, a bar, a lamp
+ *
+ * A stack of rows on a screen is checked against the page with a
+ * _Static_assert beside the screen's own constants.
+ */
+#define GRID 8
+#define PAGE_M (2 * GRID)
+#define INSET_TEXT 18
+#define FACT_PITCH 46
+#define R_CARD 10
+#define R_PILL(h) ((h) / 2)
 #define HD_BAR_Y 2
 #define HD_BAR_H (HEAD_H - 4)
 /*
@@ -294,7 +312,7 @@ static int ph_well_x(void) { return s_right_hand ? PAGE_M : UI_W - PAGE_M - PH_W
  * Its type is inset instead. */
 #define PH_FPAD 10
 #define PH_CAP_Y (HD_BTN_Y + HD_BTN + 12) /* the first caption line, under the back button */
-/* UI_FONT_S.line_h, which _Static_assert cannot read. It said 18 - the bitmap
+/* K_TYPE_BODY->line_h, which _Static_assert cannot read. It said 18 - the bitmap
  * face's line - for as long as the assert below has existed, so the one check
  * standing between the caption and the buttons was measuring a column a third
  * shorter than the one being drawn. */
@@ -1273,8 +1291,9 @@ static void stroke(float x0, float y0, float x1, float y1, float width, uint16_t
  *
  * There were three before this: 10 here, 14 on the menu, and 14 again on the
  * dialog, in a file whose comment claimed "the product's one radius".
+ * A pill - a badge, a bar, a lamp - is the one other shape: R_PILL(h).
  */
-#define UI_R 10
+#define UI_R R_CARD
 
 /**
  * A thing you press.
@@ -1669,18 +1688,6 @@ static int text_block(const ui_font_t *f, int x, int y, int w, const char *s, ui
 }
 
 /**
- * The largest scale at which `s` fits `w` pixels, 1 or 2.
- *
- * Every string these screens set at scale 2 is user data - a roll name, a look
- * name - so none of them can be sized by eye at build time. Falling back to
- * scale 1 keeps a long name readable and inside its column; clipping it at
- * scale 2 would put half a word against a hard edge and look like a bug.
- */
-static const ui_font_t *fit_face(const char *s, int w) {
-  return text_w(&UI_FONT_L, s) <= w ? &UI_FONT_L : &UI_FONT_M;
-}
-
-/**
  * `s` into `out`, cut to `w` pixels with an ellipsis when it did not fit.
  *
  * fit_face() is the other half of this problem and only works where the
@@ -1708,6 +1715,54 @@ static void text_fit(char *out, size_t cap, const ui_font_t *f, const char *s, i
     if (text_w(f, out) <= budget) break;
   }
   snprintf(out + n, cap - n, "...");
+}
+
+/**
+ * A name in the largest display face it fits, into `out`.
+ *
+ * Every string set this big is user data - a roll name, a look name, a roll
+ * code - so none of them can be sized by eye at build time. TITLE when it
+ * fits, LABEL when it does not, and cut with an ellipsis at LABEL when even
+ * that is too wide. Both are Oxanium: the fallback used to drop to Inter, so a
+ * long name changed typeface as well as size and read as a different object.
+ */
+static const ui_font_t *fit_face(char *out, size_t cap, const char *s, int w) {
+  const ui_font_t *f = text_w(K_TYPE_TITLE, s) <= w ? K_TYPE_TITLE : K_TYPE_LABEL;
+  text_fit(out, cap, f, s, w);
+  return f;
+}
+
+/**
+ * Whether `s` is a word set in capitals: no lowercase letter, at least two
+ * letters, and letters for at least half of what is not a space.
+ *
+ * "2 MIN", "KINO D4" and "ESP32-C6" are; "29.7 GB" and "0.9.0  OV3660" are
+ * readings - a number with a unit - and stay in the reading face beside the
+ * numbers they sit with. host_preview's caps audit uses this same test.
+ */
+static bool is_caps(const char *s) {
+  int letters = 0, solid = 0;
+  for (; *s; s++) {
+    if (*s >= 'a' && *s <= 'z') return false;
+    if (*s >= 'A' && *s <= 'Z') letters++;
+    if (*s != ' ') solid++;
+  }
+  return letters >= 2 && 2 * letters >= solid;
+}
+
+/**
+ * The face a value is set in, from what the value is.
+ *
+ * A row's or a fact's value is data: a network name, a serial, a sound's
+ * name, "2 MIN". Set in its Inter role when it reads as words, and in the
+ * Oxanium role of about the same weight when it is caps - BODY becomes
+ * CAPTION, BODY_L becomes LABEL - so a caps reading never lands in Inter.
+ */
+static const ui_font_t *text_face(const ui_font_t *f, const char *s) {
+  if (!is_caps(s)) return f;
+  if (f == K_TYPE_BODY) return K_TYPE_CAPTION;
+  if (f == K_TYPE_BODY_L) return K_TYPE_LABEL;
+  return f;
 }
 
 static void text_mid(const ui_font_t *f, int cx, int y, const char *s, uint16_t ink) {
@@ -2438,7 +2493,7 @@ static void render_black(void *ctx) {
 static void render_restarting(void *ctx) {
   (void)ctx;
   fill(0, 0, UI_W, UI_H, K_FACE);
-  text_mid(&UI_FONT_L, UI_W / 2, UI_H / 2 - UI_FONT_L.line_h / 2, "RESTARTING", K_INK);
+  text_mid(K_TYPE_TITLE, UI_W / 2, UI_H / 2 - K_TYPE_TITLE->line_h / 2, "RESTARTING", K_INK);
 }
 
 /*
@@ -3050,7 +3105,7 @@ static int chrome_state(int left, int right, int y, uint16_t ink, const char *fi
 
   for (int i = 0; i < 5; i++) {
     if (it[i].s == NULL || it[i].s[0] == '\0') continue;
-    it[i].w = text_w(&UI_FONT_T, it[i].s);
+    it[i].w = text_w(K_TYPE_CAPTION, it[i].s);
   }
 
   /* Keep what fits, most important first. */
@@ -3071,7 +3126,7 @@ static int chrome_state(int left, int right, int y, uint16_t ink, const char *fi
   for (int i = 4; i >= 0; i--) {
     if (!it[i].keep) continue;
     x -= it[i].w;
-    text(&UI_FONT_T, x, y, it[i].s, ink);
+    text(K_TYPE_CAPTION, x, y, it[i].s, ink);
     x -= BAR_READ_GAP;
   }
   return kept > 0 ? x + BAR_READ_GAP : right;
@@ -3131,11 +3186,11 @@ static void draw_header(screen_t s) {
 
   const char *name = SCREEN_NAME[s];
   if (name != NULL) {
-    text(&UI_FONT_L, cap_x + 2, HD_CAP_Y + (HD_CAP_H - UI_FONT_L.line_h) / 2, name, K_TITLE);
+    text(K_TYPE_TITLE, cap_x + 2, HD_CAP_Y + (HD_CAP_H - K_TYPE_TITLE->line_h) / 2, name, K_TITLE);
   }
   chrome_state(
-      cap_x + 2 + (name != NULL ? text_w(&UI_FONT_L, name) : 0) + BAR_GROUP_GAP,
-      head_state_right(s), HD_CAP_Y + (HD_CAP_H - UI_FONT_T.line_h) / 2, K_INK_QUIET,
+      cap_x + 2 + (name != NULL ? text_w(K_TYPE_TITLE, name) : 0) + BAR_GROUP_GAP,
+      head_state_right(s), HD_CAP_Y + (HD_CAP_H - K_TYPE_CAPTION->line_h) / 2, K_INK_QUIET,
       s == SCR_GALLERY ? s_head_first : NULL, s == SCR_GALLERY ? s_head_last : NULL);
 }
 
@@ -3167,10 +3222,10 @@ static void status_panel(int x, int y, int w, int h) {
  */
 static void group_box(int x, int y, int w, int h, const char *legend, uint16_t ink,
                       const char *note) {
-  const int cap_h = (legend != NULL || note != NULL) ? UI_FONT_T.line_h + 4 : 0;
+  const int cap_h = (legend != NULL || note != NULL) ? K_TYPE_CAPTION->line_h + 4 : 0;
   round_rect(x, y + cap_h, w, h - cap_h, UI_R, K_SURFACE);
-  if (legend != NULL) text(&UI_FONT_T, x + 10, y, legend, ink);
-  if (note != NULL) text_right(&UI_FONT_S, x + w - 10, y - 2, note, K_INK_QUIET);
+  if (legend != NULL) text(K_TYPE_CAPTION, x + 10, y, legend, ink);
+  if (note != NULL) text_right(K_TYPE_BODY, x + w - 10, y - 2, note, K_INK_QUIET);
 }
 
 
@@ -3258,7 +3313,7 @@ static void draw_row_face(int x, int w, int y, int h, int idx, bool numbered, bo
   if (numbered && UI_FOCUS_VISIBLE) {
     char n[8];
     snprintf(n, sizeof n, "%02d", idx + 1);
-    text(&UI_FONT_T, tx, y + 12, n, dim);
+    text(K_TYPE_CAPTION, tx, y + 12, n, dim);
     tx += 34;
   }
 
@@ -3272,23 +3327,27 @@ static void draw_row_face(int x, int w, int y, int h, int idx, bool numbered, bo
   if (h >= 50) {
     /* Two lines: the name, and under it what it is set to. */
     if (has_value) {
-      text(&UI_FONT_R, tx, y + 6, name, ink);
+      text(K_TYPE_LABEL, tx, y + 6, name, ink);
+      /* The value on the reading face's baseline, whichever face it takes. */
+      const ui_font_t *vf = text_face(K_TYPE_BODY, value);
+      const int vy = y + 6 + K_TYPE_LABEL->line_h - 4 + K_TYPE_BODY->ascent - vf->ascent;
       char v[48];
-      text_fit(v, sizeof v, &UI_FONT_S, value, right - tx);
-      text(&UI_FONT_S, tx, y + 6 + UI_FONT_R.line_h - 4, v, dim);
+      text_fit(v, sizeof v, vf, value, right - tx);
+      text(vf, tx, vy, v, dim);
     } else {
-      text(&UI_FONT_R, tx, y + (h - UI_FONT_R.line_h) / 2, name, ink);
+      text(K_TYPE_LABEL, tx, y + (h - K_TYPE_LABEL->line_h) / 2, name, ink);
     }
   } else {
     /* One line. The value gets whatever the name leaves, and is cut to it. */
-    const int ty = y + (h - UI_FONT_M.line_h) / 2;
-    text(&UI_FONT_M, tx, ty, name, ink);
+    const int ty = y + (h - K_TYPE_LABEL->line_h) / 2;
+    text(K_TYPE_LABEL, tx, ty, name, ink);
     if (has_value) {
-      const int room = right - (tx + text_w(&UI_FONT_M, name) + 16);
+      const int room = right - (tx + text_w(K_TYPE_LABEL, name) + 16);
       if (room > 24) {
+        const ui_font_t *vf = text_face(K_TYPE_BODY, value);
         char v[48];
-        text_fit(v, sizeof v, &UI_FONT_S, value, room);
-        text_right(&UI_FONT_S, right, y + (h - UI_FONT_S.line_h) / 2, v, dim);
+        text_fit(v, sizeof v, vf, value, room);
+        text_right(vf, right, y + (h - vf->line_h) / 2, v, dim);
       }
     }
   }
@@ -3334,13 +3393,13 @@ static void fact_row(int x, int w, int y, int h, const char *title, const char *
   char name[48];
   snprintf(name, sizeof name, "%s", title);
   upcase(name);
-  text(&UI_FONT_T, x + 4, y + (h - UI_FONT_T.line_h) / 2, name, K_INK_QUIET);
+  text(K_TYPE_CAPTION, x + 4, y + (h - K_TYPE_CAPTION->line_h) / 2, name, K_INK_QUIET);
   if (value != NULL && value[0] != '\0') {
-    const int room = w - 8 - text_w(&UI_FONT_T, name) - 16;
+    const int room = w - 8 - text_w(K_TYPE_CAPTION, name) - 16;
+    const ui_font_t *vf = text_face(K_TYPE_BODY_L, value);
     char v[64];
-    text_fit(v, sizeof v, &UI_FONT_M, value, room > 24 ? room : 24);
-    text_right(&UI_FONT_M, x + w - 4, y + (h - UI_FONT_M.line_h) / 2, v,
-               enabled ? K_INK : K_INK_QUIET);
+    text_fit(v, sizeof v, vf, value, room > 24 ? room : 24);
+    text_right(vf, x + w - 4, y + (h - vf->line_h) / 2, v, enabled ? K_INK : K_INK_QUIET);
   }
   if (!last) fill(x, y + h - 1, w, 1, K_RULE);
 }
@@ -3417,7 +3476,7 @@ static void draw_segments(int x, int y, int w, int h, const char *const *names, 
     if (on) round_rect(bx + 2, y + 2, cw - 4, h - 4, UI_R - 2, K_ON);
     else if (pressed_idx == i) round_rect(bx + 2, y + 2, cw - 4, h - 4, UI_R - 2, K_OFF);
     const uint16_t ink = on ? K_ON_INK : K_INK;
-    text_mid(&UI_FONT_M, bx + cw / 2, y + (h - UI_FONT_M.line_h) / 2, names[i], ink);
+    text_mid(K_TYPE_LABEL, bx + cw / 2, y + (h - K_TYPE_LABEL->line_h) / 2, names[i], ink);
     /*
      * The position number, for the keypad that would jump to it.
      *
@@ -3430,7 +3489,7 @@ static void draw_segments(int x, int y, int w, int h, const char *const *names, 
     if (UI_FOCUS_VISIBLE) {
       char idx[16];
       snprintf(idx, sizeof idx, "%d", i + 1);
-      text(&UI_FONT_S, bx + 10, y + 5, idx, on ? K_ON_INK : K_INK_QUIET);
+      text(K_TYPE_BODY, bx + 10, y + 5, idx, on ? K_ON_INK : K_INK_QUIET);
     }
     if (focus_idx == i) focus_inset(bx, y, cw - 2, h, K_INK);
   }
@@ -3668,14 +3727,14 @@ static void menu_words(int i, int x, int y, int w, int h, uint16_t ink, bool wit
     int tx = lx;
     if (worst != NULL) {
       const char *sw = sev_word(worst->sev);
-      text(&UI_FONT_T, tx, y + 18, sw, ink);
-      tx += text_w(&UI_FONT_T, sw) + 14;
+      text(K_TYPE_CAPTION, tx, y + 18, sw, ink);
+      tx += text_w(K_TYPE_CAPTION, sw) + 14;
     }
     /* Cut to the card's own right rule. The card is half the panel now, and
      * a condition title is written for a full-width row. */
     char fitted[64];
-    text_fit(fitted, sizeof fitted, &UI_FONT_T, line, rx - tx);
-    text(&UI_FONT_T, tx, y + 18, fitted, ink);
+    text_fit(fitted, sizeof fitted, K_TYPE_CAPTION, line, rx - tx);
+    text(K_TYPE_CAPTION, tx, y + 18, fitted, ink);
 
     /* The four, large, in the card's upper middle: the card is the panel's
      * full height now and the mark is the one thing on it that can carry
@@ -3683,12 +3742,12 @@ static void menu_words(int i, int x, int y, int w, int h, uint16_t ink, bool wit
     const int cell = 56, gap = 12;
     const int mw = 2 * cell + gap;
     const int mx = x + (w - mw) / 2;
-    const int my = y + 18 + UI_FONT_T.line_h + 52;
+    const int my = y + 18 + K_TYPE_CAPTION->line_h + 52;
     for (int k = 0; k < 4; k++) {
       fill(mx + (k % 2) * (cell + gap), my + (k / 2) * (cell + gap), cell, cell, ink);
     }
 
-    text(&UI_FONT_T, lx, y + h - 18 - UI_FONT_T.line_h, "TAP TO OPEN", ink);
+    text(K_TYPE_CAPTION, lx, y + h - 18 - K_TYPE_CAPTION->line_h, "TAP TO OPEN", ink);
   } else {
     menu_icon(i, lx + MZ_ICON / 2, y + h / 2, ink);
     /* A chevron, because every row here opens a screen and a row that opens a
@@ -3704,7 +3763,7 @@ static void menu_words(int i, int x, int y, int w, int h, uint16_t ink, bool wit
       if (n >= 0) {
         char c[16];
         snprintf(c, sizeof c, "%d", n);
-        text_right(&UI_FONT_T, rx - 26, y + (h - UI_FONT_T.line_h) / 2, c, ink);
+        text_right(K_TYPE_CAPTION, rx - 26, y + (h - K_TYPE_CAPTION->line_h) / 2, c, ink);
       }
     }
   }
@@ -3720,9 +3779,12 @@ static void menu_words(int i, int x, int y, int w, int h, uint16_t ink, bool wit
   /* The word at the card's foot, over TAP TO OPEN: the reference anchors a
    * card's content to its bottom-left and leaves the air above. */
   if (i == 0)
-    text_ink(&UI_FONT_XL, lx, y + h - 18 - UI_FONT_T.line_h - 6 - UI_FONT_XL.line_h, MENU_LABEL[0],
+    text_ink(K_TYPE_HERO, lx, y + h - 18 - K_TYPE_CAPTION->line_h - 6 - K_TYPE_HERO->line_h, MENU_LABEL[0],
              ink);
-  else text_ink(&UI_FONT_M, lx + MZ_ICON + 18, y + (h - UI_FONT_M.line_h) / 2, MENU_LABEL[i], ink);
+  /* A row's word in TITLE: caps, so Oxanium, and the rows are 84 px with
+   * room for it. SETTINGS, the longest, is 194 px of the 238 left of the
+   * chevron. */
+  else text_ink(K_TYPE_TITLE, lx + MZ_ICON + 18, y + (h - K_TYPE_TITLE->line_h) / 2, MENU_LABEL[i], ink);
 }
 
 /** The ink an item's words are set in, on its face, pressed or not. */
@@ -4081,7 +4143,7 @@ static const char *shoot_look_name(void) {
  *  `down` is the pressed face, for the panels that are a control. */
 static int sh_panel(int x, int w, const char *s, bool down) {
   round_rect(x, SH_PN_Y, w, SH_PN_H, UI_R, down ? K_PRESS : K_SURFACE);
-  text(&UI_FONT_T, x + SH_PN_PAD, SH_PN_Y + (SH_PN_H - UI_FONT_T.line_h) / 2, s,
+  text(K_TYPE_CAPTION, x + SH_PN_PAD, SH_PN_Y + (SH_PN_H - K_TYPE_CAPTION->line_h) / 2, s,
        down ? K_PRESS_INK : K_INK);
   return x + w + SH_PN_GAP;
 }
@@ -4139,8 +4201,8 @@ static void draw_shoot(void) {
     /* Quiet, and in the palette: two blue-greys lived here that were in no
      * other place on the panel and measured under 2:1 - a reason nobody
      * could read on the one pane that had nothing else to say. */
-    text_mid(&UI_FONT_T, px + SH_PANE_W / 2, py + SH_PANE_H / 2 - 14, why, K_INK_QUIET);
-    text_mid(&UI_FONT_T, px + SH_PANE_W / 2, py + SH_PANE_H / 2 + 6, NAMES[i], K_INK_QUIET);
+    text_mid(K_TYPE_CAPTION, px + SH_PANE_W / 2, py + SH_PANE_H / 2 - 14, why, K_INK_QUIET);
+    text_mid(K_TYPE_CAPTION, px + SH_PANE_W / 2, py + SH_PANE_H / 2 + 6, NAMES[i], K_INK_QUIET);
   }
 
   /* ---- the way out ---- */
@@ -4155,10 +4217,10 @@ static void draw_shoot(void) {
   button(sbx, SH_BACK_Y, SH_BACK_W, SH_BACK_H, down);
   {
     const int gw = 24, gap = 8;
-    const int tw = text_w(&UI_FONT_T, "MENU");
+    const int tw = text_w(K_TYPE_CAPTION, "MENU");
     const int gx = sbx + (SH_BACK_W - (gw + gap + tw)) / 2 + d;
     back_glyph(gx + gw / 2, SH_BACK_Y + SH_BACK_H / 2 + d, K_INK);
-    text(&UI_FONT_T, gx + gw + gap, SH_BACK_Y + (SH_BACK_H - UI_FONT_T.line_h) / 2 + d, "MENU",
+    text(K_TYPE_CAPTION, gx + gw + gap, SH_BACK_Y + (SH_BACK_H - K_TYPE_CAPTION->line_h) / 2 + d, "MENU",
          K_INK);
   }
   if (foc(SCR_SHOOT, SH_IT_BACK)) focus_inset(sbx, SH_BACK_Y, SH_BACK_W, SH_BACK_H, K_INK);
@@ -4179,12 +4241,12 @@ static void draw_shoot(void) {
    * that used to sit on this screen. This is where it went. */
   const int bolt_w = 8, bolt_gap = 8;
   const char *const mode = mode_is_quad() ? "QUAD" : "WIGGLE";
-  const int w_mode = text_w(&UI_FONT_T, mode) + 2 * SH_PN_PAD;
-  const int w_flash = bolt_w + bolt_gap + text_w(&UI_FONT_T, flash) + 2 * SH_PN_PAD;
+  const int w_mode = text_w(K_TYPE_CAPTION, mode) + 2 * SH_PN_PAD;
+  const int w_flash = bolt_w + bolt_gap + text_w(K_TYPE_CAPTION, flash) + 2 * SH_PN_PAD;
   /* The mark, then the count. Four 8 px cells and three 6 px gaps. */
 #define SH_FM_CELL 8
 #define SH_FM_W (4 * SH_FM_CELL + 3 * FM_GAP)
-  const int w_cams = SH_FM_W + 10 + text_w(&UI_FONT_T, cams) + 2 * SH_PN_PAD;
+  const int w_cams = SH_FM_W + 10 + text_w(K_TYPE_CAPTION, cams) + 2 * SH_PN_PAD;
 
   AUDIT_CHROME(true);
   fill(0, SH_BAR_Y, UI_W, SH_BAR_H, K_FACE);
@@ -4203,8 +4265,8 @@ static void draw_shoot(void) {
   char card_bar[24];
   card_words(card_bar, sizeof card_bar, &sd_bar);
   const char *const pwr_bar = power_words(usb_attached());
-  const int w_card = text_w(&UI_FONT_T, card_bar) + 2 * SH_PN_PAD;
-  const int w_pwr = text_w(&UI_FONT_T, pwr_bar) + 2 * SH_PN_PAD;
+  const int w_card = text_w(K_TYPE_CAPTION, card_bar) + 2 * SH_PN_PAD;
+  const int w_pwr = text_w(K_TYPE_CAPTION, pwr_bar) + 2 * SH_PN_PAD;
 
   /*
    * Two groups, and the hand decides which end each takes.
@@ -4261,12 +4323,12 @@ static void draw_shoot(void) {
     const uint16_t ink = set_down ? K_PRESS_INK : K_INK;
     round_rect(flash_x, SH_PN_Y, w_flash, SH_PN_H, UI_R, set_down ? K_PRESS : K_SURFACE);
     bolt(flash_x + SH_PN_PAD, SH_PN_Y + (SH_PN_H - 14) / 2, 1, ink);
-    text(&UI_FONT_T, flash_x + SH_PN_PAD + bolt_w + bolt_gap,
-         SH_PN_Y + (SH_PN_H - UI_FONT_T.line_h) / 2, flash, ink);
+    text(K_TYPE_CAPTION, flash_x + SH_PN_PAD + bolt_w + bolt_gap,
+         SH_PN_Y + (SH_PN_H - K_TYPE_CAPTION->line_h) / 2, flash, ink);
   }
   if (w_look > 2 * SH_PN_PAD + 24) {
     char look[KDP_RECIPE_ID_MAX + 4];
-    text_fit(look, sizeof look, &UI_FONT_T, shoot_look_name(), w_look - 2 * SH_PN_PAD);
+    text_fit(look, sizeof look, K_TYPE_CAPTION, shoot_look_name(), w_look - 2 * SH_PN_PAD);
     sh_panel(look_x, w_look, look, set_down);
   }
   if (foc(SCR_SHOOT, SH_IT_LOOK)) focus_inset(set_x0, SH_PN_Y, set_x1 - set_x0, SH_PN_H, K_INK);
@@ -4283,8 +4345,8 @@ static void draw_shoot(void) {
     status_panel(cams_x, SH_PN_Y, w_cams, SH_PN_H);
     four_mark(cams_x + SH_PN_PAD, SH_PN_Y + (SH_PN_H - SH_FM_CELL) / 2, SH_FM_CELL, cams_st,
               false);
-    text(&UI_FONT_T, cams_x + SH_PN_PAD + SH_FM_W + 10,
-         SH_PN_Y + (SH_PN_H - UI_FONT_T.line_h) / 2, cams, K_INK);
+    text(K_TYPE_CAPTION, cams_x + SH_PN_PAD + SH_FM_W + 10,
+         SH_PN_Y + (SH_PN_H - K_TYPE_CAPTION->line_h) / 2, cams, K_INK);
   }
   AUDIT_CHROME(false);
 }
@@ -4343,7 +4405,7 @@ static void look_set_mono(bool mono) {
  * One table below, read by the drawing AND by the hit test. The item indices
  * are unchanged so activate() does not move.
  */
-#define LK_CAP_H (UI_FONT_T.line_h + 6) /* a caption line above a card */
+#define LK_CAP_H (K_TYPE_CAPTION->line_h + 6) /* a caption line above a card */
 #define LK_CTL_H 56                     /* 6.6 mm: a segment a thumb can hit */
 /* The card's height with the target row under it; without that row the
  * card takes the row's room, so the screen is full either way rather than
@@ -4588,13 +4650,13 @@ static void lk_detail_row(int x, int y, int w) {
     /* QUAD, target ALL, four slots that disagree. Showing cam1's numbers for
      * all four would misdescribe three cameras, which is the same reason
      * look_display() says MIXED rather than guessing. */
-    text(&UI_FONT_S, x, y + UI_FONT_T.line_h, "Four cameras, four looks. Pick one to see it.",
+    text(K_TYPE_BODY, x, y + K_TYPE_CAPTION->line_h, "Four cameras, four looks. Pick one to see it.",
          K_INK_QUIET);
     return;
   }
   recipe_capture_t cap;
   if (!look_capture(id, &cap)) {
-    text(&UI_FONT_S, x, y + UI_FONT_T.line_h, "Sets nothing on the sensor.", K_INK_QUIET);
+    text(K_TYPE_BODY, x, y + K_TYPE_CAPTION->line_h, "Sets nothing on the sensor.", K_INK_QUIET);
     return;
   }
 
@@ -4620,13 +4682,13 @@ static void lk_detail_row(int x, int y, int w) {
 #undef LK_ADD
 
   if (line[0] == '\0') {
-    text(&UI_FONT_S, x, y + UI_FONT_T.line_h, "Sets nothing on the sensor.", K_INK_QUIET);
+    text(K_TYPE_BODY, x, y + K_TYPE_CAPTION->line_h, "Sets nothing on the sensor.", K_INK_QUIET);
     return;
   }
-  text(&UI_FONT_T, x, y, "AT CAPTURE", K_INK_QUIET);
+  text(K_TYPE_CAPTION, x, y, "AT CAPTURE", K_INK_QUIET);
   char fitted[96];
-  text_fit(fitted, sizeof fitted, &UI_FONT_S, line, w);
-  text(&UI_FONT_S, x, y + UI_FONT_T.line_h, fitted, K_INK);
+  text_fit(fitted, sizeof fitted, K_TYPE_BODY, line, w);
+  text(K_TYPE_BODY, x, y + K_TYPE_CAPTION->line_h, fitted, K_INK);
 }
 
 /**
@@ -4710,23 +4772,22 @@ static void draw_look(void) {
      * foot, whatever the card's height: the air is between the two facts,
      * where it reads as room and not as a gap. */
     const int ny = hy + 52;
-    if (pos[0] != '\0') text(&UI_FONT_T, tx0, ny - UI_FONT_T.line_h - 10, pos, K_INK_QUIET);
+    if (pos[0] != '\0') text(K_TYPE_CAPTION, tx0, ny - K_TYPE_CAPTION->line_h - 10, pos, K_INK_QUIET);
     char fitted[KDP_RECIPE_ID_MAX + 4];
-    const ui_font_t *nf = fit_face(look, tw);
-    text_fit(fitted, sizeof fitted, nf, look, tw);
+    const ui_font_t *nf = fit_face(fitted, sizeof fitted, look, tw);
     text_ink(nf, tx0, ny, fitted, nink);
   }
 
   /* And what the look actually sets, inside the card it belongs to. It was a
    * strip at the foot of the screen under nothing at all. */
-  lk_detail_row(tx0, hy + hh - 16 - UI_FONT_T.line_h - UI_FONT_S.line_h, tw);
+  lk_detail_row(tx0, hy + hh - 16 - K_TYPE_CAPTION->line_h - K_TYPE_BODY->line_h, tw);
 
   /* ---- the three that modify it ---- */
   const int ty = lk_trio_y(quad);
   static const char *const CAPS[3] = {"MODE", "FLASH", "COLOUR"};
   for (int c = 0; c < 3; c++) {
     const int g = lk_group_of_col(c);
-    text(&UI_FONT_T, lk_col_x(c) + 4, ty, CAPS[g], K_INK_QUIET);
+    text(K_TYPE_CAPTION, lk_col_x(c) + 4, ty, CAPS[g], K_INK_QUIET);
     switch (g) {
       case LK_G_MODE:
         draw_segments(lk_col_x(c), ty + LK_CAP_H, LK_COL_W, LK_CTL_H, MODE_NAMES, 2, quad ? 1 : 0,
@@ -4750,7 +4811,7 @@ static void draw_look(void) {
    * are drawn positions on this row; the SELECTED one is a value. */
   if (quad) {
     const int gy = lk_tgt_y(quad);
-    text(&UI_FONT_T, PAGE_M + 4, gy, "TARGET", K_INK_QUIET);
+    text(K_TYPE_CAPTION, PAGE_M + 4, gy, "TARGET", K_INK_QUIET);
     draw_segments(PAGE_M, gy + LK_CAP_H, LK_W, LK_CTL_H, TARGET_NAMES, 5,
                   lk_seg_of_target(s_look_target), band_rel(p0, LK_IT_TARGET, 5),
                   band_rel(f0, LK_IT_TARGET, 5));
@@ -4908,8 +4969,8 @@ static void draw_gallery(void) {
     const char *h2 = !sd.mounted   ? "Insert a microSD card to store photos."
                      : counting    ? "Looking through the captures on the card."
                                    : "Press the shutter to take one.";
-    text_mid(&UI_FONT_L, UI_W / 2, UI_H / 2 - 40, h1, K_INK);
-    text_mid(&UI_FONT_S, UI_W / 2, UI_H / 2 + 8, h2, K_INK_QUIET);
+    text_mid(K_TYPE_TITLE, UI_W / 2, UI_H / 2 - 40, h1, K_INK);
+    text_mid(K_TYPE_BODY, UI_W / 2, UI_H / 2 + 8, h2, K_INK_QUIET);
     return;
   }
 
@@ -4956,9 +5017,9 @@ static void draw_gallery(void) {
       if (slots[i].sent) {
         /* The Roll has it: safe to delete, which is the one question a
          * person asks a full card. */
-        const int bw = text_w(&UI_FONT_T, "SENT") + 14;
+        const int bw = text_w(K_TYPE_CAPTION, "SENT") + 14;
         round_rect(x + 8, y + 8, bw, 20, 6, K_INK);
-        text(&UI_FONT_T, x + 15, y + 11, "SENT", K_GROUND);
+        text(K_TYPE_CAPTION, x + 15, y + 11, "SENT", K_GROUND);
       }
     } else if (slots[i].state == TILE_PENDING) {
       /* Not yet decoded is not the same state as will not decode, and they
@@ -4975,7 +5036,7 @@ static void draw_gallery(void) {
       fill(x, y, G_TILE_W, G_TILE_H, K_OFF);
     } else {
       fill(x, y, G_TILE_W, G_TILE_H, K_SURFACE);
-      text_mid(&UI_FONT_T, x + G_TILE_W / 2 + d, y + G_TILE_H / 2 - 9 + d, "NO IMAGE", K_INK_QUIET);
+      text_mid(K_TYPE_CAPTION, x + G_TILE_W / 2 + d, y + G_TILE_H / 2 - 9 + d, "NO IMAGE", K_INK_QUIET);
     }
     /* The facts, on a plate along the picture's bottom edge rather than in a
      * strip under it. No filename, no size, no path: the picture is the
@@ -5017,7 +5078,7 @@ static void draw_gallery(void) {
       char mode[16];
       snprintf(mode, sizeof mode, "%s", slots[i].mode);
       upcase(mode);
-      text_right(&UI_FONT_T, x + G_TILE_W - 8 + d, sy0 + (G_STRIP - UI_FONT_T.line_h) / 2 + d,
+      text_right(K_TYPE_CAPTION, x + G_TILE_W - 8 + d, sy0 + (G_STRIP - K_TYPE_CAPTION->line_h) / 2 + d,
                  mode, K_INK);
     }
 
@@ -5561,7 +5622,7 @@ static void draw_photo(void) {
         char lens[4];
         snprintf(lens, sizeof lens, "C%d", i + 1);
         fill(qx, qy, qw, qh, K_SURFACE);
-        text_mid(&UI_FONT_S, qx + qw / 2, qy + qh / 2 - UI_FONT_S.line_h / 2, lens, K_INK_QUIET);
+        text_mid(K_TYPE_BODY, qx + qw / 2, qy + qh / 2 - K_TYPE_BODY->line_h / 2, lens, K_INK_QUIET);
       }
     }
     /* A 2 px seam in the ground colour between the quadrants, over one edge
@@ -5573,7 +5634,7 @@ static void draw_photo(void) {
     blit_rows(src, PH_W, px, py, PH_W, PH_H);
   } else {
     fill(px, py, PH_W, PH_H, K_SURFACE);
-    text_mid(&UI_FONT_R, px + PH_W / 2, py + PH_H / 2 - 12, "NO IMAGE", K_INK_QUIET);
+    text_mid(K_TYPE_LABEL, px + PH_W / 2, py + PH_H / 2 - 12, "NO IMAGE", K_INK_QUIET);
   }
   /* The picture in a well, in the dark chrome's own tones. It was a 1 px
    * keyline, which is the one thing this grammar has no word for: a frame is
@@ -5615,9 +5676,9 @@ static void draw_photo(void) {
   const bool short_wiggle = (s_wig_len >= 2 || s_quad_ready) && s_wig_count > 0 &&
                             s_wig_count < GALLERY_FRAME_MAX;
   const int blk_pad = 12;
-  int blk_h = blk_pad + UI_FONT_R.line_h + UI_FONT_T.line_h;
-  if (short_wiggle) blk_h += 6 + UI_FONT_T.line_h;
-  blk_h += 18 + UI_FONT_T.line_h + 6 + 14; /* CAMERAS, then the mark */
+  int blk_h = blk_pad + K_TYPE_LABEL->line_h + K_TYPE_CAPTION->line_h;
+  if (short_wiggle) blk_h += 6 + K_TYPE_CAPTION->line_h;
+  blk_h += 18 + K_TYPE_CAPTION->line_h + 6 + 14; /* CAMERAS, then the mark */
   blk_h += blk_pad;
   well(col_x, PH_CAP_Y - blk_pad, PH_COL_W, blk_h);
 
@@ -5647,9 +5708,9 @@ static void draw_photo(void) {
     if (tail != NULL) *tail = '\0';
 
     char fitted[32];
-    text_fit(fitted, sizeof fitted, &UI_FONT_R, num, PH_COL_W - 2 * PH_FPAD - 4);
-    text(&UI_FONT_R, fx, cy, fitted, K_INK);
-    cy += UI_FONT_R.line_h;
+    text_fit(fitted, sizeof fitted, K_TYPE_LABEL, num, PH_COL_W - 2 * PH_FPAD - 4);
+    text(K_TYPE_LABEL, fx, cy, fitted, K_INK);
+    cy += K_TYPE_LABEL->line_h;
 
     /* Sized for both inputs whole. The compiler cannot see that a capture id
      * is ten characters and is right to insist. */
@@ -5657,14 +5718,14 @@ static void draw_photo(void) {
      * person needed; the date that replaced it on the next line does. */
     char sub[64];
     snprintf(sub, sizeof sub, "%s%s", mode[0] != '\0' ? mode : raw, s_photo_sent ? "  SENT" : "");
-    text(&UI_FONT_T, fx, cy, sub, s_photo_sent ? K_INK : K_INK_QUIET);
+    text(K_TYPE_CAPTION, fx, cy, sub, s_photo_sent ? K_INK : K_INK_QUIET);
     if (s_photo_ms > 0) {
-      cy += UI_FONT_T.line_h;
+      cy += K_TYPE_CAPTION->line_h;
       char when[24];
       date_words(when, sizeof when, s_photo_ms);
-      text(&UI_FONT_T, fx, cy, when, K_INK_QUIET);
+      text(K_TYPE_CAPTION, fx, cy, when, K_INK_QUIET);
     }
-    cy += UI_FONT_T.line_h;
+    cy += K_TYPE_CAPTION->line_h;
   }
 
   /*
@@ -5684,8 +5745,8 @@ static void draw_photo(void) {
   if (short_wiggle) {
     char note[24];
     snprintf(note, sizeof note, "%d MISSING", GALLERY_FRAME_MAX - s_wig_count);
-    text(&UI_FONT_T, fx, cy + 6, note, K_INK_QUIET);
-    cy += 6 + UI_FONT_T.line_h;
+    text(K_TYPE_CAPTION, fx, cy + 6, note, K_INK_QUIET);
+    cy += 6 + K_TYPE_CAPTION->line_h;
   }
 
   /*
@@ -5712,8 +5773,8 @@ static void draw_photo(void) {
      * the one caption written underneath, which is why the column read as
      * two facts and a loose row of squares rather than three labelled
      * things. */
-    text(&UI_FONT_T, fx, cy + 18, "CAMERAS", K_INK_QUIET);
-    const int fy4 = cy + 18 + UI_FONT_T.line_h + 6;
+    text(K_TYPE_CAPTION, fx, cy + 18, "CAMERAS", K_INK_QUIET);
+    const int fy4 = cy + 18 + K_TYPE_CAPTION->line_h + 6;
     four_mark(fx, fy4, 14, st, true);
     cy = fy4 + 14;
   }
@@ -5753,7 +5814,7 @@ static void draw_photo(void) {
    * this screen, and it is the only red on it. */
   if (dd) round_rect(bx, dy, bw, bh, UI_R, K_FAULT);
   else button(bx, dy, bw, bh, false);
-  text_mid(&UI_FONT_T, bx + bw / 2, dy + (bh - UI_FONT_T.line_h) / 2, "DELETE",
+  text_mid(K_TYPE_CAPTION, bx + bw / 2, dy + (bh - K_TYPE_CAPTION->line_h) / 2, "DELETE",
            dd ? K_GROUND : K_FAULT_INK);
   /* Through foc(), not the raw array. P_IT_DELETE is 0 and s_focus[] starts
    * zeroed, so reading it directly put a focus ring on DELETE the first time
@@ -5773,7 +5834,7 @@ static void draw_photo(void) {
   if (on) round_rect(bx, fy, bw, bh, UI_R, fd ? K_PRESS : K_ON);
   else button(bx, fy, bw, bh, false);
   star(bx + 14, fy + (bh - STAR_H) / 2, on ? fav_ink : K_INK_QUIET);
-  text_mid(&UI_FONT_T, bx + 14 + STAR_W + (bw - 14 - STAR_W) / 2, fy + (bh - UI_FONT_T.line_h) / 2,
+  text_mid(K_TYPE_CAPTION, bx + 14 + STAR_W + (bw - 14 - STAR_W) / 2, fy + (bh - K_TYPE_CAPTION->line_h) / 2,
            "FAVOURITE", fav_ink);
   if (foc(SCR_PHOTO, P_IT_FAV)) focus_inset(bx, fy, bw, bh, K_INK);
 
@@ -5785,7 +5846,7 @@ static void draw_photo(void) {
   if (rd) round_rect(bx, ry, bw, bh, UI_R, K_PRESS);
   else if (on_roll) button(bx, ry, bw, bh, false);
   else round_rect(bx, ry, bw, bh, UI_R, K_SURFACE);
-  text_mid(&UI_FONT_T, bx + bw / 2, ry + (bh - UI_FONT_T.line_h) / 2, "SEND TO ROLL",
+  text_mid(K_TYPE_CAPTION, bx + bw / 2, ry + (bh - K_TYPE_CAPTION->line_h) / 2, "SEND TO ROLL",
            rd ? K_PRESS_INK : on_roll ? K_INK : K_INK_QUIET);
   if (foc(SCR_PHOTO, P_IT_ROLL)) focus_inset(bx, ry, bw, bh, K_INK);
 }
@@ -5918,14 +5979,14 @@ static void draw_roll(void) {
      * is.
      */
     const int wh = 76;
-    const int lead = UI_FONT_M.line_h + 4;
-    const int block_h = UI_FONT_L.line_h + 22 + 2 * lead + 28 + wh;
+    const int lead = K_TYPE_BODY_L->line_h + 4;
+    const int block_h = K_TYPE_TITLE->line_h + 22 + 2 * lead + 28 + wh;
     int hy = body_top(block_h);
-    text_mid(&UI_FONT_L, UI_W / 2, hy, "NO ACTIVE ROLL", K_INK);
-    hy += UI_FONT_L.line_h + 22;
+    text_mid(K_TYPE_TITLE, UI_W / 2, hy, "NO ACTIVE ROLL", K_INK);
+    hy += K_TYPE_TITLE->line_h + 22;
 
-    text_mid(&UI_FONT_M, UI_W / 2, hy, "Make a roll in Studio over USB-C.", K_INK);
-    text_mid(&UI_FONT_M, UI_W / 2, hy + lead, "It appears here with a code guests scan.", K_INK);
+    text_mid(K_TYPE_BODY_L, UI_W / 2, hy, "Make a roll in Studio over USB-C.", K_INK);
+    text_mid(K_TYPE_BODY_L, UI_W / 2, hy + lead, "It appears here with a code guests scan.", K_INK);
     const int wy = hy + 2 * lead + 28;
 
     /* The card line, in a well at the foot, and made to mean something. The
@@ -5940,12 +6001,12 @@ static void draw_roll(void) {
     if (n > 0) {
       char line[56];
       snprintf(line, sizeof line, "%d PHOTO%s ON THE CARD", n, n == 1 ? "" : "S");
-      text_mid(&UI_FONT_R, UI_W / 2, wy + 12, line, K_INK);
-      text_mid(&UI_FONT_S, UI_W / 2, wy + 44,
+      text_mid(K_TYPE_LABEL, UI_W / 2, wy + 12, line, K_INK);
+      text_mid(K_TYPE_BODY, UI_W / 2, wy + 44,
                "They import over USB-C, and upload if a roll is assigned later.", K_INK_QUIET);
     } else {
-      text_mid(&UI_FONT_R, UI_W / 2, wy + 12, "NO PHOTOS ON THE CARD", K_INK);
-      text_mid(&UI_FONT_S, UI_W / 2, wy + 44, "Press the shutter to take one.", K_INK_QUIET);
+      text_mid(K_TYPE_LABEL, UI_W / 2, wy + 12, "NO PHOTOS ON THE CARD", K_INK);
+      text_mid(K_TYPE_BODY, UI_W / 2, wy + 44, "Press the shutter to take one.", K_INK_QUIET);
     }
     return;
   }
@@ -5987,11 +6048,11 @@ static void draw_roll(void) {
       const char *addr = roll.guest_url;
       if (strncmp(addr, "https://", 8) == 0) addr += 8;
       else if (strncmp(addr, "http://", 7) == 0) addr += 7;
-      text_mid(&UI_FONT_T, RL_QR_CX, RL_TOP + 12 + side + 10, "SCAN TO JOIN", K_INK);
-      if (text_w(&UI_FONT_S, addr) <= RL_QR_COL_W - 24) {
+      text_mid(K_TYPE_CAPTION, RL_QR_CX, RL_TOP + 12 + side + 10, "SCAN TO JOIN", K_INK);
+      if (text_w(K_TYPE_BODY, addr) <= RL_QR_COL_W - 24) {
         /* The quiet voice measured on the card it sits on, not a fixed grey:
          * K_INK_QUIET on the old row was 4.41:1 (#176). */
-        text_mid(&UI_FONT_S, RL_QR_CX, RL_TOP + 12 + side + 10 + UI_FONT_T.line_h + 2, addr,
+        text_mid(K_TYPE_BODY, RL_QR_CX, RL_TOP + 12 + side + 10 + K_TYPE_CAPTION->line_h + 2, addr,
                  dim_ink(K_INK, K_ROW));
       }
     }
@@ -6000,11 +6061,12 @@ static void draw_roll(void) {
      * guest can still type it, which is worth more than a QR-shaped block no
      * phone reads - and at this size it is legible from where the QR would
      * have been scanned from, which is the point of giving it the column. */
-    const ui_font_t *cf = fit_face(roll.slug, RL_QR_COL_W - 20);
+    char code[sizeof roll.slug + 4];
+    const ui_font_t *cf = fit_face(code, sizeof code, roll.slug, RL_QR_COL_W - 20);
     const int cy = RL_TOP + RL_QR_BOX / 2 - cf->line_h;
-    text_mid(cf, RL_QR_CX, cy, roll.slug, K_INK);
-    text_mid(&UI_FONT_S, RL_QR_CX, cy + cf->line_h + 16, "Enter this code to join", K_INK_QUIET);
-    text_mid(&UI_FONT_S, RL_QR_CX, cy + cf->line_h + 38,
+    text_mid(cf, RL_QR_CX, cy, code, K_INK);
+    text_mid(K_TYPE_BODY, RL_QR_CX, cy + cf->line_h + 16, "Enter this code to join", K_INK_QUIET);
+    text_mid(K_TYPE_BODY, RL_QR_CX, cy + cf->line_h + 38,
              "The join link is too long to encode.", K_INK_QUIET);
   }
 
@@ -6030,8 +6092,9 @@ static void draw_roll(void) {
    */
   const char *title = roll.name[0] != '\0' ? roll.name : roll.slug;
   int y = RL_TOP;
-  const ui_font_t *tf = fit_face(title, RL_RW);
-  text(tf, RL_RX, y, title, K_INK);
+  char fitted_title[sizeof roll.name + sizeof roll.slug];
+  const ui_font_t *tf = fit_face(fitted_title, sizeof fitted_title, title, RL_RW);
+  text(tf, RL_RX, y, fitted_title, K_INK);
   y += tf->line_h + 10;
 
   /* The lamp: ink when online, red when something stops it, and a quiet
@@ -6070,7 +6133,7 @@ static void draw_roll(void) {
   fact_row(RL_RX, RL_RW, y + ph, ph, "Status", word, true, false);
   /* The lamp, left of the status word: colour beside the word, never instead. */
   {
-    const int lw = text_w(&UI_FONT_M, word);
+    const int lw = text_w(K_TYPE_BODY_L, word);
     const int lx = RL_RX + RL_RW - lw - 16 - 18;
     const int ly = y + ph + (ph - 10) / 2;
     fill(lx, ly, 10, 10, lamp);
@@ -6120,8 +6183,8 @@ static void draw_roll(void) {
     }
     y += bh + 12;
   }
-  if (l1[0]) y += text_block(&UI_FONT_S, RL_RX, y, RL_RW, l1, K_INK) + 6;
-  if (l2[0]) text_block(&UI_FONT_S, RL_RX, y, RL_RW, l2, K_INK_QUIET);
+  if (l1[0]) y += text_block(K_TYPE_BODY, RL_RX, y, RL_RW, l1, K_INK) + 6;
+  if (l2[0]) text_block(K_TYPE_BODY, RL_RX, y, RL_RW, l2, K_INK_QUIET);
 }
 
 
@@ -6289,8 +6352,8 @@ static void draw_status(void) {
     /* The screen is reachable from the header chip's own count, so it can be
      * opened at the moment the last condition clears. */
     s_list_top = LIST_TOP_DEFAULT;
-    text_mid(&UI_FONT_L, UI_W / 2, UI_H / 2 - UI_FONT_L.line_h, "NOTHING TO REPORT", K_INK);
-    text_mid(&UI_FONT_S, UI_W / 2, UI_H / 2 + 8, "The camera has no complaints.", K_INK_QUIET);
+    text_mid(K_TYPE_TITLE, UI_W / 2, UI_H / 2 - K_TYPE_TITLE->line_h, "NOTHING TO REPORT", K_INK);
+    text_mid(K_TYPE_BODY, UI_W / 2, UI_H / 2 + 8, "The camera has no complaints.", K_INK_QUIET);
     draw_status_action(0);
     return;
   }
@@ -6316,7 +6379,7 @@ static void draw_status(void) {
      * reads across the room, and the word at the right, which reads up
      * close. An alert is not a destination, so no chevron. */
     fill(LIST_X, y + 10, 4, h - 20, sev_ink(c->sev));
-    text_right(&UI_FONT_T, LIST_X + LIST_W - 18, y + 12, sev_word(c->sev), sev_ink(c->sev));
+    text_right(K_TYPE_CAPTION, LIST_X + LIST_W - 18, y + 12, sev_word(c->sev), sev_ink(c->sev));
     if (c->id == COND_CAMERA_DOWN) {
       /* Which ones: the four cells the SHOOT bar uses, left to right as the
        * lenses are on the body. */
@@ -6324,7 +6387,7 @@ static void draw_status(void) {
       for (int k = 0; k < 4; k++) st[k] = (c->mask & (1u << k)) ? FM_LOST : FM_ON;
       const int cell = 12;
       const int mw = 4 * cell + 3 * FM_GAP;
-      four_mark(LIST_X + LIST_W - 18 - text_w(&UI_FONT_T, sev_word(c->sev)) - 16 - mw, y + 12, cell,
+      four_mark(LIST_X + LIST_W - 18 - text_w(K_TYPE_CAPTION, sev_word(c->sev)) - 16 - mw, y + 12, cell,
                 st, false);
     }
 
@@ -6332,12 +6395,12 @@ static void draw_status(void) {
     snprintf(name, sizeof name, "%s", c->title);
     upcase(name);
     const int tx = LIST_X + 18;
-    text(&UI_FONT_R, tx, y + 6, name, K_INK);
+    text(K_TYPE_LABEL, tx, y + 6, name, K_INK);
     /* What to do about it, which is the only reason to list a condition at
      * all - a fault a person can do nothing about is a log line. */
     char det[64];
-    text_fit(det, sizeof det, &UI_FONT_S, c->detail, LIST_W - 18 - 18 - 70);
-    text(&UI_FONT_S, tx, y + 6 + UI_FONT_R.line_h - 4, det, dim_ink(K_INK, K_ROW));
+    text_fit(det, sizeof det, K_TYPE_BODY, c->detail, LIST_W - 18 - 18 - 70);
+    text(K_TYPE_BODY, tx, y + 6 + K_TYPE_LABEL->line_h - 4, det, dim_ink(K_INK, K_ROW));
   }
   draw_status_action(rows);
 }
@@ -6475,9 +6538,9 @@ static void draw_display(void) {
   const int ny = DSP_BAND_Y(DSP_ROWS - 1) + DSP_BAND_H + 18;
   /* One line, inside the safe area: what the backlight cannot do, and the
    * two things about it a person has to know. */
-  group_box(DSP_BOX_X, ny, DSP_BOX_W, 22 + UI_FONT_S.line_h + 10, "BRIGHTNESS AND POWER",
+  group_box(DSP_BOX_X, ny, DSP_BOX_W, 22 + K_TYPE_BODY->line_h + 10, "BRIGHTNESS AND POWER",
             K_INK_QUIET, NULL);
-  text(&UI_FONT_S, DSP_X, ny + 22,
+  text(K_TYPE_BODY, DSP_X, ny + 22,
        "On or off, not dimmable. Tap the screen to wake. Hold the slide to switch off.",
        K_INK_QUIET);
 }
@@ -6702,8 +6765,8 @@ static void draw_sound(void) {
   if (!audio_ready()) {
     /* Named as hardware, not as a setting. "Muted" would read as something a
      * user did and can undo from this screen, and it is not. */
-    text(&UI_FONT_M, PAGE_M, ny, "No audio output on this body", K_INK);
-    text(&UI_FONT_S, PAGE_M, ny + 30,
+    text(K_TYPE_BODY_L, PAGE_M, ny, "No audio output on this body", K_INK);
+    text(K_TYPE_BODY, PAGE_M, ny + 30,
          "The settings above are stored, and nothing plays until the amplifier starts.",
          K_INK_QUIET);
     return;
@@ -6719,8 +6782,8 @@ static void draw_sound(void) {
   /* On the page rule. The notes on this screen, CONNECTION and STORAGE sat
    * at a literal 24 while every card starts at PAGE_M, which put a second
    * left edge 8 px inside the first down the whole lower half of the panel. */
-  text(&UI_FONT_S, PAGE_M, ny, line, K_INK_QUIET);
-  text(&UI_FONT_S, PAGE_M, ny + 20, "Upload your own in Studio over USB-C.", K_INK_QUIET);
+  text(K_TYPE_BODY, PAGE_M, ny, line, K_INK_QUIET);
+  text(K_TYPE_BODY, PAGE_M, ny + 20, "Upload your own in Studio over USB-C.", K_INK_QUIET);
 }
 
 /* --- Connection --------------------------------------------------- */
@@ -6755,7 +6818,7 @@ static void draw_sound(void) {
 #define CN_TZ_H 52
 #define CN_TZ_BTN 64
 #define CN_NOTE_Y (CN_TZ_Y + CN_TZ_H + 8)
-#define CN_NOTE_H 24 /* UI_FONT_S's line; the renderer's safe-area audit checks the drawn box */
+#define CN_NOTE_H 24 /* K_TYPE_BODY's line; the renderer's safe-area audit checks the drawn box */
 _Static_assert(CN_NOTE_Y + CN_NOTE_H <= UI_H - PAGE_M, "the CONNECTION note runs off the page");
 static void draw_connection(void) {
   fill(0, 0, UI_W, UI_H, K_FACE);
@@ -6856,13 +6919,13 @@ static void draw_connection(void) {
   /* One line under the zone band. */
   const int y = CN_NOTE_Y;
   if (!net.radio_fitted) {
-    text(&UI_FONT_S, PAGE_M, y, "No radio on this body. Photos leave over USB-C.", K_INK_QUIET);
+    text(K_TYPE_BODY, PAGE_M, y, "No radio on this body. Photos leave over USB-C.", K_INK_QUIET);
   } else if (!net.radio_routed) {
-    text(&UI_FONT_S, PAGE_M, y, "Radio fitted, no route to it yet. Photos leave over USB-C.", K_INK_QUIET);
+    text(K_TYPE_BODY, PAGE_M, y, "Radio fitted, no route to it yet. Photos leave over USB-C.", K_INK_QUIET);
   } else if (net.state != NET_IP_READY) {
-    text(&UI_FONT_S, PAGE_M, y, "Set up Wi-Fi in Studio over USB-C.", K_INK_QUIET);
+    text(K_TYPE_BODY, PAGE_M, y, "Set up Wi-Fi in Studio over USB-C.", K_INK_QUIET);
   } else {
-    text(&UI_FONT_S, PAGE_M, y, "Captures upload to the active roll.", K_INK_QUIET);
+    text(K_TYPE_BODY, PAGE_M, y, "Captures upload to the active roll.", K_INK_QUIET);
   }
 
   /* The zone the clock prints with. SNTP gives UTC and nothing else, and a
@@ -6875,13 +6938,13 @@ static void draw_connection(void) {
              abs(off) % 60);
     round_rect(LIST_X, CN_TZ_Y, CN_TZ_BTN, CN_TZ_H, UI_R,
                s_pressed == CN_IT_TZ_MINUS ? K_OFF : K_ROW);
-    text_mid(&UI_FONT_M, LIST_X + CN_TZ_BTN / 2, CN_TZ_Y + (CN_TZ_H - UI_FONT_M.line_h) / 2, "-",
+    text_mid(K_TYPE_BODY_L, LIST_X + CN_TZ_BTN / 2, CN_TZ_Y + (CN_TZ_H - K_TYPE_BODY_L->line_h) / 2, "-",
              K_INK);
     round_rect(LIST_X + LIST_W - CN_TZ_BTN, CN_TZ_Y, CN_TZ_BTN, CN_TZ_H, UI_R,
                s_pressed == CN_IT_TZ_PLUS ? K_OFF : K_ROW);
-    text_mid(&UI_FONT_M, LIST_X + LIST_W - CN_TZ_BTN / 2, CN_TZ_Y + (CN_TZ_H - UI_FONT_M.line_h) / 2,
+    text_mid(K_TYPE_BODY_L, LIST_X + LIST_W - CN_TZ_BTN / 2, CN_TZ_Y + (CN_TZ_H - K_TYPE_BODY_L->line_h) / 2,
              "+", K_INK);
-    text_mid(&UI_FONT_T, UI_W / 2, CN_TZ_Y + (CN_TZ_H - UI_FONT_T.line_h) / 2, zone,
+    text_mid(K_TYPE_CAPTION, UI_W / 2, CN_TZ_Y + (CN_TZ_H - K_TYPE_CAPTION->line_h) / 2, zone,
              clock_offset_known() ? K_INK : K_INK_QUIET);
   }
 }
@@ -6908,7 +6971,7 @@ static void draw_connection(void) {
 #define ST_GAUGE_Y (LIST_Y + 3 * ST_FACT_H + 14)
 /* The action rows, from the readings' baseline down. Draw and hit test both
  * read this. */
-#define ST_ACT_Y(i) (ST_GAUGE_Y + ST_GAUGE_H + ST_READ_GAP + UI_FONT_S.line_h + 20 + (i) * ROW_H)
+#define ST_ACT_Y(i) (ST_GAUGE_Y + ST_GAUGE_H + ST_READ_GAP + K_TYPE_BODY->line_h + 20 + (i) * ROW_H)
 
 static void draw_storage(void) {
   fill(0, 0, UI_W, UI_H, K_FACE);
@@ -7024,7 +7087,7 @@ static void draw_storage(void) {
      * slot and a pulled card both read not present, and storage.c sets an
      * error for both, so presence is asked first: "take the card out" under
      * "No card in the slot" would name a card that is not there. */
-    text(&UI_FONT_M, PAGE_M, by, sd.present ? "The card cannot be read" : "No card in the slot",
+    text(K_TYPE_BODY_L, PAGE_M, by, sd.present ? "The card cannot be read" : "No card in the slot",
          K_INK);
     char detail[80];
     if (!sd.present) {
@@ -7043,7 +7106,7 @@ static void draw_storage(void) {
        * attempt count stays in the log and the KDP status. */
       snprintf(detail, sizeof detail, "Take the card out and put it back.");
     }
-    text(&UI_FONT_S, PAGE_M, by + 30, detail, K_INK_QUIET);
+    text(K_TYPE_BODY, PAGE_M, by + 30, detail, K_INK_QUIET);
     return;
   }
 
@@ -7068,12 +7131,12 @@ static void draw_storage(void) {
   human_bytes(usedb, sizeof usedb, used);
   char line[80];
   snprintf(line, sizeof line, "%s used", usedb);
-  text(&UI_FONT_S, bx, by + bh + ST_READ_GAP, line, K_INK_QUIET);
+  text(K_TYPE_BODY, bx, by + bh + ST_READ_GAP, line, K_INK_QUIET);
   /* The write test is the only thing here that says the card can be WRITTEN
    * to, which is the property a capture depends on and free space is not. */
   snprintf(line, sizeof line, "%s, write test %s", sd.filesystem != NULL ? sd.filesystem : "-",
            sd.write_test != NULL ? sd.write_test : "none");
-  text_right(&UI_FONT_S, bx + bw, by + bh + ST_READ_GAP, line, K_INK_QUIET);
+  text_right(K_TYPE_BODY, bx + bw, by + bh + ST_READ_GAP, line, K_INK_QUIET);
 }
 
 /* --- About -------------------------------------------------------- */
@@ -7210,7 +7273,7 @@ static void draw_about(void) {
    * group box now, and the box encloses the well AND the two lines of note
    * under it - the note is about these four rows and nothing else, and there
    * was no mark on the screen that said so. */
-  text(&UI_FONT_T, AB_RX + 4, LIST_Y + (AB_ROW - UI_FONT_T.line_h) / 2, "CAMERAS", K_INK_QUIET);
+  text(K_TYPE_CAPTION, AB_RX + 4, LIST_Y + (AB_ROW - K_TYPE_CAPTION->line_h) / 2, "CAMERAS", K_INK_QUIET);
   fill(AB_RX, LIST_Y + AB_ROW - 1, AB_RW, 1, K_RULE);
   const int cy0 = LIST_Y + AB_ROW;
   const int ch = 4 * AB_CAM_ROW;
@@ -7253,11 +7316,11 @@ static void draw_about(void) {
                serial[0] != '\0' ? serial : "KD4", KINO_FW_VERSION);
       encoded = qr_encode(url, qr);
     }
-    const int room = UI_H - PAGE_M - note_y - UI_FONT_T.line_h - 6;
+    const int room = UI_H - PAGE_M - note_y - K_TYPE_CAPTION->line_h - 6;
     const int box = room < AB_RW ? room : AB_RW;
     if (encoded && qr != NULL && box >= 64) {
       draw_qr_centred(qr, AB_RX + AB_RW / 2, note_y, box);
-      text_mid(&UI_FONT_T, AB_RX + AB_RW / 2, note_y + box + 4, "SCAN FOR HELP", K_INK_QUIET);
+      text_mid(K_TYPE_CAPTION, AB_RX + AB_RW / 2, note_y + box + 4, "SCAN FOR HELP", K_INK_QUIET);
     }
   }
 
@@ -7303,12 +7366,13 @@ static void draw_power(void) {
            "Factory reset", "Settings, networks, roll", true);
 
   const int gy = LIST_Y + PW_IT_COUNT * ROW_H + 14;
-  const int cap_h = UI_FONT_T.line_h + 4;
+  const int cap_h = K_TYPE_CAPTION->line_h + 4;
   const bool usb = usb_attached();
-  group_box(LIST_X, gy, LIST_W, cap_h + 14 + UI_FONT_M.line_h + 6 + UI_FONT_S.line_h + 16,
+  /* USB or BATTERY: a caps word, so LABEL, not the reading face. */
+  group_box(LIST_X, gy, LIST_W, cap_h + 14 + K_TYPE_LABEL->line_h + 6 + K_TYPE_BODY->line_h + 16,
             "RUNNING ON", K_INK, NULL);
-  text(&UI_FONT_M, LIST_X + 18, gy + cap_h + 14, power_words(usb), K_INK);
-  text(&UI_FONT_S, LIST_X + 18, gy + cap_h + 14 + UI_FONT_M.line_h + 6,
+  text(K_TYPE_LABEL, LIST_X + INSET_TEXT, gy + cap_h + 14, power_words(usb), K_INK);
+  text(K_TYPE_BODY, LIST_X + INSET_TEXT, gy + cap_h + 14 + K_TYPE_LABEL->line_h + 6,
        usb ? "Powered from the cable." : "On the cells. This body has no battery gauge.",
        K_INK_QUIET);
 }
@@ -7404,8 +7468,8 @@ static int dlg_x(void) { return (UI_W - DLG_W) / 2; }
 #define DLG_ROW_GAP 8
 #define DLG_TOP 20
 /* Title, question, optional line, then the two rows and the bottom pad. */
-#define DLG_H(sub) (DLG_TOP + UI_FONT_T.line_h + 10 + UI_FONT_M.line_h + \
-                    ((sub) ? UI_FONT_S.line_h + 6 : 0) + 18 + 2 * DLG_ROW_H + DLG_ROW_GAP + \
+#define DLG_H(sub) (DLG_TOP + K_TYPE_CAPTION->line_h + 10 + K_TYPE_BODY_L->line_h + \
+                    ((sub) ? K_TYPE_BODY->line_h + 6 : 0) + 18 + 2 * DLG_ROW_H + DLG_ROW_GAP + \
                     DLG_PAD)
 #define DLG_Y(sub) ((UI_H - DLG_H(sub)) / 2)
 #define DLG_ROW_X (dlg_x() + DLG_PAD)
@@ -7439,11 +7503,11 @@ static void draw_dialog(void) {
    * by what is about to happen; then the question, then the one line that
    * says what it costs. */
   int ty = y0 + DLG_TOP;
-  text(&UI_FONT_T, dx + DLG_PAD, ty, d.title, d.destructive ? K_FAULT_INK : K_TITLE);
-  ty += UI_FONT_T.line_h + 10;
-  text(&UI_FONT_M, dx + DLG_PAD, ty, d.body, K_INK);
-  ty += UI_FONT_M.line_h;
-  if (sub) text(&UI_FONT_S, dx + DLG_PAD, ty + 4, d.sub, K_INK_QUIET);
+  text(K_TYPE_CAPTION, dx + DLG_PAD, ty, d.title, d.destructive ? K_FAULT_INK : K_TITLE);
+  ty += K_TYPE_CAPTION->line_h + 10;
+  text(K_TYPE_BODY_L, dx + DLG_PAD, ty, d.body, K_INK);
+  ty += K_TYPE_BODY_L->line_h;
+  if (sub) text(K_TYPE_BODY, dx + DLG_PAD, ty + 4, d.sub, K_INK_QUIET);
 
   /*
    * The answers, as rows.
@@ -7523,7 +7587,7 @@ static void draw_strip(const fm_cell_t *st, const char *line, uint16_t accent) {
   const int cell = 12;
   const int mx = x + 18;
   four_mark(mx, y + (h - cell) / 2, cell, st, true);
-  text(&UI_FONT_T, mx + 4 * (cell + FM_GAP) + 12, y + (h - UI_FONT_T.line_h) / 2, line, K_INK);
+  text(K_TYPE_CAPTION, mx + 4 * (cell + FM_GAP) + 12, y + (h - K_TYPE_CAPTION->line_h) / 2, line, K_INK);
   AUDIT_CHROME(false);
 }
 
@@ -7631,7 +7695,7 @@ static void timer_cancel(const char *why) {
  */
 static void draw_sleep_mark(int k) {
   boot_mark_ink(mix(K_GROUND, K_MARK, k));
-  text_mid(&UI_FONT_T, UI_W / 2, UI_H - PAGE_M - UI_FONT_T.line_h, "GOING TO SLEEP.  TAP TO WAKE",
+  text_mid(K_TYPE_CAPTION, UI_W / 2, UI_H - PAGE_M - K_TYPE_CAPTION->line_h, "GOING TO SLEEP.  TAP TO WAKE",
            mix(K_GROUND, K_INK_QUIET, k));
 }
 
@@ -7760,7 +7824,7 @@ static bool toast_expired(void) {
 }
 
 static void toast_rect(int *ox, int *oy, int *ow, int *oh) {
-  const int w = text_w(&UI_FONT_T, s_toast) + 40, h = 36;
+  const int w = text_w(K_TYPE_CAPTION, s_toast) + 40, h = 36;
   int y = UI_H - 14 - h;
   if (s_screen == SCR_SHOOT) y = SH_BAR_Y - h - 10;
   int x = (UI_W - w) / 2;
@@ -7795,7 +7859,7 @@ static void draw_toast(void) {
   toast_rect(&x, &y, &w, &h);
   round_rect(x, y, w, h, UI_R, K_TOAST);
   round_outline(x, y, w, h, UI_R, K_EDGE);
-  text_mid(&UI_FONT_T, x + w / 2, y + (h - UI_FONT_T.line_h) / 2, s_toast, K_INK);
+  text_mid(K_TYPE_CAPTION, x + w / 2, y + (h - K_TYPE_CAPTION->line_h) / 2, s_toast, K_INK);
 }
 
 
@@ -7952,15 +8016,15 @@ static void draw_screen(void) {
      * for the next ten seconds. */
     char n[8];
     snprintf(n, sizeof n, "%d", s_timer_last_s);
-    const int w = text_w(&UI_FONT_L, n) + 60, h = UI_FONT_L.line_h + 30;
+    const int w = text_w(K_TYPE_TITLE, n) + 60, h = K_TYPE_TITLE->line_h + 30;
     scrim((UI_W - w) / 2, UI_H / 2 - h / 2 - 20, w, h, K_GROUND, 160);
-    text_mid(&UI_FONT_L, UI_W / 2, UI_H / 2 - UI_FONT_L.line_h / 2 - 20, n, K_INK);
-    text_mid(&UI_FONT_T, UI_W / 2, UI_H / 2 + h / 2 - 12, "SELF-TIMER.  PRESS TO CANCEL", K_INK);
+    text_mid(K_TYPE_TITLE, UI_W / 2, UI_H / 2 - K_TYPE_TITLE->line_h / 2 - 20, n, K_INK);
+    text_mid(K_TYPE_CAPTION, UI_W / 2, UI_H / 2 + h / 2 - 12, "SELF-TIMER.  PRESS TO CANCEL", K_INK);
   } else if (s_screen == SCR_SHOOT && s_lens_hint[0] != '\0') {
-    const int w = text_w(&UI_FONT_T, s_lens_hint) + 32, h = 30;
+    const int w = text_w(K_TYPE_CAPTION, s_lens_hint) + 32, h = 30;
     /* The ground's ink on the red, 5.1:1; K_INK on it is 3.4:1 (#176). */
     round_rect((UI_W - w) / 2, 12, w, h, UI_R, K_FAULT);
-    text_mid(&UI_FONT_T, UI_W / 2, 12 + (h - UI_FONT_T.line_h) / 2, s_lens_hint, K_GROUND);
+    text_mid(K_TYPE_CAPTION, UI_W / 2, 12 + (h - K_TYPE_CAPTION->line_h) / 2, s_lens_hint, K_GROUND);
   }
   if (s_formatting) draw_working_banner("FORMATTING THE CARD");
   else if (s_cams_restart_us != 0 && esp_timer_get_time() - s_cams_restart_us < CAMS_RESTART_BANNER_US)

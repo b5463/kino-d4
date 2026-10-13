@@ -1095,8 +1095,53 @@ static int g_contrast_n;
 static int g_judged_n;     /* string draws measured */
 static int g_over_image_n; /* string draws skipped: set on a picture */
 
+/* ---- the type-role audit (F2) ----
+ *
+ * Caps belong to the display face and sentences to the reading face: Oxanium
+ * sets T, R, L and XL, Inter sets S and M (ui_theme.h). A word set in
+ * capitals in Inter is the one mix the roles forbid, and it is what the menu
+ * labels, the segments and every caps value on a row used to be.
+ *
+ * A string counts as capitals when it has no lowercase letter, at least two
+ * letters, and the letters are at least half of what is not a space. That
+ * keeps a reading like "29.7 GB" or "0.9.0  OV3660", a number with a unit,
+ * in the reading face beside the numbers it sits with. ui.c decides the same
+ * way (is_caps), so a value that arrives as data lands in the right face. */
+#define CAPS_MAX 64
+static struct {
+  char s[64];
+  char face;
+  char screen[32];
+} g_caps[CAPS_MAX];
+static int g_caps_n;
+
+static void caps_audit(const ui_font_t *f, const char *s) {
+  if (f != &UI_FONT_S && f != &UI_FONT_M) return;
+  if (!is_caps(s)) return;
+  for (int i = 0; i < g_caps_n; i++) {
+    if (strncmp(g_caps[i].s, s, sizeof g_caps[0].s - 1) == 0) return;
+  }
+  if (g_caps_n >= CAPS_MAX) return;
+  snprintf(g_caps[g_caps_n].s, sizeof g_caps[0].s, "%s", s);
+  g_caps[g_caps_n].face = f == &UI_FONT_S ? 'S' : 'M';
+  g_caps[g_caps_n].screen[0] = '\0';
+  g_caps_n++;
+}
+
+static int caps_report(void) {
+  if (g_caps_n == 0) return 0;
+  fprintf(stderr, "\n%d string%s in capitals set in an Inter face (caps in Inter):\n", g_caps_n,
+          g_caps_n == 1 ? "" : "s");
+  for (int i = 0; i < g_caps_n; i++) {
+    fprintf(stderr, "  %-30s %c  \"%s\"\n", g_caps[i].screen[0] != '\0' ? g_caps[i].screen : "?",
+            g_caps[i].face, g_caps[i].s);
+  }
+  return g_caps_n;
+}
+
 void ui_audit_ink(const ui_font_t *f, int x, int y, const char *s, uint16_t ink) {
   if (g_anim != NULL || g_audit_off) return;
+  caps_audit(f, s);
   const gfx_target_t *t = TG;
   struct { uint16_t c; int n; } hist[24];
   int nh = 0, total = 0, on_image = 0;
@@ -1393,7 +1438,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 232
+#define PPMS_PER_HAND 233
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -1445,6 +1490,11 @@ static void audit_stamp(const char *name) {
   for (int i = 0; i < g_contrast_n; i++) {
     if (g_contrast[i].screen[0] == '\0') {
       snprintf(g_contrast[i].screen, sizeof g_contrast[0].screen, "%s", name);
+    }
+  }
+  for (int i = 0; i < g_caps_n; i++) {
+    if (g_caps[i].screen[0] == '\0') {
+      snprintf(g_caps[i].screen, sizeof g_caps[0].screen, "%s", name);
     }
   }
 }
@@ -2184,6 +2234,12 @@ static void scenes(void) {
   g_queue.last_upload_ms = esp_timer_get_time() / 1000 - 8000;
   SHOT(SCR_ROLL, "roll_active");
 
+  /* A 24-character name: too wide for TITLE in the right column, so it
+   * drops to LABEL - Oxanium both - and is cut there if it must be (F2). */
+  snprintf(g_roll.name, sizeof g_roll.name, "ALEX AND MAYA WEDDING 26");
+  SHOT(SCR_ROLL, "roll_long_name");
+  snprintf(g_roll.name, sizeof g_roll.name, "FRIDAY PARTY");
+
   /*
    * A Roll with nowhere to send it (#198).
    *
@@ -2763,6 +2819,7 @@ static int run_hand(bool right, const char *out) {
     hard = true;
   }
   if (audit_report() > 0) hard = true;
+  if (caps_report() > 0) hard = true;
   if (list_report("hand-side controls off the hand's side", g_hand_bad, g_hand_bad_n) > 0) hard = true;
   const int soft = contrast_report() +
                    list_report("touch targets under 52 px", g_small, g_small_n);
