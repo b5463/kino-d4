@@ -554,10 +554,10 @@ static void date_words(char *out, size_t cap, int64_t ms) {
 #define UI_DRAW_PROFILE 0
 #endif
 enum {
-  DL_FILL, DL_RRECT, DL_ROUTLINE, DL_CUT, DL_DISC, DL_STROKE, DL_SCRIM, DL_TEXT,
-  DL_FIELD, DL_SHBLIT, DL_BLIT, DL_BITS, DL_FOCUS, DL_RING,
+  DL_FILL, DL_RRECT, DL_ROUTLINE, DL_CUT, DL_DISC, DL_SCRIM, DL_TEXT,
+  DL_FIELD, DL_SHBLIT, DL_BLIT, DL_BITS, DL_FOCUS, DL_MASK,
 };
-#define DL_OPS (DL_RING + 1)
+#define DL_OPS (DL_MASK + 1)
 /* What the per-tile pass needs about a command without touching PSRAM:
  * its box, and whether it paints every pixel of that box (a fill, a blit)
  * or every pixel but its corners (a rounded rectangle, radius r). */
@@ -1149,10 +1149,8 @@ static void cut_corners(int x, int y, int w, int h, float rad, uint16_t behind) 
 }
 
 /**
- * A disc, and a ring, both sampled the same way as the corners above.
- *
- * Every round thing on the interface goes through these two, so there is one
- * answer to "what does an edge look like" rather than one per glyph.
+ * A disc, sampled the same way as the corners above: a toggle's knob. The
+ * marks are tables (icon_mask()), cut by the same edge rule.
  */
 static void disc(int cx, int cy, float r, uint16_t c) {
   if (s_dl.rec) {
@@ -1176,97 +1174,6 @@ static void disc(int cx, int cy, float r, uint16_t c) {
       const float ox = (float)px + 0.5f - (float)cx;
       const float oy = (float)py + 0.5f - (float)cy;
       float cov = r - sqrtf(ox * ox + oy * oy) + 0.5f;
-      if (cov <= 0.0f) continue;
-      if (cov > 1.0f) cov = 1.0f;
-      const int k = (int)(cov * 255.0f + 0.5f);
-      row[px] = k >= 254 ? c : mix(row[px], c, k);
-    }
-  }
-}
-
-/**
- * A ring: the annulus of radius `r` and width `width`, both edges
- * antialiased. The two icons that used to be sixty short strokes each round
- * a circle are this; the strokes cost 2 ms of every menu frame and overlapped
- * unevenly where they met.
- */
-static void ring(int cx, int cy, float r, float width, uint16_t c) {
-  const float hw = width * 0.5f;
-  const int e = (int)(r + hw) + 2;
-  if (s_dl.rec) {
-    dl_cmd_t *k = dl_push(DL_RING, cx - e, cy - e, cx + e + 1, cy + e + 1);
-    if (k) { k->a = cx; k->b = cy; k->f0 = r; k->f1 = width; k->col = c; }
-    return;
-  }
-  const gfx_target_t *t = TG;
-  int x0 = cx - e, x1 = cx + e, y0 = cy - e, y1 = cy + e;
-  if (x0 < t->x0) x0 = t->x0;
-  if (y0 < t->y0) y0 = t->y0;
-  if (x1 >= CV_X1(t)) x1 = CV_X1(t) - 1;
-  if (y1 >= CV_Y1(t)) y1 = CV_Y1(t) - 1;
-  /* No square root outside the band the ring can touch. */
-  const float far2 = (r + hw + 0.5f) * (r + hw + 0.5f);
-  const float near = r - hw - 0.5f;
-  const float near2 = near > 0.0f ? near * near : 0.0f;
-  for (int py = y0; py <= y1; py++) {
-    uint16_t *row = cv_ptr(t, t->x0, py) - t->x0;
-    for (int px = x0; px <= x1; px++) {
-      const float ox = (float)px + 0.5f - (float)cx;
-      const float oy = (float)py + 0.5f - (float)cy;
-      const float d2 = ox * ox + oy * oy;
-      if (d2 >= far2 || d2 < near2) continue;
-      const float dist = sqrtf(d2) - r;
-      float cov = hw - (dist < 0.0f ? -dist : dist) + 0.5f;
-      if (cov <= 0.0f) continue;
-      if (cov > 1.0f) cov = 1.0f;
-      const int k = (int)(cov * 255.0f + 0.5f);
-      row[px] = k >= 254 ? c : mix(row[px], c, k);
-    }
-  }
-}
-
-/** A line of some width, with both ends and both sides antialiased. */
-static void stroke(float x0, float y0, float x1, float y1, float width, uint16_t c) {
-  const float hw = width * 0.5f;
-  if (s_dl.rec) {
-    dl_cmd_t *k = dl_push(DL_STROKE, (int)floorf((x0 < x1 ? x0 : x1) - hw - 1),
-                          (int)floorf((y0 < y1 ? y0 : y1) - hw - 1),
-                          (int)ceilf((x0 > x1 ? x0 : x1) + hw + 1) + 1,
-                          (int)ceilf((y0 > y1 ? y0 : y1) + hw + 1) + 1);
-    if (k) { k->f0 = x0; k->f1 = y0; k->f2 = x1; k->f3 = y1; k->f4 = width; k->col = c; }
-    return;
-  }
-  const float vx = x1 - x0, vy = y1 - y0;
-  const float len2 = vx * vx + vy * vy;
-  int bx0 = (int)floorf((x0 < x1 ? x0 : x1) - hw - 1);
-  int bx1 = (int)ceilf((x0 > x1 ? x0 : x1) + hw + 1);
-  int by0 = (int)floorf((y0 < y1 ? y0 : y1) - hw - 1);
-  int by1 = (int)ceilf((y0 > y1 ? y0 : y1) + hw + 1);
-  const gfx_target_t *t = TG;
-  if (bx0 < t->x0) bx0 = t->x0;
-  if (by0 < t->y0) by0 = t->y0;
-  if (bx1 >= CV_X1(t)) bx1 = CV_X1(t) - 1;
-  if (by1 >= CV_Y1(t)) by1 = CV_Y1(t) - 1;
-  /* The square root is only needed across the one-pixel edge band: a pixel
-   * whose squared distance is inside (hw - 0.5)^2 is solid and one outside
-   * (hw + 0.5)^2 is untouched. Most of a stroke's box is one or the other. */
-  const float in2 = hw > 0.5f ? (hw - 0.5f) * (hw - 0.5f) : -1.0f;
-  const float out2 = (hw + 0.5f) * (hw + 0.5f);
-  for (int py = by0; py <= by1; py++) {
-    uint16_t *row = cv_ptr(t, t->x0, py) - t->x0;
-    for (int px = bx0; px <= bx1; px++) {
-      const float qx = (float)px + 0.5f - x0, qy = (float)py + 0.5f - y0;
-      float t = len2 > 0.0f ? (qx * vx + qy * vy) / len2 : 0.0f;
-      if (t < 0.0f) t = 0.0f;
-      if (t > 1.0f) t = 1.0f;
-      const float dx = qx - t * vx, dy = qy - t * vy;
-      const float d2 = dx * dx + dy * dy;
-      if (d2 >= out2) continue;
-      if (d2 <= in2) {
-        row[px] = c;
-        continue;
-      }
-      float cov = hw - sqrtf(d2) + 0.5f;
       if (cov <= 0.0f) continue;
       if (cov > 1.0f) cov = 1.0f;
       const int k = (int)(cov * 255.0f + 0.5f);
@@ -1879,22 +1786,6 @@ static void upcase(char *s) {
     if (*s >= 'a' && *s <= 'z') *s = (char)(*s - 'a' + 'A');
 }
 
-/**
- * A lightning bolt, as row spans.
- *
- * The font is ASCII 32..126 and has no such character, and there is no
- * artwork left in this interface to take one from. Everything else on screen
- * is type or a shape this file draws.
- */
-static void bolt(int x, int y, int scale, uint16_t c) {
-  static const uint8_t SPAN[14][2] = {
-      {4, 4}, {3, 4}, {3, 4}, {2, 4}, {2, 4}, {1, 5}, {1, 7},
-      {0, 6}, {0, 4}, {3, 3}, {2, 3}, {2, 2}, {1, 2}, {1, 1},
-  };
-  for (int r = 0; r < 14; r++)
-    fill(x + SPAN[r][0] * scale, y + r * scale, SPAN[r][1] * scale, scale, c);
-}
-
 /* ------------------------------------------------------------------ */
 /* The four-frame mark                                                 */
 /*                                                                     */
@@ -1957,38 +1848,235 @@ static void four_mark(int x, int y, int cell, const fm_cell_t *st, bool dark) {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* The icon set                                                        */
+/*                                                                     */
+/* One construction rule for every drawn mark that is not type: a 22 px */
+/* box, 2.5 px strokes, every edge antialiased. The font is ASCII       */
+/* 32..126 and carries none of these, so they are drawn here.           */
+/* ------------------------------------------------------------------ */
+
 /*
- * The chevron, at two sizes, and it is one shape.
- *
- * The font is ASCII 32..126 and carries neither character, so the picker
- * buttons, the header's back button and a row that opens a screen get their
- * own. Two strokes meeting at a point, drawn with the same antialiased line
- * as everything else that is not a rectangle - the version before this was a
- * staircase of little filled squares, which is what a chevron looks like when
- * the renderer can only put down whole pixels and is the single most visible
- * piece of pixelation left on the interface.
- *
- * `reach` is the half-height, `weight` the stroke. The small one is the
- * picker's, the large one fills about a third of a 44 px system button, which
- * is what a system button's mark should do.
+ * A coverage mask, blended in the ink: the glyph_blend loop over a table
+ * that is not a glyph. Exact size and never opaque; the coverage stays where
+ * it is and nothing is copied. About 20 cycles a covered pixel, integer only.
  */
-static void chevron(float cx, float cy, bool right, float reach, float weight, uint16_t ink) {
-  const float dir = right ? 1.0f : -1.0f;
-  const float tipx = cx + dir * reach * 0.52f;
-  const float backx = cx - dir * reach * 0.52f;
-  stroke(backx, cy - reach, tipx, cy, weight, ink);
-  stroke(backx, cy + reach, tipx, cy, weight, ink);
+static void mask_blit(const uint8_t *cov, int w, int h, int stride, int x, int y, uint16_t ink) {
+  if (s_dl.rec) {
+    dl_cmd_t *k = dl_push(DL_MASK, x, y, x + w, y + h);
+    if (k) { k->p = cov; k->a = w; k->b = h; k->c = stride; k->d = x; k->e = y; k->col = ink; }
+    return;
+  }
+  const gfx_target_t *t = TG;
+  if (x + w <= t->x0 || y + h <= t->y0 || x >= CV_X1(t) || y >= CV_Y1(t)) return;
+  const int c0 = x < t->x0 ? t->x0 - x : 0;
+  const int c1 = x + w > CV_X1(t) ? CV_X1(t) - x : w;
+  const int r0 = y < t->y0 ? t->y0 - y : 0;
+  const int r1 = y + h > CV_Y1(t) ? CV_Y1(t) - y : h;
+  PX_BLEND((size_t)(c1 - c0) * (size_t)(r1 - r0));
+  for (int r = r0; r < r1; r++) {
+    const uint8_t *src = cov + (size_t)r * (size_t)stride;
+    uint16_t *dst = cv_ptr(t, x, y + r);
+    for (int c = c0; c < c1; c++) {
+      const int a = src[c];
+      if (a == 0) continue;
+      dst[c] = a >= 254 ? ink : mix(dst[c], ink, a);
+    }
+  }
 }
 
-static void picker_arrow(int cx, int cy, bool right, uint16_t ink) {
-  chevron((float)cx, (float)cy, right, 6.0f, 2.6f, ink);
+/*
+ * The marks, and why they are tables.
+ *
+ * Every one of them used to be drawn live out of a stroke, a ring and a disc
+ * primitive, which took a square root per edge pixel per tile - a menu frame paid for
+ * five rows of them in every tile they touched, and the power mark was a ring
+ * and a stroke blended over each other, so the stem's root was inked twice.
+ *
+ * Now each mark is a signed distance, sampled once into a 24 x 24 coverage
+ * table in PSRAM the first time it is asked for, the way corner_cov() keeps
+ * its corners: the union of a mark's parts is the minimum of their
+ * distances, so a join is inked once. Drawing one is mask_blit(): a byte read
+ * and a mix per covered pixel, no float, no root. The geometry below is in
+ * the box's own pixels with (0, 0) at its centre, y down.
+ */
+#define ICON_BOX 22
+#define ICON_HW 1.25f /* half of the 2.5 px stroke */
+#define ICON_PX (ICON_BOX + 2) /* the box and a pixel of edge round it */
+
+typedef enum {
+  ICON_BACK,     /* an arrow: the way out of a screen */
+  ICON_PREV,     /* a chevron: the page or the item before */
+  ICON_NEXT,     /* a chevron: the page or the item after, and a row that opens a screen */
+  ICON_BOLT,     /* the flash */
+  ICON_STAR,     /* a favourite */
+  ICON_POWER,    /* the power mark: a ring open at the top, and its stem */
+  ICON_LOOK,     /* the four frames, one of them chosen */
+  ICON_GALLERY,  /* the four frames, all of them */
+  ICON_ROLL,     /* two rings: the party and its guests */
+  ICON_SETTINGS, /* three tracks with their knobs */
+  ICON_N
+} icon_t;
+
+typedef struct {
+  uint8_t x0, y0, x1, y1; /* the inked part of the table */
+  uint8_t cov[ICON_PX * ICON_PX];
+} icon_mask_t;
+
+/* 10 x 580 bytes of PSRAM; two bytes of internal SRAM say which are built. */
+static EXT_RAM_BSS_ATTR icon_mask_t s_icons[ICON_N];
+static uint16_t s_icon_built;
+_Static_assert(ICON_N <= 16, "s_icon_built has a bit per mark");
+
+static float icon_clamp01(float v) { return v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v; }
+static float icon_min(float a, float b) { return a < b ? a : b; }
+
+/* Distance to the segment a-b, less the stroke's half width. */
+static float sd_line(float x, float y, float ax, float ay, float bx, float by) {
+  const float vx = bx - ax, vy = by - ay, qx = x - ax, qy = y - ay;
+  const float t = icon_clamp01((qx * vx + qy * vy) / (vx * vx + vy * vy));
+  const float dx = qx - t * vx, dy = qy - t * vy;
+  return sqrtf(dx * dx + dy * dy) - ICON_HW;
 }
 
-static void arrow_glyph(int cx, int cy, bool right, uint16_t ink) {
-  chevron((float)cx, (float)cy, right, 11.0f, 4.0f, ink);
+/* A box of half sides hx, hy round (cx, cy), corners of radius r: filled. */
+static float sd_box(float x, float y, float cx, float cy, float hx, float hy, float r) {
+  const float qx = fabsf(x - cx) - (hx - r), qy = fabsf(y - cy) - (hy - r);
+  const float ox = qx > 0.0f ? qx : 0.0f, oy = qy > 0.0f ? qy : 0.0f;
+  return sqrtf(ox * ox + oy * oy) + icon_min(qx > qy ? qx : qy, 0.0f) - r;
 }
 
-static void back_glyph(int cx, int cy, uint16_t ink) { arrow_glyph(cx, cy, false, ink); }
+/* The same box as a 2.5 px outline whose outer edge is the box's edge. */
+static float sd_box_line(float x, float y, float cx, float cy, float hx, float hy, float r) {
+  return fabsf(sd_box(x, y, cx, cy, hx - ICON_HW, hy - ICON_HW, r - ICON_HW)) - ICON_HW;
+}
+
+/* A ring of radius r round (cx, cy), stroked. */
+static float sd_ring(float x, float y, float cx, float cy, float r) {
+  const float dx = x - cx, dy = y - cy;
+  return fabsf(sqrtf(dx * dx + dy * dy) - r) - ICON_HW;
+}
+
+/* A filled polygon: distance to the nearest edge, negative inside (even-odd). */
+static float sd_poly(float x, float y, const float (*v)[2], int n) {
+  float d = 1e9f;
+  bool inside = false;
+  for (int i = 0, j = n - 1; i < n; j = i++) {
+    const float ax = v[j][0], ay = v[j][1], bx = v[i][0], by = v[i][1];
+    d = icon_min(d, sd_line(x, y, ax, ay, bx, by) + ICON_HW);
+    if ((by > y) != (ay > y) && x < ax + (bx - ax) * (y - ay) / (by - ay)) inside = !inside;
+  }
+  return inside ? -d : d;
+}
+
+/* The power ring: radius 8 round (0, 1), open at the top from -40 to +40
+ * degrees, round ends. */
+static float sd_power_ring(float x, float y) {
+  const float cy = 1.0f, r = 8.0f, s = 0.6427876f, c = 0.7660444f; /* sin, cos 40 deg */
+  const float dx = x, dy = y - cy;
+  /* Inside the gap, measured from the top clockwise: the nearer end. */
+  if (dy < 0.0f && fabsf(dx) * c < -dy * s) {
+    const float ex = dx < 0.0f ? -r * s : r * s, ey = -r * c;
+    const float qx = dx - ex, qy = dy - ey;
+    return sqrtf(qx * qx + qy * qy) - ICON_HW;
+  }
+  return fabsf(sqrtf(dx * dx + dy * dy) - r) - ICON_HW;
+}
+
+/* Signed distance from (x, y) to mark `id`. */
+static float icon_sd(icon_t id, float x, float y) {
+  switch (id) {
+    case ICON_BACK: /* a shaft and a head, distinct from the chevron at a glance */
+      return icon_min(sd_line(x, y, -8.0f, 0.0f, 8.0f, 0.0f),
+                      icon_min(sd_line(x, y, -8.0f, 0.0f, -1.0f, -7.0f),
+                               sd_line(x, y, -8.0f, 0.0f, -1.0f, 7.0f)));
+    case ICON_PREV:
+    case ICON_NEXT: {
+      const float d = id == ICON_NEXT ? 1.0f : -1.0f;
+      return icon_min(sd_line(x, y, -3.75f * d, -7.0f, 3.75f * d, 0.0f),
+                      sd_line(x, y, -3.75f * d, 7.0f, 3.75f * d, 0.0f));
+    }
+    case ICON_BOLT: {
+      static const float V[7][2] = {
+          {-0.4f, -8.0f}, {4.2f, -8.0f}, {1.2f, -1.6f}, {4.6f, -1.6f},
+          {-2.2f, 8.0f},  {-0.4f, 0.8f}, {-4.2f, 0.8f},
+      };
+      return sd_poly(x, y, V, 7);
+    }
+    case ICON_STAR: {
+      /* Five points, outer radius 9.5 and inner 4.2, point up, set 0.6 px
+       * low so the mass sits on the box's centre rather than its tips. */
+      float v[10][2];
+      for (int i = 0; i < 10; i++) {
+        const float a = (float)i * 0.62831853f; /* 36 degrees */
+        const float rr = (i & 1) ? 4.2f : 9.5f;
+        v[i][0] = rr * sinf(a);
+        v[i][1] = -rr * cosf(a) + 0.6f;
+      }
+      return sd_poly(x, y, (const float (*)[2])v, 10);
+    }
+    case ICON_POWER:
+      return icon_min(sd_power_ring(x, y), sd_line(x, y, 0.0f, -10.0f, 0.0f, 0.0f));
+    case ICON_LOOK:
+    case ICON_GALLERY: {
+      /* Four cells of 9.5 with a 3 px gap: the box exactly. */
+      float d = 1e9f;
+      for (int n = 0; n < 4; n++) {
+        const float cx = (n % 2) ? 6.25f : -6.25f, cy = (n / 2) ? 6.25f : -6.25f;
+        const bool solid = id == ICON_GALLERY || n == 1;
+        d = icon_min(d, solid ? sd_box(x, y, cx, cy, 4.75f, 4.75f, 1.5f)
+                              : sd_box_line(x, y, cx, cy, 4.75f, 4.75f, 1.5f));
+      }
+      return d;
+    }
+    case ICON_ROLL:
+      return icon_min(sd_ring(x, y, -3.75f, 0.0f, 6.0f), sd_ring(x, y, 3.75f, 0.0f, 6.0f));
+    case ICON_SETTINGS: {
+      static const float KNOB[3] = {-4.5f, 3.5f, -1.0f};
+      float d = 1e9f;
+      for (int n = 0; n < 3; n++) {
+        const float ty = -7.0f + 7.0f * (float)n;
+        d = icon_min(d, sd_line(x, y, -9.75f, ty, 9.75f, ty));
+        const float kx = x - KNOB[n], ky = y - ty;
+        d = icon_min(d, sqrtf(kx * kx + ky * ky) - 3.25f);
+      }
+      return d;
+    }
+    default: return 1e9f;
+  }
+}
+
+/* The table for `id`, sampled on first use. Recording calls this, so the
+ * replay never builds anything. */
+static const icon_mask_t *icon_mask(icon_t id) {
+  icon_mask_t *m = &s_icons[id];
+  if (s_icon_built & (1u << id)) return m;
+  int x0 = ICON_PX, y0 = ICON_PX, x1 = 0, y1 = 0;
+  for (int j = 0; j < ICON_PX; j++) {
+    for (int i = 0; i < ICON_PX; i++) {
+      const float x = (float)i + 0.5f - ICON_PX / 2.0f, y = (float)j + 0.5f - ICON_PX / 2.0f;
+      const int k = (int)(icon_clamp01(0.5f - icon_sd(id, x, y)) * 255.0f + 0.5f);
+      m->cov[j * ICON_PX + i] = (uint8_t)k;
+      if (k == 0) continue;
+      if (i < x0) x0 = i;
+      if (j < y0) y0 = j;
+      if (i + 1 > x1) x1 = i + 1;
+      if (j + 1 > y1) y1 = j + 1;
+    }
+  }
+  if (x1 <= x0) x0 = y0 = x1 = y1 = 0;
+  m->x0 = (uint8_t)x0; m->y0 = (uint8_t)y0; m->x1 = (uint8_t)x1; m->y1 = (uint8_t)y1;
+  s_icon_built |= (uint16_t)(1u << id);
+  return m;
+}
+
+/** Mark `id` centred on (cx, cy), in `ink`. */
+static void icon(icon_t id, int cx, int cy, uint16_t ink) {
+  const icon_mask_t *m = icon_mask(id);
+  if (m->x1 <= m->x0) return;
+  mask_blit(m->cov + (size_t)m->y0 * ICON_PX + m->x0, m->x1 - m->x0, m->y1 - m->y0, ICON_PX,
+            cx - ICON_PX / 2 + m->x0, cy - ICON_PX / 2 + m->y0, ink);
+}
 
 /* ------------------------------------------------------------------ */
 /* Configuration writes                                                */
@@ -3252,15 +3340,14 @@ static void draw_header(screen_t s) {
   const int cap_x = hd_plate_x(s);
   fill(PAGE_M, HEAD_H - 2, UI_W - 2 * PAGE_M, 1, K_RULE);
 
-  /* Back, as a system button on the hand's side. The mark is back_glyph(),
-   * which is the same chevron a row that opens a screen carries, at the scale
-   * a system button wants and pointing the other way - so the two read as one
-   * family. */
+  /* Back, as a system button on the hand's side. The mark is ICON_BACK, an
+   * arrow: the pager's chevrons are the item before and after, and the way
+   * out of a screen is not the item before. */
   const bool down = s_pressed == IT_BACK;
   const int d = down ? 1 : 0;
   const int bx = hd_btn_x();
   button(bx, HD_BTN_Y, HD_BTN_W, HD_BTN, down);
-  back_glyph(bx + HD_BTN_W / 2 + d, HD_BTN_Y + HD_BTN / 2 + d, K_INK);
+  icon(ICON_BACK, bx + HD_BTN_W / 2 + d, HD_BTN_Y + HD_BTN / 2 + d, K_INK);
   /* Nothing sets focus to IT_BACK today - touch deliberately does not, and
    * there are no direction keys on this body - but the button is a focusable
    * control the moment there are, and a header that cannot show focus is the
@@ -3437,7 +3524,7 @@ static void draw_row_face(int x, int w, int y, int h, int idx, bool numbered, bo
     }
   }
 
-  if (arrow && enabled) picker_arrow(x + w - 22, y + h / 2, true, ink);
+  if (arrow && enabled) icon(ICON_NEXT, x + w - INSET_TEXT - 5, y + h / 2, ink);
   if (focused) focus_inset(x, y, w, h, lit ? lit_ink : K_INK);
 }
 
@@ -3734,9 +3821,8 @@ static void menu_card_line(char *out, size_t cap) {
  * none, because the icons it used to have were Windows 98 tile artwork drawn
  * for a 250 x 205 tile - at a 50 px row they were twice the height of the row,
  * and scaling tile art down is not a pictogram, it is a smaller mess. So they
- * are drawn here out of the same primitives every other shape on the screen
- * uses: a filled rectangle, a disc, a stroke. No file, no licence, nothing to
- * bake, and they inherit the antialiasing the rest of the interface has.
+ * are marks from the icon set (icon_sd()): no file, no licence, nothing to
+ * bake.
  *
  * One construction rule, which is what makes six drawings read as one set: a
  * 22 px box, a 2.5 px stroke, and every mark built from the product's own
@@ -3746,50 +3832,13 @@ static void menu_card_line(char *out, size_t cap) {
  * knobs at different positions, which is what every screen behind that row
  * actually looks like; POWER is the power mark.
  */
-#define MZ_ICON 22
+#define MZ_ICON ICON_BOX
 
 static void menu_icon(int i, int cx, int cy, uint16_t ink) {
-  const float k = 2.5f;
-  const int r = MZ_ICON / 2;
-  switch (i) {
-    case 1: { /* LOOK: the four, one of them chosen */
-      const int c = 9, g = 3;
-      for (int n = 0; n < 4; n++) {
-        const int bx = cx - c - g / 2 + (n % 2) * (c + g);
-        const int by = cy - c - g / 2 + (n / 2) * (c + g);
-        if (n == 1) fill(bx, by, c, c, ink);
-        else round_outline(bx, by, c, c, 2, ink);
-      }
-      break;
-    }
-    case 2: { /* GALLERY: the four, all of them */
-      const int c = 9, g = 3;
-      for (int n = 0; n < 4; n++) {
-        fill(cx - c - g / 2 + (n % 2) * (c + g), cy - c - g / 2 + (n / 2) * (c + g), c, c, ink);
-      }
-      break;
-    }
-    case 3: { /* ROLL: two rings, overlapping */
-      ring(cx - 4, cy, 7.0f, k - 0.5f, ink);
-      ring(cx + 4, cy, 7.0f, k - 0.5f, ink);
-      break;
-    }
-    case 4: { /* SETTINGS: three tracks, three knobs */
-      for (int n = 0; n < 3; n++) {
-        const int ty = cy - 7 + n * 7;
-        stroke((float)(cx - r + 2), (float)ty, (float)(cx + r - 2), (float)ty, k - 0.7f, ink);
-        disc(cx - r + 6 + n * 5, ty, 2.6f, ink);
-      }
-      break;
-    }
-    default: { /* POWER: the mark everything uses */
-      /* The arc ran 60..480 degrees in 6-degree strokes: a full ring, with the
-       * first sixty degrees drawn twice. One ring says the same thing. */
-      ring(cx, cy + 1, 8.0f, k, ink);
-      stroke((float)cx, (float)(cy - 10), (float)cx, (float)(cy + 1), k, ink);
-      break;
-    }
-  }
+  /* Row i of the menu; 0 is the card, which has the four-mark instead. */
+  static const icon_t ROW_ICON[6] = {ICON_LOOK, ICON_LOOK, ICON_GALLERY, ICON_ROLL, ICON_SETTINGS,
+                                     ICON_POWER};
+  icon(ROW_ICON[i >= 0 && i < 6 ? i : 5], cx, cy, ink);
 }
 
 /**
@@ -3845,7 +3894,7 @@ static void menu_words(int i, int x, int y, int w, int h, uint16_t ink, bool wit
      * screen carries one everywhere else in the product. The menu was the one
      * list without them, which is the inconsistency rather than the
      * restraint. */
-    picker_arrow(rx - 3, y + h / 2, true, ink);
+    icon(ICON_NEXT, rx - 5, y + h / 2, ink);
 
     if (MENU_DEST[i] == SCR_GALLERY) {
       /* The count, in the face every other reading on the interface is set
@@ -4065,7 +4114,6 @@ static void dl_exec(const dl_cmd_t *c) {
     case DL_ROUTLINE: round_outline(c->a, c->b, c->c, c->d, c->e, c->col); break;
     case DL_CUT: cut_corners(c->a, c->b, c->c, c->d, c->f0, c->col); break;
     case DL_DISC: disc(c->a, c->b, c->f0, c->col); break;
-    case DL_STROKE: stroke(c->f0, c->f1, c->f2, c->f3, c->f4, c->col); break;
     case DL_SCRIM: scrim(c->a, c->b, c->c, c->d, c->col, c->e); break;
     case DL_TEXT: text((const ui_font_t *)c->p, c->a, c->b, s_dl.str + c->g, c->col); break;
     case DL_FIELD: boot_field(c->f0, c->a, c->b, c->f1); break;
@@ -4073,7 +4121,7 @@ static void dl_exec(const dl_cmd_t *c) {
     case DL_BLIT: blit_rows((const uint16_t *)c->p, c->a, c->b, c->c, c->d, c->e); break;
     case DL_BITS: draw_bits((const uint8_t *)c->p, c->a, c->b, c->c, c->d, c->e, c->g, c->col); break;
     case DL_FOCUS: focus_ring(c->a, c->b, c->c, c->d, c->e, c->col); break;
-    case DL_RING: ring(c->a, c->b, c->f0, c->f1, c->col); break;
+    case DL_MASK: mask_blit((const uint8_t *)c->p, c->a, c->b, c->c, c->d, c->e, c->col); break;
     default: break;
   }
 }
@@ -4148,8 +4196,8 @@ static void dl_profile(const char *what, gfx_draw_fn draw, void *ctx) {
   /* In enum order. Unsized, so the assert below can see a name added or
    * dropped: a stale "odd" sat between "text" and "field" here and every op
    * after it printed under its neighbour's name. */
-  static const char *const OP[] = {"fill", "rrect", "routl", "cut", "disc", "stroke", "scrim",
-                                   "text", "field", "shblit", "blit", "bits", "focus", "ring"};
+  static const char *const OP[] = {"fill", "rrect", "routl", "cut", "disc", "scrim", "text",
+                                   "field", "shblit", "blit", "bits", "focus", "mask"};
   _Static_assert(sizeof OP / sizeof OP[0] == DL_OPS, "one name per display-list op, in enum order");
   dl_begin();
   draw(ctx);
@@ -4318,10 +4366,10 @@ static void draw_shoot(void) {
   const int sbx = sh_back_x();
   button(sbx, SH_BACK_Y, SH_BACK_W, SH_BACK_H, down);
   {
-    const int gw = 24, gap = 8;
+    const int gw = ICON_BOX, gap = 8;
     const int tw = text_w(K_TYPE_CAPTION, "MENU");
     const int gx = sbx + (SH_BACK_W - (gw + gap + tw)) / 2 + d;
-    back_glyph(gx + gw / 2, SH_BACK_Y + SH_BACK_H / 2 + d, K_INK);
+    icon(ICON_BACK, gx + gw / 2, SH_BACK_Y + SH_BACK_H / 2 + d, K_INK);
     AUDIT_ALIGN(1); /* the glyph and the word are centred as one */
     text(K_TYPE_CAPTION, gx + gw + gap, SH_BACK_Y + (SH_BACK_H - K_TYPE_CAPTION->line_h) / 2 + d, "MENU",
          K_INK);
@@ -4339,11 +4387,9 @@ static void draw_shoot(void) {
   char cams[24];
   snprintf(cams, sizeof cams, "%d/4", live);
 
-  /* The bolt labels the flash panel so the word does not have to. It is the
-   * one drawn glyph in the build - the face is ASCII 32..126 and the Windows
-   * 98 archive has no flash asset - and it was drawn for the flash control
-   * that used to sit on this screen. This is where it went. */
-  const int bolt_w = 8, bolt_gap = 8;
+  /* The bolt labels the flash panel so the word does not have to. ICON_BOLT
+   * is 16 px tall and 10 wide in its box; the panel is 28. */
+  const int bolt_w = 10, bolt_gap = 6;
   const char *const mode = mode_is_quad() ? "QUAD" : "WIGGLE";
   const int w_mode = text_w(K_TYPE_CAPTION, mode) + 2 * SH_PN_PAD;
   const int w_flash = bolt_w + bolt_gap + text_w(K_TYPE_CAPTION, flash) + 2 * SH_PN_PAD;
@@ -4426,7 +4472,7 @@ static void draw_shoot(void) {
     /* The flash panel by hand, because it is the one with a glyph in it. */
     const uint16_t ink = set_down ? K_PRESS_INK : K_INK;
     round_rect(flash_x, SH_PN_Y, w_flash, SH_PN_H, UI_R, set_down ? K_PRESS : K_SURFACE);
-    bolt(flash_x + SH_PN_PAD, SH_PN_Y + (SH_PN_H - 14) / 2, 1, ink);
+    icon(ICON_BOLT, flash_x + SH_PN_PAD + bolt_w / 2, SH_PN_Y + SH_PN_H / 2, ink);
     text(K_TYPE_CAPTION, flash_x + SH_PN_PAD + bolt_w + bolt_gap,
          SH_PN_Y + (SH_PN_H - K_TYPE_CAPTION->line_h) / 2, flash, ink);
   }
@@ -4863,9 +4909,9 @@ static void draw_look(void) {
   const int px2 = lk_prev_x();
   const bool pd = band_rel(p0, LK_IT_PREV, 2) == 0, nd = band_rel(p0, LK_IT_PREV, 2) == 1;
   control(px2, by, LK_PICK_BTN, LK_CTL_H, UI_R, pd, K_SURFACE);
-  picker_arrow(px2 + LK_PICK_BTN / 2, by + LK_CTL_H / 2, false, pd ? K_PRESS_INK : nink);
+  icon(ICON_PREV, px2 + LK_PICK_BTN / 2, by + LK_CTL_H / 2, pd ? K_PRESS_INK : nink);
   control(nx, by, LK_PICK_BTN, LK_CTL_H, UI_R, nd, K_SURFACE);
-  picker_arrow(nx + LK_PICK_BTN / 2, by + LK_CTL_H / 2, true, nd ? K_PRESS_INK : nink);
+  icon(ICON_NEXT, nx + LK_PICK_BTN / 2, by + LK_CTL_H / 2, nd ? K_PRESS_INK : nink);
 
   /* The name, big, hung off the card's far rule with the position above it -
    * the reference anchors a card's content to one corner and leaves the air
@@ -4991,37 +5037,11 @@ static void gal_origin(int slot, int *x, int *y) {
   *y = G_Y0 + (slot / G_COLS) * G_PITCH;
 }
 
-/* ------------------------------------------------------------------ */
-/* The favourite mark                                                  */
-/*                                                                     */
-/* A bitmap, not a scan-converted polygon. The mark has to be legible   */
-/* at 11 px in the corner of a 252 px tile, and at that size a computed */
-/* five-point star is a blob with three of its points lost to rounding. */
-/* The font is ASCII 32..126 and carries no star glyph, so this is the  */
-/* only way to draw one at all.                                        */
-/*                                                                     */
-/* One silhouette, two inks. An outline form was tried first and does   */
-/* not survive: at 11 px a hollow star is six disconnected 1 px runs and */
-/* reads as noise beside the word next to it - checked in the host       */
-/* preview, which is what that tool is for. Ink means it is a            */
-/* favourite, grey means the control would make it one, and the shape    */
-/* stays the same so the tile mark and the button are one thing.         */
-/* ------------------------------------------------------------------ */
-#define STAR_W 11
-#define STAR_H 10
-
-static const char *const STAR_ROWS[STAR_H] = {
-    ".....#.....", "....###....", "....###....", "###########", ".#########.",
-    "..#######..", "..#######..", ".###...###.", ".##.....##.", "#.........#",
-};
-
-static void star(int x, int y, uint16_t ink) {
-  for (int r = 0; r < STAR_H; r++) {
-    for (int c = 0; c < STAR_W; c++) {
-      if (STAR_ROWS[r][c] == '#') fill(x + c, y + r, 1, 1, ink);
-    }
-  }
-}
+/* The favourite mark is ICON_STAR, filled, on a round plate in the tile's
+ * corner: the plate keeps it legible over a bright sky. The 11 px bitmap it
+ * replaces had to be a bitmap because it was 11 px; at the icon set's 22 px
+ * box a polygon keeps all five points. */
+#define STAR_PLATE 26
 
 static void gal_blit(const uint16_t *px, int x, int y) {
   blit_rows(px, G_TILE_W, x, y, G_TILE_W, G_TILE_H);
@@ -5200,9 +5220,9 @@ static void draw_gallery(void) {
      * On its own dark plate, because the mark sits over a photograph and a
      * white star on a bright sky is not a mark. */
     if (slots[i].favorite) {
-      const int sx = x + G_TILE_W - STAR_W - 6, sy = y + 5;
-      fill(sx - 3, sy - 3, STAR_W + 6, STAR_H + 6, K_SURFACE);
-      star(sx, sy, K_INK);
+      const int sx = x + G_TILE_W - GRID - STAR_PLATE, sy = y + GRID;
+      round_rect(sx, sy, STAR_PLATE, STAR_PLATE, R_PILL(STAR_PLATE), K_SURFACE);
+      icon(ICON_STAR, sx + STAR_PLATE / 2, sy + STAR_PLATE / 2, K_INK);
     }
   }
 
@@ -5222,11 +5242,11 @@ static void draw_gallery(void) {
     const bool has_next = gallery_page() < pages - 1;
     const int px = hd_prev_x(), nx = hd_next_x();
     button(px, HD_BTN_Y, HD_BTN_W, HD_BTN, pd);
-    arrow_glyph(px + HD_BTN_W / 2 + pd, HD_BTN_Y + HD_BTN / 2 + pd, false,
-                has_prev ? K_INK : K_INK_QUIET);
+    icon(ICON_PREV, px + HD_BTN_W / 2 + pd, HD_BTN_Y + HD_BTN / 2 + pd,
+         has_prev ? K_INK : K_INK_QUIET);
     button(nx, HD_BTN_Y, HD_BTN_W, HD_BTN, nd);
-    arrow_glyph(nx + HD_BTN_W / 2 + nd, HD_BTN_Y + HD_BTN / 2 + nd, true,
-                has_next ? K_INK : K_INK_QUIET);
+    icon(ICON_NEXT, nx + HD_BTN_W / 2 + nd, HD_BTN_Y + HD_BTN / 2 + nd,
+         has_next ? K_INK : K_INK_QUIET);
     if (foc(SCR_GALLERY, G_IT_PREV)) focus_inset(px, HD_BTN_Y, HD_BTN_W, HD_BTN, K_INK);
     if (foc(SCR_GALLERY, G_IT_NEXT)) focus_inset(nx, HD_BTN_Y, HD_BTN_W, HD_BTN, K_INK);
   }
@@ -5756,7 +5776,7 @@ static void draw_photo(void) {
     const int bd = bdown ? 1 : 0;
     const int bx0 = hd_btn_x();
     button(bx0, HD_BTN_Y, HD_BTN_W, HD_BTN, bdown);
-    back_glyph(bx0 + HD_BTN_W / 2 + bd, HD_BTN_Y + HD_BTN / 2 + bd, K_INK);
+    icon(ICON_BACK, bx0 + HD_BTN_W / 2 + bd, HD_BTN_Y + HD_BTN / 2 + bd, K_INK);
     if (foc(SCR_PHOTO, IT_BACK)) focus_inset(bx0, HD_BTN_Y, HD_BTN_W, HD_BTN, K_INK);
   }
 
@@ -5906,11 +5926,11 @@ static void draw_photo(void) {
     const int ppd = s_pressed == P_IT_PREV ? 1 : 0, nnd = s_pressed == P_IT_NEXT ? 1 : 0;
     const int nx0 = bx + PH_PN_W + PH_BTN_GAP;
     button(bx, PH_PN_Y, PH_PN_W, PH_PN_H, ppd != 0);
-    arrow_glyph(bx + PH_PN_W / 2 + ppd, PH_PN_Y + PH_PN_H / 2 + ppd, false,
-                has_prev ? K_INK : K_INK_QUIET);
+    icon(ICON_PREV, bx + PH_PN_W / 2 + ppd, PH_PN_Y + PH_PN_H / 2 + ppd,
+         has_prev ? K_INK : K_INK_QUIET);
     button(nx0, PH_PN_Y, PH_PN_W, PH_PN_H, nnd != 0);
-    arrow_glyph(nx0 + PH_PN_W / 2 + nnd, PH_PN_Y + PH_PN_H / 2 + nnd, true,
-                has_next ? K_INK : K_INK_QUIET);
+    icon(ICON_NEXT, nx0 + PH_PN_W / 2 + nnd, PH_PN_Y + PH_PN_H / 2 + nnd,
+         has_next ? K_INK : K_INK_QUIET);
   }
 
   /* The three controls, stacked at the foot of the column: DELETE at the top,
@@ -5942,8 +5962,8 @@ static void draw_photo(void) {
   const uint16_t fav_ink = fd ? K_PRESS_INK : s_photo_fav ? K_ON_INK : K_INK;
   if (on) round_rect(bx, fy, bw, bh, UI_R, fd ? K_PRESS : K_ON);
   else button(bx, fy, bw, bh, false);
-  star(bx + 14, fy + (bh - STAR_H) / 2, on ? fav_ink : K_INK_QUIET);
-  text_mid(K_TYPE_CAPTION, bx + 14 + STAR_W + (bw - 14 - STAR_W) / 2, fy + (bh - K_TYPE_CAPTION->line_h) / 2,
+  icon(ICON_STAR, bx + 14 + ICON_BOX / 2, fy + bh / 2, on ? fav_ink : K_INK_QUIET);
+  text_mid(K_TYPE_CAPTION, bx + 14 + ICON_BOX + (bw - 14 - ICON_BOX) / 2, fy + (bh - K_TYPE_CAPTION->line_h) / 2,
            "FAVOURITE", fav_ink);
   if (foc(SCR_PHOTO, P_IT_FAV)) focus_inset(bx, fy, bw, bh, K_INK);
 
@@ -6840,9 +6860,9 @@ static void draw_sound(void) {
     const int by = sn_btn_y(), nx = sn_next_x(), px = sn_prev_x();
     const bool pd = s_pressed == SN_IT_PREV, nd = s_pressed == SN_IT_NEXT;
     control(px, by, SN_BTN, SN_BTN, UI_R - 2, pd, K_ROW);
-    picker_arrow(px + SN_BTN / 2, by + SN_BTN / 2, false, pd ? K_PRESS_INK : K_INK);
+    icon(ICON_PREV, px + SN_BTN / 2, by + SN_BTN / 2, pd ? K_PRESS_INK : K_INK);
     control(nx, by, SN_BTN, SN_BTN, UI_R - 2, nd, K_ROW);
-    picker_arrow(nx + SN_BTN / 2, by + SN_BTN / 2, true, nd ? K_PRESS_INK : K_INK);
+    icon(ICON_NEXT, nx + SN_BTN / 2, by + SN_BTN / 2, nd ? K_PRESS_INK : K_INK);
     if (foc(SCR_SOUND, SN_IT_PREV)) focus_inset(px, by, SN_BTN, SN_BTN, K_INK);
     if (foc(SCR_SOUND, SN_IT_NEXT)) focus_inset(nx, by, SN_BTN, SN_BTN, K_INK);
   }
