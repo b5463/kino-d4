@@ -58,11 +58,11 @@ Dialogs are questions and nothing else. Seven exist: `DLG_RESTART`, `DLG_DELETE`
 The shutter sits on the body's top wall at the +X end. The right hand holds that end, and the only digit free for the glass is the right thumb, pivoting at the panel's right edge. It reaches about 45 mm, the right 400 px.
 
 - Chrome goes on the hand's side. `body.hand` is read once per frame into `s_right_hand`, and every rectangle with a side is an inset from the hand's edge through `from_hand()`. A left-handed shooter is a config write, not a layout.
-- Back is a 52 px square at the hand's edge of the header. On GALLERY the page pair sits inward of it. PREV is always the left of the pair: reading order does not mirror.
+- Back is a 52 px square at the hand's edge of the header. On GALLERY the page pair sits inward of it. PREV is always the left of a pair, on GALLERY, PHOTO and LOOK: the slots mirror with the hand, reading order does not.
 - The menu card, the photo column and the finder's MENU button sit on the hand's side too.
 - `HEAD_H` is fixed at 62 px on every detail screen.
 - Every touch target is at least 52 px in both directions: 6.1 mm at 8.5 px/mm. On SHOOT and PHOTO, where chrome sits on a picture, the target reaches `HIT_SLOP` past the drawn button.
-- `host_preview` sweeps every hit map for both hands. It fails a target under 52 px, and chrome on the wrong half or stretched to the far edge.
+- `host_preview` sweeps every hit map for both hands. It fails a target under 52 px, chrome on the wrong half or stretched to the far edge, and a pair with NEXT left of PREV.
 
 | Constant | Value | Meaning |
 |---|---|---|

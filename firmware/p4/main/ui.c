@@ -4653,14 +4653,18 @@ static void look_set_mono(bool mono) {
 /*
  * The picker's two buttons, at the hero card's foot on the hand's side, and
  * the two x positions the card's type is laid between - the far margin and
- * the picker's near edge.
+ * the picker's near edge. PREV is always the left of the pair, as in the header
+ * pair: the slots mirror with the hand, reading order does not. The outer
+ * slot is the pair's page-side edge for both hands.
  */
-static int lk_next_x(void) { return from_hand(PAGE_M + 2 * GRID, LK_PICK_BTN); }
-static int lk_prev_x(void) { return from_hand(PAGE_M + 2 * GRID + LK_PICK_BTN + GRID, LK_PICK_BTN); }
+static int lk_pair_inner_x(void) { return from_hand(PAGE_M + 2 * GRID, LK_PICK_BTN); }
+static int lk_pair_outer_x(void) { return from_hand(PAGE_M + 2 * GRID + LK_PICK_BTN + GRID, LK_PICK_BTN); }
+static int lk_next_x(void) { return s_right_hand ? lk_pair_inner_x() : lk_pair_outer_x(); }
+static int lk_prev_x(void) { return s_right_hand ? lk_pair_outer_x() : lk_pair_inner_x(); }
 static int lk_text_x0(void) {
-  return s_right_hand ? PAGE_M + INSET_TEXT : lk_prev_x() + LK_PICK_BTN + 3 * GRID;
+  return s_right_hand ? PAGE_M + INSET_TEXT : lk_pair_outer_x() + LK_PICK_BTN + 3 * GRID;
 }
-static int lk_text_x1(void) { return s_right_hand ? lk_prev_x() - 3 * GRID : UI_W - PAGE_M - INSET_TEXT; }
+static int lk_text_x1(void) { return s_right_hand ? lk_pair_outer_x() - 3 * GRID : UI_W - PAGE_M - INSET_TEXT; }
 
 /*
  * The three columns under the card, in the order the hand wants them.

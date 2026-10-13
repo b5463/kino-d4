@@ -1312,7 +1312,9 @@ static int contrast_report(void) {
  * The same map checks the hand: a target that is chrome on the hand's side
  * (from_hand() in ui.c) must have its centre on that half of the panel, for
  * both hands. A layout that hard-codes a side passes for one hand and fails
- * here for the other.
+ * here for the other. A previous/next pair also keeps its reading order for
+ * both hands: PREV left of NEXT. Mirroring the whole pair through from_hand()
+ * flips it for the left hand.
  */
 #define TARGET_MIN 52
 
@@ -1349,6 +1351,17 @@ static const struct {
     {SCR_GALLERY, G_IT_NEXT, "GALLERY page on"},
     {SCR_LOOK, LK_IT_PREV, "LOOK previous"},
     {SCR_LOOK, LK_IT_NEXT, "LOOK next"},
+};
+
+/* Previous/next pairs: PREV's centre left of NEXT's, whichever hand. */
+static const struct {
+  screen_t sc;
+  int prev, next;
+  const char *what;
+} PAIR_ORDER[] = {
+    {SCR_PHOTO, P_IT_PREV, P_IT_NEXT, "PHOTO pair"},
+    {SCR_GALLERY, G_IT_PREV, G_IT_NEXT, "GALLERY pair"},
+    {SCR_LOOK, LK_IT_PREV, LK_IT_NEXT, "LOOK pair"},
 };
 
 #define FINDING_MAX 96
@@ -1452,6 +1465,21 @@ static void sweep_targets(const char *name) {
       }
       finding(g_hand_bad, &g_hand_bad_n, name, msg);
     }
+  }
+
+  for (size_t i = 0; i < sizeof PAIR_ORDER / sizeof PAIR_ORDER[0]; i++) {
+    if (PAIR_ORDER[i].sc != s_screen) continue;
+    int pc = -1, nc = -1;
+    for (int k = 0; k < nr; k++) {
+      const int cx = (reg[k].x0 + reg[k].x1 + 1) / 2;
+      if (reg[k].id == PAIR_ORDER[i].prev) pc = cx;
+      if (reg[k].id == PAIR_ORDER[i].next) nc = cx;
+    }
+    if (pc < 0 || nc < 0 || pc < nc) continue;
+    char msg[96];
+    snprintf(msg, sizeof msg, "%s reads NEXT then PREV (x %d, %d) for a %s hand", PAIR_ORDER[i].what,
+             nc, pc, s_right_hand ? "right" : "left");
+    finding(g_hand_bad, &g_hand_bad_n, name, msg);
   }
 }
 
