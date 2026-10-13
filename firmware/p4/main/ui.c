@@ -2972,7 +2972,19 @@ static struct {
    * value, set by anim_tick() before the frame is drawn. See go(). */
   int scrim0, scrim_k;
   int32_t scrim_ms;
+  /* A person started this move: it runs on motion_by_hand() (move_ease()).
+   * Taken from s_by_hand when the move starts. */
+  bool by_hand;
 } s_anim;
+
+/*
+ * True while a tap's release or a key is being acted on, and only then: the
+ * touch path brackets activate() with it and handle_button() brackets the
+ * key. A move started inside the bracket is by hand. The review opening after
+ * a shot and closing on its clock, the cascade and the splash start outside
+ * it and stay on motion_smooth().
+ */
+static bool s_by_hand;
 
 static bool anim_active(void) { return s_anim.kind != ANIM_NONE; }
 
@@ -3019,6 +3031,7 @@ static void anim_report(const char *what) {
 
 static void anim_start_splash(void) {
   s_anim.kind = ANIM_SPLASH;
+  s_anim.by_hand = false;
   s_anim.scrim0 = s_anim.scrim_k = 0;
   s_anim.start_us = esp_timer_get_time();
   gfx_stats(&s_anim.f0, NULL);
@@ -3038,6 +3051,7 @@ static void anim_start_open(int row, bool opening, screen_t card, int ms) {
   s_anim.row = row;
   s_anim.opening = opening;
   s_anim.card = card;
+  s_anim.by_hand = s_by_hand;
   s_anim.scrim0 = s_anim.scrim_k = 0; /* go() sets the carry after this */
   /*
    * Two screens are too costly to draw on every frame of a move: SHOOT, whose
@@ -3082,6 +3096,7 @@ static void anim_start_slide(screen_t to, bool from_right, int ms) {
   s_anim.kind = ANIM_SLIDE;
   s_anim.card = to;
   s_anim.from_right = from_right;
+  s_anim.by_hand = s_by_hand;
   s_anim.scrim0 = s_anim.scrim_k = 0;
   s_anim.snap = true;
   gfx_render_stash(render_screen, NULL);
@@ -3098,6 +3113,7 @@ static void anim_start_slide(screen_t to, bool from_right, int ms) {
  * that went to the panel any other way. */
 static void anim_start_cascade(int ms) {
   s_anim.kind = ANIM_CASCADE;
+  s_anim.by_hand = false;
   s_anim.scrim0 = s_anim.scrim_k = 0;
   s_anim.start_us = esp_timer_get_time();
   gfx_stats(&s_anim.f0, NULL);
@@ -3262,7 +3278,7 @@ static uint32_t anim_tick(void) {
     case ANIM_SLIDE: {
       /* The arriving screen covers o columns from its edge; the leaving one
        * moves 3/8 as far the other way, the parallax the compositor had. */
-      int o = (int)(ease_ui(t) * (float)UI_W);
+      int o = (int)((s_anim.by_hand ? motion_by_hand(t) : ease_ui(t)) * (float)UI_W);
       if (o < 0) o = 0;
       if (o > UI_W) o = UI_W;
       gfx_slide_show(o, (o * 3) / 8, s_anim.from_right);
@@ -8873,6 +8889,20 @@ static void render_cascade(void *ctx) {
   }
 }
 
+/*
+ * The row move's curve at p, the card's progress toward the full screen (1)
+ * from the row (0). Opening, p is the move's time; going back it is 1 - time.
+ *
+ * By hand the curve is applied to the time and flipped for the direction, so
+ * a back move leaves fast and settles into the row. motion_by_hand(p) going
+ * back would start dead and slam the card into the row at the end. Untouched,
+ * smootherstep, which is symmetric and needs no flip.
+ */
+static float move_ease(float p) {
+  if (!s_anim.by_hand) return ease_ui(p);
+  return s_anim.opening ? motion_by_hand(p) : 1.0f - motion_by_hand(1.0f - p);
+}
+
 static void open_frame(int row, float t) {
   int rx, ry, rw, rh;
   menu_rect(row, &rx, &ry, &rw, &rh);
@@ -8882,7 +8912,7 @@ static void open_frame(int row, float t) {
    * changes nothing. It landed on the pressed colour before, and snapped. */
   const uint16_t tint = menu_face(row, s_anim.opening);
 
-  const float e = ease_ui(t);
+  const float e = move_ease(t);
   int ox = lerpi(rx, 0, e), oy = lerpi(ry, 0, e);
   int ow = lerpi(rw, UI_W, e), oh = lerpi(rh, UI_H, e);
   if (ox < 0) ox = 0;
@@ -8929,10 +8959,12 @@ static void open_frame(int row, float t) {
      * by the screen behind it, edge to edge for the whole move - two cards
      * racing. The other column takes the first half of the move to leave
      * (and the second half to come back), so the screen unfolds into room
-     * that is already empty. */
+     * that is already empty. By hand it is the card's curve on that half:
+     * out in the first half of an open's time, back in the last half of a
+     * back move's. */
     const int rows_dir = r1x < cx0 ? -1 : 1;
     const int card_dir = -rows_dir;
-    const float ce = ease_ui(span01(t, 0.0f, 0.5f));
+    const float ce = s_anim.by_hand ? move_ease(t < 0.5f ? 2.0f * t : 1.0f) : ease_ui(span01(t, 0.0f, 0.5f));
     const int rows_travel = (int)(ce * (float)(r1w + MZ_M));
     const int card_travel = (int)(ce * (float)(cw0 + MZ_M));
 
@@ -9820,8 +9852,8 @@ static void on_button(button_id_t id, bool long_press) {
  * the safest camera-like reading of a single-stage button. On the review after
  * a shot, while its clock runs, it captures and the finder slides back in.
  *
- * Called only from ui_task, via the queue above. */
-static void handle_button(const btn_event_t *ev) {
+ * Called only from ui_task, via the queue above, through handle_button(). */
+static void key_acts(const btn_event_t *ev) {
   /* A long press does nothing. Every key acts on its down edge, so by the
    * time buttons.c reports the hold at 600 ms the press has been spent.
    * Acting on it again took a photograph and then armed the self-timer,
@@ -9865,6 +9897,13 @@ static void handle_button(const btn_event_t *ev) {
     return;
   }
   fire_shutter();
+}
+
+/* A key is a person: a move it starts runs on motion_by_hand(). */
+static void handle_button(const btn_event_t *ev) {
+  s_by_hand = true;
+  key_acts(ev);
+  s_by_hand = false;
 }
 
 /* Drained once per loop iteration, before anything reads the touch panel: a
@@ -10648,7 +10687,9 @@ static uint32_t ui_pass(void) {
          * disagree about what is selected. */
         if (s_dialog != DLG_NONE) s_dlg_focus = fired;
         else if (fired != IT_BACK && fired < item_count(s_screen)) s_focus[s_screen] = fired;
+        s_by_hand = true;
         activate(fired);
+        s_by_hand = false;
       } else {
         ui_render(render_screen, NULL);
       }

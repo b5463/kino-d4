@@ -55,6 +55,32 @@ static inline float motion_ease_out(float t) {
   return 1.0f - u * u * u;
 }
 
+/* Quadratic ease-out: the same shape, a softer start. Not in use: it is the
+ * fallback for motion_by_hand() below. */
+static inline float motion_ease_out_quad(float t) {
+  if (t <= 0.0f) return 0.0f;
+  if (t >= 1.0f) return 1.0f;
+  const float u = 1.0f - t;
+  return 1.0f - u * u;
+}
+
+/*
+ * The curve of a move a person started: a tap, a key, the shutter. Applied to
+ * the move's time, so the first frame answers the press. A move nobody touched
+ * (the review opening and closing on its own, the cascade, the splash) stays
+ * on motion_smooth().
+ *
+ * Cubic ease-out puts the card 11.0 % of the way there at 16 ms of an open and
+ * 13.5 % at 16 ms of a back move, about 1.5x the smootherstep peak speed in
+ * the first step. If that reads abrupt on the panel at 51-58 fps, set
+ * MOTION_HAND_QUAD to 1: quadratic ease-out, 7.5 % and 9.2 % at 16 ms. It is
+ * 0 until the bench says otherwise.
+ */
+#define MOTION_HAND_QUAD 0
+static inline float motion_by_hand(float t) {
+  return MOTION_HAND_QUAD ? motion_ease_out_quad(t) : motion_ease_out(t);
+}
+
 /* Quadratic ease-in: gathering speed and gone. The curve for something
  * leaving for good, the boot field's retreat. */
 static inline float motion_accel(float t) {
@@ -65,7 +91,8 @@ static inline float motion_accel(float t) {
 
 /* ---- moves between screens -------------------------------------------- */
 
-/* Going in is slower than coming back: opening is where you arrive. */
+/* Going in is slower than coming back: opening is where you arrive. A move a
+ * person started runs on motion_by_hand(), any other on motion_smooth(). */
 #define MOTION_OPEN_MS 420    /* a screen opening out of the row pressed */
 #define MOTION_BACK_MS 340    /* and closing back into it */
 #define MOTION_CASCADE_MS 700 /* the menu's rows arriving after the boot */

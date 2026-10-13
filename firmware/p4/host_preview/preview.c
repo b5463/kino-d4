@@ -1582,7 +1582,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 266
+#define PPMS_PER_HAND 261
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -1728,6 +1728,14 @@ static void scan_conditions(void) {
  * the renderer owns - so every frame of it is a still that can be held up
  * against the one before it.
  */
+/* go() as a tap's release calls it: inside the by-hand bracket, so the move
+ * runs on motion_by_hand() as it does on the glass. */
+static void tap_go(screen_t to, int ms) {
+  s_by_hand = true;
+  go(to, ms);
+  s_by_hand = false;
+}
+
 static void shot_anim(const char *name, screen_t from, screen_t to, int pressed) {
   s_screen = from;
   s_pressed = pressed;
@@ -1741,7 +1749,9 @@ static void shot_anim(const char *name, screen_t from, screen_t to, int pressed)
   g_anim = name;
   g_anim_n = 0;
   prev_vclock_us = 1000000; /* the renderer owns the clock from here */
-  go(to, MOTION_OPEN_MS);
+  /* A tap: anim_open is a row pressed, anim_back is BACK pressed, and BACK
+   * runs on MOTION_BACK_MS as go_back() does. */
+  tap_go(to, pressed < 0 ? MOTION_BACK_MS : MOTION_OPEN_MS);
   /* go() starts the move now rather than running it, so the renderer drives
    * it the way the UI loop does - one frame per tick, on the clock it owns. */
   for (int guard = 0; anim_active() && guard < 4000; guard++) {
@@ -2021,7 +2031,7 @@ static void check_move_takes_lift(void) {
     draw_screen();
     before[pass] = canvas_mean_g6();
     prev_vclock_us = 1000000;
-    go(SCR_SETTINGS, MOTION_OPEN_MS);
+    tap_go(SCR_SETTINGS, MOTION_OPEN_MS); /* the row was pressed */
     int prev_k = s_anim.scrim0, frames = 0;
     bool first_seen = false;
     for (int guard = 0; anim_active() && guard < 400; guard++) {

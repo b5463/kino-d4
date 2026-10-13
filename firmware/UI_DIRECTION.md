@@ -240,7 +240,19 @@ The five rules, as `ui_motion.h` states them:
 - **SMOOTH.** No level changes in a step or a cut. A scrim, a fade or a move runs on a curve, one value per presented frame.
 - **WIGGLE.** The exception. A wigglegram is hard cuts at its frame rate (`wiggle.fps`, `PURE_WIGGLE_FPS_DEFAULT`), one way round, the subject pinned. Its smoothness is alignment, never a crossfade.
 
-Curves: `motion_smooth()` (smootherstep) for anything that travels, `motion_ease_out()` for the screen answering a touch, `motion_accel()` for something leaving for good.
+Curves: `motion_smooth()` (smootherstep) for anything that travels on its own, `motion_ease_out()` for the screen answering a touch, `motion_accel()` for something leaving for good.
+
+Who started a move picks its curve. A tap's release and a key run inside the `s_by_hand` bracket, and a move started there is by hand.
+
+| Move | Started by | Curve |
+|---|---|---|
+| Open out of a row | A tap or a key, the shutter included | `motion_by_hand()` on the move's time. 11.0 % of the travel at 16 ms. |
+| Back into the row | A tap or a key | `motion_by_hand()` on the time, flipped: it leaves fast and settles into the row. 13.5 % at 16 ms. |
+| Slide beside the parent | A tap or a key | `motion_by_hand()` on the time. |
+| The review opening after a shot, and closing on its clock | Nobody | `motion_smooth()`. |
+| The cascade, the splash | Nobody | `motion_smooth()`; the splash leaves on `motion_accel()`. |
+
+`motion_by_hand()` is cubic ease-out (`motion_ease_out()`). `MOTION_HAND_QUAD` set to 1 swaps in quadratic ease-out (`motion_ease_out_quad()`, 7.5 % at 16 ms) if the cubic reads abrupt on the panel. It is 0. The spans stay `MOTION_OPEN_MS` and `MOTION_BACK_MS` either way, and a move lands on the destination's own pixels: `lerpi()` rounds half away from zero, so no last-frame 1 px snap.
 
 | Token | Value | What |
 |---|---|---|
@@ -266,7 +278,7 @@ Curves: `motion_smooth()` (smootherstep) for anything that travels, `motion_ease
 
 The moves:
 
-- **Open.** The pressed row is the destination's header from the first frame. The card grows to the page with the destination revealed inside it; the rows above lift and the rows below drop as two rigid blocks. Back runs it in reverse into the row you left from.
+- **Open.** The pressed row is the destination's header from the first frame. The card grows to the page with the destination revealed inside it; the rows above lift and the rows below drop as two rigid blocks. Back closes the card into the row you left from.
 - **Slide.** A detail screen arriving beside its parent, SETTINGS to STORAGE or GALLERY to PHOTO. Both frames are prepared once and shown in panel orientation by `gfx_slide_show()`.
 - **Cascade.** The menu's rows landing one after another, only after the boot.
 - **Snapshot.** SHOOT and GALLERY are too costly to draw per frame of a move, so each is drawn once into the stash and travels as a picture.
