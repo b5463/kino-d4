@@ -8454,7 +8454,9 @@ static uint16_t in_ink(int32_t t_ms) {
 
 /*
  * Step a running capture's cells for this pass, from capture_frames_in().
- * True while a cell is still easing in, so ui_pass keeps its 20 ms cadence.
+ * True while a cell is still easing in. ui_pass paces at 20 ms for it only
+ * from SAVING (CAPTURE_WRITING), when every link is idle; while the frames
+ * cross, the cells step on the slower pass so no extra presents land there.
  *
  * The frames-in word only grows during a capture and is cleared at the
  * trigger, so a bit that went away is the next capture starting: the queued
@@ -11013,10 +11015,13 @@ static uint32_t ui_pass(void) {
     /* A toast that has run its time leaves here, between frames, and the
      * repaint below is what takes it off the screen. */
     if (toast_expired()) s_toast[0] = '\0';
-    /* Both stepped on every pass: a cell easing in keeps the 20 ms pace the
-     * landing does. */
+    /* Both stepped on every pass. A cell easing in keeps the 20 ms pace the
+     * landing does only once every transfer has ended (SAVING): before that
+     * the other lenses can still be receiving, and a present every 20 ms puts
+     * the compositor's cache writeback in the UART window (#158). There the
+     * cells step on the pass that runs anyway, 60 ms on SHOOT, 90 elsewhere. */
     const bool arriving = in_step(cstage);
-    const bool landing = land_step() || arriving;
+    const bool landing = land_step() || (arriving && cstage == CAPTURE_WRITING);
     const bool busy = cstage != CAPTURE_IDLE ||
                       (s_screen == SCR_GALLERY && gallery_loading()) ||
                       (s_screen == SCR_STORAGE && gallery_deleting()) || s_toast[0] != '\0';

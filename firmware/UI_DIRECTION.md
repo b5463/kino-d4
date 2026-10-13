@@ -162,7 +162,7 @@ The pink shifts slightly on each start. `K_LAUNCH` holds eight shades: MAO pink 
 | Toast | `K_TOAST`, `K_EDGE` outline | `K_INK` |
 | Menu rows | `K_ROW`, flat | `K_INK` |
 | SHOOT card | `K_ACCENT` | `K_ACCENT_INK` |
-| Capture working | `K_INK` bar; a lens asked `K_OFF`, its frame in easing to `K_INK` over `IN_EASE_MS`, a lens left out a `K_INK` outline | `K_INK` |
+| Capture working | `K_INK` bar; a lens asked `K_OFF`, its frame in easing to `K_INK` over `IN_EASE_MS`, a lens left out a `K_INK` outline. The ease is paced at 20 ms from SAVING only; while frames still cross the links it steps on the finder's own pass | `K_INK` |
 | Capture landed | `K_ACCENT` cells for `MOTION_LAND_HOLD_MS`, then back to `K_INK` over `MOTION_LAND_BACK_MS` | `K_INK` |
 | Capture partial or failed | `K_FAULT` on the lost cells while the strip is up | `K_INK` |
 | ROLL lamp | online `K_INK`, error `K_FAULT`, offline a `K_INK_QUIET` ring | |
