@@ -254,7 +254,7 @@ Who started a move picks its curve. A tap's release and a key run inside the `s_
 
 `motion_by_hand()` is cubic ease-out (`motion_ease_out()`). `MOTION_HAND_QUAD` set to 1 swaps in quadratic ease-out (`motion_ease_out_quad()`, 7.5 % at 16 ms) if the cubic reads abrupt on the panel. It is 0. The spans stay `MOTION_OPEN_MS` and `MOTION_BACK_MS` either way, and a move lands on the destination's own pixels: `lerpi()` rounds half away from zero, so no last-frame 1 px snap.
 
-The row's wash follows the card, not the clock. By hand it is gone when the card is a fifth of the way out, and on a back move it is whole on the frame the card lands. Untouched moves keep it on the clock: the first third of an open, the last third of a back move.
+The row's wash follows the card, not the clock. By hand, on an open it is gone when the card is halfway out, over about five frames; on a back move it condenses over the card's last fifth and is whole on the frame the card lands. Untouched moves keep it on the clock: the first third of an open, the last third of a back move.
 
 | Token | Value | What |
 |---|---|---|

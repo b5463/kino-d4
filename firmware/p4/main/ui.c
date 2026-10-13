@@ -9000,11 +9000,14 @@ static void open_frame(int row, float t) {
    *
    * By hand the card outruns the clock: on the move's time the wash would
    * still sit on a card 71 % of the way out, and a back move would land and
-   * then turn back into a row. So it follows the card, gone by the time the
-   * card is a fifth of the way out, as on the untouched move; going back it
-   * condenses over the card's last fifth and is whole on the frame it lands.
+   * then turn back into a row. So it follows the card. On an open it is gone
+   * by the time the card is halfway out: a fifth, as on the untouched move,
+   * was two frames on the fast start of the curve, and the pink cut out.
+   * Going back it condenses over the card's last fifth, where the curve is
+   * slow, and is whole on the frame the card lands.
    */
-  const float wash = 1.0f - (s_anim.by_hand ? span01(e, 0.0f, 0.22f) : span01(t, 0.0f, 0.34f));
+  const float wash = 1.0f - (s_anim.by_hand ? span01(e, 0.0f, s_anim.opening ? 0.5f : 0.22f)
+                                            : span01(t, 0.0f, 0.34f));
   if (wash > 0.01f) {
     const int k = (int)(wash * 255.0f);
     scrim(ox, oy, ow, oh, tint, k);
