@@ -327,6 +327,7 @@ calls and fails when one of them is not in this table.
 | `CAMERAS` | The heading over the four lenses. |
 | `CAM1` / `CAM2` / `CAM3` / `CAM4` | One row per lens: its firmware and sensor, `0.3.1  no sensor` when the sensor did not answer, or `No answer`. |
 | `SCAN FOR HELP` | Under the QR that opens a new issue with the serial and firmware filled in. |
+| `MADE BY` / `ODD JOBS` | Left of the QR, over and under the ODD JOBS symbol: who made the camera. |
 
 ### POWER
 

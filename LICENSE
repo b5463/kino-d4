@@ -50,6 +50,7 @@ The marks the camera draws are generated coverage tables of the same
 artwork. The MIT grant on firmware/** does not reach them:
 
   firmware/p4/main/logo_kino_d4.h
+  firmware/p4/main/ui_mark_odd_jobs.h
 
 Those files are marked LicenseRef-KINO-Reserved. See
 LICENSES/LicenseRef-KINO-Reserved.txt.

@@ -128,10 +128,18 @@ REUSE.toml marks it `LicenseRef-KINO-Reserved` over the MIT grant on
 
 ## The Odd Jobs mark (reserved)
 
-`firmware/p4/main/logo_odd_jobs.h` is the mark of Odd Jobs, the studio that
-makes this camera. `tools/mklogo.swift` bakes it from the studio's artwork
-into a 160x160 8-bit coverage map, which `ui.c` samples bilinearly - once at
-the centre of the boot bloom, once at the foot of the ABOUT screen.
+`firmware/p4/main/ui_mark_odd_jobs.h` is the symbol of Odd Jobs, the studio
+that makes this camera. `tools/mkmask.mjs` bakes it from the carrier's traced
+outline, `hardware/pcb/kino-d4-carrier-a0/brand/odd-jobs-symbol.json` (itself
+traced from the studio's `odd_jobs_symbol.png`, sha256 e649915c...), into 8-bit
+coverage at two sizes: 50x40, which `ui.c` draws on the ABOUT screen under
+MADE BY, and 158x128 for a boot mark that is not drawn yet. The outline is
+filled as supplied; nothing is redrawn. The header names its source and the
+source's sha256.
+
+The mark it replaces, `logo_odd_jobs.h` (a 160x160 bake by
+`tools/mklogo.swift`), left the interface in 0.4.58 because its artwork did
+not match the studio's. It is not used again.
 
 It is a trade mark, not source. `firmware/**` is declared MIT and that grant
 does not reach it: REUSE.toml marks the header `LicenseRef-KINO-Reserved`, the

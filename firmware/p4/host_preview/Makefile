@@ -54,7 +54,7 @@ LDFLAGS := -lm
 # will ever play. It has no ESP-IDF dependency - that is what it is for.
 SRCS := preview.c $(MAIN)/qr.c $(MAIN)/pure.c
 DEPS := $(SRCS) $(MAIN)/ui.c $(MAIN)/ui.h \
-        $(MAIN)/ui_font.h $(MAIN)/logo_kino_d4.h \
+        $(MAIN)/ui_font.h $(MAIN)/logo_kino_d4.h $(MAIN)/ui_mark_odd_jobs.h \
         $(MAIN)/ui_theme.h $(MAIN)/ui_palette.h $(MAIN)/ui_motion.h \
         $(MAIN)/conditions.h $(MAIN)/calibrate.h \
         $(MAIN)/meta.h $(MAIN)/qr.h $(MAIN)/net_link.h \

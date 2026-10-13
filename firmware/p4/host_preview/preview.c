@@ -2997,6 +2997,10 @@ static int run_hand(bool right, const char *out) {
     g_audit_off = true;
     bench();
     check_mask_tiles("the wordmark", KINO_D4_LOGO, KINO_D4_LOGO_W, KINO_D4_LOGO_H);
+    check_mask_tiles("the ODD JOBS mark", UI_MARK_ODD_JOBS_40, UI_MARK_ODD_JOBS_40_W,
+                     UI_MARK_ODD_JOBS_40_H);
+    check_mask_tiles("the ODD JOBS mark at 128", UI_MARK_ODD_JOBS_128, UI_MARK_ODD_JOBS_128_W,
+                     UI_MARK_ODD_JOBS_128_H);
     g_audit_off = false;
   }
 

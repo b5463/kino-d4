@@ -57,6 +57,7 @@
 #include "touch.h"
 #include "viewfinder.h"
 #include "ui_font.h"
+#include "ui_mark_odd_jobs.h"
 #include "ui_motion.h"
 #include "ui_theme.h"
 
@@ -7525,11 +7526,28 @@ static void draw_about(void) {
     const int room = UI_H - PAGE_M - note_y - K_TYPE_CAPTION->line_h - 6;
     const int box = room < AB_RW ? room : AB_RW;
     if (encoded && qr != NULL && box >= 64) {
-      draw_qr_centred(qr, AB_RX + AB_RW / 2, note_y, box);
-      text_mid(K_TYPE_CAPTION, AB_RX + AB_RW / 2, note_y + box + 4, "SCAN FOR HELP", K_INK_QUIET);
+      /* Flush right in the column, plate edge on the rows' right edge, so
+       * the maker has the left of it. The caption centres under the plate
+       * unless that would cross the page margin. */
+      const int total = qr->size + 2 * QR_QUIET;
+      const int side = box / total * total;
+      const int qx = AB_RX + AB_RW - side;
+      draw_qr_centred(qr, qx + side / 2, note_y, box);
+      const int cw = text_w(K_TYPE_CAPTION, "SCAN FOR HELP");
+      const int ccx = qx + side / 2 + cw / 2 > AB_RX + AB_RW ? AB_RX + AB_RW - cw / 2 : qx + side / 2;
+      text_mid(K_TYPE_CAPTION, ccx, note_y + box + 4, "SCAN FOR HELP", K_INK_QUIET);
     }
   }
 
+  /* The maker. ODD JOBS made this camera, and its symbol signs the screen
+   * that says what the camera is: the carrier's traced outline, baked to
+   * coverage by tools/mkmask.mjs and drawn in ink like every mark. Set on
+   * the column's left edge, top-aligned with the QR plate beside it. */
+  text(K_TYPE_CAPTION, AB_RX, note_y, "MADE BY", K_INK_QUIET);
+  const int mark_y = note_y + K_TYPE_CAPTION->line_h + GRID;
+  mask_blit(UI_MARK_ODD_JOBS_40, UI_MARK_ODD_JOBS_40_W, UI_MARK_ODD_JOBS_40_H, UI_MARK_ODD_JOBS_40_W,
+            AB_RX, mark_y, K_MARK);
+  text(K_TYPE_LABEL, AB_RX, mark_y + UI_MARK_ODD_JOBS_40_H + GRID, "ODD JOBS", K_INK);
 }
 
 /* ------------------------------------------------------------------ */
