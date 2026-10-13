@@ -99,6 +99,16 @@ _Static_assert(MOTION_LAND_HOLD_MS + MOTION_LAND_BACK_MS == MOTION_LAND_MS,
 #define MOTION_REVIEW_MIN_S 3
 #define MOTION_REVIEW_TAIL_MS 800
 
+/* PULSE: the card pill on SHOOT answering a shutter that capture.c refused
+ * for the card. Out MOTION_PILL_PULSE_PX a side, then back, on motion_smooth
+ * both ways. */
+#define MOTION_PILL_PULSE_UP_MS 140
+#define MOTION_PILL_PULSE_BACK_MS 280
+#define MOTION_PILL_PULSE_MS 420
+#define MOTION_PILL_PULSE_PX 6
+_Static_assert(MOTION_PILL_PULSE_UP_MS + MOTION_PILL_PULSE_BACK_MS == MOTION_PILL_PULSE_MS,
+               "PULSE is one 420 ms event: out plus back");
+
 /* ---- how long things stay --------------------------------------------- */
 
 #define MOTION_TOAST_MS 2200   /* a toast */

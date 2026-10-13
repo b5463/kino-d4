@@ -860,6 +860,11 @@ static bool g_card_mounted = true;
  * is an empty slot or a pulled card. storage.c reports the second as not
  * present with CARD_REMOVED (or a mount error from boot) set. */
 static bool g_card_present = true;
+/* With g_card_present false: true is a slot that was empty from boot, which
+ * storage.c reports without `removed`; false is a card pulled while running. */
+static bool g_card_never = false;
+/* A mounted card that failed its write test. */
+static bool g_card_write_fail = false;
 /* Free space on the mounted card: 4871 photographs by default, so the bars
  * say nothing about it. A scene sets it under COND_CARD_LOW_SHOTS and back. */
 #define PV_FREE_BYTES 30648041472ULL
@@ -881,7 +886,7 @@ void storage_get_status(storage_status_t *out) {
     out->mounted = false;
     out->mount_attempts = 3;
     out->last_error = g_card_present ? "MOUNT_FAILED" : "CARD_REMOVED";
-    out->removed = !g_card_present;
+    out->removed = !g_card_present && !g_card_never;
     out->write_test = "none";
     return;
   }
@@ -890,7 +895,7 @@ void storage_get_status(storage_status_t *out) {
   out->filesystem = "FAT";
   out->capacity_bytes = 31914983424ULL;
   out->free_bytes = g_free_bytes;
-  out->write_test = "pass";
+  out->write_test = g_card_write_fail ? "fail" : "pass";
 }
 
 /* ---- networking and Roll ----------------------------------------------
@@ -1549,7 +1554,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 250
+#define PPMS_PER_HAND 256
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -2602,7 +2607,26 @@ static void scenes(void) {
    * string is set the way the poll sets it. One of #176's contrast pairs. */
   snprintf(s_lens_hint, sizeof s_lens_hint, "CHECK THE SECOND LENS");
   SHOT(SCR_SHOOT, "shoot_lens_hint");
+
+  /* The card pill, in the same slot. The lens hint is still set for the
+   * first: the card outranks it. Then each state the pill names. */
+  g_card_mounted = false;
+  g_card_present = false;
+  SHOT(SCR_SHOOT, "shoot_card_out");
   s_lens_hint[0] = '\0';
+  g_card_never = true;
+  SHOT(SCR_SHOOT, "shoot_no_card");
+  g_card_never = false;
+  g_card_present = true;
+  SHOT(SCR_SHOOT, "shoot_card_unreadable");
+  g_card_mounted = true;
+  g_card_write_fail = true;
+  SHOT(SCR_SHOOT, "shoot_card_failed");
+  g_card_write_fail = false;
+  /* Under capture.c's reserve for four 1600x1200 frames, about 4.9 MB. */
+  g_free_bytes = 3ULL * 1024 * 1024;
+  SHOT(SCR_SHOOT, "shoot_card_full");
+  g_free_bytes = PV_FREE_BYTES;
 
   /* ---- capture feedback, over the viewfinder it will most often cover ---- */
   s_screen = SCR_SHOOT;
@@ -2710,6 +2734,20 @@ static void scenes(void) {
   scan_conditions();
   draw_screen();
   shot("capture_failed");
+  /* The same refusal on a full card, as capture.c reports it, with the
+   * pill at the top of its pulse. */
+  g_free_bytes = 3ULL * 1024 * 1024;
+  snprintf(g_report.err_code, sizeof g_report.err_code, "SD_FULL");
+  snprintf(g_report.err_msg, sizeof g_report.err_msg, "Card full. Delete photos or change the card.");
+  prev_vclock_us = 9000LL * 1000000;
+  s_pill_pulse_us = prev_vclock_us - (int64_t)MOTION_PILL_PULSE_UP_MS * 1000;
+  scan_conditions();
+  draw_screen();
+  shot("capture_failed_card_full");
+  prev_vclock_us = 0;
+  s_pill_pulse_us = 0;
+  g_free_bytes = PV_FREE_BYTES;
+  g_report.err_msg[0] = '\0';
   g_stage = CAPTURE_IDLE;
 
   /* ---- the destinations ---- */

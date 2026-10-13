@@ -104,7 +104,7 @@ From MAO's colour header, mao_ui_type.h in the MAO tree: ground 08080A, ink F1EC
 | `K_INK` | F1ECE2 | 0xF77C | 17.44 | Every word on the dark grounds, the marks, the star, SENT, a selected segment's fill. |
 | `K_INK_QUIET` | 8F8B85 | 0x8C50 | 5.73 | Captions, readings, a second line. Never on `K_OFF`. |
 | `K_ACCENT_INK` | 2A0E1C | 0x2863 | 1.11 | Type on the launch shade: the SHOOT card, a pressed control. |
-| `K_FAULT` | E5484D | 0xE249 | 5.14 | Red as a mark or a fill: a lost camera, a destructive press, the lens hint. |
+| `K_FAULT` | E5484D | 0xE249 | 5.14 | Red as a mark or a fill: a lost camera, a destructive press, the card pill and the lens hint. |
 | `K_FAULT_INK` | F26A60 | 0xF34C | 6.79 | Red as type on the dark grounds. |
 
 Roles point at a colour; a role changes meaning by pointing somewhere else.
@@ -153,7 +153,7 @@ The pink shifts slightly on each start. `K_LAUNCH` holds eight shades: MAO pink 
 | Disabled row | `K_ROW`, no edge, no chevron | `dim_ink(K_INK, K_ROW)` |
 | Destructive row at rest | `K_ROW` | `K_FAULT_INK` |
 | Destructive row pressed, DELETE pressed | `K_FAULT` | `K_GROUND` |
-| Lens hint on SHOOT | `K_FAULT` pill | `K_GROUND` |
+| Card pill and lens hint on SHOOT | `K_FAULT` pill | `K_GROUND` |
 | Severity on a STATUS row: PROBLEM, CHECK, NOTE | a 4 px bar beside the row | `K_FAULT_INK`, `K_INK`, `K_INK_QUIET`, always with the word |
 | The header chip | none | `K_FAULT_INK` on a FAULT, `K_INK` on a WARN; the readings beside it `K_INK_QUIET` |
 | Toast | `K_TOAST`, `K_EDGE` outline | `K_INK` |
@@ -251,6 +251,9 @@ Curves: `motion_smooth()` (smootherstep) for anything that travels, `motion_ease
 | `MOTION_LAND_HOLD_MS` | 120 ms | The landed cells in the launch shade. |
 | `MOTION_LAND_BACK_MS` | 180 ms | And back to ink on `motion_smooth()`. |
 | `MOTION_LAND_MS` | 300 ms | LAND in all. |
+| `MOTION_PILL_PULSE_UP_MS` | 140 ms | The card pill out `MOTION_PILL_PULSE_PX` a side, on a shutter capture.c refused for the card. |
+| `MOTION_PILL_PULSE_BACK_MS` | 280 ms | And back, on `motion_smooth()`. |
+| `MOTION_PILL_PULSE_MS` | 420 ms | PULSE in all. |
 | `MOTION_TOAST_MS` | 2200 ms | A toast. |
 | `MOTION_UNDO_MS` | 30000 ms | The undo toast after a delete. |
 | `MOTION_DIM_MS` | 1600 ms | The dim scrim arriving. |
@@ -292,7 +295,7 @@ One sound per outcome, played at the moment the screen shows it, not when the fa
 
 1. The screen, header included.
 2. The capture strip (`draw_capture_banner()`).
-3. On SHOOT only: the self-timer count, or else the lens hint.
+3. On SHOOT only, one slot: the self-timer count, or else the card pill, or else the lens hint.
 4. The working strip: FORMATTING THE CARD, or else RESTARTING THE CAMERAS.
 5. The toast.
 6. The dialog.
@@ -310,6 +313,7 @@ Outside `draw_screen()`, whole-panel renders replace it: the boot field, the wor
 | First start after an update | `DLG_UPDATED`, once (`body.lastVersion`). |
 | A condition | The worst one is the first line of the SHOOT card, after its severity word: PROBLEM (`COND_FAULT`), CHECK (`COND_WARN`) or NOTE (`COND_NOTE`). On every detail screen the header chip names the worst one by its short name (`chip_words()`: 1 LENS DOWN, NO CARD, DATE NOT SET), in `K_FAULT_INK` on a FAULT and `K_INK` on a WARN. A NOTE never reaches the header. While the chip names the card, the header's card reading is left out. STATUS lists all of them. The list is `cond_id_t` in `conditions.h`; the words are in `docs/DEVICE_COPY.md`. |
 | Capture | SHOOTING, READING, SAVING, then SAVED, or how many cameras missed. Cells land in the shade, or stay red where a lens lost its frame. |
+| A card that will cost the next photograph | On SHOOT, a `K_FAULT` pill at the top from the pass's `sd_status()`: no card, card out, unreadable, failed its write test, or under the reserve capture.c refuses at (`pure_capture_reserve_bytes()`, four frames at `wiggle.resolution`). It states and never gates: capture.c is the one gate. A refusal for the card (an `SD_` code) pulses the pill. |
 | Delete all photos | The Photos row on STORAGE reads DELETING 120 OF 500 from `gallery_delete_progress()`, repainted while `gallery_deleting()` holds. Both destructive rows are disabled until it ends. The menu and other screens show nothing of it. |
 | Formatting | FORMATTING THE CARD on the working strip. |
 | Cameras restarting | From the STATUS row or a dead pane's button, the same action and no confirm. RESTARTING THE CAMERAS for `MOTION_CAMS_RESTART_BANNER_MS`. For `CAM_RESTART_GRACE_MS` (7 s, a guess until the node boot is timed on the bench) a pane with no picture says STARTING and has no button, and the STATUS row only toasts. Both entry points re-arm the finder's settle clock. |

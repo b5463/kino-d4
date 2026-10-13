@@ -8045,6 +8045,51 @@ static void lens_hint_poll(void) {
 }
 
 /*
+ * The card pill: a card that will cost the next photograph, said over the
+ * finder in the lens hint's slot, before the press instead of after it. From
+ * the pass's cached sd_status(), so no card access in a draw, and in the
+ * words of the STATUS conditions.
+ *
+ * It states and never gates. capture.c stays the one gate on the shutter; a
+ * press in any of these states is refused there with its own strip line and
+ * audio_warning, as before, and the pill pulses (s_pill_pulse_us). So FULL is
+ * capture.c's own test, not the 6 MB a photograph the bars count in: the
+ * reserve pure_capture_reserve_bytes() bounds a capture at, for four frames
+ * at the configured size. With a lens out a capture needs one frame less, so
+ * the pill can say FULL up to one frame's bound before the refusal does.
+ * COND_CARD_LOW at WARN is not a fault and gets no pill: the bar says it.
+ */
+static const char *sh_card_pill(const storage_status_t *sd) {
+  if (!sd->mounted) {
+    if (sd->removed) return "CARD OUT. PUT IT BACK";
+    if (sd->present) return "CARD CANNOT BE READ";
+    return "NO CARD. PUT ONE IN";
+  }
+  if (sd->write_test != NULL && strcmp(sd->write_test, "fail") == 0)
+    return "CARD FAILED. CHANGE THE CARD";
+  uint32_t w = 0, h = 0;
+  /* capture.c's default too. Unparseable reserves for the largest frame,
+   * as there. */
+  if (!pure_parse_resolution(config_str("wiggle.resolution", "1600x1200"), &w, &h)) w = h = 0;
+  if (sd->free_bytes < pure_capture_reserve_bytes(4, w, h)) return "CARD FULL. DELETE PHOTOS IN GALLERY";
+  return NULL;
+}
+/* When a refusal for the card last landed on SHOOT; 0 for none. */
+static int64_t s_pill_pulse_us;
+/* How far the pill stands out at this moment of its pulse, in px a side. One
+ * float a frame, none a pixel. */
+static int pill_pulse_px(void) {
+  if (s_pill_pulse_us == 0) return 0;
+  const int64_t ms = (esp_timer_get_time() - s_pill_pulse_us) / 1000;
+  if (ms < 0 || ms >= MOTION_PILL_PULSE_MS) return 0;
+  const float k = ms < MOTION_PILL_PULSE_UP_MS
+                      ? motion_smooth((float)ms / MOTION_PILL_PULSE_UP_MS)
+                      : 1.0f - motion_smooth((float)(ms - MOTION_PILL_PULSE_UP_MS) /
+                                             MOTION_PILL_PULSE_BACK_MS);
+  return (int)(k * MOTION_PILL_PULSE_PX + 0.5f);
+}
+
+/*
  * The self-timer: ten seconds, counted down on the finder with a tick a
  * second; any press during it cancels. The camera is for groups, and the
  * person holding it wants to be in the picture. Nothing starts it at the
@@ -8405,11 +8450,20 @@ static void draw_screen(void) {
     scrim((UI_W - w) / 2, UI_H / 2 - h / 2 - 20, w, h, K_GROUND, 160);
     text_mid(K_TYPE_TITLE, UI_W / 2, UI_H / 2 - K_TYPE_TITLE->line_h / 2 - 20, n, K_INK);
     text_mid(K_TYPE_CAPTION, UI_W / 2, UI_H / 2 + h / 2 - 12, "SELF-TIMER.  PRESS TO CANCEL", K_INK);
-  } else if (s_screen == SCR_SHOOT && s_lens_hint[0] != '\0') {
-    const int w = text_w(K_TYPE_CAPTION, s_lens_hint) + 32, h = 30;
-    /* The ground's ink on the red, 5.1:1; K_INK on it is 3.4:1 (#176). */
-    round_rect((UI_W - w) / 2, 12, w, h, UI_R, K_FAULT);
-    text_mid(K_TYPE_CAPTION, UI_W / 2, 12 + (h - K_TYPE_CAPTION->line_h) / 2, s_lens_hint, K_GROUND);
+  } else if (s_screen == SCR_SHOOT) {
+    /* One slot, three claimants: the self-timer above, then the card, then
+     * the lens hint. A covered lens costs one picture; the card costs all of
+     * them. */
+    const char *pill = sh_card_pill(sd_status());
+    const int g = pill != NULL ? pill_pulse_px() : 0;
+    if (pill == NULL && s_lens_hint[0] != '\0') pill = s_lens_hint;
+    if (pill != NULL) {
+      const int w = text_w(K_TYPE_CAPTION, pill) + 32, h = 30;
+      /* The ground's ink on the red, 5.1:1; K_INK on it is 3.4:1 (#176).
+       * The pulse grows the pill round its words, which stay put. */
+      round_rect((UI_W - w) / 2 - g, 12 - g, w + 2 * g, h + 2 * g, UI_R + g, K_FAULT);
+      text_mid(K_TYPE_CAPTION, UI_W / 2, 12 + (h - K_TYPE_CAPTION->line_h) / 2, pill, K_GROUND);
+    }
   }
   if (s_formatting) draw_working_banner("FORMATTING THE CARD");
   else if (s_cams_restart_us != 0 && esp_timer_get_time() - s_cams_restart_us < CAMS_RESTART_BANNER_US)
@@ -10322,6 +10376,11 @@ static uint32_t ui_pass(void) {
          * both halves of the requirement. */
         if (!r.ok || r.stored < r.online) {
           audio_warning();
+          /* capture.c refused it for the card (an SD_ code). If the pill
+           * already said so, it pulses: the answer is where it was. */
+          if (!r.ok && strncmp(r.err_code, "SD_", 3) == 0 && s_screen == SCR_SHOOT &&
+              sh_card_pill(sd_status()) != NULL)
+            s_pill_pulse_us = esp_timer_get_time();
         } else {
           /*
            * The sound the body has always had for this and has never made.

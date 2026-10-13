@@ -103,6 +103,11 @@ The rows at the foot of STATUS:
 | `SHOOTING` / `READING` / `SAVING` | The capture's stages. |
 | `SAVING - NEXT SHOT QUEUED` | A second shutter press landed while saving; it fires when the report does. |
 | `TAKE THE LENS COVER OFF` | On SHOOT, every pane was lit and then all went dark for a second: the cover went on. A body switched on facing the desk says nothing. |
+| `NO CARD. PUT ONE IN` | On SHOOT, the card pill: the slot was empty from boot. Outranks the lens hint; the self-timer outranks it. |
+| `CARD OUT. PUT IT BACK` | The card pill: the card was pulled while running. |
+| `CARD CANNOT BE READ` | The card pill: a card is in the slot and did not mount. |
+| `CARD FAILED. CHANGE THE CARD` | The card pill: the card failed its write test. |
+| `CARD FULL. DELETE PHOTOS IN GALLERY` | The card pill: less room than capture.c reserves for one photograph. The shutter is refused there, and the pill pulses. |
 | `CHECK THE SECOND LENS` | On SHOOT, one pane was lit and then went a third as bright as the rest for a second while the others stayed lit. The word is one of `FIRST` / `SECOND` / `THIRD` / `FOURTH`. |
 | `10` .. `1`, `SELF-TIMER.  PRESS TO CANCEL` | The self-timer counting down. Nothing starts it in this firmware: a long press no longer does. It returns with the TIMER panel on SHOOT. |
 | `SAVED` | Every lens that answered is on the card. |
