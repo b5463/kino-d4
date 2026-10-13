@@ -1592,7 +1592,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 266
+#define PPMS_PER_HAND 267
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -3246,6 +3246,23 @@ static void scenes(void) {
   s_timer_end_us = prev_vclock_us + 2600000;
   s_timer_last_s = 3;
   SHOT(SCR_SHOOT, "shoot_timer_03");
+  /* A dead pane while it counts: no RESTART THE CAMERAS, so a tap on the
+   * pane is a tap on the picture and cancels the count. A press that beat
+   * the repaint cancels too and cycles nothing. */
+  prev_vclock_us = 1000000000;
+  s_timer_end_us = prev_vclock_us + 2600000;
+  g_vf_dead = 1u << 2;
+  SHOT(SCR_SHOOT, "shoot_timer_dead_pane");
+  review_expect(s_sh_dead == 0, "dead pane offers RESTART THE CAMERAS while the self-timer counts");
+  {
+    const int cycles0 = g_bank_cycles;
+    activate(SH_IT_PANE0 + 2);
+    review_expect(g_bank_cycles == cycles0 && s_cams_boot_us == 0 && s_timer_end_us == 0 &&
+                      strcmp(s_toast, "Timer cancelled") == 0,
+                  "RESTART THE CAMERAS during the count cycled the bank or kept counting");
+    s_toast[0] = '\0';
+  }
+  g_vf_dead = 0;
   s_timer_end_us = 0;
   prev_vclock_us = 0;
   s_timer_on = false;

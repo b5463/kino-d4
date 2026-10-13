@@ -4205,6 +4205,8 @@ static void draw_menu(void) {
 static uint8_t s_sh_dead;
 /* A photograph between the press and the card, queued shot included. */
 static bool capture_in_flight(void);
+/* The self-timer is counting. */
+static bool timer_counting(void);
 /* That button: the one control style at the thumb floor, wide enough for its
  * words with the control's margins. */
 #define SH_DEAD_BTN_W 248
@@ -4655,9 +4657,12 @@ static void draw_shoot(void) {
                K_INK_QUIET);
       continue;
     }
-    if (in_flight) {
+    if (in_flight || timer_counting()) {
       /* The other lenses are taking a photograph. No button: the cycle cuts
-       * all four nodes mid-transfer and that photograph is lost. */
+       * all four nodes mid-transfer and that photograph is lost. Nor while
+       * the self-timer counts: the cycle would land the timed shot on four
+       * booting nodes. With no button the pane is picture, and a tap on it
+       * cancels the count (ui_pass). */
       text_mid(K_TYPE_CAPTION, cx, ly + (SH_DEAD_H - K_TYPE_CAPTION->line_h) / 2, "NO PICTURE",
                K_INK_QUIET);
       continue;
@@ -8316,6 +8321,8 @@ static bool capture_in_flight(void) {
   return (c != CAPTURE_IDLE && c != CAPTURE_DONE) || s_shot_queued;
 }
 
+static bool timer_counting(void) { return s_timer_end_us != 0; }
+
 static void timer_cancel(const char *why) {
   if (s_timer_end_us == 0) return;
   s_timer_end_us = 0;
@@ -9654,6 +9661,13 @@ static void activate(int item) {
         break;
       }
       if (item >= SH_IT_PANE0 && item < SH_IT_PANE0 + 4) {
+        /* A press that beat the repaint which took the button away: the
+         * count is cancelled, as a tap on the picture would, and nothing is
+         * cycled. */
+        if (timer_counting()) {
+          timer_cancel("Timer cancelled");
+          return;
+        }
         cams_restart();
         return;
       }

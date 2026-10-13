@@ -94,7 +94,7 @@ The rows at the foot of STATUS:
 | `AUTO` / `ON` / `OFF` | The flash, beside the bolt on the decisions bar. |
 | `TIMER OFF` / `TIMER 10 S` | The self-timer's own panel, at the hand's end of the bar. A tap switches it and says nothing. With TIMER 10 S the next shutter press starts the count. Off at boot and at the sleep. |
 | `NO PICTURE` | A finder pane with no pixels: the lens reported an error, its frames stopped, or it is not linked. One word for all three; the pane's place says which lens. Said once the first 1.5 s of SHOOT have passed. |
-| `RESTART THE CAMERAS` | The button under it, on that pane. The same action as the STATUS row, with no confirm. Not offered while a photograph is being taken: NO PICTURE alone then. |
+| `RESTART THE CAMERAS` | The button under it, on that pane. The same action as the STATUS row, with no confirm. Not offered while a photograph is being taken or the self-timer counts: NO PICTURE alone then, and a tap on the pane during the count cancels it. |
 | `STARTING` | Instead of both, on a pane with no picture for 7 s after a restart from either place, while the lenses boot. No button then. |
 
 ## SHOOT banner
