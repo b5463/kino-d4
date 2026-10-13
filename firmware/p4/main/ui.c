@@ -4207,6 +4207,8 @@ static uint8_t s_sh_dead;
 static bool capture_in_flight(void);
 /* The self-timer is counting. */
 static bool timer_counting(void);
+/* What the card pill says over the finder, or NULL when it is not up. */
+static const char *sh_card_pill(const storage_status_t *sd);
 /* That button: the one control style at the thumb floor, wide enough for its
  * words with the control's margins. */
 #define SH_DEAD_BTN_W 248
@@ -4726,7 +4728,12 @@ static void draw_shoot(void) {
    * A panel with nothing to say is not drawn: no width, no gap. */
   const storage_status_t sd_bar = *sd_status();
   char card_bar[24] = "";
-  if (card_abnormal(&sd_bar)) card_words(card_bar, sizeof card_bar, &sd_bar);
+  /* While the card pill is up it owns the card: the bar counts at 6 MB a
+   * photograph and the pill at capture.c's reserve, so at 2048x1536 the bar
+   * read LAST 1 under CARD FULL. The count hides the pill, so the bar keeps
+   * the card then. */
+  if (card_abnormal(&sd_bar) && (timer_counting() || sh_card_pill(&sd_bar) == NULL))
+    card_words(card_bar, sizeof card_bar, &sd_bar);
   const char *const pwr_bar = link_words(usb_attached());
   const int w_card = card_bar[0] != '\0' ? text_w(K_TYPE_CAPTION, card_bar) + 2 * SH_PN_PAD : 0;
   const int w_pwr = pwr_bar != NULL ? text_w(K_TYPE_CAPTION, pwr_bar) + 2 * SH_PN_PAD : 0;

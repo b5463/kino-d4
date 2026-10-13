@@ -37,6 +37,8 @@ Beside the chip, the readings. The card reading is on the header and the SHOOT b
 | `NO CARD` / `CARD OUT` / `CARD UNREADABLE` | No card mounted: none in the slot, pulled while running, or in the slot and not mounted. Not shown while the chip names the card. |
 | `STUDIO` | Studio is talking: a KDP message in the last 5 s. Nothing when it is not. The board cannot tell a charger from the cells, so no reading says what the camera runs on. |
 
+On SHOOT the bar has no card panel while the card pill says it: the pill counts at capture.c's reserve, the bar at 6 MB a photograph, and the two read LAST 1 beside CARD FULL. During the self-timer count, which hides the pill, the bar keeps the card.
+
 ## Screen titles
 
 | Text | When |

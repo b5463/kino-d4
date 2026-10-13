@@ -294,9 +294,13 @@ static const char *g_body_name = "";
 /* body.hand, set once per forked pass by main(). ui.c reads it at the top of
  * every render_screen(), so every scene is drawn for the hand of its pass. */
 static const char *g_hand = "right";
+/* wiggle.resolution, which sizes the card pill's reserve. capture.c's
+ * default unless a scene sets it. */
+static const char *g_resolution = "1600x1200";
 
 const char *config_str(const char *path, const char *fallback) {
   if (strcmp(path, "body.name") == 0) return g_body_name;
+  if (strcmp(path, "wiggle.resolution") == 0) return g_resolution;
   if (strcmp(path, "body.hand") == 0) return g_hand;
   if (strcmp(path, "mode") == 0) return g_mode;
   if (strcmp(path, "shoot.flashMode") == 0) return g_flash_mode;
@@ -1592,7 +1596,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 267
+#define PPMS_PER_HAND 268
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -3247,6 +3251,20 @@ static void scenes(void) {
   /* Under capture.c's reserve for four 1600x1200 frames, about 4.9 MB. */
   g_free_bytes = 3ULL * 1024 * 1024;
   SHOT(SCR_SHOOT, "shoot_card_full");
+  /* 6.5 MiB at 2048x1536: over the bar's 6 MB a photograph, under the
+   * reserve for four frames, about 7.1 MiB. The bar used to read LAST 1
+   * under CARD FULL; the pill owns the card, so the bar has no card panel. */
+  g_resolution = "2048x1536";
+  g_free_bytes = 6ULL * 1024 * 1024 + 512ULL * 1024;
+  SHOT(SCR_SHOOT, "shoot_card_reserve");
+  /* Asked of the stub, not sd_status(): a call out here stamps ui.c's
+   * per-pass copy, and the next scene drew 6.5 MiB as LAST 1. */
+  {
+    storage_status_t sd_now;
+    storage_get_status(&sd_now);
+    review_expect(sh_card_pill(&sd_now) != NULL, "6.5 MiB at 2048x1536 raised no card pill");
+  }
+  g_resolution = "1600x1200";
   g_free_bytes = PV_FREE_BYTES;
 
   /* The self-timer (#237): its panel on, and held; then the count as a press
