@@ -395,6 +395,8 @@ bool touch_get(uint16_t *x, uint16_t *y) {
   return true;
 }
 uint32_t touch_count(void) { return s_touch_count; }
+/* The still-contact rule is touch.c's; the Twin has no idle clock to keep. */
+void touch_rest_counts(bool on) { (void)on; }
 
 /* ---- the config store ---------------------------------------------------- */
 

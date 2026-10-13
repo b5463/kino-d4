@@ -236,6 +236,9 @@ esp_err_t touch_init(void) { return ESP_OK; }
 static bool g_touch_ready = false, g_touch_down = false;
 static uint16_t g_touch_x, g_touch_y;
 bool touch_ready(void) { return g_touch_ready; }
+/* What ui_pass() last told touch.c; check_idle_dim() holds it to the screen. */
+static bool g_rest_counts;
+void touch_rest_counts(bool on) { g_rest_counts = on; }
 bool touch_get(uint16_t *x, uint16_t *y) {
   if (!g_touch_ready || !g_touch_down) return false;
   if (x != NULL) *x = g_touch_x;
@@ -2179,6 +2182,11 @@ static int idle_dim(screen_t sc, uint32_t idle_s, int sleep_s) {
     prev_vclock_us += wait > 0 ? (int64_t)wait * 1000 : 16000;
   }
   const int k = s_dim_k;
+  if (g_rest_counts != (sc == SCR_SHOOT)) {
+    fprintf(stderr, "screen %d: a resting contact %s\n", (int)sc,
+            g_rest_counts ? "counts as activity off SHOOT" : "does not count on SHOOT");
+    g_motion_failed = true;
+  }
   prev_vclock_us = 0;
   g_power_stage = POWER_AWAKE;
   g_idle_s = 12;

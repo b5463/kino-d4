@@ -10016,6 +10016,11 @@ static uint32_t ui_pass(void) {
     s_ui_pass++;
     s_ui_pass_ms = (uint32_t)(esp_timer_get_time() / 1000);
 
+    /* A thumb resting on the finder is someone framing, and keeps the camera
+     * awake. Anywhere else a still contact stops counting after
+     * PURE_STILL_CONTACT_S (touch.c). Here, before any early return. */
+    touch_rest_counts(s_screen == SCR_SHOOT);
+
     /* The camera snapshot every draw reads (s_cams), before anything draws.
      * Above the move, because the boot field is drawn from it while the
      * splash owns the pass; not during the other moves, which are short and

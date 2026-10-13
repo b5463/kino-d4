@@ -938,4 +938,43 @@ typedef enum {
  */
 pure_tap_t pure_tap_check(int dx, int dy, int drift_px, int64_t held_ms);
 
+/* ------------------------------------------------------------------ */
+/* Touch: what is activity                                             */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A contact that stays within PURE_STILL_CONTACT_PX of where it last moved
+ * for PURE_STILL_CONTACT_S stops counting as activity until it moves or
+ * lifts. A water bead, a sleeve or a pocket must not hold the panel awake.
+ * Panel px: the GT911 reports in the panel's native space, the same scale
+ * both ways.
+ */
+#define PURE_STILL_CONTACT_S 10
+#define PURE_STILL_CONTACT_PX 40
+
+typedef enum {
+  PURE_CONTACT_UP = 0,     /* nothing on the glass */
+  PURE_CONTACT_ACTIVE,     /* a finger working the screen: counts as activity */
+  PURE_CONTACT_STILL,      /* a resting contact: does not count */
+  PURE_CONTACT_WENT_STILL, /* the sample it stopped counting; log it, once */
+} pure_contact_t;
+
+typedef struct {
+  int64_t since_us; /* when the contact last moved past PURE_STILL_CONTACT_PX */
+  uint16_t x, y;    /* where, panel px */
+  bool down;
+  bool still; /* already reported PURE_CONTACT_WENT_STILL */
+} pure_still_t;
+
+/**
+ * Fold one touch poll into the still-contact state. `down` with the point at
+ * (`x`, `y`), at `now_us`. `rest_counts` is true where a resting contact is
+ * someone at work (SHOOT, framing): it then always counts, and the clock still
+ * runs, so leaving SHOOT under a thumb that has rested 10 s stops it counting
+ * on the next poll. Zeroing the struct is a valid starting point; a NULL state
+ * counts every contact, as the camera did before the rule.
+ */
+pure_contact_t pure_still_step(pure_still_t *st, bool down, uint16_t x, uint16_t y, int64_t now_us,
+                               bool rest_counts);
+
 #endif

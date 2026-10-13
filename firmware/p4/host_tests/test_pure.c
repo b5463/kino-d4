@@ -1333,6 +1333,67 @@ static void test_tap(void) {
   CHECK(pure_tap_check(0, 0, 40, -5) == PURE_TAP_OPEN, "a negative hold cancelled the press");
 }
 
+/* ------------------------------------------------------------------ */
+/* pure_still_step                                                     */
+/* ------------------------------------------------------------------ */
+
+#define S_US(s) ((int64_t)(s) * 1000000)
+
+static void test_still(void) {
+  pure_still_t st;
+  memset(&st, 0, sizeof st);
+  const int64_t t0 = S_US(100);
+
+  /* Nothing on the glass. */
+  CHECK(pure_still_step(&st, false, 0, 0, t0, false) == PURE_CONTACT_UP, "no contact is not UP");
+
+  /* A contact counts for PURE_STILL_CONTACT_S, then stops, logged once. */
+  CHECK(pure_still_step(&st, true, 200, 300, t0, false) == PURE_CONTACT_ACTIVE, "a new contact does not count");
+  CHECK(pure_still_step(&st, true, 200, 300, t0 + S_US(PURE_STILL_CONTACT_S) - 1, false) == PURE_CONTACT_ACTIVE,
+        "a contact stopped counting before %d s", PURE_STILL_CONTACT_S);
+  CHECK(pure_still_step(&st, true, 200, 300, t0 + S_US(PURE_STILL_CONTACT_S), false) == PURE_CONTACT_WENT_STILL,
+        "a contact still at %d s was not reported", PURE_STILL_CONTACT_S);
+  CHECK(pure_still_step(&st, true, 200, 300, t0 + S_US(11), false) == PURE_CONTACT_STILL,
+        "a still contact was reported twice");
+  CHECK(pure_still_step(&st, true, 200, 300, t0 + S_US(600), false) == PURE_CONTACT_STILL,
+        "a 10 min still contact counted");
+
+  /* Rocking inside the radius is still: a water bead shimmers. */
+  CHECK(pure_still_step(&st, true, 200 + 28, 300 - 28, t0 + S_US(601), false) == PURE_CONTACT_STILL,
+        "39.6 px of rocking counted as a move");
+  /* Past the radius from where it last moved, it is a finger again. */
+  CHECK(pure_still_step(&st, true, 200 + 41, 300, t0 + S_US(602), false) == PURE_CONTACT_ACTIVE,
+        "a 41 px move did not count");
+  CHECK(st.x == 241 && st.y == 300, "the anchor did not move with the finger (%u,%u)", st.x, st.y);
+  CHECK(pure_still_step(&st, true, 241, 300, t0 + S_US(602 + PURE_STILL_CONTACT_S), false) ==
+            PURE_CONTACT_WENT_STILL,
+        "the clock did not restart from the move");
+
+  /* A slow creep adds up: each poll is 5 px, the anchor is not dragged. */
+  memset(&st, 0, sizeof st);
+  pure_contact_t c = PURE_CONTACT_UP;
+  for (int i = 0; i <= 9; i++) c = pure_still_step(&st, true, (uint16_t)(100 + 5 * i), 100, t0 + S_US(i * 2), false);
+  CHECK(c == PURE_CONTACT_ACTIVE, "a 45 px creep over 18 s did not count as a move (%d)", (int)c);
+
+  /* A lift resets it: the next contact counts. */
+  CHECK(pure_still_step(&st, false, 0, 0, t0 + S_US(700), false) == PURE_CONTACT_UP, "the lift is not UP");
+  CHECK(!st.down && !st.still, "the lift left state behind");
+  CHECK(pure_still_step(&st, true, 145, 100, t0 + S_US(701), false) == PURE_CONTACT_ACTIVE,
+        "a fresh contact on the same spot did not count");
+
+  /* Where a rest counts (SHOOT) it always counts, and the clock runs. */
+  memset(&st, 0, sizeof st);
+  CHECK(pure_still_step(&st, true, 50, 60, t0, true) == PURE_CONTACT_ACTIVE, "a framing thumb did not count");
+  CHECK(pure_still_step(&st, true, 50, 60, t0 + S_US(60), true) == PURE_CONTACT_ACTIVE,
+        "a framing thumb at 60 s did not count");
+  CHECK(pure_still_step(&st, true, 50, 60, t0 + S_US(61), false) == PURE_CONTACT_WENT_STILL,
+        "leaving SHOOT under a 61 s rest did not stop it counting");
+
+  /* No state: every contact counts, as before the rule. */
+  CHECK(pure_still_step(NULL, true, 1, 1, t0, false) == PURE_CONTACT_ACTIVE, "NULL state did not count a contact");
+  CHECK(pure_still_step(NULL, false, 1, 1, t0, false) == PURE_CONTACT_UP, "NULL state with no contact is not UP");
+}
+
 int main(void) {
   test_sync_classify();
   test_quality();
@@ -1361,6 +1422,7 @@ int main(void) {
   test_lid();
   test_shoot_dim();
   test_tap();
+  test_still();
 
   if (failures != 0) {
     printf("p4 host tests: %d of %d checks FAILED\n", failures, checks);

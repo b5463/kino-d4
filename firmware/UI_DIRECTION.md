@@ -72,6 +72,8 @@ The shutter sits on the body's top wall at the +X end. The right hand holds that
 | `HAND_EDGE` | 6 | A contact that begins this close to the hand's edge is a palm, not a finger. |
 | `TOUCH_DRIFT` | 40 | A contact that travels further than this is not a tap and fires nothing. |
 | `PURE_TAP_MAX_MS` | 2500 | A contact held longer than this, ms, is not a tap. The pressed paint clears while the finger is still down, nothing fires on the lift, and one klog line says so. Not shorter: a slow, deliberate press runs to 2 s. |
+| `PURE_STILL_CONTACT_S` | 10 | Off SHOOT, a contact still this long, s, stops counting as activity. |
+| `PURE_STILL_CONTACT_PX` | 40 | Still means within this many panel px of where the contact last moved. |
 | `SH_LOOK_HIT_H` | 52 | The SHOOT bar's target, taller than the 34 px bar it covers. |
 
 ## Colour
@@ -319,6 +321,7 @@ Outside `draw_screen()`, whole-panel renders replace it: the boot field, the wor
 | Formatting | FORMATTING THE CARD on the working strip. |
 | Cameras restarting | From the STATUS row or a dead pane's button, the same action and no confirm. RESTARTING THE CAMERAS for `MOTION_CAMS_RESTART_BANNER_MS`. For `CAM_RESTART_GRACE_MS` (7 s, a guess until the node boot is timed on the bench) a pane with no picture says STARTING and has no button, and the STATUS row only toasts. Both entry points re-arm the finder's settle clock. While a capture runs or a shot is queued (`capture_in_flight()`) there is no button and no cycle: the pane says NO PICTURE alone and a press toasts. |
 | Dim | After `body.autoDimS` (30 s by default) the scrim arrives over `MOTION_DIM_MS` to `DIM_SCRIM_K`. A touch lifts it over `MOTION_UNDIM_MS` and is acted on: a dim screen is still readable. On SHOOT the scrim waits until `PURE_SHOOT_DIM_LEAD_S` (10 s) before `body.sleepS`, or `body.autoDimS` if that is later, and never comes with sleep off (`dim_drawn()`). The scrim saves no current: the backlight is a GPIO. `power.c` still reports DIM at `body.autoDimS`, so KDP says "dim" while SHOOT draws none. |
+| A resting contact | A press held past `PURE_TAP_MAX_MS` is released under the finger and fires nothing. Off SHOOT, a contact within `PURE_STILL_CONTACT_PX` of where it last moved for `PURE_STILL_CONTACT_S` stops counting as activity until it moves or lifts (`touch.c`, `pure_still_step()`), so a water bead, a sleeve or a pocket lets the screen dim and sleep. On SHOOT a resting thumb is someone framing and still counts, so a camera left on SHOOT in a pocket stays awake. |
 | Sleep | After `body.sleepS` (120 s by default) the picture darkens, the wordmark fades in, holds and fades out inside `SLEEP_WIND_MS`, and `power.c` cuts the backlight. A touch brings the screen back over `MOTION_WAKE_MS`; that touch presses nothing. |
 | Restart, power-down | RESTARTING for `MOTION_RESTARTING_MS`, the wordmark, a fade over `MOTION_POWER_FADE_FRAMES` frames, then black. A blocking loop: it only runs on the way to a reset. |
 | Safe mode | `COND_SAFE_MODE`: three crashes in a row left the radio and uploads out. Reported as a condition. |
