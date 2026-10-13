@@ -100,8 +100,9 @@ The rows at the foot of STATUS:
 
 | Text | When |
 |---|---|
-| `SHOOTING` / `READING` / `SAVING` | The capture's stages. |
-| `SAVING - NEXT SHOT QUEUED` | A second shutter press landed while saving; it fires when the report does. |
+| `SHOOTING` | The shutter has fired and the lenses are exposing. The four cells are the four lenses in slot order: empty for a lens asked, an outline for one left out. |
+| `TAKEN. SAVING` | The frames are crossing to the card. Each lens's cell fills as its frame arrives. |
+| `TAKEN. NEXT ONE QUEUED` | The same, after a second shutter press; the next photo fires when this one is saved. |
 | `TAKE THE LENS COVER OFF` | On SHOOT, every pane was lit and then all went dark for a second: the cover went on. A body switched on facing the desk says nothing. |
 | `NO CARD. PUT ONE IN` | On SHOOT, the card pill: the slot was empty from boot. Outranks the lens hint; the self-timer outranks it. |
 | `CARD OUT. PUT IT BACK` | The card pill: the card was pulled while running. |
@@ -110,8 +111,8 @@ The rows at the foot of STATUS:
 | `CARD FULL. DELETE PHOTOS IN GALLERY` | The card pill: less room than capture.c reserves for one photograph. The shutter is refused there, and the pill pulses. |
 | `CHECK THE SECOND LENS` | On SHOOT, one pane was lit and then went a third as bright as the rest for a second while the others stayed lit. The word is one of `FIRST` / `SECOND` / `THIRD` / `FOURTH`. |
 | `10` .. `1`, `SELF-TIMER.  PRESS TO CANCEL` | The self-timer counting down. Nothing starts it in this firmware: a long press no longer does. It returns with the TIMER panel on SHOOT. |
-| `SAVED` | Every lens that answered is on the card. |
-| `SAVED, 1 CAMERA MISSED` | A partial photograph; the cells show which. |
+| `SAVED` | Every lens that answered is on the card. Its cells land in the shade; a lens left out stays an outline. |
+| `SAVED, 1 CAMERA MISSED` | A partial photograph; the red cell is the lens that lost its frame. |
 | `No card. Put one in.` | Shutter with no card. |
 | `Card full. Delete photos or change the card.` | Shutter with no room. |
 | `No lens answered. Try a restart.` | No camera node answered the probe. |
@@ -237,7 +238,9 @@ calls and fails when one of them is not in this table.
 | `SENT` | After the mode, once the Roll holds every frame. |
 | `TODAY 18:01` | When it was taken, in the clock's zone; `21 SEP 18:01` on any other day. |
 | `JAN` / `FEB` / `MAR` / `APR` / `MAY` / `JUN` / `JUL` / `AUG` / `SEP` / `OCT` / `NOV` / `DEC` | The month in that date. |
-| `2 MISSING` | A wiggle swinging fewer than four frames: how many lenses did not reach the card. |
+| `2 MISSING` | A photo whose capture lost frames: how many lenses have no file on the card. The red cells under CAMERAS say which. |
+| `1 DAMAGED` | A frame is on the card and would not open. Shown when no lens is missing. |
+| `MISSING` / `DAMAGED` | A quad's empty quarter: the four cells with that lens red, and why. |
 | `NO IMAGE` | The photograph's frames could not be decoded. |
 
 ### ROLL

@@ -162,7 +162,7 @@ The pink shifts slightly on each start. `K_LAUNCH` holds eight shades: MAO pink 
 | Toast | `K_TOAST`, `K_EDGE` outline | `K_INK` |
 | Menu rows | `K_ROW`, flat | `K_INK` |
 | SHOOT card | `K_ACCENT` | `K_ACCENT_INK` |
-| Capture working | `K_INK` bar and cells | `K_INK` |
+| Capture working | `K_INK` bar; a lens asked `K_OFF`, its frame in easing to `K_INK` over `IN_EASE_MS`, a lens left out a `K_INK` outline | `K_INK` |
 | Capture landed | `K_ACCENT` cells for `MOTION_LAND_HOLD_MS`, then back to `K_INK` over `MOTION_LAND_BACK_MS` | `K_INK` |
 | Capture partial or failed | `K_FAULT` on the lost cells while the strip is up | `K_INK` |
 | ROLL lamp | online `K_INK`, error `K_FAULT`, offline a `K_INK_QUIET` ring | |
@@ -200,7 +200,7 @@ Every mark is ink (`K_MARK`), drawn as coverage with `mask_blit()`, never steppe
 
 - **The KINO D4 wordmark.** `logo_kino_d4.h`, 374 x 52, baked by `tools/mkmask.mjs` from `docs/assets/brand/kino-d4-white-on-dark.png`. Shown at sleep, restart and power-down.
 - **The ODD JOBS symbol.** `ui_mark_odd_jobs.h`, baked by `tools/mkmask.mjs` from the supplied outline `hardware/pcb/kino-d4-carrier-a0/brand/odd-jobs-symbol.json` and never redrawn. The 50 x 40 bake is drawn on ABOUT under MADE BY. The 158 x 128 bake is in the header and not drawn: a boot mark is an option, not built.
-- **The four-mark.** `four_mark()`: four cells, one per camera, left to right or two by two. On the menu card a filled cell is a camera that answers and a 3 px outline is one that does not. On a capture strip a cell is a frame: `K_INK` in hand, the launch shade as it lands, `K_FAULT` lost, `K_OFF` empty.
+- **The four-mark.** `four_mark()`: four cells, one per camera, left to right or two by two. Cell i is always lens i, in slot order, never the i-th frame counted. On the menu card a filled cell is a camera that answers and a 3 px outline is one that does not. Everywhere else an outline, a sixth of the cell thick, is a lens that was not asked (`FM_ABSENT`). On a capture strip a cell is that lens's frame: `K_OFF` while it is out, easing to `K_INK` as it crosses in, the launch shade as it lands, `K_FAULT` lost. On a gallery tile and PHOTO the cells come from `gallery_item_t.have`, which lenses have a file on the card; a quad's empty quarter carries the mark with its lens red, and MISSING or DAMAGED.
 - **Icons.** One set, drawn, not baked: a 22 px box (`ICON_BOX`) and a 2.5 px anti-aliased stroke, sampled once into PSRAM. Back is an arrow; the pager's chevrons are the item before and after.
 
 ## Grid
@@ -316,7 +316,7 @@ Outside `draw_screen()`, whole-panel renders replace it: the boot field, the wor
 | First start | `DLG_WELCOME`, once (`body.firstRunSeen`). |
 | First start after an update | `DLG_UPDATED`, once (`body.lastVersion`). |
 | A condition | The worst one is the first line of the SHOOT card, after its severity word: PROBLEM (`COND_FAULT`), CHECK (`COND_WARN`) or NOTE (`COND_NOTE`). On every detail screen the header chip names the worst one by its short name (`chip_words()`: 1 LENS DOWN, NO CARD, DATE NOT SET), in `K_FAULT_INK` on a FAULT and `K_INK` on a WARN. A NOTE never reaches the header. While the chip names the card, the header's card reading is left out. STATUS lists all of them. The list is `cond_id_t` in `conditions.h`; the words are in `docs/DEVICE_COPY.md`. |
-| Capture | SHOOTING, READING, SAVING, then SAVED, or how many cameras missed. Cells land in the shade, or stay red where a lens lost its frame. |
+| Capture | SHOOTING, then TAKEN. SAVING (TAKEN. NEXT ONE QUEUED after a second press), then SAVED, or how many cameras missed. One cell per lens throughout. Cells land in the shade, or stay red where a lens lost its frame. |
 | A card that will cost the next photograph | On SHOOT, a `K_FAULT` pill at the top from the pass's `sd_status()`: no card, card out, unreadable, failed its write test, or under the reserve capture.c refuses at (`pure_capture_reserve_bytes()`, four frames at `wiggle.resolution`). It states and never gates: capture.c is the one gate. A refusal for the card (an `SD_` code) pulses the pill. |
 | Delete all photos | The Photos row on STORAGE reads DELETING 120 OF 500 from `gallery_delete_progress()`, repainted while `gallery_deleting()` holds. Both destructive rows are disabled until it ends. The menu and other screens show nothing of it. |
 | Formatting | FORMATTING THE CARD on the working strip. |

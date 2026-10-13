@@ -539,7 +539,9 @@ static capture_report_t g_report;
  * on four mounts do not answer together. */
 static uint32_t g_frames_in = 0xF;
 uint32_t capture_frames_in(void) { return g_frames_in; }
-uint32_t capture_asked_cams(void) { return 0xF; }
+/* The lenses the running capture asked, 0 until the probe has decided. */
+static uint32_t g_asked = 0xF;
+uint32_t capture_asked_cams(void) { return g_asked; }
 
 capture_stage_t capture_stage(void) { return g_stage; }
 void capture_ack(void) { g_stage = CAPTURE_IDLE; }
@@ -550,6 +552,14 @@ bool capture_busy(void) { return false; }
 bool capture_ready(void) { return g_capture_ready; }
 void capture_last(capture_report_t *out) {
   if (out) *out = g_report;
+}
+/* The lenses a report asked and the ones that reached the card, bit 0 =
+ * CAM1: the strip draws its cells from r.cam[i], as capture.c fills it. */
+static void report_cams(uint32_t asked, uint32_t ok) {
+  for (int i = 0; i < CAPTURE_CAMS; i++) {
+    g_report.cam[i].attempted = (asked & (1u << i)) != 0;
+    g_report.cam[i].ok = (ok & (1u << i)) != 0;
+  }
 }
 uint32_t capture_count(void) { return 0; }
 
@@ -582,6 +592,9 @@ static void fake_gallery(void) {
     snprintf(g_slot[i].mode, sizeof g_slot[i].mode, "%s", MODES[i]);
     g_slot[i].frames = i == 3 ? 2 : 4;
     g_slot[i].partial = i == 3;
+    /* The partial tile is short C2 and C4, so the mark has to put its two
+     * frames in cells 1 and 3, not first and second. */
+    g_slot[i].have = i == 3 ? 0x5 : 0xF;
     /* Two of six marked, and one of them the partial capture: the star has to
      * be legible over a picture and next to the frame mark, not only on its
      * own. */
@@ -1569,7 +1582,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 257
+#define PPMS_PER_HAND 262
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -2479,6 +2492,7 @@ static void review_open(void) {
   snprintf(g_report.id, sizeof g_report.id, "CAP_000042");
   g_report.stored = 4;
   g_report.online = 4;
+  report_cams(0xF, 0xF);
   s_screen = SCR_SHOOT;
   s_dialog = DLG_NONE;
   s_toast[0] = '\0';
@@ -2682,6 +2696,7 @@ static void check_review_loop(void) {
   snprintf(g_report.id, sizeof g_report.id, "CAP_000042");
   g_report.stored = 4;
   g_report.online = 4;
+  report_cams(0xF, 0xF);
   g_stage = CAPTURE_DONE;
   s_shot_seen_us = 0;
   g_capture_starts = true;
@@ -2910,6 +2925,26 @@ static void scenes(void) {
   scan_conditions();
   draw_screen();
   shot("capture_running");
+  /* Cells are lenses: the first and the fourth across the link, the second
+   * and third still on it. It used to light two cells for READING, which
+   * read as two lenses down. */
+  g_frames_in = 0x9;
+  draw_screen();
+  shot("capture_reading_2of4");
+  /* The second arriving, 60 ms into its 120 ms ease. */
+  g_frames_in = 0xB;
+  s_in_ink[1] = in_ink(60);
+  draw_screen();
+  shot("capture_arrive_060");
+  s_in_ink[1] = K_INK;
+  /* A body with the third lens off: three asked, the first in. The third
+   * is an outline, as on the menu card. */
+  g_asked = 0xB;
+  g_frames_in = 0x1;
+  draw_screen();
+  shot("capture_reading_3cam");
+  g_asked = 0xF;
+  g_frames_in = 0xF;
 
   g_stage = CAPTURE_DONE;
   memset(&g_report, 0, sizeof g_report);
@@ -2919,6 +2954,7 @@ static void scenes(void) {
   g_report.online = 4;
   g_report.bytes = 1043 * 1024;
   g_report.total_ms = 3120;
+  report_cams(0xF, 0xF);
   scan_conditions();
   draw_screen();
   shot("capture_saved");
@@ -3000,7 +3036,9 @@ static void scenes(void) {
     s_screen = SCR_SHOOT;
   }
 
+  /* The second lens lost its frame: cell 2 red, not the last cell. */
   g_report.stored = 3;
+  report_cams(0xF, 0xD);
   scan_conditions();
   draw_screen();
   shot("capture_partial");
@@ -3024,6 +3062,17 @@ static void scenes(void) {
   s_pill_pulse_us = 0;
   g_free_bytes = PV_FREE_BYTES;
   g_report.err_msg[0] = '\0';
+  /* A one-lens body, a good shot: one cell in the shade and three outlines.
+   * It used to be one cell and three red ones beside SAVED. */
+  g_report.ok = true;
+  g_report.err_code[0] = '\0';
+  g_report.stored = 1;
+  g_report.online = 1;
+  report_cams(0x1, 0x1);
+  scan_conditions();
+  draw_screen();
+  shot("capture_saved_1cam");
+  g_report.online = 4;
   g_stage = CAPTURE_IDLE;
 
   /* ---- the destinations ---- */
@@ -3399,6 +3448,9 @@ static void scenes(void) {
      * C1 -> C3 -> C4 -> C3, and position 2 is C4 - the far end of a swing that
      * is short one lens, which is the frame this shot is about. */
     g_frame_have = 0xd;
+    g_slot[0].frames = 3;
+    g_slot[0].partial = true;
+    g_slot[0].have = 0xd;
     photo_open(&slots[0]);
     wiggle_tick();
     s_wig_pos = 2;
@@ -3409,6 +3461,18 @@ static void scenes(void) {
     s_photo_ms = 1787000000000LL;
     SHOT(SCR_PHOTO, "photo_partial_dated");
     s_photo_ms = 0;
+    photo_release();
+    g_slot[0].frames = 4;
+    g_slot[0].partial = false;
+    g_slot[0].have = 0xf;
+
+    /* All four on the card and C2 would not decode: 1 DAMAGED, and the
+     * mark still shows four lenses on the card. */
+    g_frame_have = 0xd;
+    photo_open(&slots[0]);
+    wiggle_tick();
+    s_wig_pos = 2;
+    SHOT(SCR_PHOTO, "photo_frame_damaged");
     photo_release();
     g_frame_have = 0xf;
 
@@ -3427,10 +3491,16 @@ static void scenes(void) {
     photo_release();
 
     g_frame_have = 0xb;
+    g_slot[2].frames = 3;
+    g_slot[2].partial = true;
+    g_slot[2].have = 0xb;
     photo_open(&slots[2]);
     wiggle_tick();
     SHOT(SCR_PHOTO, "photo_quad_partial");
     photo_release();
+    g_slot[2].frames = 4;
+    g_slot[2].partial = false;
+    g_slot[2].have = 0xf;
     g_frame_have = 0xf;
   }
 

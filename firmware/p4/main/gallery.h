@@ -53,6 +53,10 @@ typedef struct {
   char mode[12];    /* wiggle | quad | single */
   int frames;
   bool partial;     /* fewer frames than cameras that were asked */
+  /* Which lenses are on the card, bit i for C(i+1): what the four cells of the
+   * mark say. read_meta() looks for C1..C4.JPG only on a capture short of four
+   * frames; a full one is 0xF without touching the card. */
+  uint8_t have;
   /* META.JSON's `favorite`, the same flag MEDIA_FAVORITE writes. Here so a
    * tile can be marked without a second read of the same file - read_meta()
    * already has the parsed document in front of it. */

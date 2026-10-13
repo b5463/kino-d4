@@ -722,6 +722,10 @@ static char s_photo_id[40];
 static char s_photo_label[16];
 static char s_photo_mode[12];
 static int s_photo_frames;
+/* Which lenses the open photograph has on the card (bit i for C(i+1)), and
+ * whether its capture lost any: gallery.c's answer, taken from the item. */
+static uint8_t s_photo_have;
+static bool s_photo_partial;
 /* The open photograph's favourite flag. Read from META.JSON when the screen
  * opens and kept here, not re-read on every draw: a draw runs many times a
  * second and this would be an SD read and a JSON parse in each of them. */
@@ -1830,10 +1834,12 @@ static void upcase(char *s) {
 /* ------------------------------------------------------------------ */
 
 typedef enum {
-  FM_OFF = 0,  /* an empty cell - a frame not yet taken */
+  FM_OFF = 0,  /* an empty cell - a lens asked, its frame not in yet */
   FM_ON,       /* a frame in hand */
   FM_SPARK,    /* a frame that just landed: the launch shade, for 300 ms */
-  FM_LOST,     /* a camera that did not answer */
+  FM_LOST,     /* a lens that was asked and lost its frame */
+  FM_ABSENT,   /* a lens that was not asked: an outline, as on the menu card */
+  FM_IN,       /* a frame crossing in: s_in_ink[i], K_OFF to K_INK over 120 ms */
 } fm_cell_t;
 
 #define FM_GAP 6
@@ -1845,6 +1851,12 @@ static uint16_t s_land_ink = K_INK;
 /* The first pass the landed strip could be on the glass with no move
  * pending; the 300 ms run from here. 0 = not yet. */
 static int64_t s_land_us;
+/* A running capture's cells, one per lens: the ink each FM_IN cell is in on
+ * this pass, set once per pass by in_step(), and what it is stepped from -
+ * the frames seen last pass and when each one came in. 25 bytes. */
+static uint16_t s_in_ink[4] = {K_INK, K_INK, K_INK, K_INK};
+static uint8_t s_in_prev;
+static int32_t s_in_at_ms[4];
 
 /**
  * Four cells of `cell` px, left to right, with `st[4]` their states.
@@ -1860,15 +1872,29 @@ static int64_t s_land_us;
  * shade for the moment one lands (s_land_ink, gone again in 300 ms), red
  * when a lens lost it, and K_OFF for a cell that is empty. `dark` no longer
  * selects a second set of tones - the tones read on both grounds.
+ *
+ * Cell i is always lens i, in slot order, never the i-th frame counted. A
+ * lens that was not asked is an outline in K_INK, a sixth of the cell thick:
+ * the menu card's 3 px on 56 in proportion, and the same meaning.
  */
 static void four_mark(int x, int y, int cell, const fm_cell_t *st, bool dark) {
+  (void)dark;
   for (int i = 0; i < 4; i++) {
     const int cx = x + i * (cell + FM_GAP);
+    if (st[i] == FM_ABSENT) {
+      const int k = cell / 6 > 0 ? cell / 6 : 1;
+      fill(cx, y, cell, k, K_INK);
+      fill(cx, y + cell - k, cell, k, K_INK);
+      fill(cx, y + k, k, cell - 2 * k, K_INK);
+      fill(cx + cell - k, y + k, k, cell - 2 * k, K_INK);
+      continue;
+    }
     uint16_t fill_c;
     switch (st[i]) {
       case FM_ON: fill_c = K_INK; break;
       case FM_SPARK: fill_c = s_land_ink; break;
       case FM_LOST: fill_c = K_FAULT; break;
+      case FM_IN: fill_c = s_in_ink[i]; break;
       default: fill_c = K_OFF; break;
     }
     fill(cx, y, cell, cell, fill_c);
@@ -5385,10 +5411,14 @@ static void draw_gallery(void) {
      * three "camera did not answer" marks under every photograph it had ever
      * taken correctly - damage reported where there was none. META.JSON says
      * `partial` when frames were asked for and did not arrive; that is the
-     * only case worth colouring as a fault. */
+     * only case worth colouring as a fault.
+     *
+     * By lens, not by count: `have` is which of C1..C4 are on the card, so a
+     * capture short of C2 lights cells 1, 3 and 4. A lens with no file on a
+     * capture that lost nothing was not asked, and is an outline. */
     fm_cell_t st[4];
     for (int k = 0; k < 4; k++) {
-      st[k] = k < slots[i].frames ? FM_ON : (slots[i].partial ? FM_LOST : FM_OFF);
+      st[k] = (slots[i].have & (1u << k)) ? FM_ON : (slots[i].partial ? FM_LOST : FM_ABSENT);
     }
     const int sy0 = y + G_TILE_H - G_STRIP;
     fill(x, sy0, G_TILE_W, G_STRIP, K_SURFACE);
@@ -5530,6 +5560,8 @@ static bool photo_open(const gallery_item_t *it) {
   snprintf(s_photo_label, sizeof s_photo_label, "%s", it->label);
   snprintf(s_photo_mode, sizeof s_photo_mode, "%s", it->mode);
   s_photo_frames = it->frames;
+  s_photo_have = it->have;
+  s_photo_partial = it->partial;
   /* The gallery already read META.JSON for this tile, so the flag is taken
    * from the item rather than read off the card a second time. The screen owns
    * its own copy from here on because the toggle below changes it and the
@@ -5930,9 +5962,15 @@ static void draw_photo(void) {
      * The quad: all four looks, 2x2, in reading order - C1 top-left, C2
      * top-right, C3 bottom-left, C4 bottom-right, the same order the gallery
      * tile and META count them. Each quadrant is one frame decoded at exactly
-     * this size, so nothing is scaled here. A look that never reached the card
-     * is a dark pane with its lens named, in place, so the other three do not
-     * move to fill it: a quad with a hole says where the hole is.
+     * this size, so nothing is scaled here. A look that did not open is a dark
+     * pane in place, so the other three do not move to fill it: a quad with a
+     * hole says where the hole is.
+     *
+     * The pane says which lens with the mark - this lens's cell red (an
+     * outline for a lens that was not asked), the others as they opened -
+     * and why in one word: MISSING when the file is
+     * not on the card, DAMAGED when it is and would not decode. It said "C3",
+     * a camera number.
      */
     const int qw = PH_W / 2, qh = PH_H / 2;
     for (int i = 0; i < GALLERY_FRAME_MAX; i++) {
@@ -5941,10 +5979,16 @@ static void draw_photo(void) {
       if (fp != NULL) {
         blit_rows(fp, qw, qx, qy, qw, qh);
       } else {
-        char lens[4];
-        snprintf(lens, sizeof lens, "C%d", i + 1);
         fill(qx, qy, qw, qh, K_SURFACE);
-        text_mid(K_TYPE_BODY, qx + qw / 2, qy + qh / 2 - K_TYPE_BODY->line_h / 2, lens, K_INK_QUIET);
+        fm_cell_t gst[4];
+        for (int k = 0; k < 4; k++) gst[k] = (s_wig_have & (1u << k)) ? FM_ON : FM_OFF;
+        /* Red when the lens was asked; an outline when it was never asked. */
+        gst[i] = ((s_photo_have & (1u << i)) || s_photo_partial) ? FM_LOST : FM_ABSENT;
+        const int gc = 14, gw = 4 * gc + 3 * FM_GAP;
+        const int gy = qy + (qh - (gc + 8 + K_TYPE_CAPTION->line_h)) / 2;
+        four_mark(qx + (qw - gw) / 2, gy, gc, gst, true);
+        text_mid(K_TYPE_CAPTION, qx + qw / 2, gy + gc + 8,
+                 (s_photo_have & (1u << i)) ? "DAMAGED" : "MISSING", K_INK_QUIET);
       }
     }
     /* A 2 px seam in the ground colour between the quadrants, over one edge
@@ -5992,8 +6036,18 @@ static void draw_photo(void) {
    * The height is computed from the same conditions the drawing below uses,
    * because the well has to be painted before the type that sits on it.
    */
-  const bool short_wiggle = (s_wig_len >= 2 || s_quad_ready) && s_wig_count > 0 &&
-                            s_wig_count < GALLERY_FRAME_MAX;
+  /* MISSING counts the lenses a partial capture has no file for, from the
+   * card, so it is there from the first frame. DAMAGED counts files on the
+   * card that would not decode, once the decode has tried them all. One line:
+   * a lens missing outranks a frame damaged. */
+  int missing = 0, damaged = 0;
+  if (s_photo_partial) {
+    for (int k = 0; k < 4; k++) missing += !(s_photo_have & (1u << k));
+  }
+  if ((s_wig_len >= 2 || s_quad_ready) && s_wig_count > 0) {
+    for (int k = 0; k < 4; k++) damaged += (s_photo_have & (1u << k)) && !(s_wig_have & (1u << k));
+  }
+  const bool short_wiggle = missing > 0 || damaged > 0;
   const int blk_pad = PH_BLK_PAD;
   int blk_h = blk_pad + K_TYPE_LABEL->line_h + K_TYPE_CAPTION->line_h;
   /* The date line. It was left out, so on a dated photograph - every one the
@@ -6052,22 +6106,21 @@ static void draw_photo(void) {
   }
 
   /*
-   * A wiggle that is swinging fewer than four frames says so, on the caption's
-   * fourth line.
+   * A photograph short of a lens says so, on the caption's fourth line.
    *
-   * The count is what DECODED, not META's frameCount: a partial capture may
-   * be missing any one of the four and the document only records how many
-   * were stored, so the denominator is the four lenses and the numerator is
-   * what is actually on the card. Said only when it is short - a complete
-   * wiggle needs no note, and "4 OF 4 FRAMES" on every photograph is a label
-   * that teaches nothing and dilutes the one that does.
+   * It used to be four minus what DECODED, so a one-lens body's photograph
+   * read "3 MISSING" for lenses that were never asked, and a frame on the card
+   * that would not open read as one that never arrived. Now the two are
+   * counted apart (above), from gallery.c's `have` and the decode's mask.
+   * Said only when it is short - a complete photograph needs no note.
    *
    * In the column rather than over the picture: the well is a photograph and
    * nothing this firmware has to say belongs inside it.
    */
   if (short_wiggle) {
     char note[24];
-    snprintf(note, sizeof note, "%d MISSING", GALLERY_FRAME_MAX - s_wig_count);
+    if (missing > 0) snprintf(note, sizeof note, "%d MISSING", missing);
+    else snprintf(note, sizeof note, "%d DAMAGED", damaged);
     text(K_TYPE_CAPTION, fx, cy + 6, note, K_INK_QUIET);
     cy += 6 + K_TYPE_CAPTION->line_h;
   }
@@ -6085,7 +6138,10 @@ static void draw_photo(void) {
    */
   {
     fm_cell_t st[4];
-    for (int k = 0; k < 4; k++) st[k] = k < s_photo_frames ? FM_ON : FM_OFF;
+    /* By lens, as the gallery tile: on the card, lost from a partial
+     * capture, or not asked. */
+    for (int k = 0; k < 4; k++)
+      st[k] = (s_photo_have & (1u << k)) ? FM_ON : (s_photo_partial ? FM_LOST : FM_ABSENT);
     /* Flowed from the caption rather than pinned to a constant. PH_FOUR_Y was
      * 132 and the caption grew past it the day the typeface changed, which put
      * "3 OF 4 FRAMES" through the mark. A column reads top to bottom; its
@@ -8222,6 +8278,61 @@ static bool land_step(void) {
   return t < (int64_t)MOTION_LAND_MS * 1000;
 }
 
+/*
+ * A frame crossing in: its cell goes from K_OFF to K_INK over IN_EASE_MS on
+ * a quadratic ease-out, `t_ms` after its bit was first seen. Integer only,
+ * one call per cell per pass. Pure: host_preview calls it with chosen times.
+ */
+#define IN_EASE_MS 120
+static uint16_t in_ink(int32_t t_ms) {
+  if (t_ms <= 0) return K_OFF;
+  if (t_ms >= IN_EASE_MS) return K_INK;
+  const int u = 256 - (int)(t_ms * 256 / IN_EASE_MS); /* 256 .. 1 left to go */
+  return mix(K_OFF, K_INK, 256 - (u * u) / 256);
+}
+
+/*
+ * Step a running capture's cells for this pass, from capture_frames_in().
+ * True while a cell is still easing in, so ui_pass keeps its 20 ms cadence.
+ *
+ * The frames-in word only grows during a capture and is cleared at the
+ * trigger, so a bit that went away is the next capture starting: the queued
+ * shot can go from DONE to TRIGGERING between two passes.
+ */
+static bool in_step(capture_stage_t cs) {
+  if (cs != CAPTURE_TRIGGERING && cs != CAPTURE_READING && cs != CAPTURE_WRITING) {
+    s_in_prev = 0;
+    for (int i = 0; i < 4; i++) s_in_ink[i] = K_INK;
+    return false;
+  }
+  const int32_t now = (int32_t)(esp_timer_get_time() / 1000);
+  const uint8_t in = (uint8_t)(capture_frames_in() & 0xFu);
+  if ((in & s_in_prev) != s_in_prev) s_in_prev = 0;
+  const uint8_t fresh = (uint8_t)(in & ~s_in_prev);
+  s_in_prev = in;
+  bool easing = false;
+  for (int i = 0; i < 4; i++) {
+    if (fresh & (1u << i)) s_in_at_ms[i] = now;
+    if (!(in & (1u << i))) continue;
+    s_in_ink[i] = in_ink(now - s_in_at_ms[i]);
+    if (now - s_in_at_ms[i] < IN_EASE_MS) easing = true;
+  }
+  return easing;
+}
+
+/*
+ * The capture strip. Cell i is lens i, in slot order, for the whole capture:
+ *
+ *   running  - not asked: an outline, as on the menu card. Asked: K_OFF.
+ *              Its frame across the link and through the CRC: eases to K_INK.
+ *   DONE     - from r.cam[i]. On the card: the launch shade, then ink.
+ *              Asked and lost: red. Not asked: an outline.
+ *
+ * It used to count stages - one cell for SHOOTING, two for READING, three for
+ * SAVING - so two lit cells read as two dead lenses; and at DONE every cell
+ * past `stored` was red, so a body with one lens online showed three red
+ * cells beside SAVED on every good shot.
+ */
 static void draw_capture_banner(void) {
   const capture_stage_t cs = capture_stage();
   if (cs == CAPTURE_IDLE) return;
@@ -8229,25 +8340,39 @@ static void draw_capture_banner(void) {
   capture_report_t r;
   capture_last(&r);
 
-  fm_cell_t st[4] = {FM_OFF, FM_OFF, FM_OFF, FM_OFF};
+  fm_cell_t st[4];
   char line[64];
   uint16_t accent = K_INK;
   switch (cs) {
     case CAPTURE_TRIGGERING:
-      st[0] = FM_ON;
-      snprintf(line, sizeof line, "SHOOTING");
-      break;
     case CAPTURE_READING:
-      st[0] = st[1] = FM_ON;
-      snprintf(line, sizeof line, "READING");
+    case CAPTURE_WRITING: {
+      /* 0 until the probe has decided: every lens counts as asked until then. */
+      const uint32_t asked = capture_asked_cams() != 0 ? capture_asked_cams() : 0xFu;
+      const uint32_t in = capture_frames_in();
+      for (int i = 0; i < 4; i++) {
+        const uint32_t b = 1u << i;
+        st[i] = !(asked & b) ? FM_ABSENT : (in & b) ? FM_IN : FM_OFF;
+      }
+      /* The exposure is over once the frames are on the links: from there it
+       * is TAKEN, and the rest is the card. */
+      if (cs == CAPTURE_TRIGGERING) snprintf(line, sizeof line, "SHOOTING");
+      else snprintf(line, sizeof line, "%s", s_shot_queued ? "TAKEN. NEXT ONE QUEUED" : "TAKEN. SAVING");
       break;
-    case CAPTURE_WRITING:
-      st[0] = st[1] = st[2] = FM_ON;
-      snprintf(line, sizeof line, "SAVING%s", s_shot_queued ? " - NEXT SHOT QUEUED" : "");
-      break;
-    default:
+    }
+    default: {
+      /* With nothing asked - a refusal before the probe, no card - the cells
+       * are empty rather than outlined: no lens was left out. */
+      bool any = false;
+      for (int i = 0; i < 4; i++) any = any || r.cam[i].attempted;
+      for (int i = 0; i < 4; i++) {
+        if (!r.cam[i].attempted) st[i] = any ? FM_ABSENT : FM_OFF;
+        /* A failed report has nothing on the card, even for a lens whose
+         * frame arrived: the half-made folder is removed. */
+        else if (r.cam[i].ok && r.ok) st[i] = FM_SPARK;
+        else st[i] = FM_LOST;
+      }
       if (!r.ok) {
-        for (int i = 0; i < 4; i++) st[i] = FM_LOST;
         /* The reason a person can act on, not the contract code. "Needs
          * 4096 KB, 812 KB free" was computed for every failure and never
          * drawn; SD_FULL was. The code stays in the log and the KDP reply. */
@@ -8255,10 +8380,6 @@ static void draw_capture_banner(void) {
                  r.err_msg[0] ? r.err_msg : (r.err_code[0] ? r.err_code : "NO PHOTO"));
         accent = K_FAULT;
       } else {
-        /* One cell per camera that actually delivered, and the rest marked
-         * lost. A partial capture says which, because "3/4" with three lit
-         * cells is a fact and "SAVED" alone is not. */
-        for (int i = 0; i < 4; i++) st[i] = i < r.stored ? FM_SPARK : FM_LOST;
         if (r.stored == r.online) snprintf(line, sizeof line, "SAVED");
         else
           snprintf(line, sizeof line, "SAVED, %d CAMERA%s MISSED", r.online - r.stored,
@@ -8266,6 +8387,7 @@ static void draw_capture_banner(void) {
         accent = r.stored == r.online ? s_land_ink : K_FAULT;
       }
       break;
+    }
   }
 
   draw_strip(st, line, accent);
@@ -10543,7 +10665,10 @@ static uint32_t ui_pass(void) {
     /* A toast that has run its time leaves here, between frames, and the
      * repaint below is what takes it off the screen. */
     if (toast_expired()) s_toast[0] = '\0';
-    const bool landing = land_step();
+    /* Both stepped on every pass: a cell easing in keeps the 20 ms pace the
+     * landing does. */
+    const bool arriving = in_step(cstage);
+    const bool landing = land_step() || arriving;
     const bool busy = cstage != CAPTURE_IDLE ||
                       (s_screen == SCR_GALLERY && gallery_loading()) ||
                       (s_screen == SCR_STORAGE && gallery_deleting()) || s_toast[0] != '\0';
