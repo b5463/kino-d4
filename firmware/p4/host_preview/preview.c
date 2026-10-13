@@ -837,12 +837,14 @@ void camlink_get_info(camlink_info_t *out) {
  * g_cam_online is the set that answers, bit i for CAM(i+1); a scene that
  * needs another set changes it and puts it back. */
 static unsigned g_cam_online = 0x5u;
+/* True puts all four nodes on one firmware: no COND_NODE_SKEW. */
+static bool g_nodes_same_fw = false;
 void camlink_get_info_ch(int cam, camlink_info_t *out) {
   memset(out, 0, sizeof *out);
   if (cam < 0 || cam > 3 || !(g_cam_online & (1u << cam))) return;
   out->online = true;
   snprintf(out->sensor, sizeof out->sensor, "OV3660");
-  snprintf(out->firmware, sizeof out->firmware, cam == 0 ? "0.9.0" : "0.8.4");
+  snprintf(out->firmware, sizeof out->firmware, cam == 0 || g_nodes_same_fw ? "0.9.0" : "0.8.4");
   out->temp_c = 31;
   out->latency_ms = 4;
 }
@@ -1538,7 +1540,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 241
+#define PPMS_PER_HAND 243
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -2720,6 +2722,20 @@ static void scenes(void) {
 
   s_focus[SCR_GALLERY] = 0;
   SHOT(SCR_GALLERY, "gallery");
+
+  /* The header chip at its two quieter levels. All four answering leaves the
+   * node firmware skew, a WARN: the chip in ink, not red. The four on one
+   * firmware leaves only NOTE conditions, which never reach the header. The
+   * snapshot is refilled by hand, as for menu_cams_3of4. */
+  g_cam_online = 0xFu;
+  for (int i = 0; i < 4; i++) camlink_get_info_ch(i, &s_cams[i]);
+  SHOT(SCR_GALLERY, "gallery_warn");
+  g_nodes_same_fw = true;
+  for (int i = 0; i < 4; i++) camlink_get_info_ch(i, &s_cams[i]);
+  SHOT(SCR_GALLERY, "gallery_quiet");
+  g_nodes_same_fw = false;
+  g_cam_online = 0x5u;
+  for (int i = 0; i < 4; i++) camlink_get_info_ch(i, &s_cams[i]);
 
   /* A tile focused and a different tile held. The press used to be a dotted
    * rectangle over the photograph and is now the selection plate and a shifted

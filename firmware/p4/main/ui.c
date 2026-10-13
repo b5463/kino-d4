@@ -513,7 +513,8 @@ static const net_status_t *net_status(void) {
  * photograph. The last five are counted down, and a full card says so. */
 static void card_words(char *out, size_t cap, const storage_status_t *sd) {
   if (!sd->mounted) {
-    snprintf(out, cap, "%s", sd->removed ? "CARD OUT" : "NO CARD");
+    /* A card in the slot that would not mount is not "no card". */
+    snprintf(out, cap, "%s", sd->removed ? "CARD OUT" : sd->present ? "CARD UNREADABLE" : "NO CARD");
     return;
   }
   const int shots = (int)(sd->free_bytes / (6ull * 1024 * 1024));
@@ -943,6 +944,47 @@ static const char *sev_word(cond_sev_t sev) {
  * press, a landing, or a failure. */
 static uint16_t sev_ink(cond_sev_t sev) {
   return sev == COND_FAULT ? K_FAULT_INK : sev == COND_WARN ? K_INK : K_INK_QUIET;
+}
+
+/* Whether a condition is about the card, so the header does not say the card
+ * twice: once as the chip and once as the card reading beside it. */
+static bool cond_is_card(cond_id_t id) {
+  return id == COND_CARD_MISSING || id == COND_CARD_LOW || id == COND_CARD_FAILED ||
+         id == COND_CARD_SLOW;
+}
+
+/* The header chip: the worst condition by a short name. The severity word
+ * alone said a lens was down and a card was missing in the same word, and a
+ * person had to open STATUS to learn which. Only WARN and FAULT get here; a
+ * NOTE stays on STATUS. */
+static void chip_words(char *out, size_t cap, const cond_t *c) {
+  switch (c->id) {
+    case COND_CAMERA_DOWN: {
+      int n = 0;
+      for (int i = 0; i < 4; i++) n += (c->mask >> i) & 1u;
+      if (n <= 1) snprintf(out, cap, "1 LENS DOWN");
+      else snprintf(out, cap, "%d LENSES DOWN", n);
+      return;
+    }
+    case COND_CARD_MISSING: {
+      /* The three states the STATUS titles split on, from the pass cache. */
+      const storage_status_t sd = *sd_status();
+      card_words(out, cap, &sd);
+      return;
+    }
+    case COND_CARD_LOW:
+      snprintf(out, cap, "%s", c->sev == COND_FAULT ? "CARD FULL" : "CARD NEARLY FULL");
+      return;
+    case COND_CARD_FAILED: snprintf(out, cap, "BAD CARD"); return;
+    case COND_CARD_SLOW: snprintf(out, cap, "SLOW CARD"); return;
+    case COND_NODE_SKEW: snprintf(out, cap, "UPDATE LENSES"); return;
+    case COND_CLOCK_UNSET: snprintf(out, cap, "DATE NOT SET"); return;
+    case COND_SAFE_MODE: snprintf(out, cap, "NO WI-FI"); return;
+    case COND_WARM: snprintf(out, cap, "WARM"); return;
+    case COND_BROWNOUT: snprintf(out, cap, "POWER LOST"); return;
+    case COND_ROLL_NO_SERVER: snprintf(out, cap, "NO SERVER"); return;
+    default: snprintf(out, cap, "%s", sev_word(c->sev)); return;
+  }
 }
 
 static void outline(int x, int y, int w, int h, uint16_t c) {
@@ -3326,25 +3368,27 @@ static int chrome_state(int left, int right, int y, uint16_t ink, const char *fi
   /* From the pass cache: this bar is on two screens during a move, and each
    * storage_get_status() is a FatFs free-space query behind its mutex. */
   const storage_status_t sd = *sd_status();
-  char card[24];
-  card_words(card, sizeof card, &sd);
   const char *const pwr = power_words(usb_attached());
 
-  /* The chip exists only when a condition does, so an unmarked bar means a
-   * camera with nothing to say - which is the reading that has to be
-   * trustworthy for the mark to be worth anything. It is not a target: the
+  /* The chip exists only when a WARN or a FAULT does, so an unmarked bar
+   * means a camera with nothing to act on - which is the reading that has to
+   * be trustworthy for the mark to be worth anything. A NOTE (the clock on
+   * UTC, the cameras not measured) stays on STATUS. It is not a target: the
    * whole band goes back on every screen that has one, and a control inside a
    * band that does something else is how a user learns to trust neither. The
    * route is SETTINGS, which lists them. */
-  /* The severity as a word, then the count: "WARN 2". It was a coloured dot
-   * beside the count, and on the title plate the yellow dot measured 1.3:1 -
-   * a warning nobody could see, saying which kind it was in a colour alone.
-   * The word is set in the plate's own ink like everything else on it. */
-  /* The word alone. "FAULT 3" counted notes in with the fault, so the
-   * number said nothing a person could act on; STATUS has the list. */
-  const int cond_n = conditions_count();
-  char cnt[16];
-  snprintf(cnt, sizeof cnt, "%s", sev_word(conditions_worst()));
+  /* The worst condition's short name, not its severity: "PROBLEM" said a lens
+   * was down and a card was missing in one word. Red on a FAULT, the ink on a
+   * WARN, so the one reading that asks for something is not in the quiet ink
+   * of the readings beside it. */
+  const cond_t *const worst = conditions_at(0);
+  const bool chip = worst != NULL && worst->sev >= COND_WARN;
+  char cnt[24] = "";
+  if (chip) chip_words(cnt, sizeof cnt, worst);
+
+  /* The card, unless the chip already names it. */
+  char card[24] = "";
+  if (!(chip && cond_is_card(worst->id))) card_words(card, sizeof card, &sd);
 
   /* Spatial order, left to right, with the priority each one is kept by. */
   struct {
@@ -3356,7 +3400,7 @@ static int chrome_state(int left, int right, int y, uint16_t ink, const char *fi
       {last, 2, false, 0},  {NULL, 1, false, 0}, {card, 4, false, 0},
       {pwr, 5, false, 0},   {first, 3, false, 0},
   };
-  it[1].s = cond_n > 0 ? cnt : NULL;
+  it[1].s = chip ? cnt : NULL;
 
   for (int i = 0; i < 5; i++) {
     if (it[i].s == NULL || it[i].s[0] == '\0') continue;
@@ -3382,7 +3426,7 @@ static int chrome_state(int left, int right, int y, uint16_t ink, const char *fi
   for (int i = 4; i >= 0; i--) {
     if (!it[i].keep) continue;
     x -= it[i].w;
-    text(K_TYPE_CAPTION, x, y, it[i].s, ink);
+    text(K_TYPE_CAPTION, x, y, it[i].s, i == 1 ? sev_ink(worst->sev) : ink);
     x -= BAR_READ_GAP;
   }
   AUDIT_ALIGN(-1);

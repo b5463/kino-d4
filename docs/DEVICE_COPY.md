@@ -10,14 +10,31 @@ The person holding the camera has read nothing and will not phone anyone. Each l
 
 ## Header chip
 
+The chip names the worst open condition when it is a PROBLEM or a CHECK, red on a PROBLEM. A NOTE never reaches the header; STATUS lists it. No chip when nothing is worse than a NOTE.
+
 | Text | When |
 |---|---|
-| `PROBLEM` / `CHECK` / `NOTE` | The worst open condition. Absent when there is none. |
+| `1 LENS DOWN` / `2 LENSES DOWN` | A lens is not answering, or several are. |
+| `NO CARD` / `CARD OUT` / `CARD UNREADABLE` | No card in the slot, the card pulled while running, or a card in the slot that would not mount. |
+| `CARD FULL` / `CARD NEARLY FULL` | The card is full, or under 50 photographs left. |
+| `BAD CARD` | The card failed the boot write test. |
+| `SLOW CARD` | The card passed the write test, slowly. |
+| `UPDATE LENSES` | The four lenses are not on one firmware. |
+| `DATE NOT SET` | The clock has never been set. |
+| `NO WI-FI` | Safe mode: three crashes in a row left the radio out. |
+| `WARM` | The camera is warm and the finder is slowed. |
+| `POWER LOST` | This boot follows a brownout. |
+| `NO SERVER` | A Roll is joined and no Roll server is set. |
+| `PROBLEM` / `CHECK` | A condition with no short name. None today. |
+
+Beside the chip, the readings:
+
+| Text | When |
+|---|---|
 | `4571 SHOTS` | Card mounted, photographs left at 6 MB each. |
 | `LAST 5` .. `LAST 1` | Five or fewer left. |
 | `CARD FULL` | None left. |
-| `NO CARD` | No card mounted since boot. |
-| `CARD OUT` | The card was pulled while running. |
+| `NO CARD` / `CARD OUT` / `CARD UNREADABLE` | No card mounted: none in the slot, pulled while running, or in the slot and not mounted. Not shown while the chip names the card. |
 | `USB` / `BATTERY` | Where the power comes from. |
 
 ## Screen titles
