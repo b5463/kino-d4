@@ -2776,7 +2776,7 @@ static bool look_current_id(char *out, size_t cap);
  *
  * Draws read this and nothing else about the cameras. camlink_get_info_ch()
  * waits up to 20 ms per channel for the lock request() holds across a whole
- * round trip, and the shutter fires from any screen, so a draw that asked the
+ * round trip, and a capture runs under any screen, so a draw that asked the
  * link directly could stall a frame behind a capture. ui_pass() refreshes the
  * copy outside any draw (cams_refresh()); ABOUT, the boot field and the
  * conditions all read the same four structs.
@@ -7398,7 +7398,7 @@ _Static_assert(LIST_TOP_DEFAULT + AB_ROW + 4 * AB_CAM_ROW + GRID + AB_QR_MIN + 1
  *
  * camlink_get_info_ch() bounds its wait at 20 ms per channel and then reads
  * unlocked anyway (cam_link.c), so four channels is up to 80 ms of contention
- * on the channel locks. The hardware shutter fires from any screen and
+ * on the channel locks. A capture keeps running under any screen and
  * request() holds a channel lock across a whole round trip, so this runs
  * between frames, where a wait delays a pass and not a picture.
  *
@@ -9222,10 +9222,9 @@ static void activate(int item) {
 /**
  * One shutter, whichever thing pressed it.
  *
- * The physical key fires from any screen. That is not a convenience: it is
- * what makes this a camera rather than an appliance with a camera mode. The
- * capture runs, the strip reports it over whatever was on screen, and the
- * screen does not change underneath you.
+ * The physical key fires on SHOOT and on the untouched review after a shot
+ * (handle_button). Anywhere else it opens the finder first. The capture strip
+ * reports a running capture over whatever is on the glass.
  */
 static void fire_shutter(void) {
   if (s_timer_end_us != 0) {
@@ -9362,7 +9361,8 @@ static void on_button(button_id_t id, bool long_press) {
 
 /* From the menu, the shutter opens the viewfinder rather than taking a
  * photograph of the inside of a bag. From the viewfinder it captures. That is
- * the safest camera-like reading of a single-stage button.
+ * the safest camera-like reading of a single-stage button. On the review after
+ * a shot, while its clock runs, it captures and the finder slides back in.
  *
  * Called only from ui_task, via the queue above. */
 static void handle_button(const btn_event_t *ev) {
