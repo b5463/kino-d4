@@ -638,10 +638,14 @@ bool roll_http_api_base(char *out, size_t cap) {
   return true;
 }
 int64_t clock_now_ms(void) { return 1790006498000LL; } /* 2026-09-21T16:01Z */
-bool gallery_deleting(void) { return false; }
+/* DELETE ALL in progress, for the one scene that shows the Photos row
+ * counting down. Off everywhere else. */
+static bool g_deleting;
+static int g_delete_done, g_delete_total;
+bool gallery_deleting(void) { return g_deleting; }
 void gallery_delete_progress(int *done, int *total) {
-  if (done != NULL) *done = 0;
-  if (total != NULL) *total = 0;
+  if (done != NULL) *done = g_delete_done;
+  if (total != NULL) *total = g_delete_total;
 }
 
 /*
@@ -1502,7 +1506,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 235
+#define PPMS_PER_HAND 237
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -2590,6 +2594,17 @@ static void scenes(void) {
   SHOT(SCR_STORAGE, "settings_storage_empty");
   g_card_present = true;
   g_card_mounted = true;
+  /* DELETE ALL running: the Photos row counts down and both destructive rows
+   * go dark until it ends. */
+  g_deleting = true;
+  g_delete_done = 120;
+  g_delete_total = 500;
+  SHOT(SCR_STORAGE, "settings_storage_deleting");
+  g_delete_done = 1433;
+  g_delete_total = 1434;
+  SHOT(SCR_STORAGE, "settings_storage_deleting_long");
+  g_deleting = false;
+  g_delete_done = g_delete_total = 0;
   SHOT(SCR_STATUS, "settings_status");
   SHOT(SCR_ABOUT, "settings_about");
   /* With a name set: a fourth row appears above Device and the list frame
