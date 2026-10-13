@@ -9760,6 +9760,32 @@ static uint32_t ui_pass(void) {
         viewfinder_throttle(conditions_has(COND_WARM));
       }
     }
+
+    /*
+     * A camera that drops or comes back repaints the screen.
+     *
+     * The menu card's four-mark, its line and ABOUT read s_cams, and an idle
+     * screen presents only when something changes. Without this a node that
+     * dropped kept its filled cell until the next touch. The rescan puts the
+     * card line in the same frame as the cells. Not on SHOOT, which repaints
+     * on its own clock; not under a finger, a move or the sleep's wind-down,
+     * which own the frame. A change while asleep is drawn by the wake.
+     */
+    {
+      static uint8_t drawn_on = 0xFF;
+      uint8_t on = 0;
+      for (int i = 0; i < 4; i++)
+        if (s_cams[i].online) on |= (uint8_t)(1u << i);
+      if (on != drawn_on) {
+        drawn_on = on;
+        conditions_scan(s_cams);
+        power_state_t ps;
+        power_get(&ps);
+        if (s_screen != SCR_SHOOT && held == -1 && !anim_active() && !s_sleep_mark &&
+            !power_sleep_pending() && ps.stage != POWER_ASLEEP)
+          ui_render(render_screen, NULL);
+      }
+    }
     calib_poll();
     first_review_poll();
     storage_events_poll();
