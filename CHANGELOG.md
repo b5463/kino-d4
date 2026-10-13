@@ -6,6 +6,50 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Changed
 
+- **Firmware 0.4.60: the on-device UI in MAO pink, one control, and the copy held to the glass (#234, #235).**
+  The screen had five accent colours at rest: a terracotta SHOOT card, a peach
+  card face, mint for a frame in hand and the toast, a green ramp on the menu
+  rows, and amber in the boot field. It now takes MAO's base - ground 08080A,
+  ink F1ECE2, quiet 8F8B85, greys neutral in their RGB565 code, failure red
+  E5484D - and one colour, MAO pink F3A2C4. The pink moves a little on each
+  start: `K_LAUNCH` is a fixed arc of eight shades from F3A2C4 toward
+  lavender, computed offline in OKLCH, and `main.c` passes `boot_count % 8`
+  to `ui_set_launch_index()` once. Dark ink on every shade is 8.99-9.54:1 and
+  every shade on the ground 9.94-10.56:1. The pink means a SHOOT card, a press
+  under a finger, and a capture that reached the card (120 ms held, 180 ms back
+  to ink). A selection that stays is ink. Warnings, the toast, the gauges, the
+  star and SENT are ink; red is a failure and nothing else. The palette lives
+  in `packages/design-system/kino-device-palette.json`, generated into
+  `ui_palette.h` (`npm run palette:check`), and `firmware/p4/host_tests/test_theme.c`
+  measures every ink-on-fill pair for all eight shades with ui.c's own
+  `rel_lum()` (648 checks, no yellow anywhere).
+  `host_preview` now renders every scene for both hands and fails the run on
+  text under 4.5:1 (3:1 for XL), a target under 52 px, chrome off the hand's
+  side, a PREV/NEXT pair in the wrong order, more than three left edges on a
+  screen, caps set in Inter, a glyph its face does not carry, and a mark that
+  replays differently tile by tile. It found the #176 list and closed it: the
+  RESTART action at 2.4:1, the lens hint at 4.03:1, the time-zone buttons
+  40 px tall, the SHOOT decisions bar 34 px tall.
+  The five button treatments are one `ctl_face()`: Back, the pagers and the
+  pickers are 52 x 52, and a press is the launch shade everywhere. Ten icons
+  are one antialiased set sampled once into PSRAM. The wordmark is baked in
+  coverage by `tools/mkmask.mjs` instead of 1-bit, and ABOUT is signed MADE BY
+  ODD JOBS from the supplied symbol outline. The XL face carries only the
+  letters of SHOOT, which took 162,626 bytes out of the image.
+  Motion: `ui_motion.h` names every duration. The power-down fade, the undim
+  and the wake are smooth, and a move that starts during an undim or a wake
+  carries the scrim off instead of cutting it. One shutter sound per picture.
+  Copy: DELETE no longer says "cannot be undone" over a 30 s UNDO, RESTART says
+  it opens the menu, STORAGE stops showing a mount error code, and an empty
+  slot asks for a card. `npm run copy:check` reads both ways and
+  `docs/DEVICE_COPY.md` covers 324 lines, up from 94.
+  `firmware/UI_DIRECTION.md` is the screen spec, and `npm run ui:doc:check`
+  holds its constants, palette and contrast numbers to the code.
+  Also: the first-photograph calibration task no longer leaks its TCB and
+  stack on every attempt, and the ABOUT draw no longer takes the camera link
+  locks. The radio image is 1,757,184 B, 1,716 KB of the 1,900 KB guard, down
+  from 1,899,408 B on 0.4.59; the default image is 1,151,728 B, down from
+  1,292,160 B. The XL cut pays for everything else this pass added.
 - **Firmware 0.4.59: the log ring keeps evidence instead of telemetry (#202, #207).**
   Measured on a bench body: 158 entries over 148 s, of which 121 were per-camera
   preview timings and 37 were cover brightness means. Not one line was anything
