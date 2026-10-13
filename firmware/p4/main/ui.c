@@ -2378,7 +2378,18 @@ static float span01(float t, float from, float to) {
   return ease_ui((t - from) / (to - from));
 }
 
-static int lerpi(int a, int b, float e) { return a + (int)((float)(b - a) * e + 0.5f); }
+/*
+ * a to b at e, rounded half away from zero: the same rule both ways.
+ *
+ * It added 0.5 and cast, and a cast truncates toward zero, so every negative
+ * step rounded up: the card's x and y shrinking to 0 stayed a pixel short
+ * until e was exactly 1, and the final render snapped that pixel on the last
+ * open frame and jumped it on the first back frame.
+ */
+static int lerpi(int a, int b, float e) {
+  const float d = (float)(b - a) * e;
+  return a + (int)(d < 0.0f ? d - 0.5f : d + 0.5f);
+}
 
 /* ------------------------------------------------------------------ */
 /* Boot                                                                */
