@@ -805,13 +805,16 @@ void power_sleep_shown(void) {}
 void power_cam_bank_cycle(void) {}
 bool power_wake_gesture(void) { return false; }
 void power_end_wake_gesture(void) {}
+/* KDP traffic in the last 5 s, which power.c reports as usb_attached. Off by
+ * default: a camera in someone's hand, not on the bench. */
+static bool g_usb_link = false;
 void power_get(power_state_t *out) {
   if (out == NULL) return;
   out->stage = g_power_stage;
   out->idle_s = 12;
   out->display_on = true;
   out->cam_bank_on = true;
-  out->usb_attached = true;
+  out->usb_attached = g_usb_link;
 }
 
 /* Plausible readings, so the screens show the layout they will really have.
@@ -1544,7 +1547,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 245
+#define PPMS_PER_HAND 247
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -2567,6 +2570,12 @@ static void scenes(void) {
   SHOT(SCR_SHOOT, "shoot_card_low");
   SHOT(SCR_SETTINGS, "settings_card_low");
   g_free_bytes = PV_FREE_BYTES;
+
+  /* Studio talking over USB-C: STUDIO on the bar and in the header. */
+  g_usb_link = true;
+  SHOT(SCR_SHOOT, "shoot_studio");
+  SHOT(SCR_CONNECTION, "settings_connection_studio");
+  g_usb_link = false;
 
   /* The back button held down, over a bright scene. It is the only control on
    * the screen and its press was an ink change on a fade until 0.4.17. */

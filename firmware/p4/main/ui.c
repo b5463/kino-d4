@@ -2250,16 +2250,21 @@ static bool cfg_set_bool(const char *path, bool v) {
   return cfg_patch(path, cJSON_CreateBool(v));
 }
 
-/* power.c reports USB through a snapshot struct rather than a getter. */
+/* power.c reports it through a snapshot struct rather than a getter. Despite
+ * the name, `usb_attached` is "a KDP byte arrived in the last 5 s": Studio
+ * talking, not a cable carrying power. */
 static bool usb_attached(void) {
   power_state_t p;
   power_get(&p);
   return p.usb_attached;
 }
 
-/* The power source in one word, as the bars and POWER print it. One place,
- * so the three screens that show it cannot spell it three ways. */
-static const char *power_words(bool usb) { return usb ? "USB" : "BATTERY"; }
+/* The link in one word, for the header and the SHOOT bar, or NULL for
+ * nothing. It said USB or BATTERY, and the board has no sense pin that tells
+ * a charger from the cells: a camera on a charger said BATTERY. So
+ * the bars say the one thing that is true - Studio is talking - and nothing
+ * otherwise. */
+static const char *link_words(bool live) { return live ? "STUDIO" : NULL; }
 
 static void toast(const char *s) {
   snprintf(s_toast, sizeof s_toast, "%s", s);
@@ -3307,18 +3312,16 @@ static int hd_cluster_w(screen_t s) {
 }
 
 /*
- * What the camera is running on and what it has left, at the right end of
- * whatever bar the screen has.
+ * What needs attention, at the right end of whatever bar the screen has.
  *
  * This used to be on two screens out of six - the menu's status bar, and half
- * of it on the viewfinder's. A body whose power source and remaining card are
- * invisible for as long as someone is browsing photographs is a body they
- * cannot plan around, and both readings cost a snprintf, so they belong on
- * every screen rather than on the two that happened to have a bar for them.
+ * of it on the viewfinder's. It is on every screen now, and it speaks only
+ * when something is short, missing or talking: a card under the low line,
+ * Studio on the link. A reading that is always there and always fine is one
+ * nobody reads by the time it matters.
  *
- * There is no fuel gauge on this board. This says where the power is coming
- * from and never how much is left: a percentage here would be invented, which
- * is the same rule the menu's status bar has always followed.
+ * There is no fuel gauge and no power-source pin on this board, so nothing
+ * here says what the camera runs on: a guess would be invented.
  *
  * Returns the left edge of what it drew, so a caller with something else on
  * the same line can end before it.
@@ -3344,7 +3347,7 @@ static int hd_cluster_w(screen_t s) {
  * function at one rhythm.
  *
  * Five readings can want this space - the screen's own (the gallery's count),
- * a condition chip, how much card is left, where the power comes from, and
+ * a condition chip, how much card is left, whether Studio is talking, and
  * whatever the screen wants nearest its right edge (the gallery's page
  * position) - and on a 622 px plate beside a 170 px title they do not all
  * fit. Two things follow, and neither is optional.
@@ -3366,8 +3369,8 @@ static int hd_cluster_w(screen_t s) {
  *   2 the screen's own     what you came to this screen to see
  *   3 the page position    where you are, and what the page pair beside it
  *                          will change: it labels two buttons
- *   4 the card             how many photographs are left
- *   5 the power source     true, and the least urgent thing on the bar
+ *   4 the card             how many photographs are left, when short
+ *   5 the Studio link      true, and the least urgent thing on the bar
  *
  * Returns the group's left edge, so the screen can keep its title clear of it.
  */
@@ -3376,7 +3379,7 @@ static int chrome_state(int left, int right, int y, uint16_t ink, const char *fi
   /* From the pass cache: this bar is on two screens during a move, and each
    * storage_get_status() is a FatFs free-space query behind its mutex. */
   const storage_status_t sd = *sd_status();
-  const char *const pwr = power_words(usb_attached());
+  const char *const pwr = link_words(usb_attached());
 
   /* The chip exists only when a WARN or a FAULT does, so an unmarked bar
    * means a camera with nothing to act on - which is the reading that has to
@@ -4535,8 +4538,10 @@ static void draw_shoot(void) {
    * sized for a full int anyway: the compiler cannot see the bound and
    * -Werror=format-truncation is right to insist, and a buffer that only fits
    * the value the code happens to produce is one refactor from a cut string. */
-  char cams[24];
-  snprintf(cams, sizeof cams, "%d/4", live);
+  /* Only when one is missing: four cells and "4/4" said the same thing
+   * twice, and the bar at rest should be the picture's settings. */
+  char cams[24] = "";
+  if (live < 4) snprintf(cams, sizeof cams, "%d/4", live);
 
   /* The bolt labels the flash panel so the word does not have to. ICON_BOLT
    * is 16 px tall and 10 wide in its box; the panel is 28. */
@@ -4547,7 +4552,7 @@ static void draw_shoot(void) {
   /* The mark, then the count. Four 8 px cells and three 6 px gaps. */
 #define SH_FM_CELL 8
 #define SH_FM_W (4 * SH_FM_CELL + 3 * FM_GAP)
-  const int w_cams = SH_FM_W + 10 + text_w(K_TYPE_CAPTION, cams) + 2 * SH_PN_PAD;
+  const int w_cams = SH_FM_W + (cams[0] != '\0' ? 10 + text_w(K_TYPE_CAPTION, cams) : 0) + 2 * SH_PN_PAD;
 
   AUDIT_CHROME(true);
   fill(0, SH_BAR_Y, UI_W, SH_BAR_H, K_FACE);
@@ -4556,16 +4561,15 @@ static void draw_shoot(void) {
    * the bar draws its own, and the white top line is what separates it from
    * the picture rather than a keyline that belongs to neither. */
 
-  /* The card and the power source, in their own panels beside the camera
-   * count, and only when they have something to say. The card speaks when it
-   * is short or missing: a healthy card's count is a number nobody acts on,
-   * and the finder is for the picture. There is no fuel gauge on this board,
-   * so the power panel says where the power comes from and not how much of
-   * it there is. A panel with nothing to say is not drawn: no width, no gap. */
+  /* The card and the Studio link, in their own panels beside the four, and
+   * only when they have something to say. The card speaks when it is short
+   * or missing: a healthy card's count is a number nobody acts on, and the
+   * finder is for the picture. The link says STUDIO while Studio is talking.
+   * A panel with nothing to say is not drawn: no width, no gap. */
   const storage_status_t sd_bar = *sd_status();
   char card_bar[24] = "";
   if (card_abnormal(&sd_bar)) card_words(card_bar, sizeof card_bar, &sd_bar);
-  const char *const pwr_bar = power_words(usb_attached());
+  const char *const pwr_bar = link_words(usb_attached());
   const int w_card = card_bar[0] != '\0' ? text_w(K_TYPE_CAPTION, card_bar) + 2 * SH_PN_PAD : 0;
   const int w_pwr = pwr_bar != NULL ? text_w(K_TYPE_CAPTION, pwr_bar) + 2 * SH_PN_PAD : 0;
   const int g_card = w_card > 0 ? SH_PN_GAP : 0;
@@ -4576,7 +4580,7 @@ static void draw_shoot(void) {
    *
    * The three DECISIONS - mode, flash, look - are the group a thumb changes,
    * so they sit at the hand's end of the bar and press as one control that
-   * opens LOOK; the three READINGS - cameras, power, card - are the group
+   * opens LOOK; the READINGS - cameras, link, card - are the group
    * nobody presses, so they take the far end. The panels start and end on
    * the page margin, which is where the MENU button above them starts.
    *
@@ -4648,8 +4652,9 @@ static void draw_shoot(void) {
     status_panel(cams_x, SH_PN_Y, w_cams, SH_PN_H);
     four_mark(cams_x + SH_PN_PAD, SH_PN_Y + (SH_PN_H - SH_FM_CELL) / 2, SH_FM_CELL, cams_st,
               false);
-    text(K_TYPE_CAPTION, cams_x + SH_PN_PAD + SH_FM_W + 10,
-         SH_PN_Y + (SH_PN_H - K_TYPE_CAPTION->line_h) / 2, cams, K_INK);
+    if (cams[0] != '\0')
+      text(K_TYPE_CAPTION, cams_x + SH_PN_PAD + SH_FM_W + 10,
+           SH_PN_Y + (SH_PN_H - K_TYPE_CAPTION->line_h) / 2, cams, K_INK);
   }
   AUDIT_CHROME(false);
 }
@@ -7178,7 +7183,9 @@ static void draw_connection(void) {
       {"Wi-Fi", wifi, net.radio_routed},
       {"Address", addr, net.ip[0] != '\0'},
       {"Saved networks", saved, true},
-      {"USB", usb_attached() ? "Connected" : "Not connected", true},
+      /* KDP traffic in the last 5 s, so the row names the talker, not the
+       * port: a charger on the same socket is not "Connected". */
+      {"Studio", usb_attached() ? "Connected" : "Not connected", true},
   };
   _Static_assert(sizeof ROWS / sizeof ROWS[0] == CN_FACTS, "CN_FACTS counts the rows drawn");
   const int n = CN_FACTS;
@@ -7649,18 +7656,20 @@ static void draw_about(void) {
 #define PW_IT_COUNT 3
 
 /*
- * POWER: the one thing it can do, the one thing it cannot, and what it is
- * running on.
+ * POWER: the one thing it can do, the one thing it cannot, and the reset.
  *
  * It was three rows floating in the middle of the panel: a dead SHUT DOWN
  * row at the top, RESTART under it, and CANCEL - which is Back, already on
- * the header of every screen. The screen had no reading on it at all, on the
- * one screen named POWER. Now the list hangs from the header like every other
- * list, RESTART is first because it is the row that does something, the
- * shut-down instruction keeps its row so the body's one physical control is
- * written down where someone looks for it, and the power source has a group
- * of its own. There is no fuel gauge on this board, so it says where the
- * power comes from and never how much is left.
+ * the header of every screen. Now the list hangs from the header like every
+ * other list, RESTART is first because it is the row that does something, and
+ * the shut-down instruction keeps its row so the body's one physical control
+ * is written down where someone looks for it.
+ *
+ * There was a RUNNING ON group under the rows, USB or BATTERY. The board has
+ * no sense pin that tells a charger from the cells, and the reading behind it
+ * was KDP traffic, so a camera on a charger said "On the cells". It is gone,
+ * and the room under the list stays empty: there is no true power reading on
+ * this board to put there.
  */
 static void draw_power(void) {
   fill(0, 0, UI_W, UI_H, K_FACE);
@@ -7676,17 +7685,6 @@ static void draw_power(void) {
            "Shut down", "Hold the power slide", false);
   draw_row(PW_IT_RESET, foc(SCR_POWER, PW_IT_RESET), s_pressed == PW_IT_RESET, true,
            "Factory reset", "Settings, networks, roll", true);
-
-  const int gy = LIST_Y + PW_IT_COUNT * ROW_H + 2 * GRID;
-  const int cap_h = K_TYPE_CAPTION->line_h + 4;
-  const bool usb = usb_attached();
-  /* USB or BATTERY: a caps word, so LABEL, not the reading face. */
-  group_box(LIST_X, gy, LIST_W, cap_h + 14 + K_TYPE_LABEL->line_h + 6 + K_TYPE_BODY->line_h + 16,
-            "RUNNING ON", K_INK, NULL);
-  text(K_TYPE_LABEL, LIST_X + INSET_TEXT, gy + cap_h + 14, power_words(usb), K_INK);
-  text(K_TYPE_BODY, LIST_X + INSET_TEXT, gy + cap_h + 14 + K_TYPE_LABEL->line_h + 6,
-       usb ? "Powered from the cable." : "On the cells. This body has no battery gauge.",
-       K_INK_QUIET);
 }
 
 /* ------------------------------------------------------------------ */

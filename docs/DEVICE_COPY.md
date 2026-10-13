@@ -35,7 +35,7 @@ Beside the chip, the readings. The card reading is on the header and the SHOOT b
 | `LAST 5` .. `LAST 1` | Five or fewer left. |
 | `CARD FULL` | None left. |
 | `NO CARD` / `CARD OUT` / `CARD UNREADABLE` | No card mounted: none in the slot, pulled while running, or in the slot and not mounted. Not shown while the chip names the card. |
-| `USB` / `BATTERY` | Where the power comes from. |
+| `STUDIO` | Studio is talking: a KDP message in the last 5 s. Nothing when it is not. The board cannot tell a charger from the cells, so no reading says what the camera runs on. |
 
 ## Screen titles
 
@@ -309,7 +309,7 @@ calls and fails when one of them is not in this table.
 | `Wi-Fi` | `studio-net  ch 6  -54 dBm` when on a network, else `Getting address` / `Connecting` / `Scanning` / `Disconnected` / `Unavailable`. |
 | `Address` | The IP address, or a dash. |
 | `Saved networks` | How many. |
-| `USB` | `Connected` / `Not connected`. |
+| `Studio` | `Connected` / `Not connected`: whether Studio has talked in the last 5 s. |
 | `Set up Wi-Fi in Studio over USB-C.` | No network saved. |
 | `Captures upload to the active roll.` | A network is saved and a Roll is joined. |
 | `No radio on this body. Photos leave over USB-C.` | The no-radio build. |
@@ -357,9 +357,6 @@ calls and fails when one of them is not in this table.
 | `Shut down` | The row; it toasts, because the slide is the only way off. With `Hold the power slide`. |
 | `Factory reset` | The row that opens the confirm. |
 | `Settings, networks, roll` | Under it: what a reset erases. Photographs are not on the list. |
-| `RUNNING ON` | The heading over where the power comes from. |
-| `Powered from the cable.` | USB-C attached. |
-| `On the cells. This body has no battery gauge.` | On battery. There is no percentage because there is no sense pin. |
 
 ## Dim and sleep
 
