@@ -127,8 +127,9 @@ function decodePng(buf) {
 }
 
 /* The raster as coverage 0..1: its own field is 0, its own ink is 1. Both
- * levels are read off the picture (the 2nd and 99.9th percentile of
- * luminance), so a field that is 08 rather than 00, or an ink that tops out
+ * levels are read off the picture (the field at the 99th percentile of a
+ * 6 px ring round the edge, the ink at the median of everything past the
+ * midpoint), so a field that is 08 rather than 00, or an ink that tops out
  * at F4, is still a clean 0 and 1 and the edge between them keeps its ramp. */
 function rasterCoverage(img, ink) {
   const n = img.w * img.h;
