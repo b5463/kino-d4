@@ -239,7 +239,7 @@ calls and fails when one of them is not in this table.
 | `TODAY 18:01` | When it was taken, in the clock's zone; `21 SEP 18:01` on any other day. |
 | `JAN` / `FEB` / `MAR` / `APR` / `MAY` / `JUN` / `JUL` / `AUG` / `SEP` / `OCT` / `NOV` / `DEC` | The month in that date. |
 | `2 MISSING` | A photo whose capture lost frames: how many lenses have no file on the card. The red cells under CAMERAS say which. |
-| `1 DAMAGED` | A frame is on the card and would not open. Shown when no lens is missing. |
+| `1 DAMAGED` | A frame is on the card and would not open. Shown when no lens is missing. The red cell under CAMERAS says which. |
 | `MISSING` / `DAMAGED` | A quad's empty quarter: the four cells with that lens red, and why. |
 | `NO IMAGE` | The photograph's frames could not be decoded. |
 

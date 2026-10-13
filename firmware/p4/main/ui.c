@@ -6087,7 +6087,8 @@ static void draw_photo(void) {
   if (s_photo_partial) {
     for (int k = 0; k < 4; k++) missing += !(s_photo_have & (1u << k));
   }
-  if ((s_wig_len >= 2 || s_quad_ready) && s_wig_count > 0) {
+  const bool decoded = (s_wig_len >= 2 || s_quad_ready) && s_wig_count > 0;
+  if (decoded) {
     for (int k = 0; k < 4; k++) damaged += (s_photo_have & (1u << k)) && !(s_wig_have & (1u << k));
   }
   const bool short_wiggle = missing > 0 || damaged > 0;
@@ -6182,9 +6183,14 @@ static void draw_photo(void) {
   {
     fm_cell_t st[4];
     /* By lens, as the gallery tile: on the card, lost from a partial
-     * capture, or not asked. */
-    for (int k = 0; k < 4; k++)
-      st[k] = (s_photo_have & (1u << k)) ? FM_ON : (s_photo_partial ? FM_LOST : FM_ABSENT);
+     * capture, or not asked. Once the decode has tried them all, a file on
+     * the card that would not open is red too, so DAMAGED says which lens
+     * the way MISSING does. */
+    for (int k = 0; k < 4; k++) {
+      const uint32_t b = 1u << k;
+      if (s_photo_have & b) st[k] = (decoded && !(s_wig_have & b)) ? FM_LOST : FM_ON;
+      else st[k] = s_photo_partial ? FM_LOST : FM_ABSENT;
+    }
     /* Flowed from the caption rather than pinned to a constant. PH_FOUR_Y was
      * 132 and the caption grew past it the day the typeface changed, which put
      * "3 OF 4 FRAMES" through the mark. A column reads top to bottom; its
