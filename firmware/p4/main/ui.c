@@ -9929,6 +9929,13 @@ static void first_review_open(const capture_report_t *r) {
   snprintf(it.label, sizeof it.label, "%s", r->id);
   snprintf(it.mode, sizeof it.mode, "%s", r->mode);
   it.frames = r->stored;
+  /* What gallery.c would read back from the card for this capture: a lens
+   * whose frame was stored has its file, and META says partial when fewer
+   * were stored than were online. Left at zero, PHOTO drew every lens of a
+   * good shot as not asked. */
+  it.partial = r->stored < r->online;
+  for (int i = 0; i < CAPTURE_CAMS && i < 4; i++)
+    if (r->ok && r->cam[i].ok) it.have |= (uint8_t)(1u << i);
   it.captured_ms = r->captured_at_ms;
   if (!photo_open(&it)) return; /* the card is still busy with it; a still it is */
   s_focus[SCR_PHOTO] = P_IT_DELETE;
