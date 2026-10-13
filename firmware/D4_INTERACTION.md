@@ -45,7 +45,7 @@ It lost on what it cost:
   anything. Unchanged, and now true on every screen rather than on four.
 - **The camera always comes back.** Transient screens return on their own.
 - **`conditions.h` is where you look first.** It is STATUS, reached from
-  SETTINGS; the header carries the worst severity word on every detail screen.
+  SETTINGS; the header names the worst warning or fault on every detail screen.
 - **The production-state list in §5**, which was the most useful page here and
   is not about guests at all. First power-on, no card, a card pulled mid-write,
   one to three cameras silent, node firmware skew, the clock never set, the
