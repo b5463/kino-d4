@@ -22,6 +22,10 @@
 //     the DISPLAY durations and the VOLUME levels;
 //   - a literal assigned to a variable or returned, at the top level of the
 //     expression: the ROLL status word, the CONNECTION link word, sev_word();
+//   - the nouns and the tail of count_words(out, cap, n, "photo", "photos",
+//     ". This cannot be undone."): it shows "%d photo<tail>" at 1 and
+//     "%d photos<tail>" otherwise. The table quotes both forms, or one line
+//     with the noun written "photo(s)";
 //
 // and in capture.c, the person's line of fail(&r, "CODE", "line"): the code goes
 // to the log and the KDP reply, the line to the capture strip.
@@ -61,6 +65,12 @@ const TOASTS = ['toast', 'timer_cancel'];
  * into "%s"), so the table needs it somewhere in a quoted line, not on its own.
  */
 const FORMATTERS = { snprintf: 2, LK_ADD: 0 };
+
+/**
+ * The calls that spell a count, by the index of the singular noun; the plural
+ * and the tail follow it. Each call shows two lines, one per form.
+ */
+const COUNTERS = { count_words: 3 };
 
 /** Toasts sit on one line of the T face: under 40 characters (DEVICE_COPY.md, the rule). */
 const TOAST_MAX = 39;
@@ -217,6 +227,7 @@ function shownStrings(src, file) {
   const out = [];
   const toasts = [];
   const fills = [];
+  const counted = []; // { forms, line }: a count's two formats, and the "(s)" line when the plural is noun + s
   const code = stripComments(src);
   // The same code with every literal's text blanked, the same length: the
   // patterns below search this, so "?title=%s" or "open t=0.15" inside a
@@ -231,13 +242,24 @@ function shownStrings(src, file) {
       const { parts } = splitGroup(code, m.index + m[0].length - 1);
       if (parts.length >= 3) add(literals(parts[2]));
     }
-    return { out, toasts, fills };
+    return { out, toasts, fills, counted };
   }
 
-  const names = [...DRAWS, ...TOASTS, ...Object.keys(FORMATTERS)];
+  const names = [...DRAWS, ...TOASTS, ...Object.keys(FORMATTERS), ...Object.keys(COUNTERS)];
   const call = new RegExp(`\\b(${names.join('|')})\\s*\\(`, 'g');
   for (const m of bare.matchAll(call)) {
     const { parts } = splitGroup(code, m.index + m[0].length - 1);
+    const c = COUNTERS[m[1]];
+    if (c !== undefined) {
+      // The definition's own parameters carry no literals and are skipped here.
+      const [one, many, tail] = [c, c + 1, c + 2].map((k) => (parts[k] === undefined ? [] : literals(parts[k])));
+      if (one.length === 1 && many.length === 1 && tail.length === 1) {
+        const forms = [`%d ${one[0]}${tail[0]}`, `%d ${many[0]}${tail[0]}`];
+        const line = many[0].toLowerCase() === `${one[0].toLowerCase()}s` ? `%d ${one[0]}(s)${tail[0]}` : null;
+        counted.push({ forms, line });
+      }
+      continue;
+    }
     const f = FORMATTERS[m[1]];
     if (f === undefined) {
       for (const a of parts) add(literals(a), TOASTS.includes(m[1]) ? toasts : out);
@@ -262,7 +284,7 @@ function shownStrings(src, file) {
     if (/^\s*\{/.test(expr)) continue; // an initializer list, read above
     add(literals(expr));
   }
-  return { out, toasts, fills };
+  return { out, toasts, fills, counted };
 }
 
 const SOURCES = [
@@ -274,16 +296,19 @@ const SOURCES = [
 const found = new Set(); // whole lines, toasts included
 const toasts = new Set();
 const fills = new Set(); // words put into a format
+const counted = []; // count_words calls: { forms, line }
 for (const rel of SOURCES) {
   const r = shownStrings(readFileSync(join(root, rel), 'utf8'), rel);
   for (const s of [...r.out, ...r.toasts]) found.add(s.trim());
   for (const s of r.toasts) toasts.add(s.trim());
   for (const s of r.fills) fills.add(s.trim());
+  counted.push(...r.counted);
 }
 
 if (process.argv.includes('--list')) {
   for (const s of [...found].sort()) console.log(s);
   for (const s of [...fills].filter((f) => !found.has(f)).sort()) console.log(`${s}   (a fill)`);
+  for (const { forms } of counted) console.log(`${forms.join(' / ')}   (a count)`);
   process.exit(0);
 }
 
@@ -361,12 +386,19 @@ const quotedInside = (s) => {
 const missing = [
   ...copy.filter((s) => !documented(s)),
   ...fillCopy.filter((s) => !documented(s) && !quotedInside(s)).map((s) => `${s}   (put into a line)`),
+  // A count is documented by its "(s)" line, or by both of its forms.
+  ...counted
+    .filter(({ forms, line }) => !(line && documented(line)) && !forms.every(documented))
+    .map(({ forms, line }) => `${line ?? forms.join(' / ')}   (a count)`),
 ].sort();
 
 // ---- reverse: every line the table quotes can still be shown ---------------
 
 const copyFolded = new Set([...copy, ...fillCopy].map(fold));
-const formats = copy.filter(isFormat).map(formatPattern);
+const formats = [
+  ...copy.filter(isFormat),
+  ...counted.flatMap(({ forms, line }) => (line ? [...forms, line] : forms)),
+].map(formatPattern);
 const stale = glassUnits
   .filter(({ unit }) => /[A-Za-z]{2,}/.test(unit))
   .filter(({ unit }) => !copyFolded.has(fold(unit)) && !formats.some((re) => re.test(fold(unit))));
@@ -381,7 +413,8 @@ const longToasts = [
 ];
 
 console.log(
-  `Device copy: ${copy.length} lines the camera can show, ${copy.length - missing.length} in the table; ` +
+  `Device copy: ${copy.length + counted.length} lines the camera can show, ` +
+    `${copy.length + counted.length - missing.length} in the table; ` +
     `${glassUnits.length} quoted in the table, ${glassUnits.length - stale.length} still drawn.`,
 );
 let failed = false;

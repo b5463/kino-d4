@@ -152,8 +152,8 @@ Every dialog has two rows: the action on top, CANCEL under it, where the thumb r
 | UPDATED | KINO has been updated. | Now on <version>. Nothing to do. | OK / CANCEL | The first boot on a new version, once. |
 | RESTART | Restart the camera? | KINO restarts and opens the menu. | RESTART / CANCEL | POWER > RESTART |
 | FACTORY RESET | Reset the camera? | Settings, networks and roll are erased. | RESET / CANCEL | POWER > FACTORY RESET |
-| DELETE | Delete this photo? | N frames. Undo for 30 s after. | DELETE / CANCEL | PHOTO > DELETE. The toast after it offers UNDO for those 30 s. |
-| DELETE ALL | Delete every photo? | N photos. This cannot be undone. | DELETE ALL / CANCEL | STORAGE > DELETE ALL PHOTOS |
+| DELETE | Delete this photo? | N frame(s). Undo for 30 s after. | DELETE / CANCEL | PHOTO > DELETE. The toast after it offers UNDO for those 30 s. |
+| DELETE ALL | Delete every photo? | N photo(s). This cannot be undone. | DELETE ALL / CANCEL | STORAGE > DELETE ALL PHOTOS |
 | FORMAT CARD | Erase the card? | Every photo on it is deleted. | FORMAT / CANCEL | STORAGE > FORMAT CARD |
 
 ## Screen rows and labels

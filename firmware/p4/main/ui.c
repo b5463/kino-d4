@@ -519,11 +519,15 @@ static void card_words(char *out, size_t cap, const storage_status_t *sd) {
   else snprintf(out, cap, "%d SHOTS", shots);
 }
 
-/* A count of photographs, "1 PHOTO" or "12 PHOTOS", and what follows it.
- * GALLERY's header and ROLL's card line each spelled the plural their own
- * way; one place now. */
-static void shots_words(char *out, size_t cap, int n, const char *tail) {
-  snprintf(out, cap, "%d PHOTO%s%s", n, n == 1 ? "" : "S", tail);
+/* A count and its noun, "1 photo" or "12 photos", then what follows it. Every
+ * count the glass spells goes through here: GALLERY's header and ROLL's card
+ * line (PHOTO, PHOTOS), and the DELETE and DELETE ALL dialogs' sub lines
+ * (frame, frames; photo, photos). Each used to spell its own plural, and the
+ * dialogs said "1 photos". Pass the nouns and the tail as literals at the
+ * call: scripts/check-device-copy.mjs reads them there. */
+static void count_words(char *out, size_t cap, int n, const char *one, const char *many,
+                        const char *tail) {
+  snprintf(out, cap, "%d %s%s", n, n == 1 ? one : many, tail);
 }
 
 /* "TODAY 18:01" or "21 SEP 18:01", in the zone the clock prints with. The
@@ -5044,7 +5048,7 @@ static void draw_gallery(void) {
       else snprintf(s_head_last, sizeof s_head_last, "READING CARD");
     } else {
       const int n = gallery_total();
-      shots_words(s_head_last, sizeof s_head_last, n, "");
+      count_words(s_head_last, sizeof s_head_last, n, "PHOTO", "PHOTOS", "");
     }
   }
   draw_header(SCR_GALLERY);
@@ -6113,7 +6117,7 @@ static void draw_roll(void) {
     well(RL_M, wy, UI_W - 2 * RL_M, wh);
     if (n > 0) {
       char line[56];
-      shots_words(line, sizeof line, n, " ON THE CARD");
+      count_words(line, sizeof line, n, "PHOTO", "PHOTOS", " ON THE CARD");
       text_mid(K_TYPE_LABEL, UI_W / 2, wy + 12, line, K_INK);
       text_mid(K_TYPE_BODY, UI_W / 2, wy + 44,
                "They import over USB-C, and upload if a roll is assigned later.", K_INK_QUIET);
@@ -6559,7 +6563,8 @@ static void draw_settings(void) {
 #define DSP_Y0 (BODY_Y + 10)
 /* 44, the floor a thumb needs and what every other control here measures;
  * the pitch grew by the same four pixels so the group boxes still clear
- * each other. Four bands and the brightness note end at 433 of 480. */
+ * each other. Four bands and the brightness note's box end at 463 of 480,
+ * inside the 16 px page margin. */
 #define DSP_PITCH 82
 #define DSP_BAND_H 52 /* 6.1 mm on this glass; 44 was 5.2 */
 #define DSP_X (PAGE_M + INSET_TEXT)
@@ -6572,12 +6577,14 @@ static void draw_settings(void) {
 #define DSP_BOX_X (DSP_X - INSET_TEXT)
 #define DSP_BOX_W (DSP_W + 2 * INSET_TEXT)
 #define DSP_BOX_H (22 + DSP_BAND_H + 6)
-/* The brightness note's box under the fourth band: its legend line and one
- * BODY line (24 px). */
-#define DSP_NOTE_Y (DSP_BAND_Y(DSP_ROWS - 1) + DSP_BAND_H + 18)
+/* The brightness note's box, one grid step under the fourth band's box: its
+ * legend line, one BODY line (24 px), the box's foot. The assert and the draw
+ * both use this height, so the assert checks what is drawn. */
+#define DSP_NOTE_H (22 + 24 + 10)
+#define DSP_NOTE_Y (DSP_LABEL_Y(DSP_ROWS - 1) + DSP_BOX_H + GRID)
 
 _Static_assert(DSP_BOX_H < DSP_PITCH, "the DISPLAY group boxes overlap each other");
-_Static_assert(DSP_NOTE_Y + 22 + 24 <= UI_H - PAGE_M, "the DISPLAY note runs off the page");
+_Static_assert(DSP_NOTE_Y + DSP_NOTE_H <= UI_H - PAGE_M, "the DISPLAY note runs off the page");
 
 /* DIM_S, SLEEP_S and their names sit with SET_ROWS, where the SETTINGS
  * summary reads them too. */
@@ -6655,7 +6662,7 @@ static void draw_display(void) {
   const int ny = DSP_NOTE_Y;
   /* One line, inside the safe area: what the backlight cannot do, and the
    * two things about it a person has to know. */
-  group_box(DSP_BOX_X, ny, DSP_BOX_W, 22 + K_TYPE_BODY->line_h + 10, "BRIGHTNESS AND POWER",
+  group_box(DSP_BOX_X, ny, DSP_BOX_W, DSP_NOTE_H, "BRIGHTNESS AND POWER",
             K_INK_QUIET, NULL);
   text(K_TYPE_BODY, DSP_X, ny + 22,
        "On or off, not dimmable. Tap the screen to wake. Hold the slide to switch off.",
@@ -7540,11 +7547,12 @@ static void dialog_spec(dlg_spec_t *d) {
       /* The delete goes to the trash and the toast offers UNDO for
        * MOTION_UNDO_MS. "This cannot be undone" above a thirty-second undo
        * was a warning the next screen contradicted. */
-      snprintf(sub, sizeof sub, "%d frames. Undo for 30 s after.", s_photo_frames);
+      count_words(sub, sizeof sub, s_photo_frames, "frame", "frames", ". Undo for 30 s after.");
       *d = (dlg_spec_t){"DELETE", "Delete this photo?", sub, "DELETE", true};
       break;
     case DLG_DELETE_ALL:
-      snprintf(sub, sizeof sub, "%d photos. This cannot be undone.", gallery_media_count() < 0 ? 0 : gallery_media_count());
+      count_words(sub, sizeof sub, gallery_media_count() < 0 ? 0 : gallery_media_count(), "photo", "photos",
+                  ". This cannot be undone.");
       /* "photos", and the sub line says how many, because that is the number a
        * person checks before pressing this. It says nothing about sounds,
        * looks or settings on purpose: they are not touched, and listing what
@@ -7644,7 +7652,7 @@ static void draw_dialog(void) {
   ty += K_TYPE_CAPTION->line_h + GRID;
   text(K_TYPE_BODY_L, dx + DLG_PAD, ty, d.body, K_INK);
   ty += K_TYPE_BODY_L->line_h;
-  if (sub) text(K_TYPE_BODY, dx + DLG_PAD, ty + 4, d.sub, K_INK_QUIET);
+  if (sub) text(K_TYPE_BODY, dx + DLG_PAD, ty + GRID, d.sub, K_INK_QUIET);
 
   /*
    * The answers, as rows.
