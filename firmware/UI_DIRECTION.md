@@ -288,6 +288,7 @@ One sound per outcome, played at the moment the screen shows it, not when the fa
 ### On the glass
 
 - A press shows the launch shade on the control on the touch-down edge, before the action runs.
+- A control drawn dead takes no press (`press_dead()`): no shade, no tick. The lift still answers with a toast that says why. SEND TO ROLL off a Roll is the one: "No active roll".
 - A remark is a toast: under 40 characters, `MOTION_TOAST_MS` on the glass, placed clear of the control that raised it. The undo after a delete stays `MOTION_UNDO_MS`.
 - The camera at work is a strip along the foot: a capture's four cells and a word, FORMATTING THE CARD, RESTARTING THE CAMERAS. A strip never blocks a touch.
 - A question is a dialog. Only a question is a dialog.

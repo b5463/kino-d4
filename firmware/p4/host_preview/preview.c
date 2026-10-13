@@ -2327,6 +2327,81 @@ static void check_tap_limit(void) {
   s_screen = scr0;
 }
 
+/*
+ * SEND TO ROLL off a Roll is drawn dead and takes no press: under a finger
+ * its face stays dead, and the lift toasts why. On a Roll it shows the launch
+ * shade as every live control does.
+ */
+static void check_dead_send(void) {
+  const screen_t scr0 = s_screen;
+  const bool roll0 = g_roll_active;
+  const int focus0 = s_focus[SCR_PHOTO];
+  g_audit_off = true;
+  photo_open(&gallery_slots()[0]);
+  for (int live = 0; live < 2; live++) {
+    g_roll_active = live != 0;
+    s_screen = SCR_PHOTO;
+    s_dialog = DLG_NONE;
+    s_pressed = -1;
+    held = -1;
+    swallow_touch = false;
+    s_anim.kind = ANIM_NONE;
+    s_dim_k = 0;
+    s_lift_us = 0;
+    g_power_stage = POWER_AWAKE;
+    s_toast[0] = '\0';
+    scan_conditions();
+    draw_screen();
+    int lx, ly;
+    if (!point_on(P_IT_ROLL, &lx, &ly)) {
+      fprintf(stderr, "send: no point on SEND TO ROLL\n");
+      g_motion_failed = true;
+      break;
+    }
+    finger_at(lx, ly);
+    g_touch_ready = true;
+    g_touch_down = true;
+    prev_vclock_us = 1000000;
+    for (int i = 0; i < 3; i++) {
+      ui_pass();
+      prev_vclock_us += 15000;
+    }
+    const uint16_t face = g_canvas[(PH_BTN_Y(1) + PH_BTN_H / 2) * UI_W + ph_col_x() + 6];
+    if ((face == K_PRESS) != (live != 0)) {
+      fprintf(stderr, "send: SEND TO ROLL %s a Roll is %sdrawn pressed\n", live ? "on" : "off",
+              face == K_PRESS ? "" : "not ");
+      g_motion_failed = true;
+    }
+    if (!live) {
+      const int warn0 = g_warning_n;
+      g_touch_down = false;
+      for (int i = 0; i < 3; i++) {
+        ui_pass();
+        prev_vclock_us += 15000;
+      }
+      if (strcmp(s_toast, "No active roll") != 0 || g_warning_n != warn0 + 1) {
+        fprintf(stderr, "send: a tap on the dead SEND TO ROLL toasted \"%s\", %d warnings\n", s_toast,
+                g_warning_n - warn0);
+        g_motion_failed = true;
+      }
+    }
+    printf("send %s a Roll: face 0x%04x, toast \"%s\"\n", live ? "on" : "off", face, s_toast);
+    /* The finger is put away without a lift on the live pass: nothing is sent. */
+    g_touch_down = false;
+    s_pressed = -1;
+    held = -1;
+    swallow_touch = false;
+  }
+  g_touch_ready = false;
+  g_roll_active = roll0;
+  s_toast[0] = '\0';
+  s_toast_us = 0;
+  prev_vclock_us = 0;
+  g_audit_off = false;
+  s_focus[SCR_PHOTO] = focus0;
+  s_screen = scr0;
+}
+
 static void check_wake_into_move(void) {
   const screen_t scr0 = s_screen;
   g_audit_off = true;
@@ -3510,6 +3585,7 @@ static void scenes(void) {
   check_wake_into_move();
   check_idle_dim();
   check_tap_limit();
+  check_dead_send();
   check_review_loop();
 }
 

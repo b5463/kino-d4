@@ -5457,9 +5457,8 @@ static void draw_gallery(void) {
  * The photograph screen's three controls, left to right as they are drawn.
  *
  * FAVOURITE was inserted between DELETE and SEND TO ROLL, which moved
- * P_IT_ROLL from 1 to 2. Nothing reads P_IT_ROLL - the control is drawn dead
- * because there is no radio on this body - but the number is kept in step with
- * the layout so it is right on the day one is fitted.
+ * P_IT_ROLL from 1 to 2. SEND TO ROLL is drawn dead while the body is on no
+ * Roll (press_dead()).
  *
  * item_count(SCR_PHOTO) is 3: DELETE, FAVOURITE and SEND TO ROLL all act.
  */
@@ -6151,10 +6150,11 @@ static void draw_photo(void) {
   if (foc(SCR_PHOTO, P_IT_FAV)) focus_inset(bx, fy, bw, bh, K_INK);
 
   /* Live while the body is on a Roll; asleep, in the same shape, when it is
-   * not - a control that vanishes teaches nothing. */
+   * not - a control that vanishes teaches nothing. Asleep, it does not take
+   * the launch shade under a finger (press_dead()). */
   const int ry = PH_BTN_Y(1);
-  const bool rd = s_pressed == P_IT_ROLL;
   const bool on_roll = roll_state_active();
+  const bool rd = s_pressed == P_IT_ROLL && on_roll;
   btn_text(bx, ry, bw, bh, rd ? CTL_DOWN : on_roll ? CTL_REST : CTL_DEAD, K_GROUND, "SEND TO ROLL",
            ICON_N);
   if (foc(SCR_PHOTO, P_IT_ROLL)) focus_inset(bx, ry, bw, bh, K_INK);
@@ -8968,6 +8968,16 @@ static bool hit_hand_button(int x, int y, int bx, int by, int bw, int bh) {
   return s_right_hand ? x >= bx + bw : x < bx;
 }
 
+/*
+ * A control drawn dead takes no press: no launch shade under the finger and
+ * no tick, because the shade says the camera is about to do it. The release
+ * still answers, with the toast that says why. SEND TO ROLL off a Roll is the
+ * one: it showed the shade and ticked, then refused.
+ */
+static bool press_dead(int item) {
+  return s_dialog == DLG_NONE && s_screen == SCR_PHOTO && item == P_IT_ROLL && !roll_state_active();
+}
+
 static int hit_test(int x, int y) {
   /* A dialog takes every press on the glass, wherever it lands. One line
    * here rather than a guard on every control, because a guard that has to be
@@ -10381,7 +10391,7 @@ static uint32_t ui_pass(void) {
        * lands on the wrong thing can be slid off it. */
       s_pressed = region;
       held = region;
-      if (region >= 0 && config_bool("body.sounds.ui", true)) audio_tick();
+      if (region >= 0 && !press_dead(region) && config_bool("body.sounds.ui", true)) audio_tick();
       ui_render(render_screen, NULL);
     } else if (!down && held != -1) {
       const int fired = (s_pressed == held) ? held : -1;
