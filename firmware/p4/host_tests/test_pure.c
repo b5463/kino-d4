@@ -1277,6 +1277,33 @@ static void test_lid(void) {
   CHECK(strcmp(pure_lid_state_name(99), "unknown") == 0, "unknown name for a stray value");
 }
 
+/* ------------------------------------------------------------------ */
+/* pure_shoot_dim_due                                                  */
+/* ------------------------------------------------------------------ */
+
+static void test_shoot_dim(void) {
+  /* The defaults: dim 30 s, sleep 120 s. SHOOT dims at 110 s, not 30 s. */
+  CHECK(!pure_shoot_dim_due(30, 30, 120), "SHOOT dimmed at autoDimS");
+  CHECK(!pure_shoot_dim_due(40, 30, 120), "SHOOT dimmed at 40 s with sleep at 120 s");
+  CHECK(!pure_shoot_dim_due(109, 30, 120), "SHOOT dimmed 11 s before the sleep");
+  CHECK(pure_shoot_dim_due(110, 30, 120), "SHOOT not dimmed 10 s before the sleep");
+  CHECK(pure_shoot_dim_due(119, 30, 120), "SHOOT not dimmed 1 s before the sleep");
+
+  /* A short sleep: sleep - 10 is before autoDimS, so autoDimS wins. */
+  CHECK(!pure_shoot_dim_due(29, 30, 35), "dimmed before autoDimS with a short sleep");
+  CHECK(pure_shoot_dim_due(30, 30, 35), "not dimmed at autoDimS with a short sleep");
+  CHECK(!pure_shoot_dim_due(4, 5, 10), "dimmed before autoDimS with sleep at 10 s");
+  CHECK(pure_shoot_dim_due(5, 5, 10), "not dimmed at autoDimS with sleep at 10 s");
+
+  /* Sleep off: nothing to warn about, never dims. */
+  CHECK(!pure_shoot_dim_due(300, 30, 0), "SHOOT dimmed with sleep off");
+  CHECK(!pure_shoot_dim_due(100000, 30, 0), "SHOOT dimmed with sleep off, a day idle");
+  CHECK(!pure_shoot_dim_due(300, 30, -1), "SHOOT dimmed with a negative sleep");
+
+  /* Dim off: never dims, whatever the sleep. */
+  CHECK(!pure_shoot_dim_due(119, 0, 120), "SHOOT dimmed with dim off");
+}
+
 int main(void) {
   test_sync_classify();
   test_quality();
@@ -1303,6 +1330,7 @@ int main(void) {
   test_align();
   test_json_depth();
   test_lid();
+  test_shoot_dim();
 
   if (failures != 0) {
     printf("p4 host tests: %d of %d checks FAILED\n", failures, checks);

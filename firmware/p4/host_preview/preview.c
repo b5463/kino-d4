@@ -247,9 +247,12 @@ uint32_t touch_count(void) { return 0; }
 static int g_after_shot_s = 2;
 static int g_cam_idle_s = 300;
 
+/* body.sleepS, set by check_idle_dim() for the sleep-off case. */
+static int g_sleep_s = 120;
+
 int config_int(const char *path, int fallback) {
   if (strcmp(path, "body.autoDimS") == 0) return 30;
-  if (strcmp(path, "body.sleepS") == 0) return 120;
+  if (strcmp(path, "body.sleepS") == 0) return g_sleep_s;
   if (strcmp(path, "body.camIdleTimeoutS") == 0) return g_cam_idle_s;
   if (strcmp(path, "shoot.displayAfterShotS") == 0) return g_after_shot_s;
   if (strcmp(path, "shoot.volume") == 0) return 6;
@@ -796,8 +799,10 @@ bool media_favorite_get(const char *id) {
 }
 
 /* The stage power_get() reports. AWAKE for every scene; the move checks set
- * DIM to hold a dim that is still arriving. */
+ * DIM to hold a dim that is still arriving. g_idle_s is its idle time, set by
+ * check_idle_dim(). */
 static power_stage_t g_power_stage = POWER_AWAKE;
+static uint32_t g_idle_s = 12;
 void power_activity(void) {}
 void power_wake(void) {}
 bool power_sleep_pending(void) { return false; }
@@ -813,7 +818,7 @@ static bool g_usb_link = false;
 void power_get(power_state_t *out) {
   if (out == NULL) return;
   out->stage = g_power_stage;
-  out->idle_s = 12;
+  out->idle_s = g_idle_s;
   out->display_on = true;
   out->cam_bank_on = true;
   out->usb_attached = g_usb_link;
@@ -2144,6 +2149,73 @@ static void wake_into_move(const char *what, screen_t from, int k0, bool asleep,
   printf("%s: %d frames, scrim %d first\n", what, g_wake_seq_n, g_wake_seq_n ? g_wake_seq[0] : -1);
 }
 
+/*
+ * The dim through ui_pass(), as the camera draws it: power.c reports DIM after
+ * `idle_s` seconds idle, the loop runs 2.5 s (past MOTION_DIM_MS), and the
+ * scrim it arrived at is returned. Nothing is photographed.
+ */
+static int idle_dim(screen_t sc, uint32_t idle_s, int sleep_s) {
+  s_screen = sc;
+  s_pressed = -1;
+  s_anim.kind = ANIM_NONE;
+  s_dim_k = 0;
+  s_lift_us = 0;
+  s_lift_mark = 0;
+  s_sleep_mark = false;
+  was_asleep = false;
+  s_dim_since_us = 0;
+  g_power_stage = POWER_DIM;
+  g_idle_s = idle_s;
+  g_sleep_s = sleep_s;
+  prev_vclock_us = 1000000;
+  const int64_t t0 = prev_vclock_us;
+  for (int guard = 0; guard < 4000 && prev_vclock_us - t0 < 2500000; guard++) {
+    const uint32_t wait = ui_pass();
+    prev_vclock_us += wait > 0 ? (int64_t)wait * 1000 : 16000;
+  }
+  const int k = s_dim_k;
+  prev_vclock_us = 0;
+  g_power_stage = POWER_AWAKE;
+  g_idle_s = 12;
+  g_sleep_s = 120;
+  s_dim_k = 0;
+  s_dim_since_us = 0;
+  printf("dim: screen %d, idle %u s, sleep %d s: scrim %d\n", (int)sc, (unsigned)idle_s, sleep_s, k);
+  return k;
+}
+
+/*
+ * SHOOT holds the drawn dim back to PURE_SHOOT_DIM_LEAD_S before the sleep,
+ * and never draws it with sleep off. The menu dims at body.autoDimS as before.
+ */
+static void check_idle_dim(void) {
+  const screen_t scr0 = s_screen;
+  g_audit_off = true;
+  static const struct {
+    screen_t sc;
+    uint32_t idle_s;
+    int sleep_s;
+    int want;
+  } CASES[] = {
+      {SCR_SHOOT, 40, 120, 0},
+      {SCR_SHOOT, 109, 120, 0},
+      {SCR_SHOOT, 112, 120, DIM_SCRIM_K},
+      {SCR_SHOOT, 300, 0, 0},
+      {SCR_MENU, 40, 120, DIM_SCRIM_K},
+      {SCR_SETTINGS, 40, 120, DIM_SCRIM_K},
+  };
+  for (size_t i = 0; i < sizeof CASES / sizeof CASES[0]; i++) {
+    const int k = idle_dim(CASES[i].sc, CASES[i].idle_s, CASES[i].sleep_s);
+    if (k != CASES[i].want) {
+      fprintf(stderr, "dim: screen %d at %u s idle, sleep %d s, is under scrim %d, expected %d\n",
+              (int)CASES[i].sc, (unsigned)CASES[i].idle_s, CASES[i].sleep_s, k, CASES[i].want);
+      g_motion_failed = true;
+    }
+  }
+  g_audit_off = false;
+  s_screen = scr0;
+}
+
 static void check_wake_into_move(void) {
   const screen_t scr0 = s_screen;
   g_audit_off = true;
@@ -3325,6 +3397,7 @@ static void scenes(void) {
   check_shutter_sound();
   check_move_takes_lift();
   check_wake_into_move();
+  check_idle_dim();
   check_review_loop();
 }
 

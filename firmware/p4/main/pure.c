@@ -675,3 +675,10 @@ const char *pure_lid_state_name(int state) {
     default: return "unknown";
   }
 }
+
+bool pure_shoot_dim_due(uint32_t idle_s, int dim_s, int sleep_s) {
+  if (dim_s <= 0 || sleep_s <= 0) return false;
+  int from = sleep_s - PURE_SHOOT_DIM_LEAD_S;
+  if (from < dim_s) from = dim_s;
+  return idle_s >= (uint32_t)from;
+}

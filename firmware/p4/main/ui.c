@@ -9989,6 +9989,22 @@ static bool lift_step(bool *drew) {
   return true;
 }
 
+/*
+ * Whether the dim scrim is drawn now, for power.c's stage `p`.
+ *
+ * Everywhere but SHOOT it follows the DIM stage. On SHOOT someone is framing
+ * and waiting for the moment, and the scrim saves no current (the backlight is
+ * a GPIO), so it only took the finder's contrast. There it waits for
+ * pure_shoot_dim_due(): PURE_SHOOT_DIM_LEAD_S before the sleep, never with
+ * sleep off. power.c still reports DIM at body.autoDimS, so KDP says "dim"
+ * while SHOOT draws none.
+ */
+static bool dim_drawn(const power_state_t *p) {
+  if (p->stage != POWER_DIM) return false;
+  if (s_screen != SCR_SHOOT) return true;
+  return pure_shoot_dim_due(p->idle_s, config_int("body.autoDimS", 30), config_int("body.sleepS", 120));
+}
+
 /** One pass of the UI loop. Returns how long the task sleeps before the next. */
 static uint32_t ui_pass(void) {
   {
@@ -10154,11 +10170,12 @@ static uint32_t ui_pass(void) {
      * The dim is drawn instead - a scrim over whatever is on the screen,
      * eased in over MOTION_DIM_MS so it reads as the camera settling, not as
      * a fault - and lifted over MOTION_UNDIM_MS the moment a touch or the
-     * shutter brings the stage back to AWAKE. The lift was a cut.
+     * shutter brings the stage back to AWAKE. The lift was a cut. SHOOT
+     * holds it back to just before the sleep (dim_drawn()).
      */
     bool lifting = false, lift_drew = false;
     {
-      const bool dim_now = pst.stage == POWER_DIM && !power_sleep_pending() && !asleep_now;
+      const bool dim_now = dim_drawn(&pst) && !power_sleep_pending() && !asleep_now;
       if (dim_now && s_dim_since_us == 0) s_dim_since_us = esp_timer_get_time();
       if (!dim_now) s_dim_since_us = 0;
       if (power_sleep_pending() || s_sleep_mark) {

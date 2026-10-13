@@ -889,4 +889,27 @@ int pure_lid_update(pure_lid_t *st, const int *means, int n, uint32_t dt_ms);
 /** "unknown" | "open" | "closed". */
 const char *pure_lid_state_name(int state);
 
+/* ------------------------------------------------------------------ */
+/* The drawn dim on SHOOT                                              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The dim is a scrim the UI draws. The backlight is a GPIO with no PWM, so
+ * the dim saves no current; on SHOOT it only costs the finder its contrast
+ * while someone waits for the moment. There it arrives this long before the
+ * sleep, as the warning that the sleep is coming.
+ */
+#define PURE_SHOOT_DIM_LEAD_S 10
+
+/**
+ * Whether SHOOT draws the dim scrim after `idle_s` seconds idle, with
+ * `body.autoDimS` = `dim_s` and `body.sleepS` = `sleep_s`.
+ *
+ * True from max(dim_s, sleep_s - PURE_SHOOT_DIM_LEAD_S). Never with sleep off
+ * (sleep_s <= 0): nothing is coming to warn about. Never with dim off
+ * (dim_s <= 0). power.c still reports the DIM stage at dim_s; only the drawing
+ * waits.
+ */
+bool pure_shoot_dim_due(uint32_t idle_s, int dim_s, int sleep_s);
+
 #endif
