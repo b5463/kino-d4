@@ -318,10 +318,10 @@ static void log_last_panic(void) {
  * internal SRAM, the pool the C6 recovery reserve and every DMA buffer come from.
  *
  * Safe because no cJSON call needs internal memory:
- *   - every caller is a task (kdp_server, kdp_net, capture, config_store,
- *     ui, gallery, cam_link, klog, kdp_recipes, kdp_sounds, roll_*,
- *     upload_store). The firmware's ISRs (gfx.c's two callbacks) only give a
- *     semaphore, and nothing calls cJSON with the cache disabled;
+ *   - every cJSON call is in task context. The firmware's own ISRs - gfx.c's
+ *     on_refresh_done and on_srm_done, and isr_watch.c's on_alarm - never
+ *     touch cJSON, and nothing calls cJSON with the cache disabled. Grep
+ *     cJSON_ before adding one to an ISR or an esp_timer ISR callback;
  *   - NVS writes take a finished string, and esp_flash_write copies a source
  *     outside DRAM through its own bounce buffer before the cache goes off;
  *   - a printed string reaches USB, UART or a socket through a copy (send_raw
