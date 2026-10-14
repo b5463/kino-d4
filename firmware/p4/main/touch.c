@@ -115,7 +115,7 @@ static void touch_task(void *arg) {
        * the panel awake too. A contact that has not moved for
        * PURE_STILL_CONTACT_S is not a finger working the screen: off SHOOT it
        * stops counting, so a bead of water or a pocket lets the camera dim
-       * and sleep. */
+       * and sleep. On SHOOT the same holds after PURE_REST_CONTACT_S. */
       const pure_contact_t contact =
           pure_still_step(&s_still, true, pt[0].x, pt[0].y, esp_timer_get_time(), s_rest_counts);
       if (contact == PURE_CONTACT_ACTIVE) {

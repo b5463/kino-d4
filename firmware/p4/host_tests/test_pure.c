@@ -1381,13 +1381,27 @@ static void test_still(void) {
   CHECK(pure_still_step(&st, true, 145, 100, t0 + S_US(701), false) == PURE_CONTACT_ACTIVE,
         "a fresh contact on the same spot did not count");
 
-  /* Where a rest counts (SHOOT) it always counts, and the clock runs. */
+  /* Where a rest counts (SHOOT) it counts for PURE_REST_CONTACT_S, and the
+   * clock runs. */
   memset(&st, 0, sizeof st);
   CHECK(pure_still_step(&st, true, 50, 60, t0, true) == PURE_CONTACT_ACTIVE, "a framing thumb did not count");
   CHECK(pure_still_step(&st, true, 50, 60, t0 + S_US(60), true) == PURE_CONTACT_ACTIVE,
         "a framing thumb at 60 s did not count");
   CHECK(pure_still_step(&st, true, 50, 60, t0 + S_US(61), false) == PURE_CONTACT_WENT_STILL,
         "leaving SHOOT under a 61 s rest did not stop it counting");
+
+  /* A pocket on SHOOT: the rest stops counting at PURE_REST_CONTACT_S. */
+  memset(&st, 0, sizeof st);
+  CHECK(pure_still_step(&st, true, 50, 60, t0, true) == PURE_CONTACT_ACTIVE, "a pocketed contact did not start");
+  CHECK(pure_still_step(&st, true, 50, 60, t0 + S_US(PURE_REST_CONTACT_S) - 1, true) == PURE_CONTACT_ACTIVE,
+        "a rest on SHOOT stopped counting before %d s", PURE_REST_CONTACT_S);
+  CHECK(pure_still_step(&st, true, 50, 60, t0 + S_US(PURE_REST_CONTACT_S), true) == PURE_CONTACT_WENT_STILL,
+        "a rest on SHOOT still counted at %d s", PURE_REST_CONTACT_S);
+  CHECK(pure_still_step(&st, true, 50, 60, t0 + S_US(3600), true) == PURE_CONTACT_STILL,
+        "a rest on SHOOT counted after an hour");
+  /* A thumb that moves while framing starts its own clock again. */
+  CHECK(pure_still_step(&st, true, 50 + 41, 60, t0 + S_US(3601), true) == PURE_CONTACT_ACTIVE,
+        "a framing thumb that moved 41 px did not count");
 
   /* No state: every contact counts, as before the rule. */
   CHECK(pure_still_step(NULL, true, 1, 1, t0, false) == PURE_CONTACT_ACTIVE, "NULL state did not count a contact");

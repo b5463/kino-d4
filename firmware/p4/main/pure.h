@@ -951,6 +951,10 @@ pure_tap_t pure_tap_check(int dx, int dy, int drift_px, int64_t held_ms);
  */
 #define PURE_STILL_CONTACT_S 10
 #define PURE_STILL_CONTACT_PX 40
+/* Where a resting contact is someone framing (SHOOT) it counts this long
+ * before it stops, so a camera left on SHOOT in a pocket still dims and
+ * sleeps: two minutes of a thumb that has not moved 40 px is not framing. */
+#define PURE_REST_CONTACT_S 120
 
 typedef enum {
   PURE_CONTACT_UP = 0,     /* nothing on the glass */
@@ -969,9 +973,9 @@ typedef struct {
 /**
  * Fold one touch poll into the still-contact state. `down` with the point at
  * (`x`, `y`), at `now_us`. `rest_counts` is true where a resting contact is
- * someone at work (SHOOT, framing): it then always counts, and the clock still
- * runs, so leaving SHOOT under a thumb that has rested 10 s stops it counting
- * on the next poll. Zeroing the struct is a valid starting point; a NULL state
+ * someone at work (SHOOT, framing): it then counts for PURE_REST_CONTACT_S
+ * instead of PURE_STILL_CONTACT_S, and the clock still runs, so leaving SHOOT
+ * under a thumb that has rested 10 s stops it counting on the next poll. Zeroing the struct is a valid starting point; a NULL state
  * counts every contact, as the camera did before the rule.
  */
 pure_contact_t pure_still_step(pure_still_t *st, bool down, uint16_t x, uint16_t y, int64_t now_us,

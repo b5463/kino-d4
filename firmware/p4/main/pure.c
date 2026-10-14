@@ -706,7 +706,8 @@ pure_contact_t pure_still_step(pure_still_t *st, bool down, uint16_t x, uint16_t
     st->since_us = now_us;
     st->still = false;
   }
-  if (rest_counts || now_us - st->since_us < (int64_t)PURE_STILL_CONTACT_S * 1000000) {
+  const int64_t limit_s = rest_counts ? PURE_REST_CONTACT_S : PURE_STILL_CONTACT_S;
+  if (now_us - st->since_us < limit_s * 1000000) {
     return PURE_CONTACT_ACTIVE;
   }
   if (st->still) return PURE_CONTACT_STILL;
