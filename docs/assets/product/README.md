@@ -25,8 +25,8 @@ The renderer is also a gate: it exits non-zero if any screen sets type outside t
 | File | What it is | Captured |
 |---|---|---|
 | `firmware-menu-render.png` | The D4 home screen: the SHOOT card and five rows, 800 × 480, right hand | 2026-10-13 |
-| `firmware-boot-field-render.png` | The boot field, all four cameras answering | 2026-10-13 |
-| `firmware-boot-field-two-silent-render.png` | The same body with cameras 2 and 4 silent | 2026-10-13 |
+| `firmware-start-render.png` | The start, all four cameras answering: the ODD JOBS mark over four filled cells | 2026-10-15 |
+| `firmware-start-three-render.png` | The same start with the third camera silent: its outline in full ink | 2026-10-15 |
 | `firmware-look-render.png` | LOOK: the recipe, what it does at capture, and its three modifiers | 2026-10-13 |
 | `firmware-roll-active-render.png` | The ROLL screen: QR, code, connection word, count | 2026-10-13 |
 | `firmware-about-render.png` | ABOUT: the unit, the four cameras, and the studio | 2026-10-13 |
@@ -37,7 +37,7 @@ The renderer is also a gate: it exits non-zero if any screen sets type outside t
 
 The firmware renders were retaken on 2026-10-13 for the MAO palette (#234): ink on near-black, MAO pink for the SHOOT card, no peach card and no green rows. Each is the right hand at launch shade 0, the shade every render uses. They were first taken on 2026-09-20, the day the interface stopped being a Windows 98 shell.
 
-**The boot pair is one picture in two states, and the pairing is the point.** The field's reach is how many of the four cameras have answered, a quadrant each; a silent camera's quadrant stays in the cold greys while the rest warm to the launch shade. Showing only the healthy one would make it look like decoration. Both come from `boot_field_all_four` and `boot_field_two_silent`, which exist in the renderer for exactly this reason.
+**The start pair is one picture in two states, and the pairing is the point.** Each cell is a camera, filled when it answers; a camera silent at 1.6 s keeps an outline in full ink. Showing only the healthy one would make it look like decoration. They are frames of the renderer's start runs at 30 fps (`START_ONLY=1 firmware/p4/host_preview/preview out/`): `start_all4` at 1.33 s and `start_three` at 1.93 s. They replaced the boot field pair on 2026-10-15 (#245).
 
 The two marked stale predate work that changed what they show. Recapture them the way the Roll pair was recaptured: `npm run dev:all`, then drive a browser at 1280 × 800. They are not wrong enough to pull, and they are not current.
 
