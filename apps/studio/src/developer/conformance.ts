@@ -626,16 +626,22 @@ const CASES: Case[] = [
        * already have let go. Both answer ok (contract commands.md, D4-V1).
        *
        * Enter waits up to 2 s for the capture lock and then answers
-       * INVALID_STATE. A capture an earlier case started can still hold it -
-       * longer with a camera offline, where the capture waits out the dead
-       * node - so the same rule as CAMERA_CAPTURE: one retry after a real
-       * settle, and a second refusal is reported. */
-      try {
-        await dev.enterMaintenance();
-      } catch (err) {
-        if (!(err instanceof KinoCommandError) || err.code !== 'INVALID_STATE') throw err;
-        await new Promise((res) => setTimeout(res, 4000));
-        await dev.enterMaintenance();
+       * INVALID_STATE. A capture can hold it longer than that: one set takes
+       * about 4.7 s to cross the links at 921600 baud, and a shot someone
+       * takes on the body (or the reference device's own ambient shots) can
+       * land just before this case. So retry until the lock has had about
+       * 15 s to clear, and report a refusal that outlasts that: it means
+       * something is holding the pipeline that one capture does not explain. */
+      const deadline = performance.now() + 15000;
+      for (;;) {
+        try {
+          await dev.enterMaintenance();
+          break;
+        } catch (err) {
+          if (!(err instanceof KinoCommandError) || err.code !== 'INVALID_STATE') throw err;
+          if (performance.now() > deadline) throw err;
+          await new Promise((res) => setTimeout(res, 1500));
+        }
       }
       await dev.enterMaintenance();
       await dev.exitMaintenance();
