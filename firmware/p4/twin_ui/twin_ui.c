@@ -768,7 +768,9 @@ void kui_set_capture_report(int ok, const char *id, int stored, int online, unsi
 
 static uint16_t g_tile[GALLERY_PAGE][GALLERY_TILE_W * GALLERY_TILE_H];
 static gallery_item_t g_slot[GALLERY_PAGE];
-static int g_total, g_page = 1, g_pages = 1;
+/* g_page is 0-based, as gallery.c's s_page and everything in ui.c that reads
+ * gallery_page(); the page script counts from 1 (kui_gallery_set()). */
+static int g_total, g_page = 0, g_pages = 1;
 static bool g_loading, g_deleting;
 static int g_delete_done, g_delete_total;
 
@@ -833,7 +835,7 @@ void gallery_delete_progress(int *done, int *total) {
 
 KUI_EXPORT("kui_gallery_set") void kui_gallery_set(int total, int page, int pages, int loading) {
   g_total = total;
-  g_page = page;
+  g_page = page - 1;
   g_pages = pages;
   g_loading = loading != 0;
 }
