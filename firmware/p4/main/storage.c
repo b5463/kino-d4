@@ -729,7 +729,12 @@ void storage_bench(uint32_t size_kb, uint32_t block_kb, uint32_t passes,
 
   const uint32_t chunk = block_kb * 1024u;
   uint8_t *block = malloc(chunk);
-  uint32_t *samples = malloc(BENCH_MAX_SAMPLES * sizeof(uint32_t));
+  /* The timing samples are CPU-only, so PSRAM (#244): 8 KB that a plain
+   * malloc put in internal SRAM. `block` stays where it was - it is the write
+   * source, and moving it would change what the bench measures. */
+  uint32_t *samples =
+      heap_caps_malloc(BENCH_MAX_SAMPLES * sizeof(uint32_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (samples == NULL) samples = malloc(BENCH_MAX_SAMPLES * sizeof(uint32_t));
   if (block == NULL || samples == NULL) {
     free(block);
     free(samples);

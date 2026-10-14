@@ -339,9 +339,12 @@ static esp_err_t render_click(const click_t *c, int16_t **out, size_t *out_bytes
   const size_t bytes = (size_t)frames * CHANNELS * sizeof(int16_t);
 
   /* Rendered in float first, because the peak is not known until the whole
-   * sound exists and normalising needs it. Internal, and freed before this
-   * returns - it is scratch, not the result. */
-  float *mono = heap_caps_calloc((size_t)voiced, sizeof(float), MALLOC_CAP_DEFAULT);
+   * sound exists and normalising needs it. Scratch, freed before this returns.
+   * PSRAM first (#244): MALLOC_CAP_DEFAULT skips malloc's size threshold and
+   * took internal SRAM first - 29 KB for the 460 ms warning - and nothing here
+   * is DMA or speed-critical; the synthesis is sinf/expf per sample. */
+  float *mono = heap_caps_calloc((size_t)voiced, sizeof(float), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (mono == NULL) mono = calloc((size_t)voiced, sizeof(float));
   /* PSRAM: the result is kept for the life of the device, and the codec copies
    * it rather than pointing the DMA at it. See the retained buffers above. */
   int16_t *buf = heap_caps_calloc(1, bytes, MALLOC_CAP_SPIRAM);
