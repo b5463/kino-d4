@@ -74,6 +74,14 @@ static void gallery_on_capture(const capture_report_t *r) {
 /** HELLO timeout for a channel that answered nothing last time. */
 #define OFFLINE_PROBE_MS 300u
 
+/* Bench only: the five colour bands on the panel before the UI starts, which
+ * prove the scan-out, the pixel format and row zero (display.h). A product
+ * boot shows nothing until the start's first frame (#245, FW-08). Build with
+ * -DKINO_BOOT_TEST_PATTERN=1 to see them. */
+#ifndef KINO_BOOT_TEST_PATTERN
+#define KINO_BOOT_TEST_PATTERN 0
+#endif
+
 static uint32_t next_boot_count(void) {
   nvs_handle_t nvs;
   uint32_t count = 0;
@@ -407,9 +415,16 @@ void app_main(void) {
    * ahead of kdp_server_start() and of the display, so its cost is dead time
    * with nothing on the screen and no host able to connect. A card carrying
    * 520 captures spent about a minute here. The sweep now stops at its budget
-   * and reports what it left for the next boot. */
+   * and reports what it left for the next boot.
+   *
+   * The budget is 800 ms (FW-39): the screen is dark for all of it, and the
+   * cursor carries the rest to the next boot. It stays here, before KDP and
+   * the display, because its safety rests on nothing else writing the card
+   * yet. */
   storage_sweep_t sweep;
+  const int64_t sweep_us = esp_timer_get_time();
   storage_sweep_orphans(&sweep);
+  klog("P4", "orphan sweep %lu ms", (unsigned long)((esp_timer_get_time() - sweep_us) / 1000));
 
   /* The camera link, and its failure is reported like every other line here.
    *
@@ -488,7 +503,9 @@ void app_main(void) {
     ESP_LOGE(TAG, "display unavailable: %s — KDP and storage are unaffected",
              esp_err_to_name(lcd_err));
   } else {
+#if KINO_BOOT_TEST_PATTERN
     display_test_pattern();
+#endif
     /* Audio BEFORE touch, and the order is load-bearing.
      *
      * The ES8311 shares one I2C bus with the GT911, and the touch driver
@@ -532,9 +549,9 @@ void app_main(void) {
     esp_err_t vf_err = viewfinder_init();
     if (vf_err != ESP_OK) ESP_LOGE(TAG, "viewfinder unavailable: %s", esp_err_to_name(vf_err));
 
-    /* The UI replaces the test pattern once both are up. It runs without
-     * touch too - a screen that shows the camera's state is worth having
-     * even if nothing can be pressed. */
+    /* The UI's first frame is the panel's first light (display_first_light).
+     * It runs without touch too - a screen that shows the camera's state is
+     * worth having even if nothing can be pressed. */
     /* The pink shifts a step toward lavender on each start: ui.c holds no
      * NVS, so the count it picks the shade by comes from here. */
     ui_set_launch_index(boots);

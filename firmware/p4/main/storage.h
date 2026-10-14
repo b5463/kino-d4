@@ -345,9 +345,9 @@ typedef struct {
  *     counted rather than forced
  *   - bounded work per boot, so a pathological card cannot stall the boot or
  *     turn one mistake into a mass deletion. Bounded in TIME as well as in
- *     count (SWEEP_BUDGET_MS): this runs on the main task before the USB
- *     transport is up, so the bound is what stops a full card from looking
- *     like a camera that will not boot. What was not reached is counted in
+ *     count (SWEEP_BUDGET_MS, 800 ms): this runs on the main task before the
+ *     USB transport is up and before the screen lights, so the bound is what
+ *     stops a full card from looking like a camera that will not boot. What was not reached is counted in
  *     `skipped` and swept on the next boot.
  *
  * Every action is logged. Valid captures are never touched.

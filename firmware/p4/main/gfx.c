@@ -347,6 +347,9 @@ static void show(void *fb) {
   if (s_vsync != NULL) xSemaphoreTake(s_vsync, 0);
   esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, 0, DISPLAY_H_RES, DISPLAY_V_RES, fb);
   if (err != ESP_OK) ESP_LOGE(TAG, "present failed: %s", esp_err_to_name(err));
+  /* The backlight comes on with the first frame there is (FW-08); a bool
+   * test on every later one. */
+  else display_first_light();
   s_swap_pending = true;
 }
 

@@ -11,6 +11,7 @@
 #include "esp_lcd_st7701.h"
 #include "esp_ldo_regulator.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "hardware_validation.h"
@@ -252,17 +253,30 @@ esp_err_t display_init(void) {
     return err;
   }
 
-  display_backlight(true);
+  /* Dark until the first real frame (FW-08). The panel scans whatever the
+   * framebuffers hold from here, and a lit panel showed it: the test bars,
+   * then black, then the start. display_first_light() raises it. */
+  display_backlight(false);
   s_ready = true;
   /* The panel accepted its init sequence over DBI and the DPI stream is
    * running. Whether anything is visible is a human judgement and stays out
    * of the registry; that the ST7701 answered is not. */
   hwv_mark_validated(HWV_DSI_PANEL_ST7701, "init table accepted, DPI running");
-  hwv_mark_validated(HWV_BACKLIGHT_GPIO23, "driven high at panel init");
-  ESP_LOGI(TAG, "LCD_READY %dx%d st7701 mipi-dsi 2 lanes 500 Mbps, backlight on GPIO%d",
+  ESP_LOGI(TAG, "LCD_READY %dx%d st7701 mipi-dsi 2 lanes 500 Mbps, backlight GPIO%d off until the first frame",
            DISPLAY_H_RES, DISPLAY_V_RES, BOARD_LCD_BACKLIGHT);
   klog("P4", "display up %dx%d", DISPLAY_H_RES, DISPLAY_V_RES);
   return ESP_OK;
+}
+
+void display_first_light(void) {
+  static bool s_lit;
+  if (s_lit || !s_ready) return;
+  s_lit = true;
+  display_backlight(true);
+  hwv_mark_validated(HWV_BACKLIGHT_GPIO23, "driven high on the first frame");
+  /* Evidence: how long a person waits for the glass, from the timer's start
+   * (after the bootloader) to the first frame handed to the panel. */
+  klog("P4", "first frame lit %lu ms after start", (unsigned long)(esp_timer_get_time() / 1000));
 }
 
 esp_err_t display_test_pattern(void) {
@@ -305,6 +319,7 @@ esp_err_t display_test_pattern(void) {
       esp_lcd_panel_draw_bitmap(s_panel, 0, 0, DISPLAY_H_RES, DISPLAY_V_RES, frame);
   if (err != ESP_OK) ESP_LOGE(TAG, "draw failed: %s", esp_err_to_name(err));
   else ESP_LOGI(TAG, "test pattern drawn: red, green, blue, white, black top to bottom");
+  display_first_light();
 
   /* The draw is asynchronous, so the buffer has to outlive the call. Give it
    * long enough to be scanned into the panel's own framebuffer before

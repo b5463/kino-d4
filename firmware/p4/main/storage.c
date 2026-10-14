@@ -1102,9 +1102,11 @@ bool storage_is_capture_dirname(const char *name) { return pure_is_capture_dirna
  * measured at boot on a card holding 520 captures: SWEEP_MAX_DIRS of them, at
  * tens of milliseconds each on a slow card, is the recorded 60 s boot.
  *
- * 3 s, and the rest is left for the next boot. An orphan is not urgent - it
- * costs a few hundred kilobytes and nothing reads it - while a camera that
- * appears dead for a minute after power-on is the fault everyone reports.
+ * 800 ms, and the rest is left for the next boot. An orphan is not urgent -
+ * it costs a few hundred kilobytes and nothing reads it - while a camera that
+ * appears dead after power-on is the fault everyone reports. It was 3 s, all of
+ * it dark glass before the first frame (#245, FW-39); main.c logs what a boot
+ * spent here as "orphan sweep N ms".
  *
  * The remainder is picked up on the next boot because a persisted cursor says
  * where this pass stopped (sweep_cursor_load below). It used to say instead
@@ -1114,7 +1116,7 @@ bool storage_is_capture_dirname(const char *name) { return pure_is_capture_dirna
  * every boot re-walked the same leading directories and nothing past that
  * horizon was ever examined at all.
  */
-#define SWEEP_BUDGET_MS 3000
+#define SWEEP_BUDGET_MS 800
 
 /* ------------------------------------------------------------------ */
 /* Local media count                                                   */
