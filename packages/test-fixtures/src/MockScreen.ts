@@ -58,6 +58,8 @@ const PARENT: Record<ScreenId, ScreenId> = {
   storage: 'settings', about: 'settings', status: 'settings', power: 'menu',
 };
 const MENU_ROWS: ScreenId[] = ['look', 'gallery', 'roll', 'settings', 'power'];
+/* STATUS is the sixth row only while the body reports a condition
+ * (settings_rows() in ui.c); a healthy body has five. */
 const SETTINGS_ROWS: ScreenId[] = ['display', 'sound', 'connection', 'storage', 'about', 'status'];
 const LIST_SCREENS = new Set<ScreenId>(['settings', 'display', 'sound', 'connection', 'storage', 'about', 'status', 'power', 'roll']);
 
@@ -106,7 +108,7 @@ function drawPlate(): Picture {
   return p;
 }
 
-function drawScreen(screen: ScreenId): Picture {
+function drawScreen(screen: ScreenId, settingsRows: number): Picture {
   const p = new Picture();
   p.fill(0, 0, SCREEN_W, SCREEN_H, K.ground);
   if (screen === 'menu') {
@@ -126,7 +128,7 @@ function drawScreen(screen: ScreenId): Picture {
   p.fill(0, HEAD_H, SCREEN_W, 1, K.rule);
   p.fill(720, 5, 64, 52, K.off);
   if (screen === 'settings') {
-    for (let i = 0; i < SETTINGS_ROWS.length; i++) p.fill(16, LIST_TOP + i * ROW_PITCH, 768, 56, K.row);
+    for (let i = 0; i < settingsRows; i++) p.fill(16, LIST_TOP + i * ROW_PITCH, 768, 56, K.row);
   } else if (LIST_SCREENS.has(screen)) {
     for (let i = 0; i < 4; i++) p.fill(16, LIST_TOP + i * ROW_PITCH + 55, 768, 1, K.rule);
   } else if (screen === 'gallery') {
@@ -149,7 +151,13 @@ export class MockScreen {
   constructor(
     private readonly now: () => number,
     private readonly log: (msg: string) => void,
+    /** Whether the device reports a condition, which adds the STATUS row. */
+    private readonly hasConditions: () => boolean = () => false,
   ) {}
+
+  private settingsRows(): number {
+    return this.hasConditions() ? SETTINGS_ROWS.length : SETTINGS_ROWS.length - 1;
+  }
 
   /** The screen the body is on, for tests and the Twin. */
   get current(): { screen: ScreenId; plate: boolean } {
@@ -176,7 +184,7 @@ export class MockScreen {
     if (req.shot === undefined) {
       this.gen++;
       this.shotGen = this.gen;
-      this.shotBytes = (this.plate ? drawPlate() : drawScreen(this.screen)).bytes();
+      this.shotBytes = (this.plate ? drawPlate() : drawScreen(this.screen, this.settingsRows())).bytes();
       const info: ScreenShotInfo = {
         shot: this.shotGen,
         width: SCREEN_W,
@@ -201,7 +209,9 @@ export class MockScreen {
     if (offset < 0 || offset > BYTES) {
       return { kind: 'error', code: 'INVALID_ARGUMENT', message: 'offset is past the end of the screen' };
     }
-    const len = Math.min(Math.max(length, 1), SCREEN_CHUNK_MAX, BYTES - offset);
+    /* As pure_screen_page(): absent or 0 (or less) is a full page. */
+    const want = length <= 0 ? SCREEN_CHUNK_MAX : length;
+    const len = Math.min(want, SCREEN_CHUNK_MAX, BYTES - offset);
     return { kind: 'bytes', bytes: this.shotBytes.slice(offset, offset + len) };
   }
 
@@ -262,7 +272,7 @@ export class MockScreen {
     if (y < HEAD_H) return this.go(PARENT[s]);
     if (s === 'settings') {
       const row = Math.floor((y - LIST_TOP) / ROW_PITCH);
-      if (row >= 0 && row < SETTINGS_ROWS.length) this.go(SETTINGS_ROWS[row]);
+      if (row >= 0 && row < this.settingsRows()) this.go(SETTINGS_ROWS[row]);
     }
   }
 }

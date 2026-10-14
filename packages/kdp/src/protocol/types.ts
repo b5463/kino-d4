@@ -485,8 +485,8 @@ export type ScreenId = (typeof SCREEN_IDS)[number];
  * - `{}` renders the screen once into the body's canvas, with no new buffer,
  *   and answers `ScreenShotInfo`. Refused `BUSY` while a move, the boot
  *   sequence or the sleep's wind-down owns the panel: ask again.
- * - `{ shot, offset, length }` answers BINARY: `length` bytes (1..3072,
- *   default 3072) of that render from `offset`, short at the end, empty at
+ * - `{ shot, offset, length }` answers BINARY: `length` bytes (1..3072;
+ *   absent or 0 is 3072) of that render from `offset`, short at the end, empty at
  *   exactly `bytes`. Refused `INVALID_STATE` once the canvas was drawn again
  *   after `shot` (a move started): render again. A host reads every page and
  *   then asks once more at `offset: bytes` - an empty reply there proves the
@@ -495,6 +495,7 @@ export type ScreenId = (typeof SCREEN_IDS)[number];
 export interface GetScreenRequest {
   shot?: number;
   offset?: number;
+  /** 1..3072; absent or 0 is 3072. */
   length?: number;
 }
 

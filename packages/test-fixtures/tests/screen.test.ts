@@ -85,6 +85,9 @@ describe('GET_SCREEN', () => {
     const info = await client.request<ScreenShotInfo>(Cmd.GET_SCREEN, {});
     const big = await client.requestBytes(Cmd.GET_SCREEN, { shot: info.shot, offset: 0, length: 9000 });
     expect(big.length).toBe(SCREEN_CHUNK_MAX);
+    // As pure_screen_page(): length 0 is a full page, not one byte.
+    const zero = await client.requestBytes(Cmd.GET_SCREEN, { shot: info.shot, offset: 0, length: 0 });
+    expect(zero.length).toBe(SCREEN_CHUNK_MAX);
     const last = await client.requestBytes(Cmd.GET_SCREEN, { shot: info.shot, offset: info.bytes - 10 });
     expect(last.length).toBe(10);
     expect(await codeOf(client.requestBytes(Cmd.GET_SCREEN, { shot: info.shot, offset: info.bytes + 1 }))).toBe(
@@ -121,6 +124,28 @@ describe('UI_TAP and UI_KEY', () => {
     expect(await on()).toBe('settings');
     await client.request(Cmd.UI_TAP, { x: 752, y: 31 });
     expect(await on()).toBe('menu');
+  });
+
+  it('has a STATUS row on SETTINGS only while the body reports a condition', async () => {
+    const { mock, client, advance } = await connect();
+    const on = async () => {
+      advance(MOCK_SCREEN_MOVE_MS);
+      return client.request<ScreenShotInfo>(Cmd.GET_SCREEN, {});
+    };
+    await client.request(Cmd.UI_TAP, { x: 190, y: 331 });
+    let info = await on();
+    expect(info.screen).toBe('settings');
+    // Healthy: five rows. The sixth row's place is ground, and a tap there
+    // opens nothing.
+    expect(await pixelOf(client, info.shot, 400, 431)).toBe(0x0841);
+    await client.request(Cmd.UI_TAP, { x: 400, y: 431 });
+    expect((await on()).screen).toBe('settings');
+
+    mock.setScenario('sdMissing', true);
+    info = await on();
+    expect(await pixelOf(client, info.shot, 400, 431)).toBe(0x18c3);
+    await client.request(Cmd.UI_TAP, { x: 400, y: 431 });
+    expect((await on()).screen).toBe('status');
   });
 
   it('opens SHOOT with the shutter key and refuses what is not a key or a point', async () => {

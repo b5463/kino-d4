@@ -623,7 +623,14 @@ export class MockKinoDevice implements MockDeviceLike {
     this.bootedAt = this.now();
     this.lastActivityAt = this.now();
     this.cams = this.freshCams('0.4.56');
-    this.screenUi = new MockScreen(this.now, (msg) => this.log('P4', msg));
+    /* A condition the body's SETTINGS would list under STATUS: the card
+     * missing or full, or a lens not answering (conditions.h). */
+    this.screenUi = new MockScreen(
+      this.now,
+      (msg) => this.log('P4', msg),
+      () =>
+        this.scenarios.sdMissing || this.scenarios.sdFull || CAM_IDS.some((id) => !this.cameraInfo(id).online),
+    );
     this.networks = [
       { ssid: 'kino-bench', password: 'benchwifi2026', security: 'wpa2', autoJoin: true, lastSeen: this.now() - 40_000 },
       { ssid: 'loft-guest', password: 'partytime', security: 'wpa2', autoJoin: false, lastSeen: null },

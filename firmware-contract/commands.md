@@ -877,7 +877,7 @@ already has. No buffer is added. The reply describes it:
   "chunkMax": 3072, "screen": "menu", "plate": false }
 ```
 
-`{ "shot", "offset", "length" }` then reads that render: `length` 1–3072 (default 3072) bytes from
+`{ "shot", "offset", "length" }` then reads that render: `length` 1–3072 (absent or 0 is 3072) bytes from
 `offset`, two bytes a pixel, low byte first, rows top to bottom in the logical 800x480 landscape the
 host_preview renders use. A page that runs past the end is short; a page at exactly `bytes` is
 empty. A screen is 250 pages. A host reads them in order and then asks once more at `offset: bytes`:

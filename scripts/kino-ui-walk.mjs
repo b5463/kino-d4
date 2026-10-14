@@ -18,9 +18,9 @@
 // writer expands it, so a screenshot and a render of the same state compare
 // pixel for pixel.
 //
-// --walk visits MENU, SHOOT, LOOK, GALLERY, ROLL, SETTINGS and each of its six
-// screens, and POWER, saving each, and checks the body named the screen it
-// expected. The taps are the right-hand layout (ui.c, from_hand()) mirrored
+// --walk visits MENU, SHOOT, LOOK, GALLERY, ROLL, SETTINGS and its five
+// screens, STATUS too when the body reports a condition, and POWER, saving
+// each, and checks the body named the screen it expected. The taps are the right-hand layout (ui.c, from_hand()) mirrored
 // for --hand left; the hand is read from GET_CONFIG when not given. It opens
 // nothing destructive: no dialog, no capture, no setting changed.
 //
@@ -244,8 +244,9 @@ async function screenNow() {
   throw new Error('the screen stayed busy for 6 s');
 }
 
-/** Tap, then wait for `expect` to be the screen, for up to 3 s. */
-async function tapTo(x, y, expect) {
+/** Tap, then wait for `expect` to be the screen, for up to 3 s. `quiet`
+ * leaves a miss to the caller to report. */
+async function tapTo(x, y, expect, quiet = false) {
   await device.uiTap(x, y, holdMs);
   const until = Date.now() + 3000;
   let now = null;
@@ -254,7 +255,7 @@ async function tapTo(x, y, expect) {
     now = await screenNow();
     if (now === expect) return true;
   }
-  console.log(`  tap ${x},${y} left the body on ${now}, expected ${expect}`);
+  if (!quiet) console.log(`  tap ${x},${y} left the body on ${now}, expected ${expect}`);
   return false;
 }
 
@@ -345,7 +346,16 @@ try {
       if (rows[i] === 'settings') {
         const subs = ['display', 'sound', 'connection', 'storage', 'about', 'status'];
         for (let j = 0; j < subs.length; j++) {
-          if (!(await tapTo(...P.settingsRow(j), subs[j]))) {
+          // STATUS is a sixth row only while the body reports a condition
+          // (settings_rows() in ui.c); on a healthy body the tap lands on
+          // empty ground and SETTINGS stays.
+          const optional = subs[j] === 'status';
+          if (!(await tapTo(...P.settingsRow(j), subs[j], optional))) {
+            if (optional && (await screenNow()) === 'settings') {
+              console.log('  STATUS: no row, the body reports no condition');
+              continue;
+            }
+            if (optional) console.log(`  tap on the STATUS row left the body off SETTINGS`);
             failed = true;
             continue;
           }
