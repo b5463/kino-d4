@@ -569,9 +569,9 @@ static void date_words(char *out, size_t cap, int64_t ms) {
 #endif
 enum {
   DL_FILL, DL_RRECT, DL_ROUTLINE, DL_CUT, DL_DISC, DL_SCRIM, DL_TEXT,
-  DL_FIELD, DL_SHBLIT, DL_BLIT, DL_BITS, DL_FOCUS, DL_MASK,
+  DL_FIELD, DL_SHBLIT, DL_BLIT, DL_BITS, DL_FOCUS, DL_MASK, DL_HALF,
 };
-#define DL_OPS (DL_MASK + 1)
+#define DL_OPS (DL_HALF + 1)
 /* What the per-tile pass needs about a command without touching PSRAM:
  * its box, and whether it paints every pixel of that box (a fill, a blit)
  * or every pixel but its corners (a rounded rectangle, radius r). */
@@ -654,7 +654,7 @@ static dl_cmd_t *dl_push(uint8_t op, int x0, int y0, int x1, int y1) {
   b->x1 = (int16_t)x1;
   b->y1 = (int16_t)y1;
   b->r = 0;
-  b->opaque = op == DL_FILL || op == DL_BLIT || op == DL_SHBLIT;
+  b->opaque = op == DL_FILL || op == DL_BLIT || op == DL_SHBLIT || op == DL_HALF;
   s_dl.n++;
   c->op = op;
   c->sx = s_dl.sx; c->sy = s_dl.sy;
@@ -4509,6 +4509,44 @@ static void blit_rows(const uint16_t *src, int src_stride, int x, int y, int w, 
   }
 }
 
+/*
+ * A picture at half its size into the target: each pixel the mean of a 2 x 2
+ * block of `src`, so a 252 x 189 gallery tile lands as 126 x 94 without the
+ * stair-steps every other pixel would leave. `w` x `h` is the size drawn;
+ * `src` holds at least 2w x 2h at `src_stride`. Integer only: the four are
+ * summed with each channel spread apart in one word, two bits of headroom
+ * per channel, then rounded and folded back.
+ */
+static void blit_half(const uint16_t *src, int src_stride, int x, int y, int w, int h) {
+  if (s_dl.rec) {
+    dl_cmd_t *k = dl_push(DL_HALF, x, y, x + w, y + h);
+    if (k) { k->p = src; k->a = src_stride; k->b = x; k->c = y; k->d = w; k->e = h; }
+    return;
+  }
+  AUDIT_IMAGE(x, y, w, h);
+  const gfx_target_t *t = TG;
+  int sx = 0, sy = 0;
+  if (x < t->x0) { sx = t->x0 - x; w -= sx; x = t->x0; }
+  if (y < t->y0) { sy = t->y0 - y; h -= sy; y = t->y0; }
+  if (x + w > CV_X1(t)) w = CV_X1(t) - x;
+  if (y + h > CV_Y1(t)) h = CV_Y1(t) - y;
+  if (w <= 0 || h <= 0) return;
+  for (int r = 0; r < h; r++) {
+    const uint16_t *s0 = src + (size_t)(2 * (sy + r)) * (size_t)src_stride + 2 * sx;
+    const uint16_t *s1 = s0 + src_stride;
+    uint16_t *dst = cv_ptr(t, x, y + r);
+    for (int c = 0; c < w; c++) {
+      uint32_t sum = 0x00401002u; /* +2 in each channel: round to nearest */
+      sum += ((uint32_t)s0[2 * c] | ((uint32_t)s0[2 * c] << 16)) & 0x07E0F81Fu;
+      sum += ((uint32_t)s0[2 * c + 1] | ((uint32_t)s0[2 * c + 1] << 16)) & 0x07E0F81Fu;
+      sum += ((uint32_t)s1[2 * c] | ((uint32_t)s1[2 * c] << 16)) & 0x07E0F81Fu;
+      sum += ((uint32_t)s1[2 * c + 1] | ((uint32_t)s1[2 * c + 1] << 16)) & 0x07E0F81Fu;
+      sum = (sum >> 2) & 0x07E0F81Fu;
+      dst[c] = (uint16_t)(sum | (sum >> 16));
+    }
+  }
+}
+
 /* One recorded command, drawn for real through whatever the target is now. */
 static void dl_exec(const dl_cmd_t *c) {
   switch (c->op) {
@@ -4525,6 +4563,7 @@ static void dl_exec(const dl_cmd_t *c) {
     case DL_BITS: draw_bits((const uint8_t *)c->p, c->a, c->b, c->c, c->d, c->e, c->g, c->col); break;
     case DL_FOCUS: focus_ring(c->a, c->b, c->c, c->d, c->e, c->col); break;
     case DL_MASK: mask_blit((const uint8_t *)c->p, c->a, c->b, c->c, c->d, c->e, c->col); break;
+    case DL_HALF: blit_half((const uint16_t *)c->p, c->a, c->b, c->c, c->d, c->e); break;
     default: break;
   }
 }
@@ -4600,7 +4639,7 @@ static void dl_profile(const char *what, gfx_draw_fn draw, void *ctx) {
    * dropped: a stale "odd" sat between "text" and "field" here and every op
    * after it printed under its neighbour's name. */
   static const char *const OP[] = {"fill", "rrect", "routl", "cut", "disc", "scrim", "text",
-                                   "field", "shblit", "blit", "bits", "focus", "mask"};
+                                   "field", "shblit", "blit", "bits", "focus", "mask", "half"};
   _Static_assert(sizeof OP / sizeof OP[0] == DL_OPS, "one name per display-list op, in enum order");
   dl_begin();
   draw(ctx);
@@ -8118,6 +8157,18 @@ typedef struct {
 
 _Static_assert(MOTION_UNDO_MS == 30000, "the DELETE dialog says the undo lasts 30 s");
 
+/*
+ * The open photograph's gallery tile, or NULL when its page is not the one in
+ * RAM or the tile has not decoded. The DELETE question shows it, and nothing
+ * is decoded for it: no tile, no picture, and the question as it was.
+ */
+static const uint16_t *photo_thumb(void) {
+  const int at = photo_slot();
+  if (at < 0) return NULL;
+  const gallery_item_t *it = &gallery_slots()[at];
+  return it->state == TILE_READY ? it->pixels : NULL;
+}
+
 static void dialog_spec(dlg_spec_t *d) {
   static char sub[64];
   switch (s_dialog) {
@@ -8129,24 +8180,26 @@ static void dialog_spec(dlg_spec_t *d) {
     case DLG_DELETE:
       /* The delete goes to the trash and the toast offers UNDO for
        * MOTION_UNDO_MS. "This cannot be undone" above a thirty-second undo
-       * was a warning the next screen contradicted. */
+       * was a warning the next screen contradicted. The photograph itself is
+       * on the question (dlg_thumb(), #247), and the safe answer says what
+       * it does to it (dlg_safe_word()). */
       count_words(sub, sizeof sub, s_photo_frames, "frame", "frames", ". Undo for 30 s after.");
       *d = (dlg_spec_t){"DELETE", "Delete this photo?", sub, "DELETE", true};
       break;
     case DLG_DELETE_ALL:
-      count_words(sub, sizeof sub, gallery_media_count() < 0 ? 0 : gallery_media_count(), "photo", "photos",
-                  ". This cannot be undone.");
-      /* "photos", and the sub line says how many, because that is the number a
-       * person checks before pressing this. It says nothing about sounds,
-       * looks or settings on purpose: they are not touched, and listing what
-       * survives a destructive action reads as a warning about them. */
-      *d = (dlg_spec_t){"DELETE ALL", "Delete every photo?", sub, "DELETE ALL", true};
+      /* How many, large (dlg_count()), because that is the number a person
+       * checks before pressing this (#247). It says nothing about sounds, looks or
+       * settings on purpose: they are not touched, and listing what survives
+       * a destructive action reads as a warning about them. */
+      *d = (dlg_spec_t){"DELETE ALL", "Delete every photo?", "This cannot be undone.", "DELETE ALL", true};
       break;
     case DLG_UPDATED:
       snprintf(sub, sizeof sub, "Now on %s. Nothing to do.", KINO_FW_VERSION);
       *d = (dlg_spec_t){"UPDATED", "KINO has been updated.", sub, "OK", false};
       break;
     case DLG_FORMAT:
+      /* The count is large here too (dlg_count()): a format takes every
+       * photograph DELETE ALL would. */
       *d = (dlg_spec_t){"FORMAT CARD", "Erase the card?", "Every photo on it is deleted.", "FORMAT", true};
       break;
     case DLG_FACTORY:
@@ -8169,6 +8222,26 @@ static void dialog_spec(dlg_spec_t *d) {
       *d = (dlg_spec_t){"", "", NULL, "OK", false};
       break;
   }
+}
+
+/* The safe answer, the lower row. On DELETE it says what it does to the
+ * photograph on the question: KEEP, not a CANCEL that names nothing. */
+static const char *dlg_safe_word(void) {
+  if (s_dialog == DLG_DELETE) return "Keep";
+  return "Cancel";
+}
+
+/* The photograph a question is about, as its gallery tile, drawn at half
+ * size: DELETE's, when the tile is in RAM. */
+static const uint16_t *dlg_thumb(void) { return s_dialog == DLG_DELETE ? photo_thumb() : NULL; }
+
+/* The count an erase takes, set large under the title (#247): DELETE ALL and
+ * FORMAT CARD. False on every other question, and when the gallery has no
+ * answer yet - a guessed number is worse than none. */
+static bool dlg_count(int *n) {
+  if (s_dialog != DLG_DELETE_ALL && s_dialog != DLG_FORMAT) return false;
+  *n = gallery_media_count();
+  return *n >= 0;
 }
 
 /*
@@ -8195,10 +8268,23 @@ static int dlg_x(void) { return (UI_W - DLG_W) / 2; }
 #define DLG_ROW_H (ROW_H - ROW_GAP)
 #define DLG_ROW_GAP 8
 #define DLG_TOP (3 * GRID)
-/* Title, question, optional line, then the two rows and the bottom pad. */
-#define DLG_H(sub) (DLG_TOP + K_TYPE_CAPTION->line_h + GRID + K_TYPE_BODY_L->line_h + \
+/* The photograph on DELETE: its gallery tile at half size. */
+#define DLG_THUMB_W (GALLERY_TILE_W / 2)
+#define DLG_THUMB_H (GALLERY_TILE_H / 2)
+/* What a question carries between its title and its sentence: the
+ * photograph (dlg_thumb()), or the count (dlg_count()), or nothing. */
+static int dlg_extra_h(void) {
+  int n;
+  if (dlg_thumb() != NULL) return DLG_THUMB_H + GRID;
+  if (dlg_count(&n)) return K_TYPE_TITLE->line_h;
+  return 0;
+}
+/* Title, the extra, question, optional line, then the two rows and the
+ * bottom pad. */
+#define DLG_H(sub) (DLG_TOP + K_TYPE_CAPTION->line_h + GRID + dlg_extra_h() + K_TYPE_BODY_L->line_h + \
                     ((sub) ? K_TYPE_BODY->line_h + GRID : 0) + 3 * GRID + 2 * DLG_ROW_H + DLG_ROW_GAP + \
                     DLG_PAD)
+_Static_assert(GALLERY_TILE_W / 2 <= DLG_W - 2 * DLG_PAD, "the photograph is wider than the question");
 #define DLG_Y(sub) ((UI_H - DLG_H(sub)) / 2)
 #define DLG_ROW_X (dlg_x() + DLG_PAD)
 #define DLG_ROW_W (DLG_W - 2 * DLG_PAD)
@@ -8233,6 +8319,20 @@ static void draw_dialog(void) {
   int ty = y0 + DLG_TOP;
   text(K_TYPE_CAPTION, dx + DLG_PAD, ty, d.title, d.destructive ? K_FAULT_INK : K_TITLE);
   ty += K_TYPE_CAPTION->line_h + GRID;
+  /* What the question is about, before the question (#247): DELETE shows
+   * the photograph, the two erasures how many photographs they take, in the
+   * TITLE face, because that number is the one a person checks. */
+  const uint16_t *thumb = dlg_thumb();
+  int n;
+  if (thumb != NULL) {
+    blit_half(thumb, GALLERY_TILE_W, dx + DLG_PAD, ty, DLG_THUMB_W, DLG_THUMB_H);
+    ty += DLG_THUMB_H + GRID;
+  } else if (dlg_count(&n)) {
+    char big[24];
+    count_words(big, sizeof big, n, "PHOTO", "PHOTOS", "");
+    text(K_TYPE_TITLE, dx + DLG_PAD, ty, big, K_INK);
+    ty += K_TYPE_TITLE->line_h;
+  }
   text(K_TYPE_BODY_L, dx + DLG_PAD, ty, d.body, K_INK);
   ty += K_TYPE_BODY_L->line_h;
   if (sub) text(K_TYPE_BODY, dx + DLG_PAD, ty + GRID, d.sub, K_INK_QUIET);
@@ -8251,9 +8351,9 @@ static void draw_dialog(void) {
   draw_row_face(DLG_ROW_X, DLG_ROW_W, DLG_ROW_Y(sub, 0), DLG_ROW_H, 1, false, s_dlg_focus == 1,
                 s_pressed == 1, true, d.go, NULL, true, d.destructive ? ROW_DANGER : ROW_PLAIN);
   /* One step lighter than a list row: the dialog's own face is close to the
-   * row tone, and Cancel has to read as a row on it. */
+   * row tone, and Cancel has to read as a row on it. KEEP on DELETE. */
   draw_row_face(DLG_ROW_X, DLG_ROW_W, DLG_ROW_Y(sub, 1), DLG_ROW_H, 0, false, s_dlg_focus == 0,
-                s_pressed == 0, true, "Cancel", NULL, false, ROW_CANCEL);
+                s_pressed == 0, true, dlg_safe_word(), NULL, false, ROW_CANCEL);
 }
 
 /* ------------------------------------------------------------------ */

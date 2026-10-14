@@ -121,6 +121,7 @@ const NOT_COPY = new Map([
   ['blit', 'a UI_DRAW_PROFILE op name in the log'],
   ['bits', 'a UI_DRAW_PROFILE op name in the log'],
   ['focus', 'a UI_DRAW_PROFILE op name in the log'],
+  ['half', 'a UI_DRAW_PROFILE op name in the log'],
   ['mask', 'a UI_DRAW_PROFILE op name in the log'],
   ['%s%s %lu.%lu+%lu.%lu/%d', 'the boot tile-timing log line'],
   ['%st=%d.%02d %lu.%lu+%lu.%lu/%d', 'the boot tile-timing log line'],

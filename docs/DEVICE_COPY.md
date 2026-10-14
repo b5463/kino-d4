@@ -180,7 +180,7 @@ The look's own name is also toasted when a look is picked.
 
 ## Dialogs
 
-Every dialog has two rows: the action on top, CANCEL under it, where the thumb reaches first. A sleep closes an open question with its safe answer, the lower row. Nothing is said: the camera wakes without the question. FIRST START and UPDATED stay up over a sleep: they ask nothing and show once, so a note put down unread is still there at the wake.
+Every dialog has two rows: the action on top, the safe answer under it, where the thumb reaches first. The safe answer is CANCEL, and KEEP on DELETE, which names what it does to the photograph. A sleep closes an open question with its safe answer, the lower row. Nothing is said: the camera wakes without the question. FIRST START and UPDATED stay up over a sleep: they ask nothing and show once, so a note put down unread is still there at the wake.
 
 | Title | Question | Line | Buttons | When |
 |---|---|---|---|---|
@@ -188,9 +188,9 @@ Every dialog has two rows: the action on top, CANCEL under it, where the thumb r
 | UPDATED | KINO has been updated. | Now on <version>. Nothing to do. | OK / CANCEL | The first boot on a new version, once. |
 | RESTART | Restart the camera? | KINO restarts and opens the menu. | RESTART / CANCEL | POWER > RESTART |
 | FACTORY RESET | Reset the camera? | Settings, networks and roll are erased. | RESET / CANCEL | POWER > FACTORY RESET |
-| DELETE | Delete this photo? | N frame(s). Undo for 30 s after. | DELETE / CANCEL | PHOTO > DELETE. The toast after it offers UNDO for those 30 s. |
-| DELETE ALL | Delete every photo? | N photo(s). This cannot be undone. | DELETE ALL / CANCEL | STORAGE > DELETE ALL PHOTOS |
-| FORMAT CARD | Erase the card? | Every photo on it is deleted. | FORMAT / CANCEL | STORAGE > FORMAT CARD |
+| DELETE | Delete this photo? | N frame(s). Undo for 30 s after. | DELETE / KEEP | PHOTO > DELETE. The photograph itself sits between the title and the question, its gallery tile at half size, whenever that tile is in memory. The toast after it offers UNDO for those 30 s. |
+| DELETE ALL | Delete every photo? | This cannot be undone. | DELETE ALL / CANCEL | STORAGE > DELETE ALL PHOTOS. The count it takes, `14 PHOTOS`, large under the title. |
+| FORMAT CARD | Erase the card? | Every photo on it is deleted. | FORMAT / CANCEL | STORAGE > FORMAT CARD. The same count large under the title, once the card has been counted. |
 
 ## Screen rows and labels
 

@@ -1639,7 +1639,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 278
+#define PPMS_PER_HAND 279
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -4417,6 +4417,11 @@ static void scenes(void) {
   s_dlg_focus = 0;
   draw_screen();
   shot("settings_storage_format_confirm");
+  /* DELETE ALL, with the count it takes set large (#247). */
+  s_dialog = DLG_DELETE_ALL;
+  s_dlg_focus = 0;
+  draw_screen();
+  shot("settings_storage_delete_all_confirm");
   s_dialog = DLG_NONE;
 
   /* ---- a single photograph, and the delete confirmation over it ---- */
