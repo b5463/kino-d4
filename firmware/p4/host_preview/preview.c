@@ -2886,8 +2886,7 @@ static void review_scenes(void) {
    * photograph takes the undo toast with it. */
   review_open();
   s_first_review_us = 0; /* the finger that pressed DELETE (ui_pass, touch down) */
-  s_dialog = DLG_DELETE;
-  s_dlg_focus = 0;
+  dialog_open(DLG_DELETE);
   dialog_commit();
   review_expect(s_screen == SCR_SHOOT && review_slid_back() && s_toast_long,
                 "DELETE on the review did not end on SHOOT with the undo toast");
@@ -2910,8 +2909,7 @@ static void review_scenes(void) {
 
   /* The clock runs out under the DELETE question: the question stays. */
   review_open();
-  s_dialog = DLG_DELETE;
-  s_dlg_focus = 0;
+  dialog_open(DLG_DELETE);
   prev_vclock_us += s_review_span_us + 1000;
   first_review_poll();
   review_expect(s_screen == SCR_PHOTO && s_dialog == DLG_DELETE, "the review's clock carried the DELETE question off");
@@ -3508,6 +3506,101 @@ static void check_photo_steps(void) {
   g_audit_off = false;
 }
 
+/* The two rows of the open question, and what a press at the top of each
+ * hits. They must stay where the open drew them. */
+static void dlg_rows_expect(int y0, int y1, const char *what) {
+  char msg[128];
+  dlg_spec_t d;
+  dialog_spec(&d);
+  const bool sub = d.sub != NULL;
+  snprintf(msg, sizeof msg, "%s: the rows moved (%d,%d to %d,%d)", what, y0, y1, DLG_ROW_Y(sub, 0),
+           DLG_ROW_Y(sub, 1));
+  review_expect(DLG_ROW_Y(sub, 0) == y0 && DLG_ROW_Y(sub, 1) == y1, msg);
+  snprintf(msg, sizeof msg, "%s: a press at the top of a drawn row hit the other one", what);
+  review_expect(hit_test(DLG_ROW_X + DLG_ROW_W / 2, y0 + 2) == dlg_item_at(0) &&
+                    hit_test(DLG_ROW_X + DLG_ROW_W / 2, y1 + 2) == dlg_item_at(1),
+                msg);
+}
+
+/* Canvas pixels in a box of the open question that are not `k`. */
+static int dlg_box_not(int x, int y, int w, int h, uint16_t k) {
+  int n = 0;
+  for (int r = y; r < y + h; r++)
+    for (int c = x; c < x + w; c++) n += g_canvas[r * UI_W + c] != k;
+  return n;
+}
+
+/*
+ * A question's room is fixed when it opens (#247), through ui_pass: what
+ * arrives later - a count, a tile decoded or dropped - is drawn into it and
+ * moves no row. FORMAT opened before the card is counted keeps an empty line
+ * and fills it; DELETE opened before its tile decoded has no picture and
+ * gets none; DELETE whose tile is dropped keeps the box in the waiting tone.
+ */
+static void check_dialog_room(void) {
+  const screen_t scr0 = s_screen;
+  g_audit_off = true;
+
+  /* FORMAT, the count not in yet. */
+  pass_rig(SCR_STORAGE);
+  g_fake_total = -1;
+  dialog_open(DLG_FORMAT);
+  draw_screen();
+  timer_passes(2);
+  dlg_spec_t d;
+  dialog_spec(&d);
+  bool sub = d.sub != NULL;
+  const int f0 = DLG_ROW_Y(sub, 0), f1 = DLG_ROW_Y(sub, 1);
+  const int cx = dlg_x() + DLG_PAD, cw = DLG_W - 2 * DLG_PAD;
+  const int cy = DLG_Y(sub) + DLG_TOP + K_TYPE_CAPTION->line_h + GRID, ch = K_TYPE_TITLE->line_h;
+  review_expect(dlg_box_not(cx, cy, cw, ch, K_SURFACE) == 0, "FORMAT drew a count before the card was counted");
+  g_fake_total = 14;
+  timer_passes(2);
+  dlg_rows_expect(f0, f1, "FORMAT, the count arriving");
+  review_expect(dlg_box_not(cx, cy, cw, ch, K_SURFACE) > 0, "FORMAT's count arrived and was not drawn");
+  pass_unrig(scr0);
+
+  /* DELETE, the tile not decoded at the open: no room, and none later. */
+  const gallery_item_t *slots = gallery_slots();
+  photo_open(&slots[0]);
+  pass_rig(SCR_PHOTO);
+  s_review_from_shot = false;
+  s_first_review_us = 0;
+  g_slot[0].state = TILE_PENDING;
+  g_slot[0].pixels = NULL;
+  dialog_open(DLG_DELETE);
+  draw_screen();
+  timer_passes(2);
+  dialog_spec(&d);
+  sub = d.sub != NULL;
+  int y0 = DLG_ROW_Y(sub, 0), y1 = DLG_ROW_Y(sub, 1);
+  g_slot[0].state = TILE_READY;
+  g_slot[0].pixels = g_tile[0];
+  timer_passes(2);
+  dlg_rows_expect(y0, y1, "DELETE, the tile decoding");
+  s_dialog = DLG_NONE;
+
+  /* DELETE, the tile dropped while it is up: the box stays, waiting tone. */
+  dialog_open(DLG_DELETE);
+  draw_screen();
+  timer_passes(2);
+  y0 = DLG_ROW_Y(sub, 0);
+  y1 = DLG_ROW_Y(sub, 1);
+  const int tx = dlg_x() + DLG_PAD, ty = DLG_Y(sub) + DLG_TOP + K_TYPE_CAPTION->line_h + GRID;
+  review_expect(dlg_box_not(tx, ty, DLG_THUMB_W, DLG_THUMB_H, K_OFF) > 0, "DELETE did not show the photograph");
+  g_slot[0].state = TILE_PENDING;
+  g_slot[0].pixels = NULL;
+  timer_passes(2);
+  dlg_rows_expect(y0, y1, "DELETE, the tile dropped");
+  review_expect(dlg_box_not(tx, ty, DLG_THUMB_W, DLG_THUMB_H, K_OFF) == 0,
+                "DELETE's dropped tile did not leave the waiting tone");
+  g_slot[0].state = TILE_READY;
+  g_slot[0].pixels = g_tile[0];
+  photo_release();
+  pass_unrig(scr0);
+  g_audit_off = false;
+}
+
 /* A real sleep through ui_pass: the panel goes dark, then a touch brings it
  * back and the wake's lift (MOTION_WAKE_MS) runs out. */
 static void sleep_through(void) {
@@ -3543,7 +3636,7 @@ static void check_sleep_safe(void) {
     char what[96];
     pass_rig(T[i].s);
     s_focus[SCR_MENU] = 0;
-    s_dialog = DLG_FORMAT;
+    dialog_open(DLG_FORMAT);
     s_dlg_focus = 1;
     s_look_from_shoot = T[i].s == SCR_LOOK;
     sleep_through();
@@ -4415,13 +4508,11 @@ static void scenes(void) {
   shot("power_factory_confirm");
   s_dialog = DLG_NONE;
   s_screen = SCR_STORAGE;
-  s_dialog = DLG_FORMAT;
-  s_dlg_focus = 0;
+  dialog_open(DLG_FORMAT);
   draw_screen();
   shot("settings_storage_format_confirm");
   /* DELETE ALL, with the count it takes set large (#247). */
-  s_dialog = DLG_DELETE_ALL;
-  s_dlg_focus = 0;
+  dialog_open(DLG_DELETE_ALL);
   draw_screen();
   shot("settings_storage_delete_all_confirm");
   s_dialog = DLG_NONE;
@@ -4446,8 +4537,7 @@ static void scenes(void) {
     s_pressed = P_IT_DELETE;
     SHOT(SCR_PHOTO, "photo_delete_pressed");
     s_pressed = -1;
-    s_dialog = DLG_DELETE;
-    s_dlg_focus = 0;
+    dialog_open(DLG_DELETE);
     scan_conditions();
   draw_screen();
     shot("photo_delete_confirm");
@@ -4680,7 +4770,7 @@ static void scenes(void) {
     lift_at(60 * 1000, MOTION_WAKE_MS, 255, 0, &k, &m);
 
     pass_rig(SCR_STORAGE);
-    s_dialog = DLG_FORMAT;
+    dialog_open(DLG_FORMAT);
     g_audit_off = true;
     g_power_stage = POWER_ASLEEP;
     timer_passes(2);
@@ -4695,7 +4785,7 @@ static void scenes(void) {
     photo_open(&slots[0]);
     s_focus[SCR_PHOTO] = P_IT_DELETE;
     pass_rig(SCR_PHOTO);
-    s_dialog = DLG_DELETE;
+    dialog_open(DLG_DELETE);
     s_first_review_us = 0;
     g_audit_off = true;
     g_power_stage = POWER_ASLEEP;
@@ -4783,6 +4873,7 @@ static void scenes(void) {
   check_dead_send();
   check_review_loop();
   check_photo_steps();
+  check_dialog_room();
 }
 
 /* ---- what a frame costs ---- */

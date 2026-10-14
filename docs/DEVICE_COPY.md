@@ -188,9 +188,9 @@ Every dialog has two rows: the action on top, the safe answer under it, where th
 | UPDATED | KINO has been updated. | Now on <version>. Nothing to do. | OK / CANCEL | The first boot on a new version, once. |
 | RESTART | Restart the camera? | KINO restarts and opens the menu. | RESTART / CANCEL | POWER > RESTART |
 | FACTORY RESET | Reset the camera? | Settings, networks and roll are erased. | RESET / CANCEL | POWER > FACTORY RESET |
-| DELETE | Delete this photo? | N frame(s). Undo for 30 s after. | DELETE / KEEP | PHOTO > DELETE. The photograph itself sits between the title and the question, its gallery tile at half size, whenever that tile is in memory. The toast after it offers UNDO for those 30 s. |
-| DELETE ALL | Delete every photo? | This cannot be undone. | DELETE ALL / CANCEL | STORAGE > DELETE ALL PHOTOS. The count it takes, `14 PHOTOS`, large under the title. |
-| FORMAT CARD | Erase the card? | Every photo on it is deleted. | FORMAT / CANCEL | STORAGE > FORMAT CARD. The same count large under the title, once the card has been counted. |
+| DELETE | Delete this photo? | N frame(s). Undo for 30 s after. | DELETE / KEEP | PHOTO > DELETE. The photograph itself sits between the title and the question, its gallery tile at half size, when that tile is in memory as the question opens. The room is fixed at the open: a tile dropped while it is up leaves an empty grey box. The toast after it offers UNDO for those 30 s. |
+| DELETE ALL | Delete every photo? | This cannot be undone. | DELETE ALL / CANCEL | STORAGE > DELETE ALL PHOTOS. The count it takes, `14 PHOTOS`, large under the title. The room is fixed at the open, and the count line is kept empty until the card is counted. |
+| FORMAT CARD | Erase the card? | Every photo on it is deleted. | FORMAT / CANCEL | STORAGE > FORMAT CARD. The same count large under the title. The room is fixed at the open, and the count line is kept empty until the card is counted. |
 
 ## Screen rows and labels
 

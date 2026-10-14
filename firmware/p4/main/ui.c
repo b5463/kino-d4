@@ -691,6 +691,9 @@ static bool foc(screen_t sc, int i) { return s_focus_shown && s_focus[sc] == i; 
 static int s_pressed = -1;      /* held item index, -1 for none */
 static dialog_t s_dialog = DLG_NONE;
 static int s_dlg_focus;          /* 0 = safe action, 1 = the other one */
+/* DELETE's question was opened with the photograph's tile in memory, so its
+ * room is kept until it closes (dialog_open()). */
+static bool s_dlg_thumb;
 static int64_t s_shot_seen_us;
 /* shoot.displayAfterShotS = -1: the report is up and waiting to be dismissed
  * by a touch or a key rather than by a timer. See shot_hold_ack(). */
@@ -8196,7 +8199,7 @@ static void dialog_spec(dlg_spec_t *d) {
       /* The delete goes to the trash and the toast offers UNDO for
        * MOTION_UNDO_MS. "This cannot be undone" above a thirty-second undo
        * was a warning the next screen contradicted. The photograph itself is
-       * on the question (dlg_thumb(), #247), and the safe answer says what
+       * on the question (dlg_thumb_on(), #247), and the safe answer says what
        * it does to it (dlg_safe_word()). */
       count_words(sub, sizeof sub, s_photo_frames, "frame", "frames", ". Undo for 30 s after.");
       *d = (dlg_spec_t){"DELETE", "Delete this photo?", sub, "DELETE", true};
@@ -8246,15 +8249,32 @@ static const char *dlg_safe_word(void) {
   return "Cancel";
 }
 
-/* The photograph a question is about, as its gallery tile, drawn at half
- * size: DELETE's, when the tile is in RAM. */
-static const uint16_t *dlg_thumb(void) { return s_dialog == DLG_DELETE ? photo_thumb() : NULL; }
+/*
+ * Open a question. Its shape is decided here, once, and not again until it
+ * closes: draw and hit test both read it, and the gallery state behind it
+ * moves while it is up - a tile decodes or is dropped, the card's count
+ * arrives. A question that grew under a resting thumb moved its rows about
+ * half the growth down in the hit test while the glass still showed the old
+ * frame, so the top of KEEP or CANCEL pressed DELETE or FORMAT.
+ */
+static void dialog_open(dialog_t d) {
+  s_dialog = d;
+  s_dlg_focus = 0;
+  s_dlg_thumb = d == DLG_DELETE && photo_thumb() != NULL;
+}
+
+/* DELETE's room for the photograph: kept from the open (dialog_open()). */
+static bool dlg_thumb_on(void) { return s_dialog == DLG_DELETE && s_dlg_thumb; }
+
+/* The two erasures, which keep a line for the count they take. */
+static bool dlg_erasure(void) { return s_dialog == DLG_DELETE_ALL || s_dialog == DLG_FORMAT; }
 
 /* The count an erase takes, set large under the title (#247): DELETE ALL and
- * FORMAT CARD. False on every other question, and when the gallery has no
- * answer yet - a guessed number is worse than none. */
+ * FORMAT CARD. False on every other question, and while the gallery has no
+ * answer yet - a guessed number is worse than none. Its line is kept either
+ * way (dlg_extra_h()), so a count that arrives fills it and moves nothing. */
 static bool dlg_count(int *n) {
-  if (s_dialog != DLG_DELETE_ALL && s_dialog != DLG_FORMAT) return false;
+  if (!dlg_erasure()) return false;
   *n = gallery_media_count();
   return *n >= 0;
 }
@@ -8287,11 +8307,11 @@ static int dlg_x(void) { return (UI_W - DLG_W) / 2; }
 #define DLG_THUMB_W (GALLERY_TILE_W / 2)
 #define DLG_THUMB_H (GALLERY_TILE_H / 2)
 /* What a question carries between its title and its sentence: the
- * photograph (dlg_thumb()), or the count (dlg_count()), or nothing. */
+ * photograph (dlg_thumb_on()), or the count (dlg_erasure()), or nothing.
+ * Fixed while the question is up: it reads no live gallery state. */
 static int dlg_extra_h(void) {
-  int n;
-  if (dlg_thumb() != NULL) return DLG_THUMB_H + GRID;
-  if (dlg_count(&n)) return K_TYPE_TITLE->line_h;
+  if (dlg_thumb_on()) return DLG_THUMB_H + GRID;
+  if (dlg_erasure()) return K_TYPE_TITLE->line_h;
   return 0;
 }
 /* Title, the extra, question, optional line, then the two rows and the
@@ -8336,16 +8356,22 @@ static void draw_dialog(void) {
   ty += K_TYPE_CAPTION->line_h + GRID;
   /* What the question is about, before the question (#247): DELETE shows
    * the photograph, the two erasures how many photographs they take, in the
-   * TITLE face, because that number is the one a person checks. */
-  const uint16_t *thumb = dlg_thumb();
+   * TITLE face, because that number is the one a person checks. The room
+   * is fixed at the open (dialog_open()): a tile dropped since leaves the
+   * gallery's waiting tone in it, a count not in yet leaves its line empty,
+   * and dlg_content_poll() repaints when either changes. */
   int n;
-  if (thumb != NULL) {
-    blit_half(thumb, GALLERY_TILE_W, dx + DLG_PAD, ty, DLG_THUMB_W, DLG_THUMB_H);
+  if (dlg_thumb_on()) {
+    const uint16_t *thumb = photo_thumb();
+    if (thumb != NULL) blit_half(thumb, GALLERY_TILE_W, dx + DLG_PAD, ty, DLG_THUMB_W, DLG_THUMB_H);
+    else fill(dx + DLG_PAD, ty, DLG_THUMB_W, DLG_THUMB_H, K_OFF);
     ty += DLG_THUMB_H + GRID;
-  } else if (dlg_count(&n)) {
-    char big[24];
-    count_words(big, sizeof big, n, "PHOTO", "PHOTOS", "");
-    text(K_TYPE_TITLE, dx + DLG_PAD, ty, big, K_INK);
+  } else if (dlg_erasure()) {
+    if (dlg_count(&n)) {
+      char big[24];
+      count_words(big, sizeof big, n, "PHOTO", "PHOTOS", "");
+      text(K_TYPE_TITLE, dx + DLG_PAD, ty, big, K_INK);
+    }
     ty += K_TYPE_TITLE->line_h;
   }
   text(K_TYPE_BODY_L, dx + DLG_PAD, ty, d.body, K_INK);
@@ -10055,8 +10081,7 @@ static void activate(int item) {
 
     case SCR_PHOTO:
       if (item == P_IT_DELETE) {
-        s_dialog = DLG_DELETE;
-        s_dlg_focus = 0;
+        dialog_open(DLG_DELETE);
       } else if (item == P_IT_FAV) {
         photo_toggle_favourite();
       } else if (item == P_IT_ROLL) {
@@ -10107,16 +10132,14 @@ static void activate(int item) {
           toast("No photos on the card");
           break;
         }
-        s_dialog = DLG_DELETE_ALL;
-        s_dlg_focus = 0;
+        dialog_open(DLG_DELETE_ALL);
       }
       if (item == ST_IT_FORMAT) {
         if (!sd_status()->present) {
           toast("No card in the slot");
           break;
         }
-        s_dialog = DLG_FORMAT;
-        s_dlg_focus = 0;
+        dialog_open(DLG_FORMAT);
       }
       break;
 
@@ -10864,6 +10887,33 @@ static void update_poll(void) {
   ui_render(render_screen, NULL);
 }
 
+/* An open question's content, repainted when it changes (#247): DELETE's
+ * tile decoded or dropped, an erasure's count arriving or going. The room was
+ * fixed at the open (dialog_open()), so the repaint fills it and moves no row.
+ * Nothing is repainted on the pass a question opens: the open drew it. A
+ * finger, a move or the sleep own the frame, and the next pass catches up. */
+static void dlg_content_poll(void) {
+  static int open = DLG_NONE;
+  static int drawn;
+  int n = 0;
+  const int key = s_dialog == DLG_DELETE ? (dlg_thumb_on() && photo_thumb() != NULL)
+                  : dlg_count(&n)        ? n
+                                         : -1;
+  if ((int)s_dialog != open) {
+    open = (int)s_dialog;
+    drawn = key;
+    return;
+  }
+  if (s_dialog == DLG_NONE || key == drawn) return;
+  power_state_t ps;
+  power_get(&ps);
+  if (held != -1 || anim_active() || s_sleep_mark || power_sleep_pending() ||
+      ps.stage == POWER_ASLEEP)
+    return;
+  drawn = key;
+  ui_render(render_screen, NULL);
+}
+
 /* ------------------------------------------------------------------ */
 /* The screen over KDP (#246): the UI task's half                      */
 /* ------------------------------------------------------------------ */
@@ -11168,6 +11218,7 @@ static uint32_t ui_pass(void) {
     calib_poll();
     first_review_poll();
     photo_seek_poll();
+    dlg_content_poll();
     storage_events_poll();
     lens_hint_poll();
     timer_poll();
