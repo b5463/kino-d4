@@ -47,9 +47,21 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: 22, cache: npm }
       - run: npm ci
-      # GitHub `services:` cannot supply the `server /data` command required
-      # by the official image. Start it explicitly instead of depending on a
-      # third-party `latest` convenience image (that tag was removed in 2026).
+      # MinIO built from its source at the pinned release tag, not pulled as an
+      # image. Docker Hub and then quay.io both started refusing this exact tag
+      # (`unauthorized`, #240): MinIO no longer serves free community images.
+      # Building the tag keeps the server and version under test unchanged and
+      # depends on no registry but Docker Hub's official golang image.
+      # Measured: about 75 s to build, ready about 2 s after start.
+      - name: Build pinned MinIO
+        env:
+          MINIO_TAG: RELEASE.2025-04-22T22-12-26Z
+        run: |
+          docker run --rm -v "$RUNNER_TEMP:/out" -e MINIO_TAG golang:1.24 sh -ec '
+            git clone --quiet --depth 1 --branch "$MINIO_TAG" https://github.com/minio/minio.git /src
+            cd /src
+            CGO_ENABLED=0 go build -trimpath -o /out/minio .'
+          "$RUNNER_TEMP/minio" --version
       - name: Start pinned MinIO
         run: |
           generated_secret="$(openssl rand -hex 24)"
@@ -60,16 +72,10 @@ jobs:
             echo "AWS_SECRET_ACCESS_KEY=$generated_secret"
             echo "S3_SECRET_KEY=$generated_secret"
           } >> "$GITHUB_ENV"
-          # quay.io, not Docker Hub: MinIO's Hub repository started answering
-          # `pull access denied ... may require 'docker login'` for this exact
-          # tag, which is what had been failing this job. quay.io/minio is
-          # MinIO's own registry and serves the same release tags, so this is a
-          # registry change, not a version change.
-          docker run --detach --rm --name kino-ci-minio \
-            -p 9000:9000 -p 9001:9001 \
-            -e MINIO_ROOT_USER=kino -e MINIO_ROOT_PASSWORD \
-            quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z \
-            server /data --console-address :9001
+          mkdir -p "$RUNNER_TEMP/minio-data"
+          MINIO_ROOT_USER=kino nohup "$RUNNER_TEMP/minio" server "$RUNNER_TEMP/minio-data" \
+            --address :9000 --console-address :9001 > "$RUNNER_TEMP/minio.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/minio.pid"
       # The readiness gate for MinIO, and a real existence check for the bucket.
       #
       # `s3api head-bucket` signs with the root credentials and exits non-zero
@@ -141,4 +147,6 @@ jobs:
           S3_ACCESS_KEY: kino
       - name: Stop MinIO
         if: always()
-        run: docker stop kino-ci-minio || true
+        run: |
+          kill "$(cat "$RUNNER_TEMP/minio.pid" 2>/dev/null)" 2>/dev/null || true
+          tail -n 20 "$RUNNER_TEMP/minio.log" 2>/dev/null || true
