@@ -22,7 +22,9 @@
 // screens, STATUS too when the body reports a condition, and POWER, saving
 // each, and checks the body named the screen it expected. The taps are the right-hand layout (ui.c, from_hand()) mirrored
 // for --hand left; the hand is read from GET_CONFIG when not given. It opens
-// nothing destructive: no dialog, no capture, no setting changed.
+// nothing destructive: no dialog, no capture, no setting changed. Before the
+// first picture it lifts a dim scrim (SHOOT and back) or wakes a dark screen,
+// so 01-menu.png is not darkened by a body that idled past body.autoDimS.
 //
 // Opening the port does not reset the body; --settle waits anyway, for a body
 // that was just flashed.
@@ -332,6 +334,20 @@ try {
       return true;
     };
 
+    // GET_SCREEN is not activity, and a body left on MENU past body.autoDimS
+    // answers with the dim scrim over the picture. A tap on a dim screen is
+    // acted on (power.c), so the card and the finder's MENU lift it; a dark
+    // screen takes the wake tap first.
+    const stage = (await device.getPowerStatus().catch(() => null))?.displayStage;
+    if (stage === 'asleep') {
+      await device.uiTap(400, 240, holdMs);
+      await sleep(800);
+    } else if (stage === 'dim') {
+      if (!(await tapTo(...P.card, 'shoot')) || !(await tapTo(...P.finderMenu, 'menu'))) {
+        throw new Error('could not lift the dim scrim');
+      }
+    }
+    if (stage === 'asleep' || stage === 'dim') await sleep(250);
     await shot('menu');
     if (await step(P.card, 'shoot') && !(await tapTo(...P.finderMenu, 'menu'))) failed = true;
     const rows = ['look', 'gallery', 'roll', 'settings', 'power'];
