@@ -1631,7 +1631,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 274
+#define PPMS_PER_HAND 276
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -3304,6 +3304,97 @@ static void check_self_timer(void) {
   g_audit_off = false;
 }
 
+/* The loop's state for a run of ui_pass() on `scr`, as check_self_timer
+ * sets it: awake, no move, no scrim, nothing held. */
+static void pass_rig(screen_t scr) {
+  s_screen = scr;
+  s_dialog = DLG_NONE;
+  s_toast[0] = '\0';
+  s_btn_q = xQueueCreate(4, sizeof(btn_event_t));
+  g_power_stage = POWER_AWAKE;
+  s_anim.kind = ANIM_NONE;
+  s_dim_k = 0;
+  s_dim_since_us = 0;
+  s_lift_us = 0;
+  s_sleep_mark = false;
+  s_sleep_stage = -1;
+  was_asleep = false;
+  s_pressed = -1;
+  held = -1;
+  swallow_touch = false;
+  s_touch_was_down = false;
+  g_calibrated = true;
+}
+
+static void pass_unrig(screen_t scr0) {
+  s_btn_q = NULL;
+  s_anim.kind = ANIM_NONE;
+  s_anim.scrim0 = s_anim.scrim_k = 0;
+  s_dim_k = 0;
+  s_lift_us = 0;
+  s_lift_mark = 0;
+  s_sleep_mark = false;
+  was_asleep = false;
+  held = -1;
+  swallow_touch = false;
+  s_pressed = -1;
+  s_toast[0] = '\0';
+  s_dialog = DLG_NONE;
+  g_power_stage = POWER_AWAKE;
+  g_calibrated = false;
+  prev_vclock_us = 0;
+  s_screen = scr0;
+  g_screen_drawn = false;
+}
+
+/* A tap that lands at (x, y) and lifts, through ui_pass(). */
+static void pass_tap(int x, int y) {
+  finger_at(x, y);
+  g_touch_ready = true;
+  g_touch_down = true;
+  timer_passes(3);
+  g_touch_down = false;
+  timer_passes(3);
+  g_touch_ready = false;
+}
+
+/*
+ * First use (#247), through ui_pass: a tap on a live pane before the first
+ * photograph toasts where the shutter is and presses nothing; after one, or
+ * under the card pill, the same tap says nothing.
+ */
+static void check_first_use(void) {
+  const screen_t scr0 = s_screen;
+  g_audit_off = true;
+  pass_rig(SCR_SHOOT);
+  g_fake_total = 0;
+  timer_passes(2);
+  honest_expect(s_sh_live == 0xF, "SHOOT drew no live panes to tap");
+  const int tx = SH_PANE_W / 2, ty = SH_PANE_H / 2;
+  honest_expect(hit_test(tx, ty) < 0 && !at_hand_edge(tx), "the tap point is on a target");
+  pass_tap(tx, ty);
+  honest_expect(s_screen == SCR_SHOOT && strcmp(s_toast, "Press the shutter on top.") == 0,
+                "a tap on a live pane before the first photograph did not say where the shutter is");
+
+  s_toast[0] = '\0';
+  g_card_mounted = false;
+  g_card_present = false;
+  timer_passes(2);
+  pass_tap(tx, ty);
+  honest_expect(s_toast[0] == '\0', "the tap toasted the shutter under the card pill");
+  g_card_mounted = true;
+  g_card_present = true;
+
+  g_fake_total = 1;
+  timer_passes(2);
+  pass_tap(tx, ty);
+  honest_expect(s_toast[0] == '\0', "the tap toasted the shutter with a photograph on the card");
+  g_fake_total = 14;
+
+  pass_unrig(scr0);
+  g_audit_off = false;
+}
+
 /* Every scene, in the order they have always been drawn. Run once per hand,
  * each time in a fresh forked process (main). */
 static void scenes(void) {
@@ -3518,6 +3609,31 @@ static void scenes(void) {
   }
   g_resolution = "1600x1200";
   g_free_bytes = PV_FREE_BYTES;
+
+  /* First use (#247): no photograph on the card and none this boot. The hint
+   * pill in ink, in the card pill's slot; the lens hint, still set, yields to
+   * it. Then a tap on a live pane, and the toast that answers it. */
+  g_fake_total = 0;
+  snprintf(s_lens_hint, sizeof s_lens_hint, "CHECK THE SECOND LENS");
+  SHOT(SCR_SHOOT, "shoot_first_use");
+  s_lens_hint[0] = '\0';
+  toast("Press the shutter on top.");
+  SHOT(SCR_SHOOT, "shoot_first_use_tap");
+  s_toast[0] = '\0';
+  {
+    /* The card pill outranks it, and a photograph on the card ends it. */
+    storage_status_t sd_now;
+    g_card_mounted = false;
+    g_card_present = false;
+    storage_get_status(&sd_now);
+    honest_expect(sh_card_pill(&sd_now) != NULL, "no card pill with the slot empty");
+    g_card_mounted = true;
+    g_card_present = true;
+    honest_expect(sh_first_use(), "an empty card and no capture this boot is not first use");
+    g_fake_total = 1;
+    honest_expect(!sh_first_use(), "a photograph on the card is still first use");
+  }
+  g_fake_total = 14;
 
   /* The self-timer (#237): its panel on, and held; then the count as a press
    * starts it, and with 2.6 s left, the eighth dot caught mid-fade. On the
@@ -4424,6 +4540,7 @@ static void scenes(void) {
   /* Last, so nothing it touches reaches a picture. */
   check_shutter_sound();
   check_self_timer();
+  check_first_use();
   check_move_takes_lift();
   check_wake_into_move();
   check_idle_dim();

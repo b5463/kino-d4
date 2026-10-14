@@ -107,7 +107,8 @@ The rows at the foot of STATUS:
 | `TAKEN. SAVING` | The frames are crossing to the card. Each lens's cell fills as its frame arrives. |
 | `TAKEN. NEXT ONE QUEUED` | The same, after a second shutter press; the next photo fires when this one is saved. |
 | `TAKE THE LENS COVER OFF` | On SHOOT, every pane was lit and then all went dark for a second: the cover went on. A body switched on facing the desk says nothing. |
-| `NO CARD. PUT ONE IN` | On SHOOT, the card pill: the slot was empty from boot. Outranks the lens hint; the self-timer outranks it. |
+| `NO CARD. PUT ONE IN` | On SHOOT, the card pill: the slot was empty from boot. Outranks the first-use hint and the lens hint; the self-timer outranks it. |
+| `PRESS THE SHUTTER ON TOP` | On SHOOT, an ink pill in the same slot until the first photograph exists: the card holds none and none was taken this boot. Below the card pill, above the lens hint. |
 | `CARD OUT. PUT IT BACK` | The card pill: the card was pulled while running. |
 | `CARD CANNOT BE READ` | The card pill: a card is in the slot and did not mount. |
 | `CARD FAILED. CHANGE THE CARD` | The card pill: the card failed its write test. |
@@ -151,6 +152,7 @@ The rows at the foot of STATUS:
 | Restored | UNDO tapped in time. |
 | Could not restore it | The folder would not move back. |
 | Timer cancelled | Either key or a tap that lands on the picture during the self-timer, TIMER turned off during it, or SHOOT left while it counts. |
+| Press the shutter on top. | A tap on a pane with a picture while `PRESS THE SHUTTER ON TOP` is up. The tap presses nothing else. |
 | Deleting photos | DELETE ALL started on the gallery task. |
 | No photos on the card | DELETE ALL with nothing to delete. |
 | No card in the slot | FORMAT with nothing in the slot. |

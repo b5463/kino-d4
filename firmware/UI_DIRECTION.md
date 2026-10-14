@@ -158,6 +158,7 @@ The pink shifts slightly on each start. `K_LAUNCH` holds eight shades: MAO pink 
 | Destructive row at rest | `K_ROW` | `K_FAULT_INK` |
 | Destructive row pressed, DELETE pressed | `K_FAULT` | `K_GROUND` |
 | Card pill and lens hint on SHOOT | `K_FAULT` pill | `K_GROUND` |
+| First-use hint on SHOOT | `K_INK` pill | `K_GROUND` |
 | Severity on a STATUS row: PROBLEM, CHECK, NOTE | a 4 px bar beside the row | `K_FAULT_INK`, `K_INK`, `K_INK_QUIET`, always with the word |
 | The header chip | none | `K_FAULT_INK` on a FAULT, `K_INK` on a WARN; the readings beside it `K_INK_QUIET` |
 | Toast | `K_TOAST`, `K_EDGE` outline | `K_INK` |
@@ -314,7 +315,7 @@ One sound per outcome, played at the moment the screen shows it, not when the fa
 
 1. The screen, header included.
 2. The capture strip (`draw_capture_banner()`).
-3. On SHOOT only, one slot: the self-timer count, or else the card pill, or else the lens hint.
+3. On SHOOT only, one slot: the self-timer count, or else the card pill, or else the first-use hint, or else the lens hint.
 4. The working strip: UPDATING 42% (UPDATING in maintenance between images), or else FORMATTING THE CARD, or else RESTARTING THE CAMERAS.
 5. The toast.
 6. The dialog.
@@ -334,6 +335,7 @@ Outside `draw_screen()`, whole-panel renders replace it: the boot field, the wor
 | Capture | SHOOTING, then TAKEN. SAVING (TAKEN. NEXT ONE QUEUED after a second press), then SAVED, or how many cameras missed. One cell per lens throughout. Cells land in the shade, or stay red where a lens lost its frame. |
 | Self-timer | On SHOOT, one scrim plate centred on the panes' cross: the digit in `K_TYPE_TITLE`, a ring of ten dots round it, and SELF-TIMER.  PRESS TO CANCEL under it. Each dot eases from `K_INK` to `K_OFF` across its second on `motion_smooth()`, clockwise from the gap at the foot; the positions are the const `TIMER_RING` table, no trigonometry at draw time. The pass runs SHOOT at 20 ms while it counts, except while a capture's frames cross the links (#158); there the ring eases on the 60 ms pass. Monochrome: a count is a state, not an event. |
 | A card that will cost the next photograph | On SHOOT, a `K_FAULT` pill at the top from the pass's `sd_status()`: no card, card out, unreadable, failed its write test, or under the reserve capture.c refuses at (`pure_capture_reserve_bytes()`, four frames at `wiggle.resolution`). It states and never gates: capture.c is the one gate. A refusal for the card (an `SD_` code) pulses the pill. The pulse runs SHOOT at 20 ms, except while a capture's frames cross the links (#158); there it steps on the 60 ms pass. |
+| First use | Until the first photograph exists (`sh_first_use()`: `gallery_media_count()` is 0, `capture_count()` is 0, no capture running), SHOOT's slot shows PRESS THE SHUTTER ON TOP in a `K_INK` pill, under the self-timer and the card pill, over the lens hint. A tap that lands on a pane with a picture while it is up toasts Press the shutter on top. and presses nothing. Ink, not red: nothing is wrong. |
 | Delete all photos | The Photos row on STORAGE reads DELETING 120 OF 500 from `gallery_delete_progress()`, repainted while `gallery_deleting()` holds. Both destructive rows are disabled until it ends. The menu and other screens show nothing of it. |
 | Updating | While a firmware update session is open (`fw_update_progress()`): UPDATING 42% on the working strip for the body's own image, UPDATING CAMERA 2 42% for a lens. In maintenance with no session open, before the first image or between two (`maint_active()`): UPDATING with no number. Ink, no shade: an update is a state. Repainted per whole percent by `update_poll()`, never per chunk, and on SHOOT by SHOOT's own clock. The shutter and RESTART THE CAMERAS are refused for the whole time and toast "Updating. Keep the camera on.", the shutter with the warning sound. A session no chunk reaches for `PURE_FW_IDLE_MS` (60 s) is abandoned, and maintenance ends `PURE_MAINT_HOLD_MS` (600 s) after the last ENTER_MAINTENANCE or FW_* command; both are checked on kdp_server's loop, maintenance on the UI task too (`maint_poll()`). Then the shutter works again. |
 | Formatting | FORMATTING THE CARD on the working strip. |

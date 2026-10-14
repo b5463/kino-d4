@@ -4278,6 +4278,9 @@ static void draw_menu(void) {
 /* The panes whose button the last draw put up, one bit each. Set by the draw
  * and read by the hit test, the same rule as s_sh_set_x0. */
 static uint8_t s_sh_dead;
+/* The panes the last draw put a picture on, one bit each: where a tap
+ * before the first photograph is told to use the shutter (#247). */
+static uint8_t s_sh_live;
 /* A photograph between the press and the card, queued shot included. */
 static bool capture_in_flight(void);
 /* The self-timer is counting. */
@@ -4415,6 +4418,8 @@ static void sh_pane_rect(int cam, int *x, int *y) {
   *x = (cam % 2) * SH_PANE_W;
   *y = (cam / 2) * SH_PANE_H;
 }
+/* The pane under logical (x, y): sh_pane_rect() read backwards. */
+static int sh_pane_at(int x, int y) { return (y >= SH_PANE_H ? 2 : 0) + (x >= SH_PANE_W ? 1 : 0); }
 
 /* A dead pane's two pieces, centred in the part of the pane the status bar
  * leaves: the bottom two lose SH_BAR_H to it. One function for the draw and
@@ -4693,6 +4698,7 @@ static int sh_panel(int x, int w, const char *s, bool down) {
  */
 static void draw_shoot(void) {
   s_sh_dead = 0;
+  s_sh_live = 0;
   const bool starting = cams_starting();
   const bool in_flight = capture_in_flight();
   /* Which of the four are on screen, as the mark rather than as a sentence.
@@ -4715,6 +4721,7 @@ static void draw_shoot(void) {
        * camera that answered, whatever the status word says a moment later. */
       live++;
       cams_st[i] = FM_ON;
+      s_sh_live |= (uint8_t)(1u << i);
       continue;
     }
 
@@ -8368,6 +8375,23 @@ static const char *sh_card_pill(const storage_status_t *sd) {
   if (sd->free_bytes < pure_capture_reserve_bytes(4, w, h)) return "CARD FULL. DELETE PHOTOS IN GALLERY";
   return NULL;
 }
+
+/*
+ * First use (#247): nobody has found the shutter yet. True while the card
+ * holds no photograph (gallery_media_count() is 0, not "not counted yet")
+ * and none was taken this boot, and nothing is being taken now. The hint
+ * pill says where the shutter is; it yields to the self-timer and the card
+ * pill, and outranks the lens hint, because a covered lens costs one
+ * picture and a person who cannot find the shutter takes none.
+ */
+static bool sh_first_use(void) {
+  return gallery_media_count() == 0 && capture_count() == 0 && capture_stage() == CAPTURE_IDLE;
+}
+/* The hint is on the glass: first use, and the slot is not taken above it. */
+static bool sh_first_use_shown(void) {
+  return s_screen == SCR_SHOOT && !timer_counting() && sh_card_pill(sd_status()) == NULL &&
+         sh_first_use();
+}
 /* When a refusal for the card last landed on SHOOT; 0 for none. */
 static int64_t s_pill_pulse_us;
 /* How far the pill stands out at this moment of its pulse, in px a side. One
@@ -8936,17 +8960,24 @@ static void draw_screen(void) {
     text_mid(K_TYPE_TITLE, cx, cy - K_TYPE_TITLE->line_h / 2, n, K_INK);
     text_mid(K_TYPE_CAPTION, cx, cy + cap_dy, cap, K_INK);
   } else if (s_screen == SCR_SHOOT) {
-    /* One slot, three claimants: the self-timer above, then the card, then
-     * the lens hint. A covered lens costs one picture; the card costs all of
-     * them. */
+    /* One slot, four claimants: the self-timer above, then the card, then
+     * the first-use hint, then the lens hint. A covered lens costs one
+     * picture; the card costs all of them. */
     const char *pill = sh_card_pill(sd_status());
     const int g = pill != NULL ? pill_pulse_px() : 0;
+    /* Until the first photograph exists, where the shutter is (#247). In
+     * ink, not red: nothing is wrong, the person has not found it yet. */
+    bool teach = false;
+    if (pill == NULL && sh_first_use()) {
+      pill = "PRESS THE SHUTTER ON TOP";
+      teach = true;
+    }
     if (pill == NULL && s_lens_hint[0] != '\0') pill = s_lens_hint;
     if (pill != NULL) {
       const int w = text_w(K_TYPE_CAPTION, pill) + 32, h = 30;
       /* The ground's ink on the red, 5.1:1; K_INK on it is 3.4:1 (#176).
        * The pulse grows the pill round its words, which stay put. */
-      round_rect((UI_W - w) / 2 - g, 12 - g, w + 2 * g, h + 2 * g, UI_R + g, K_FAULT);
+      round_rect((UI_W - w) / 2 - g, 12 - g, w + 2 * g, h + 2 * g, UI_R + g, teach ? K_INK : K_FAULT);
       text_mid(K_TYPE_CAPTION, UI_W / 2, 12 + (h - K_TYPE_CAPTION->line_h) / 2, pill, K_GROUND);
     }
   }
@@ -11199,6 +11230,16 @@ static uint32_t ui_pass(void) {
          * cancels in activate(). */
         timer_cancel("Timer cancelled");
         swallow_touch = true;
+        return 20;
+      }
+      if (landed && held == -1 && region < 0 && ly < SH_BAR_Y && sh_first_use_shown() &&
+          (s_sh_live & (1u << sh_pane_at(lx, ly)))) {
+        /* Before the first photograph, a tap on the picture is someone
+         * looking for the shutter on the glass (#247). The pill says where
+         * it is; the toast says it under the finger. */
+        toast("Press the shutter on top.");
+        swallow_touch = true;
+        ui_render(render_screen, NULL);
         return 20;
       }
     }

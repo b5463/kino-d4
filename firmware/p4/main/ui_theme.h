@@ -100,7 +100,7 @@
   X(K_FAULT_INK, K_ROW, 45, "a PROBLEM row, a destructive dialog action at rest")       \
   /* inks on the fills */                                                               \
   X(K_ON_INK, K_ON, 45, "the live segment, a toggle's knob, a set favourite")           \
-  X(K_GROUND, K_INK, 45, "SENT on a gallery tile, a QR module on its plate")            \
+  X(K_GROUND, K_INK, 45, "SENT on a gallery tile, a QR module, the first-use pill")     \
   X(K_PRESS_INK, K_PRESS, 45, "a pressed control's label")                              \
   X(K_ACCENT_INK, K_ACCENT, 45, "TAP TO OPEN and the status line on the SHOOT card")    \
   X(K_ACCENT_INK, K_ACCENT_DOWN, 45, "the SHOOT card's words, pressed")                 \
