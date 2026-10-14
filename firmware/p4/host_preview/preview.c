@@ -663,15 +663,23 @@ int gallery_capture_files(const char *id, bool *has_thumb, uint8_t *slots, int c
   return n;
 }
 /* Page 2 of 3 in every render. A turn moves it so check_photo_steps() can
- * cross a page edge; the slots stay the same six, which is all a step reads,
- * and the check puts the page back before anything else draws. */
+ * cross a page edge, and empties the six slots as gallery.c's does: the new
+ * page's are PENDING until the check plays the gallery task (fake_gallery()
+ * and a slot set READY). The check puts the page and the slots back before
+ * anything else draws. */
 static int g_page = 1;
 int gallery_page(void) { return g_page; }
 int gallery_pages(void) { return 3; }
 void gallery_turn(int delta) {
-  g_page += delta;
-  if (g_page < 0) g_page = 0;
-  if (g_page > 2) g_page = 2;
+  int want = g_page + delta;
+  if (want < 0) want = 0;
+  if (want > 2) want = 2;
+  if (want == g_page) return;
+  g_page = want;
+  for (int i = 0; i < GALLERY_PAGE; i++) {
+    memset(&g_slot[i], 0, sizeof g_slot[i]);
+    if (g_page * GALLERY_PAGE + i < g_fake_total) g_slot[i].state = TILE_PENDING;
+  }
 }
 const gallery_item_t *gallery_slots(void) { return g_slot; }
 bool gallery_loading(void) { return false; }
@@ -3470,6 +3478,8 @@ static void check_photo_steps(void) {
   pass_tap(px, py);
   review_expect(gallery_page() == 0 && s_photo_seek < 0 && photo_is("preview-0"),
                 "PREV on a page's first photograph did not turn the page and wait for it");
+  /* The gallery task reads the page: the slots come back, the last READY. */
+  fake_gallery();
   g_slot[5].state = TILE_READY;
   g_slot[5].pixels = g_tile[5];
   timer_passes(2);
@@ -3478,10 +3488,14 @@ static void check_photo_steps(void) {
   g_slot[5].state = TILE_PENDING;
   g_slot[5].pixels = NULL;
 
-  /* NEXT on the page's last: the first of the next page. */
+  /* NEXT on the page's last: the first of the next page, once it is read. */
   g_page = 1;
   photo_open(&slots[5]);
   pass_tap(nx, py);
+  review_expect(gallery_page() == 2 && s_photo_seek > 0 && photo_is("preview-5"),
+                "NEXT on a page's last photograph did not turn the page and wait for it");
+  fake_gallery();
+  timer_passes(2);
   review_expect(gallery_page() == 2 && photo_is("preview-0"),
                 "NEXT on a page's last photograph did not open the first of the next page");
 
@@ -3501,6 +3515,7 @@ static void check_photo_steps(void) {
   review_expect(s_screen == SCR_GALLERY && s_photo_seek == 0, "a page never read did not fall back to the grid");
 
   g_page = 1;
+  fake_gallery();
   photo_release();
   pass_unrig(scr0);
   g_audit_off = false;

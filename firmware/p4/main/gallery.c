@@ -1280,7 +1280,8 @@ static void decode_page(void) {
   char want[GALLERY_PAGE][40];
   int n = 0;
   lock();
-  const int base = s_page * GALLERY_PAGE;
+  const int page = s_page;
+  const int base = page * GALLERY_PAGE;
   for (int i = 0; i < GALLERY_PAGE; i++) {
     const int idx = base + i;
     if (idx < s_total) {
@@ -1292,13 +1293,19 @@ static void decode_page(void) {
   }
   unlock();
 
+  /* s_dirty is read once per item, so a turn can land while an item decodes.
+   * Each write checks the page under the lock: a tile from the page before,
+   * written as READY into the new page's slot, opened as that page's photo
+   * (photo_seek_poll() trusts the first READY slot). A dropped write leaves
+   * the slot PENDING as gallery_turn() set it, and the s_dirty the turn set
+   * decodes it again. */
   for (int i = 0; i < GALLERY_PAGE; i++) {
     if (s_dirty) break; /* the page changed under us; start again */
     gallery_item_t it;
     memset(&it, 0, sizeof it);
     if (want[i][0] == '\0') {
       lock();
-      s_slot[i] = it; /* TILE_EMPTY, no pixels */
+      if (s_page == page) s_slot[i] = it; /* TILE_EMPTY, no pixels */
       unlock();
       continue;
     }
@@ -1310,10 +1317,10 @@ static void decode_page(void) {
     it.state = ok ? TILE_READY : TILE_NO_IMAGE;
     it.pixels = ok ? s_pixels[i] : NULL;
     lock();
-    s_slot[i] = it;
+    if (s_page == page) s_slot[i] = it;
     unlock();
   }
-  ESP_LOGI(TAG, "page %d/%d, %d captures", s_page + 1, gallery_pages(), n);
+  ESP_LOGI(TAG, "page %d/%d, %d captures", page + 1, gallery_pages(), n);
 }
 
 static void gallery_task(void *arg) {
