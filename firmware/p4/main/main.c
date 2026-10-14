@@ -5,6 +5,7 @@
 
 #include "audio.h"
 #include "buttons.h"
+#include "cJSON.h"
 #include "cam_link.h"
 #include "node_link/node_link.h"
 #include "capture.h"
@@ -307,7 +308,40 @@ static void log_last_panic(void) {
   free(s);
 }
 
+/*
+ * cJSON allocates from PSRAM first (#244).
+ *
+ * cJSON calls plain malloc, and every node is far under
+ * CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL, so each KDP reply, each GET_CONFIG copy
+ * of the settings document (#242) and the two documents kept for the life of
+ * the boot - the settings and the factory looks - were small allocations out of
+ * internal SRAM, the pool the C6 recovery reserve and every DMA buffer come from.
+ *
+ * Safe because no cJSON call needs internal memory:
+ *   - every caller is a task (kdp_server, kdp_net, capture, config_store,
+ *     ui, gallery, cam_link, klog, kdp_recipes, kdp_sounds, roll_*,
+ *     upload_store). The firmware's ISRs (gfx.c's two callbacks) only give a
+ *     semaphore, and nothing calls cJSON with the cache disabled;
+ *   - NVS writes take a finished string, and esp_flash_write copies a source
+ *     outside DRAM through its own bounce buffer before the cache goes off;
+ *   - a printed string reaches USB, UART or a socket through a copy (send_raw
+ *     encodes into s_tx, itself in PSRAM), and the card through SDMMC DMA,
+ *     which reaches PSRAM on the P4 or bounces an unaligned buffer.
+ * Internal RAM only when PSRAM is full. Everything cJSON hands out may be
+ * released with free() or cJSON_free(), as before.
+ *
+ * Installed before the first cJSON call of the boot: config_init() below.
+ * With hooks other than malloc/free cJSON grows a print buffer by
+ * allocate-copy-free instead of realloc; the extra copy is in PSRAM.
+ */
+static void *json_alloc(size_t size) {
+  return heap_caps_malloc_prefer(size, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT, MALLOC_CAP_DEFAULT);
+}
+
 void app_main(void) {
+  cJSON_Hooks json_hooks = {.malloc_fn = json_alloc, .free_fn = free};
+  cJSON_InitHooks(&json_hooks);
+
   esp_err_t err = nvs_flash_init();
   if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
     /* These were the last two ESP_ERROR_CHECKs in the firmware, on the first
