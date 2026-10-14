@@ -10598,7 +10598,12 @@ static void update_poll(void) {
 /* The screen over KDP (#246): the UI task's half                      */
 /* ------------------------------------------------------------------ */
 
-bool ui_screen_moving(void) { return anim_active() || s_sleep_mark || s_lift_us != 0; }
+/* The sleep's mark counts only while its wind-down runs. s_sleep_mark stays
+ * set through the sleep itself, until the wake clears it; a body asleep is
+ * still, and its render is the screen under SLEEP_DARK_K. */
+bool ui_screen_moving(void) {
+  return anim_active() || (s_sleep_mark && power_sleep_pending()) || s_lift_us != 0;
+}
 
 uint32_t ui_shot_ask(void) {
   uint32_t t = __atomic_load_n(&s_kdp.shot_asked, __ATOMIC_RELAXED) + 1;
@@ -10701,7 +10706,11 @@ static void plate_set(bool on, const char *why) {
  */
 static bool plate_pass(void) {
   const uint32_t asked = __atomic_load_n(&s_kdp.plate_asked, __ATOMIC_ACQUIRE);
-  if (asked != s_kdp.plate_seen && !anim_active() && !s_sleep_mark) {
+  /* Not while a move, the wind-down or a lift runs: lift_step() does not run
+   * while the plate owns the pass, so a lift under it would never end. A body
+   * asleep takes it: plate_set() wakes it, and the wake's lift runs when the
+   * plate drops. */
+  if (asked != s_kdp.plate_seen && !ui_screen_moving()) {
     s_kdp.plate_seen = asked;
     plate_set(s_kdp.plate_want != 0, "asked over KDP");
   }

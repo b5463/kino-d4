@@ -860,7 +860,9 @@ bool media_favorite_get(const char *id) {
  * check_idle_dim(). */
 static power_stage_t g_power_stage = POWER_AWAKE;
 static uint32_t g_idle_s = 12;
-void power_activity(void) {}
+/* As power.c: activity wakes a dark or dim body on the spot. Only the KDP
+ * paths (a host tap, key or plate) call it from ui.c. */
+void power_activity(void) { g_power_stage = POWER_AWAKE; }
 void power_wake(void) {}
 bool power_sleep_pending(void) { return false; }
 void power_sleep_shown(void) {}
@@ -2484,7 +2486,53 @@ static void check_kdp_screen(void) {
     g_motion_failed = true;
   }
 
+  /* A body asleep, its wind-down over: the mark is still set until a wake
+   * clears it, and that is not a move. A render is answered, and the plate
+   * wakes the body and goes up on the next pass; when it drops, the wake's
+   * lift runs and ends. */
+  s_dim_k = SLEEP_DARK_K;
+  s_sleep_mark = true;
+  g_power_stage = POWER_ASLEEP;
+  prev_vclock_us += 20000;
+  ui_pass();
+  t = ui_shot_ask();
+  ui_pass();
+  if (ui_screen_moving() || ui_shot_poll(t, &shot) != UI_SHOT_DONE || shot.plate) {
+    fprintf(stderr, "kdp screen: a render of a sleeping body was not answered\n");
+    g_motion_failed = true;
+  }
+  ui_plate_post(true);
+  prev_vclock_us += 20000;
+  ui_pass();
+  if (!s_kdp.plate_on || g_power_stage != POWER_AWAKE) {
+    fprintf(stderr, "kdp screen: the plate did not wake a sleeping body\n");
+    g_motion_failed = true;
+  }
+  t = ui_shot_ask();
+  ui_pass();
+  if (ui_shot_poll(t, &shot) != UI_SHOT_DONE || !shot.plate) {
+    fprintf(stderr, "kdp screen: the plate on a woken body did not render\n");
+    g_motion_failed = true;
+  }
+  ui_plate_post(false);
+  prev_vclock_us += 20000;
+  ui_pass();
+  for (int guard = 0; guard < 400 && ui_screen_moving(); guard++) {
+    prev_vclock_us += 20000;
+    ui_pass();
+  }
+  if (s_kdp.plate_on || s_sleep_mark || ui_screen_moving() || s_dim_k != 0) {
+    fprintf(stderr, "kdp screen: the plate's drop did not wake the screen (mark %d, scrim %d)\n", s_sleep_mark,
+            s_dim_k);
+    g_motion_failed = true;
+  }
+  printf("kdp screen: asleep, render answered and the plate woke the body\n");
+
   s_anim.kind = ANIM_NONE;
+  s_dim_k = 0;
+  s_lift_us = 0;
+  s_sleep_mark = false;
+  g_power_stage = POWER_AWAKE;
   s_screen = scr0;
   s_pressed = -1;
   held = -1;

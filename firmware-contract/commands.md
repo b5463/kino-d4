@@ -887,7 +887,8 @@ Refusals: `BUSY` while a move, the boot sequence, the sleep's wind-down or a wak
 panel, or when the UI task does not answer within 1.5 s — ask again. `INVALID_STATE` for a page of a
 render the canvas no longer holds (`shot` is the canvas generation; a move draws into the canvas and
 moves it on) — render again. `INVALID_ARGUMENT` for an `offset` past `bytes` or a `shot` that is
-not a number.
+not a number. A body asleep is not `BUSY`: the render is the screen under the sleep's dark scrim,
+which is what the glass would show with the light on.
 
 `screen` is the lower-case `screen_t` name (`SCREEN_IDS` in `types.ts`, `UI_SCREEN_IDS` in `ui.h`):
 `menu shoot look gallery photo roll settings display sound connection storage about status power`. On
@@ -903,8 +904,8 @@ takes a photograph. `longPress` adds the 600 ms hold report the button sends, wh
 ignores, as it ignores the button's. A full key queue is `BUSY`.
 
 **`SCREEN_PLATE`** `{ "on": true }` covers the screen with a test plate for panel photos: a 32-step grey
-ramp, every palette colour, the eight launch shades and their pressed steps, and a 1 px grid. It holds
-the panel awake and ends on a touch, a key, `{ "on": false }`, a sleep the body is told to take, or
+ramp, every palette colour, the eight launch shades and their pressed steps, and a 1 px grid. A body
+asleep wakes and shows it. It holds the panel awake and ends on a touch, a key, `{ "on": false }`, a sleep the body is told to take, or
 after 5 minutes. A press that ends it does nothing else.
 
 The reference device answers all four. Its pictures are flat blocks where the real screens have their
