@@ -15,6 +15,7 @@
 #   make -C firmware/p4/host_tests test-sched  # cam_sched.c, shutter over background node probes
 #   make -C firmware/p4/host_tests test-index  # gallery_index.c, the on-card capture order
 #   make -C firmware/p4/host_tests test-theme  # the on-glass palette's contrast and colour rules
+#   make -C firmware/p4/host_tests test-config # config_store.c, two writers and a reader, needs cJSON
 #   make -C firmware/p4/host_tests test-all    # all of them
 #
 # Several targets because they have different dependencies, not because the
@@ -142,7 +143,7 @@ test_cam_sched: $(SCHED_SRC) $(MAIN)/cam_sched.h
 test_board_pins: $(PINS_SRC) $(MAIN)/board_d4v1.h $(MAIN)/board_d4v1_checks.h
 	$(CC) $(filter-out -std=c99,$(CFLAGS)) -std=c11 -I$(MAIN) $(PINS_SRC) -o $@
 
-.PHONY: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-sched test-recipes test-wav test-index test-theme test-all clean
+.PHONY: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-sched test-recipes test-wav test-index test-theme test-config test-all clean
 test: test_pure
 	./test_pure
 
@@ -179,10 +180,10 @@ test-recovery: test_radio_recovery
 test-sched: test_cam_sched
 	./test_cam_sched
 
-test-all: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-sched test-recipes test-wav test-index test-theme
+test-all: test test-queue test-net test-report test-qr test-meta test-store test-pins test-hwv test-bench test-recovery test-sched test-recipes test-wav test-index test-theme test-config
 
 clean:
-	rm -f test_pure test_roll_queue test_net_link test_net_report test_qr test_meta test_upload_store test_board_pins test_hwv_rules test_bench_c6 test_radio_recovery test_cam_sched test_recipe_rules test_wav_probe test_gallery_index test_theme
+	rm -f test_pure test_roll_queue test_net_link test_net_report test_qr test_meta test_upload_store test_board_pins test_hwv_rules test_bench_c6 test_radio_recovery test_cam_sched test_recipe_rules test_wav_probe test_gallery_index test_theme test_config_store
 
 # recipe_rules.c is the look validator: cJSON only, no ESP-IDF. Same container
 # rule as test-meta, for the same reason - it must agree with the cJSON the
@@ -232,3 +233,23 @@ test_theme: $(THEME_SRC) $(MAIN)/ui_theme.h $(MAIN)/ui_palette.h
 
 test-theme: test_theme
 	./test_theme
+
+# config_store.c, the settings document, against two writer threads and a
+# reader (#242): saves commit in revision order, GET_CONFIG's snapshot is
+# always a whole document, config_flush() writes nothing while saves are
+# immediate. Real config_store.c, meta.c and pure.c over the container's cJSON.
+#
+# shim_config/ has its own esp_err.h, a pthread-backed freertos/semphr.h and
+# an nvs.h the test implements. Its own directory, not shim/: shim/ must have
+# no freertos/ directory, because net_link.c compiles its locks out when
+# freertos/FreeRTOS.h is absent and test_net_link asserts that build.
+# host_compat.h is force-included for strlcpy, which ESP-IDF's newlib has and
+# not every host libc does.
+CONFIG_SHIM = shim_config
+CONFIG_SRC = $(MAIN)/config_store.c $(MAIN)/meta.c $(MAIN)/pure.c test_config_store.c              $(CJSON_DIR)/cJSON.c
+
+test_config_store: $(CONFIG_SRC) $(MAIN)/config_store.h $(wildcard $(CONFIG_SHIM)/*.h)
+	$(CC) $(CFLAGS) -D_POSIX_C_SOURCE=200809L -include $(CONFIG_SHIM)/host_compat.h 	  -I$(MAIN) -I$(CONFIG_SHIM) -I$(CJSON_DIR) $(CONFIG_SRC) -o $@ -lm -lpthread
+
+test-config: test_config_store
+	./test_config_store

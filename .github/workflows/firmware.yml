@@ -251,6 +251,14 @@ jobs:
         shell: bash
         run: make -C firmware/p4/host_tests test-recipes
 
+      # The settings store under two writers and a reader (#242): saves commit
+      # in revision order and GET_CONFIG's snapshot is always a whole document.
+      # Here for the container's cJSON, the parser the device links.
+      - name: P4 config store tests
+        if: matrix.app == 'p4'
+        shell: bash
+        run: make -C firmware/p4/host_tests test-config
+
       # ---- firmware size guard (P4 only) ----
       #
       # Detects accidental major growth, nothing more. This is NOT a size

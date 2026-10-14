@@ -957,12 +957,15 @@ static void handle_power_status(uint32_t seq) {
 
 /* The envelope, minus anything that is write-only. */
 static cJSON *config_envelope(void) {
+  /* A locked copy, and the revision it was taken at, so the pair agrees. The
+   * live document is written from the UI task too (#242). */
+  uint32_t rev = 0;
+  cJSON *copy = config_snapshot(&rev);
   cJSON *json = cJSON_CreateObject();
   cJSON_AddNumberToObject(json, "schemaVersion", 1);
   cJSON_AddStringToObject(json, "device", s_id.device_id);
-  cJSON_AddNumberToObject(json, "configRevision", config_revision());
+  cJSON_AddNumberToObject(json, "configRevision", rev);
 
-  cJSON *copy = cJSON_Duplicate(config_get(), true);
   if (copy != NULL) {
     /* deviceToken is write-only by contract: it may be set, never read back,
      * and never lands in a Studio backup. What is safe to report is whether
@@ -1232,7 +1235,7 @@ void kdp_server_import_roll_credential(void) {
   /* A token a firmware up to 0.4.22 saved into the config document on Studio's
    * behalf. Moved into roll_state once, then blanked and the document saved,
    * so the secret leaves the NVS config envelope. Runs after roll_state_init. */
-  cJSON *copy = cJSON_Duplicate(config_get(), true);
+  cJSON *copy = config_snapshot(NULL);
   if (copy == NULL) return;
   char id[ROLL_DEVICE_ID_LEN];
   char tok[ROLL_DEVICE_TOKEN_LEN];
