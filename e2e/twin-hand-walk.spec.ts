@@ -102,10 +102,11 @@ test('Twin hand walk: the device UI for the hand on the shutter', async ({ page 
     });
   };
 
-  // The splash ends on its own; the menu is the first screen.
+  // The start (#245) ends on its own in 2.0-3.0 s; the menu is the first
+  // screen. The card covers both probes about 0.3 s before the rows are down,
+  // and a tap during the start would cut it short and press nothing, so the
+  // walk waits the build out before its first tap.
   await reach('menu after boot', isMenu, 15_000);
-  // The card lands first and the rows follow over the cascade's 700 ms; a tap
-  // during the cascade is ignored, as it is on the camera.
   await sleep(900);
   // A fresh body shows its first-start note once, and its scrim hides the
   // card; GOT IT is the top row of the note.
