@@ -70,6 +70,16 @@ describe('maintenance mode', () => {
     expect(await codeOf(client.request(Cmd.ENTER_MAINTENANCE))).toBe('INVALID_STATE');
   });
 
+  it('is not held off by a soak run a restart cut short', async () => {
+    const { mock, client } = await connectWithClock();
+    // A long soak, so none of its captures or its end has run yet.
+    await client.request(Cmd.CAMERA_SOAK_TEST, { captures: 100, delayMs: 1000 });
+    expect(await codeOf(client.request(Cmd.ENTER_MAINTENANCE))).toBe('INVALID_STATE');
+    // The restart takes the soak's job with it; the lock must not stay busy.
+    mock.restartSessionInPlace();
+    expect(await codeOf(client.request(Cmd.ENTER_MAINTENANCE))).toBe('ok');
+  });
+
   it('keeps FW_BEGIN behind maintenance on the reference device', async () => {
     const { client } = await connectWithClock();
     const begin = { target: 'cam1', size: 1024, sha256: 'a'.repeat(64), version: '0.0.0' };

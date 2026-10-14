@@ -713,6 +713,9 @@ export class MockKinoDevice implements MockDeviceLike {
     this.stopAmbient();
     for (const t of this.timers) clearTimeout(t);
     this.timers = [];
+    // A soak run is scheduled on those timers, so it ends with them; left
+    // set, the capture lock would read busy for the life of the mock.
+    this.soakRunning = false;
     if (this.coalesceTimer) clearTimeout(this.coalesceTimer);
     this.coalesceTimer = null;
     this.coalesceBuffer = [];
@@ -804,6 +807,9 @@ export class MockKinoDevice implements MockDeviceLike {
     this.sessionId = `boot-${this.bootCount}`;
     if (this.clockSource === 'host') this.clockSource = 'persisted';
     this.jobs.clear();
+    // The soak's completion callback finds its job gone and returns early,
+    // so the flag is cleared here or never.
+    this.soakRunning = false;
     this.resetReason = reason;
     this.emitTelemetry({ t: 'reboot', sessionId: this.sessionId, reason });
   }
@@ -1712,6 +1718,7 @@ export class MockKinoDevice implements MockDeviceLike {
     this.stopAmbient();
     for (const t of this.timers) clearTimeout(t);
     this.timers = [];
+    this.soakRunning = false; // its timers are gone, see detach()
     // Same teardown as detach(): the device state survives, but nothing
     // scheduled by this connection may outlive it.
     if (this.coalesceTimer) clearTimeout(this.coalesceTimer);
@@ -4588,6 +4595,7 @@ export class MockKinoDevice implements MockDeviceLike {
     this.lastActivityAt = this.bootedAt;
     this.captureBusyUntil = 0;
     this.selfTestRunning = false;
+    this.soakRunning = false;
     this.bootBlockedUntil = this.now() + 2500;
     this.maintenance = false;
     this.fwStates.p4 = { state: 'idle' };
