@@ -226,17 +226,31 @@ installed. The Makefile header says what each target covers and why it is its
 own target.
 
 `firmware/p4/host_preview/` is next to them and is half a test: `make -C
-firmware/p4/host_preview && ./preview out/` renders all 190 of the camera's
-screens with the firmware's own drawing code - every failure state, and the
-frames of every transition - so a layout, a join QR or a move can be looked at
+firmware/p4/host_preview && ./preview out/` renders all 210 of the camera's
+pictures with the firmware's own drawing code - every failure state, and the
+frames of every transition - once for each hand: `out/` is the right-handed
+body, `out/left/` the left. A layout, a join QR or a move can be looked at
 without a panel.
 
-The half that IS a test is the safe-area audit: the run exits non-zero if any
-screen sets type outside the page margin, naming the string and the screen it
-was on. Clipping is the obvious fault, but the one an interface actually has is
-a sentence ending two pixels from the bezel - it does not look broken, it looks
-cheap, and it is much harder to see than a missing word. It found four screens
-doing it on the day it was written.
+The half that IS a test is the audit, which runs on every render:
+
+- **Safe area.** The run exits non-zero if any screen sets type outside the
+  page margin, naming the string and the screen. Clipping is the obvious
+  fault, but the one an interface actually has is a sentence ending two pixels
+  from the bezel - it does not look broken, it looks cheap.
+- **Hand side.** Every screen's hit map is swept; chrome that `from_hand()`
+  places (back buttons, the menu card, the photo column, the page and look
+  pickers) must sit on the hand's half, for both hands. A failure exits
+  non-zero.
+- **Contrast.** Every string's ink is measured against the pixels it lands on,
+  4.5:1 (3:1 for XL, the only face over 18 pt on this glass); strings set on a
+  photograph or the finder are skipped.
+- **Touch targets.** Any target under 52 px either way (6.1 mm at 8.5 px/mm).
+
+Contrast and targets fail the run like the structural checks, for both hands
+(#234 closed #176's list). `make check` / `make approve` compare every PPM with a local
+`golden.sha256`, which proves a refactor drew nothing different. The hashes
+are per toolchain and are not committed.
 
 ## Milestone state
 

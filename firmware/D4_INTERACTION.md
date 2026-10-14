@@ -14,23 +14,7 @@ argument that lost.
 
 ## What shipped instead
 
-**One camera, one interface, six screens.** SHOOT, LOOK, GALLERY, ROLL,
-SETTINGS, POWER, reached from a home screen of six rows. The register is
-settled and is not the Windows-era shell this document was written against:
-warm terracotta cards on near-black ground, Oxanium for anything set in caps
-and Inter for anything set as a sentence, every corner and every edge drawn
-with per-pixel coverage rather than snapped to the pixel grid.
-
-The four questions §6 held open are answered, and were answered by looking at
-real renders at the panel's real size rather than by a specimen sheet:
-
-- **Legible across a dark room.** Reading type starts at 19 px, display type
-  at 25, and the value on a row is never smaller than its name.
-- **One object with the body.** The ground is darker than the case and the
-  cards are the colour of the case, so the screen reads as a window in the
-  object rather than a display bolted to it.
-- **The four is the product's mark.** It is four rows on ABOUT, four bars on a
-  capture, four lenses on SHOOT. It is never decoration.
+One interface. Its current spec is [UI_DIRECTION.md](UI_DIRECTION.md).
 
 ## Why the guest half lost
 
@@ -60,9 +44,8 @@ It lost on what it cost:
 - **The shutter always takes a photograph**, from anywhere, interrupting
   anything. Unchanged, and now true on every screen rather than on four.
 - **The camera always comes back.** Transient screens return on their own.
-- **`conditions.h` is where you look first.** It is its own screen, reached
-  from SETTINGS, and the header carries the count so it is visible from every
-  other screen rather than only from the one it lives on.
+- **`conditions.h` is where you look first.** It is STATUS, reached from
+  SETTINGS; the header carries the worst severity word on every detail screen.
 - **The production-state list in §5**, which was the most useful page here and
   is not about guests at all. First power-on, no card, a card pulled mid-write,
   one to three cameras silent, node firmware skew, the clock never set, the
@@ -72,10 +55,8 @@ It lost on what it cost:
 
 ## What is dropped
 
-The slide switch, the guest palette, the four-screen guest flow, the specimen
-sheet as a method, and the claim that the home screen should stop being a
-field of peers. Six rows is right for one interface: there is no owner to
-flick a switch for, so there is no drawer to put anything in.
+The slide switch, the guest palette, the four-screen guest flow, and the
+specimen sheet as a method.
 
 ---
 

@@ -87,6 +87,10 @@ for (const marker of [
   // The camera's type. firmware/** is MIT; the rasterised glyphs are a
   // derivative of two OFL faces and stay under the OFL.
   '"firmware/p4/main/ui_font.h"',
+  // The marks the camera draws are coverage tables of the reserved artwork.
+  // firmware/** is MIT; losing these lines would relicense the marks.
+  '"firmware/p4/main/logo_kino_d4.h"',
+  '"firmware/p4/main/ui_mark_odd_jobs.h"',
 ]) check(reuse.includes(marker), `REUSE.toml is missing ${marker}`);
 
 // LICENSE is what a human reads; REUSE.toml is what the tooling reads. They
@@ -100,6 +104,8 @@ for (const marker of [
   'apps/roll-web/src/assets/**',
   'apps/studio/public/icon-*.png',
   'firmware/p4/main/ui_font.h',
+  'firmware/p4/main/logo_kino_d4.h',
+  'firmware/p4/main/ui_mark_odd_jobs.h',
   'firmware/c6/partitions_eh_cp_ota_4m.csv',
   'THIRD_PARTY_NOTICES.md',
 ]) check(license.includes(marker), `LICENSE no longer mentions ${marker}`);

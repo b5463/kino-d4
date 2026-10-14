@@ -370,28 +370,26 @@ void gfx_render_canvas(gfx_draw_fn draw, void *ctx) {
  * bands - TILE_W x TILE_H pixels of the logical screen at a time, in a
  * buffer in internal SRAM where the drawing costs no bus time at all - and
  * each band is written into the framebuffer transposed: one logical column
- * of the tile is TILE_H contiguous pixels of one panel row, 128 bytes, two
+ * of the tile is TILE_H contiguous pixels of one panel row, 192 bytes, three
  * cache lines, sequential. PSRAM sees the 768 KB write and nothing else.
  *
- * The price is that the drawing runs once per tile - 56 times a frame - so
- * every primitive clips to the window before it does any work (ui.c), and
- * the frame's drawing must be a function of state, not of the previous tile.
+ * The price is that the drawing runs once per tile - 85 times a frame, 17 x 5
+ * tiles of TILE_W x TILE_H - so every primitive clips to the window before it
+ * does any work (ui.c), and the frame's drawing must be a function of state,
+ * not of the previous tile.
  *
  * The transposition is the mapping the PPA used: logical (x, y) lands at
  * panel row x, panel column H_RES - 1 - y.
  */
 /*
  * Two tile buffers, so the engine writes one out while the CPU draws the
- * next. 128 x 48 x 2 bytes x 2 = 24 KB of internal SRAM, which is the scarce
- * pool on this board (#162): 70 tiles a frame rather than the 56 of 128 x 64,
- * for 8 KB less of it. Cache-line aligned because the PPA reads them as
- * pictures of their own.
+ * next: 48 x 96 x 2 bytes x 2 = 18 KB of internal SRAM, the scarce pool on
+ * this board (#162). 48 x 96 rather than the earlier 128 x 48: a tile's
+ * landscape column is a run along a panel row, so TILE_H is the run length
+ * written into PSRAM (192 bytes, against 96). A tile is 9 KB rather than 12,
+ * because the C6 recovery reserve needs two 16 KB blocks of this pool.
+ * Cache-line aligned because the PPA reads them as pictures of their own.
  */
-/* 48 x 96 rather than 128 x 48: a tile's landscape column is a run along a
- * panel row, so the tile's HEIGHT is the run length the engine writes into
- * PSRAM - 192 bytes here against 96. And 9 KB a tile rather than 12: the
- * C6 recovery reserve (#162) needs two 16 KB blocks of this pool, and with
- * 12 KB tiles plus the display list's boxes it found one. */
 #define TILE_W 48
 #define TILE_H 96
 static uint16_t s_tiles[2][TILE_W * TILE_H] __attribute__((aligned(64)));

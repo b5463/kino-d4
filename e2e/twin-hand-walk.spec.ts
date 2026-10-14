@@ -15,9 +15,10 @@ import { expect, test } from '@playwright/test';
  * control there without moving it here is exactly what this spec catches.
  */
 
-const CARD = [0xe8, 0xa1, 0x83]; // MZ_CARD: the SHOOT card and the menu rows' ground
-const RULE = [0x27, 0x30, 0x2b]; // W_RULE: the hairline under every detail header
-const SEL = [0xe8, 0x73, 0x4a]; // W_SEL: a lit segment
+// The Twin wears launch shade 0, MAO pink, so the card is always this colour there.
+const CARD = [0xf3, 0xa2, 0xc4]; // K_LAUNCH[0]: the SHOOT card
+const RULE = [0x28, 0x28, 0x28]; // K_RULE: the hairline under every detail header
+const SEL = [0xf1, 0xec, 0xe2]; // K_ON (K_INK): a lit segment
 
 type Rgb = [number, number, number];
 const near = (p: Rgb, c: number[], tol = 24): boolean => p.every((v, i) => Math.abs(v - c[i]) <= tol);
@@ -81,13 +82,15 @@ test('Twin hand walk: the device UI for the hand on the shutter', async ({ page 
   }
 
   // The menu: the SHOOT card fills the right, the rows the left.
-  const isMenu = async (): Promise<boolean> => near(await px(700, 300), CARD) && near(await px(500, 440), CARD);
+  // Both points clear of the card's type: TAP TO OPEN ends near x 535.
+  const isMenu = async (): Promise<boolean> => near(await px(700, 300), CARD) && near(await px(700, 440), CARD);
   // SHOOT: dark panes under the MENU plate and along the bar.
   const isShoot = async (): Promise<boolean> => dark(await px(676, 14)) && dark(await px(760, 462)) && !(await isMenu());
   // Every detail screen draws one hairline under its header; the menu, SHOOT and PHOTO do not.
   const hasHeader = async (): Promise<boolean> => near(await px(400, 60), RULE, 12);
-  // LOOK: the header, the lit COLOUR segment, the back button.
-  const isLook = async (): Promise<boolean> => (await hasHeader()) && near(await px(128, 438), SEL) && dark(await px(752, 31));
+  // LOOK: the header, the lit COLOUR segment, the back button's face (732..784,
+  // clear of its arrow, which runs 749..767 on y 31).
+  const isLook = async (): Promise<boolean> => (await hasHeader()) && near(await px(128, 438), SEL) && dark(await px(740, 31));
   const isDetail = async (): Promise<boolean> => (await hasHeader()) && !(await isMenu());
 
   const step = async (name: string, action: () => Promise<void>, check: () => Promise<boolean>): Promise<void> => {
@@ -102,8 +105,9 @@ test('Twin hand walk: the device UI for the hand on the shutter', async ({ page 
   // The card lands first and the rows follow over the cascade's 700 ms; a tap
   // during the cascade is ignored, as it is on the camera.
   await sleep(900);
-  // A fresh body shows its first-start note once; GOT IT is the lit row.
-  if (near(await px(400, 255), SEL)) await tap(400, 255);
+  // A fresh body shows its first-start note once, and its scrim hides the
+  // card; GOT IT is the top row of the note.
+  if (!(await isMenu())) await tap(400, 255);
 
   await step('SHOOT from the card', () => tap(600, 240), isShoot);
   await step('LOOK from the finder bar', () => tap(740, 462), isLook);

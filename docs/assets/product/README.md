@@ -10,13 +10,13 @@ Three kinds of file belong here, and each is labelled so nobody has to guess whi
 make -C firmware/p4/host_preview && firmware/p4/host_preview/preview out/
 ```
 
-which writes 190 screens as PPM, including the failure states and the frames of every transition. Convert the ones you need to PNG:
+which writes every screen as PPM for both hands (`out/` is the right hand, `out/left/` the left), including the failure states and the frames of every transition. Convert the ones you need to PNG with any converter that reads PPM, for example Pillow:
 
 ```bash
-sips -s format png firmware/p4/host_preview/menu.ppm --out docs/assets/product/firmware-menu-render.png
+python3 -c "from PIL import Image; Image.open('out/menu.ppm').save('docs/assets/product/firmware-menu-render.png', optimize=True)"
 ```
 
-The renderer is also a gate: it exits non-zero if any screen sets type outside the page margin, so a render that came out of a passing run is a render whose type is inside its own margins.
+The renderer is also a gate: it exits non-zero if any screen sets type outside the page margin, sets a word under its contrast floor, or leaves a touch target under 52 px, so a render that came out of a passing run is a render that passed all three.
 
 **Photographs of the hardware.** None yet. The shot list is below.
 
@@ -24,20 +24,20 @@ The renderer is also a gate: it exits non-zero if any screen sets type outside t
 
 | File | What it is | Captured |
 |---|---|---|
-| `firmware-menu-render.png` | The D4 home screen: the SHOOT card and five rows, 800 × 480 | 2026-09-20 |
-| `firmware-boot-field-render.png` | The boot field, all four cameras answering | 2026-09-20 |
-| `firmware-boot-field-two-silent-render.png` | The same body with cameras 2 and 4 silent | 2026-09-20 |
-| `firmware-look-render.png` | LOOK: the recipe, what it does at capture, and its three modifiers | 2026-09-20 |
-| `firmware-roll-active-render.png` | The ROLL screen: QR, code, connection word, count | 2026-09-20 |
-| `firmware-about-render.png` | ABOUT: the unit, the four cameras, and the studio | 2026-09-20 |
+| `firmware-menu-render.png` | The D4 home screen: the SHOOT card and five rows, 800 × 480, right hand | 2026-10-13 |
+| `firmware-boot-field-render.png` | The boot field, all four cameras answering | 2026-10-13 |
+| `firmware-boot-field-two-silent-render.png` | The same body with cameras 2 and 4 silent | 2026-10-13 |
+| `firmware-look-render.png` | LOOK: the recipe, what it does at capture, and its three modifiers | 2026-10-13 |
+| `firmware-roll-active-render.png` | The ROLL screen: QR, code, connection word, count | 2026-10-13 |
+| `firmware-about-render.png` | ABOUT: the unit, the four cameras, and the studio | 2026-10-13 |
 | `roll-feed-demo.png` | Roll guest feed at 1280 × 800, 12 test-uploader captures | 2026-09-09 |
 | `roll-photo-demo.png` | Roll photo page at 1280 × 800, same captures | 2026-09-09 |
 | `studio-connected.png` | Studio connected to Twin | 2026-08, **stale** |
 | `twin-workbench-demo.png` | Twin at 1280 × 800, simulator powered on | 2026-08, **stale** |
 
-The firmware renders were all retaken on 2026-09-20, the day the interface stopped being a Windows 98 shell. The previous pair showed four-tone bevels, a navy title bar, six icon tiles and 1-bit Tahoma; none of that is in the product any more, so they were replaced rather than kept as history. The four new files are screens the old set had no equivalent of.
+The firmware renders were retaken on 2026-10-13 for the MAO palette (#234): ink on near-black, MAO pink for the SHOOT card, no peach card and no green rows. Each is the right hand at launch shade 0, the shade every render uses. They were first taken on 2026-09-20, the day the interface stopped being a Windows 98 shell.
 
-**The boot pair is one picture in two states, and the pairing is the point.** The field's reach is how many of the four cameras have answered, a quadrant each; its colour is the look the camera will shoot with. Showing only the healthy one would make it look like decoration. Both come from `boot_field_all_four` and `boot_field_two_silent`, which exist in the renderer for exactly this reason.
+**The boot pair is one picture in two states, and the pairing is the point.** The field's reach is how many of the four cameras have answered, a quadrant each; a silent camera's quadrant stays in the cold greys while the rest warm to the launch shade. Showing only the healthy one would make it look like decoration. Both come from `boot_field_all_four` and `boot_field_two_silent`, which exist in the renderer for exactly this reason.
 
 The two marked stale predate work that changed what they show. Recapture them the way the Roll pair was recaptured: `npm run dev:all`, then drive a browser at 1280 × 800. They are not wrong enough to pull, and they are not current.
 

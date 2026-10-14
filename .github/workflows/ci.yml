@@ -13,6 +13,8 @@ jobs:
       - run: npm run version:check
       - run: npm run license:check
       - run: npm run copy:check
+      - run: npm run palette:check
+      - run: npm run ui:doc:check
       - run: npm run twin:body:check
       - run: npm run lint
       # service-free suites; add new workspaces here

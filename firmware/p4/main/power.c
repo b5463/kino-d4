@@ -11,6 +11,7 @@
 #include "hardware_validation.h"
 #include "klog.h"
 #include "taskmon.h"
+#include "ui_motion.h" /* SLEEP_SHOW_WAIT_MS, SLEEP_WIND_MS: the hand-over ui.c draws inside */
 #include "usb_link.h"
 
 static const char *TAG = "power";
@@ -212,26 +213,30 @@ static void power_task(void *arg) {
          * own mark on the way out (ui.c, power_down_anim); sleep is the
          * third way the screen goes dark and it said nothing. So this asks
          * the UI to put the mark up, waits for it (bounded: a UI that does
-         * not answer in 900 ms does not get to keep the backlight on), holds
-         * it for 600 ms, and only then cuts the light. A touch anywhere in
-         * that window is activity, and activity calls the sleep off through
-         * the same race check the rest of this branch already has.
+         * not answer in SLEEP_SHOW_WAIT_MS does not get to keep the backlight
+         * on), gives it SLEEP_WIND_MS to wind down, and only then cuts the
+         * light. A touch anywhere in that window is activity, and activity
+         * calls the sleep off through the same race check the rest of this
+         * branch already has.
          */
         s_sleep_shown = false;
         s_sleep_pending = true;
-        for (int i = 0; i < 45 && !s_sleep_shown && s_activity_seq == seq_before; i++) {
-          vTaskDelay(pdMS_TO_TICKS(20));
+        for (int waited = 0; waited < SLEEP_SHOW_WAIT_MS && !s_sleep_shown && s_activity_seq == seq_before;
+             waited += SLEEP_POLL_MS) {
+          vTaskDelay(pdMS_TO_TICKS(SLEEP_POLL_MS));
         }
         const bool shown = s_sleep_shown;
-        /* The screen winds down for two seconds before the light goes -
+        /* The screen winds down for SLEEP_WIND_MS before the light goes -
          * long enough to read, and to look like a thing the camera is doing
-         * rather than a thing that happened to it. Pending stays true for the
-         * whole of it: it went false here, and the UI, seeing neither pending
-         * nor asleep, redrew the screen under the mark in the last half
-         * second - the flash back to the finder before the dark, which read
-         * as a crash. */
-        for (int i = 0; shown && i < 100 && s_activity_seq == seq_before; i++) {
-          vTaskDelay(pdMS_TO_TICKS(20));
+         * rather than a thing that happened to it. ui.c's timeline
+         * (MOTION_SLEEP_*) fits inside it; ui_motion.h asserts that. Pending
+         * stays true for the whole of it: it went false here, and the UI,
+         * seeing neither pending nor asleep, redrew the screen under the mark
+         * in the last half second - the flash back to the finder before the
+         * dark, which read as a crash. */
+        for (int waited = 0; shown && waited < SLEEP_WIND_MS && s_activity_seq == seq_before;
+             waited += SLEEP_POLL_MS) {
+          vTaskDelay(pdMS_TO_TICKS(SLEEP_POLL_MS));
         }
         if (s_activity_seq != seq_before) {
           s_sleep_pending = false;

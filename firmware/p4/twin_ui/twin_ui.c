@@ -1152,6 +1152,9 @@ KUI_EXPORT("kui_init") int kui_init(void) {
     g_rgba = calloc((size_t)UI_W * UI_H, 4);
     if (!g_canvas || !g_snapshot || !g_blend || !g_rgba) return -1;
     cam_defaults();
+    /* Row 0, the MAO pink. The camera picks boot_count % 8; the Twin has no
+     * boot count, and a fixed shade keeps its frames comparable. */
+    ui_set_launch_index(0);
     s_ready = true;
   }
   /* What ui_start() does before it creates the task. */

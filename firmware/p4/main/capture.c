@@ -1771,7 +1771,7 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   text = cJSON_PrintUnformatted(meta);
   cJSON_Delete(meta);
   if (text == NULL) {
-    fail(&r, "OUT_OF_MEMORY", "Could not build META.JSON");
+    fail(&r, "OUT_OF_MEMORY", "Out of memory. Photo not saved.");
     goto finish;
   }
   const int64_t meta0 = esp_timer_get_time();
@@ -1871,7 +1871,7 @@ static void publish_busy(const char *source) {
   r.clock_source = clock_source_str();
   clock_iso8601(r.captured_at, sizeof r.captured_at);
   r.captured_at_ms = clock_now_ms();
-  fail(&r, "BUSY", "The camera was already busy");
+  fail(&r, "BUSY", "Camera busy. Press again.");
   klog("P4", "press dropped: %s", r.err_msg);
   s_last = r;
   s_stage = CAPTURE_DONE;

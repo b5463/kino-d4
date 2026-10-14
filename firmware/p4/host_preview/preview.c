@@ -13,12 +13,25 @@
  * the firmware free of test hooks: nothing in ui.c knows this exists.
  *
  *   make -C firmware/p4/host_preview && firmware/p4/host_preview/preview out/
+ *
+ * Every scene is rendered twice, once per hand (body.hand): the PPMs in out/
+ * are the right-handed body and the ones in out/left/ the left. Each hand
+ * runs in its own forked process from the same starting state, so the second
+ * pass cannot inherit a toast, a dialog or a stub value from the first.
+ *
+ *   preview <out>               render, audit, exit non-zero on a failure
+ *   preview --ppms              print how many PPMs a run writes (both hands)
  */
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #define KINO_FW_VERSION "host-preview"
 
@@ -46,6 +59,9 @@
 /* ---- stand-ins for the parts of the camera a preview has no use for ---- */
 
 static uint16_t *g_canvas;
+/* Canvas pixels a picture was blitted into this frame (ui_audit_image): the
+ * contrast audit does not judge type set on a photograph or the finder. */
+static uint8_t g_img_mask[UI_W * UI_H];
 
 bool display_ready(void) { return true; }
 void *display_panel(void) { return NULL; }
@@ -76,10 +92,17 @@ extern char g_out[512];
  */
 int64_t prev_vclock_us;
 int64_t prev_vclock_step_us = 16000;
+/* The idle clock (shim/esp_timer.h): a body that has been up 2 h 14 min. */
+int64_t prev_idle_clock_us = 8040LL * 1000000;
 static const char *g_anim;
 static int g_anim_n;
 
+/* Called on every presented frame and every stash render while set:
+ * check_wake_into_move() reads the scrim each frame was drawn under. */
+static void (*g_frame_hook)(bool stash);
+
 void gfx_present(void) {
+  if (g_frame_hook != NULL) g_frame_hook(false);
   if (g_anim != NULL) {
     char path[600];
     snprintf(path, sizeof path, "%s/%s_%02d.ppm", g_out, g_anim, g_anim_n++);
@@ -91,7 +114,15 @@ void gfx_snapshot(void) {}
 void gfx_dissolve(int ms) { (void)ms; }
 /* The renderer writes stills, so a transition is its end state. */
 void gfx_slide_prepare(void) {}
-void gfx_slide_show(int o, int b, bool from_right) { (void)o; (void)b; (void)from_right; }
+/* One slide frame is one panel frame on the camera, so it moves the
+ * renderer's clock like a present; without it a slide driven on that clock
+ * never ends. */
+void gfx_slide_show(int o, int b, bool from_right) {
+  (void)o;
+  (void)b;
+  (void)from_right;
+  if (prev_vclock_us != 0) prev_vclock_us += prev_vclock_step_us;
+}
 /* Drawing passes begun; see gfx_pass_id(). Declared here because the stash
  * render below is the first pass-counting stub in the file. */
 static uint32_t s_pass;
@@ -108,6 +139,7 @@ void gfx_render_stash(gfx_draw_fn draw, void *ctx) {
    * it points anywhere else, so the stash has to be a view for the draw. */
   const gfx_target_t v = {g_stash, 0, 0, UI_W, UI_H, UI_W};
   g_view = &v;
+  if (g_frame_hook != NULL) g_frame_hook(true);
   draw(ctx);
   g_view = NULL;
 }
@@ -119,6 +151,7 @@ uint32_t gfx_measure_draw_us(gfx_draw_fn draw, void *ctx) { s_pass++; draw(ctx);
 void gfx_render_canvas(gfx_draw_fn draw, void *ctx) { s_pass++; draw(ctx); }
 void gfx_render(gfx_draw_fn draw, void *ctx) {
   s_pass++;
+  memset(g_img_mask, 0, sizeof g_img_mask);
   draw(ctx);
   gfx_present();
 }
@@ -188,9 +221,14 @@ esp_err_t audio_init(void) { return ESP_OK; }
  * amplifier-did-not-start branch and hidden the normal one entirely. */
 static bool g_audio_ready = true;
 bool audio_ready(void) { return g_audio_ready; }
-void audio_shutter(void) {}
+/* Counted, so check_shutter_sound() can say which sound a press made. */
+static int g_shutter_n, g_warning_n;
+void audio_shutter(void) { g_shutter_n++; }
 void audio_tick(void) {}
-void audio_warning(void) {}
+void audio_warning(void) { g_warning_n++; }
+/* ui_pass() calls these; check_wake_into_move() drives ui_pass. */
+void audio_done(void) {}
+void audio_sync(void) {}
 
 esp_err_t touch_init(void) { return ESP_OK; }
 bool touch_ready(void) { return false; }
@@ -232,9 +270,13 @@ static const char *g_shutter_sound = "click";
 /* body.name: empty is the default and the state the About screen has always
  * shown, so both get a picture. */
 static const char *g_body_name = "";
+/* body.hand, set once per forked pass by main(). ui.c reads it at the top of
+ * every render_screen(), so every scene is drawn for the hand of its pass. */
+static const char *g_hand = "right";
 
 const char *config_str(const char *path, const char *fallback) {
   if (strcmp(path, "body.name") == 0) return g_body_name;
+  if (strcmp(path, "body.hand") == 0) return g_hand;
   if (strcmp(path, "mode") == 0) return g_mode;
   if (strcmp(path, "shoot.flashMode") == 0) return g_flash_mode;
   if (strcmp(path, "shoot.shutterSound") == 0) return g_shutter_sound;
@@ -466,10 +508,13 @@ bool button_held(button_id_t id) {
 }
 
 /* No cameras and no card, so nothing here takes a picture. The shutter still
- * has to resolve, because ui.c calls it. */
+ * has to resolve, because ui.c calls it. check_shutter_sound() drives both
+ * answers, and the pipeline that did not start. */
+static bool g_capture_accept;
+static bool g_capture_ready = true;
 bool capture_request(const char *source) {
   (void)source;
-  return false;
+  return g_capture_accept;
 }
 /* Driven by the preview so the result banner can be looked at. */
 static capture_stage_t g_stage = CAPTURE_IDLE;
@@ -484,9 +529,10 @@ uint32_t capture_asked_cams(void) { return 0xF; }
 capture_stage_t capture_stage(void) { return g_stage; }
 void capture_ack(void) { g_stage = CAPTURE_IDLE; }
 bool capture_busy(void) { return false; }
-/* Always ready here: the renderer has no pipeline to fail, and a screen that
- * only appears when one did is driven by its own scene, not by this. */
-bool capture_ready(void) { return true; }
+/* Ready here: the renderer has no pipeline to fail, and a screen that only
+ * appears when one did is driven by its own scene. check_shutter_sound()
+ * clears it for the refused press. */
+bool capture_ready(void) { return g_capture_ready; }
 void capture_last(capture_report_t *out) {
   if (out) *out = g_report;
 }
@@ -592,10 +638,14 @@ bool roll_http_api_base(char *out, size_t cap) {
   return true;
 }
 int64_t clock_now_ms(void) { return 1790006498000LL; } /* 2026-09-21T16:01Z */
-bool gallery_deleting(void) { return false; }
+/* DELETE ALL in progress, for the one scene that shows the Photos row
+ * counting down. Off everywhere else. */
+static bool g_deleting;
+static int g_delete_done, g_delete_total;
+bool gallery_deleting(void) { return g_deleting; }
 void gallery_delete_progress(int *done, int *total) {
-  if (done != NULL) *done = 0;
-  if (total != NULL) *total = 0;
+  if (done != NULL) *done = g_delete_done;
+  if (total != NULL) *total = g_delete_total;
 }
 
 /*
@@ -741,13 +791,19 @@ bool media_favorite_get(const char *id) {
   return false;
 }
 
+/* The stage power_get() reports. AWAKE for every scene; the move checks set
+ * DIM to hold a dim that is still arriving. */
+static power_stage_t g_power_stage = POWER_AWAKE;
 void power_activity(void) {}
 void power_wake(void) {}
 bool power_sleep_pending(void) { return false; }
 void power_sleep_shown(void) {}
+void power_cam_bank_cycle(void) {}
+bool power_wake_gesture(void) { return false; }
+void power_end_wake_gesture(void) {}
 void power_get(power_state_t *out) {
   if (out == NULL) return;
-  out->stage = POWER_AWAKE;
+  out->stage = g_power_stage;
   out->idle_s = 12;
   out->display_on = true;
   out->cam_bank_on = true;
@@ -766,16 +822,20 @@ void camlink_get_info(camlink_info_t *out) {
   out->latency_ms = 4;
 }
 
-/* Per-camera, for the About screen's CAMERAS column.
+/* Per-camera, for the About screen's CAMERAS column and the menu card's
+ * four-mark.
  *
  * CAM1 and CAM3 answer and CAM2 and CAM4 do not, deliberately: this body has
  * one camera fitted today, and a screenshot in which all four rows look the
  * same would not show whether the online and offline rows are distinguishable
  * at a glance. CAM3 carries a different node version because nodes are
- * reflashed one at a time, which is exactly why this is four rows. */
+ * reflashed one at a time, which is exactly why this is four rows.
+ * g_cam_online is the set that answers, bit i for CAM(i+1); a scene that
+ * needs another set changes it and puts it back. */
+static unsigned g_cam_online = 0x5u;
 void camlink_get_info_ch(int cam, camlink_info_t *out) {
   memset(out, 0, sizeof *out);
-  if (cam != 0 && cam != 2) return;
+  if (cam < 0 || cam > 3 || !(g_cam_online & (1u << cam))) return;
   out->online = true;
   snprintf(out->sensor, sizeof out->sensor, "OV3660");
   snprintf(out->firmware, sizeof out->firmware, cam == 0 ? "0.9.0" : "0.8.4");
@@ -787,6 +847,10 @@ void camlink_get_info_ch(int cam, camlink_info_t *out) {
  * the new band under the list is a capacity bar when the card is mounted and
  * the mount failure when it is not, and those are different layouts. */
 static bool g_card_mounted = true;
+/* With g_card_mounted false: true is a card the driver failed to mount, false
+ * is an empty slot or a pulled card. storage.c reports the second as not
+ * present with CARD_REMOVED (or a mount error from boot) set. */
+static bool g_card_present = true;
 
 /* The preview stands in for a body that has been plugged into Studio, so its
  * clock has a source and the screens that report one have something to
@@ -800,10 +864,11 @@ void clock_iso8601(char *out, size_t cap) { snprintf(out, cap, "2026-09-16T18:42
 void storage_get_status(storage_status_t *out) {
   memset(out, 0, sizeof *out);
   if (!g_card_mounted) {
-    out->present = true;
+    out->present = g_card_present;
     out->mounted = false;
     out->mount_attempts = 3;
-    out->last_error = "MOUNT_FAILED";
+    out->last_error = g_card_present ? "MOUNT_FAILED" : "CARD_REMOVED";
+    out->removed = !g_card_present;
     out->write_test = "none";
     return;
   }
@@ -915,8 +980,13 @@ int upload_queue_retry_all(void) { return 0; }
 /* Every scene here goes through ui_render(): recorded into the display list
  * and replayed, exactly as the camera draws a frame. So the byte-compare of
  * these pictures against the baseline tests the recorder, and a scene is a
- * pass, which keeps the once-per-pass caches in ui.c honest. */
-#define draw_screen() ui_render(render_screen, NULL)
+ * pass, which keeps the once-per-pass caches in ui.c honest.
+ *
+ * It also marks the canvas as a screen with a hit map, so shot() sweeps the
+ * touch targets of exactly the scenes that have them (not the boot field or
+ * the power-down mark, which are drawn directly). */
+static bool g_screen_drawn;
+#define draw_screen() (ui_render(render_screen, NULL), g_screen_drawn = true)
 
 /* ---- the text-overflow audit ----
  *
@@ -981,6 +1051,449 @@ static int audit_report(void) {
   return g_audit_n;
 }
 
+/* ---- the contrast audit (#176, C7 folded into UI-01) ----
+ *
+ * text() hands every string it draws to ui_audit_ink() just before its glyphs
+ * land, so the canvas under them is the ground the string is actually set on:
+ * a plate, a row, a pressed face, a scrim - whatever the frame put there, and
+ * not what the drawing code believed it put there. The ink is the colour
+ * text() was asked for.
+ *
+ * The ground is read under the glyphs' solid pixels (coverage >= 128), and
+ * the string is judged against the worst colour that makes up at least a
+ * tenth of them - a row edge under one letter is not the ground, a plate
+ * under half the word is. Contrast is WCAG on the RGB565 value, through ui.c's
+ * own rel_lum(), so the numbers here are the numbers the palette work uses.
+ *
+ * The floor is 4.5:1, and 3:1 for large type. "Large" is WCAG's 18 pt, which
+ * is 6.35 mm, and at this panel's 8.5 px/mm that is 54 px of type: only XL
+ * (75 px line) is that big. The 24-32 px faces are 2.8-3.8 mm tall on the
+ * glass, which is small print, so they carry the small-print floor.
+ *
+ * A string whose ground is a picture - a blit of a photograph or a finder
+ * pane (ui_audit_image) that is not flat under the string - is counted and
+ * skipped: its contrast is the scene's, not the palette's.
+ */
+#define AUDIT_LARGE_LINE_H 64 /* XL's 75 px line; L is 41 */
+#define AUDIT_FLOOR 4.5f
+#define AUDIT_FLOOR_LARGE 3.0f
+static bool g_audit_off; /* the frame-cost bench redraws scenes already judged */
+
+void ui_audit_image(int x, int y, int w, int h) {
+  const gfx_target_t *t = TG;
+  for (int r = y; r < y + h; r++) {
+    if (r < t->y0 || r >= CV_Y1(t)) continue;
+    for (int c = x; c < x + w; c++) {
+      if (c < t->x0 || c >= CV_X1(t)) continue;
+      const uint16_t *p = cv_ptr(t, c, r);
+      if (p < g_canvas || p >= g_canvas + (size_t)UI_W * UI_H) return; /* a stash, not the frame */
+      g_img_mask[p - g_canvas] = 1;
+    }
+  }
+}
+
+#define CONTRAST_MAX 160
+static struct {
+  char s[64];
+  uint16_t ink, ground;
+  float ratio, floor;
+  char screen[32];
+} g_contrast[CONTRAST_MAX];
+static int g_contrast_n;
+static int g_judged_n;     /* string draws measured */
+static int g_over_image_n; /* string draws skipped: set on a picture */
+
+/* ---- the type-role audit (F2) ----
+ *
+ * Caps belong to the display face and sentences to the reading face: Oxanium
+ * sets T, R, L and XL, Inter sets S and M (ui_theme.h). A word set in
+ * capitals in Inter is the one mix the roles forbid, and it is what the menu
+ * labels, the segments and every caps value on a row used to be.
+ *
+ * A string counts as capitals when it has no lowercase letter, at least two
+ * letters, and the letters are at least half of what is not a space. That
+ * keeps a reading like "29.7 GB" or "0.9.0  OV3660", a number with a unit,
+ * in the reading face beside the numbers it sits with. ui.c decides the same
+ * way (is_caps), so a value that arrives as data lands in the right face. */
+#define CAPS_MAX 64
+static struct {
+  char s[64];
+  char face;
+  char screen[32];
+} g_caps[CAPS_MAX];
+static int g_caps_n;
+
+static void caps_audit(const ui_font_t *f, const char *s) {
+  if (f != &UI_FONT_S && f != &UI_FONT_M) return;
+  if (!is_caps(s)) return;
+  for (int i = 0; i < g_caps_n; i++) {
+    if (strncmp(g_caps[i].s, s, sizeof g_caps[0].s - 1) == 0) return;
+  }
+  if (g_caps_n >= CAPS_MAX) return;
+  snprintf(g_caps[g_caps_n].s, sizeof g_caps[0].s, "%s", s);
+  g_caps[g_caps_n].face = f == &UI_FONT_S ? 'S' : 'M';
+  g_caps[g_caps_n].screen[0] = '\0';
+  g_caps_n++;
+}
+
+static int caps_report(void) {
+  if (g_caps_n == 0) return 0;
+  fprintf(stderr, "\n%d string%s in capitals set in an Inter face (caps in Inter):\n", g_caps_n,
+          g_caps_n == 1 ? "" : "s");
+  for (int i = 0; i < g_caps_n; i++) {
+    fprintf(stderr, "  %-30s %c  \"%s\"\n", g_caps[i].screen[0] != '\0' ? g_caps[i].screen : "?",
+            g_caps[i].face, g_caps[i].s);
+  }
+  return g_caps_n;
+}
+
+/* ---- the dropped-glyph audit (F1) ----
+ *
+ * tools/subset-font.mjs cuts a face down to the letters the interface sets in
+ * it: XL keeps " HOST", for SHOOT on the menu card, and every other glyph is
+ * NULL with its advance kept. A string that later sets another letter in XL
+ * draws a gap the width of that letter, which on a screenshot reads as a
+ * typo and on the glass as a broken camera. Every string text() draws comes
+ * through here, moves included: a character that is not a space and has no
+ * coverage in its face fails the run, named with the face and the string. */
+#define NULLG_MAX 32
+static struct {
+  char s[64];
+  char ch;
+  const char *face;
+  char screen[32];
+} g_nullg[NULLG_MAX];
+static int g_nullg_n;
+
+static const char *face_name(const ui_font_t *f) {
+  if (f == &UI_FONT_T) return "T";
+  if (f == &UI_FONT_S) return "S";
+  if (f == &UI_FONT_R) return "R";
+  if (f == &UI_FONT_M) return "M";
+  if (f == &UI_FONT_L) return "L";
+  if (f == &UI_FONT_XL) return "XL";
+  return "?";
+}
+
+static void null_glyph_audit(const ui_font_t *f, const char *s) {
+  for (const char *q = s; *q; q++) {
+    if (*q == ' ') continue;
+    const int gi = (unsigned char)*q - f->first;
+    if (gi >= 0 && gi < f->count && f->glyphs[gi].cov != NULL) continue;
+    for (int i = 0; i < g_nullg_n; i++) {
+      if (g_nullg[i].face == face_name(f) && strncmp(g_nullg[i].s, s, sizeof g_nullg[0].s - 1) == 0)
+        return;
+    }
+    if (g_nullg_n >= NULLG_MAX) return;
+    snprintf(g_nullg[g_nullg_n].s, sizeof g_nullg[0].s, "%s", s);
+    g_nullg[g_nullg_n].ch = *q;
+    g_nullg[g_nullg_n].face = face_name(f);
+    g_nullg[g_nullg_n].screen[0] = '\0';
+    g_nullg_n++;
+    return;
+  }
+}
+
+static int null_glyph_report(void) {
+  if (g_nullg_n == 0) return 0;
+  fprintf(stderr, "\n%d string%s set a letter its face does not carry (NULL GLYPH):\n", g_nullg_n,
+          g_nullg_n == 1 ? "" : "s");
+  for (int i = 0; i < g_nullg_n; i++) {
+    fprintf(stderr, "  %-30s %-2s '%c'  \"%s\"\n",
+            g_nullg[i].screen[0] != '\0' ? g_nullg[i].screen : "?", g_nullg[i].face, g_nullg[i].ch,
+            g_nullg[i].s);
+  }
+  return g_nullg_n;
+}
+
+void ui_audit_ink(const ui_font_t *f, int x, int y, const char *s, uint16_t ink) {
+  null_glyph_audit(f, s);
+  if (g_anim != NULL || g_audit_off) return;
+  caps_audit(f, s);
+  const gfx_target_t *t = TG;
+  struct { uint16_t c; int n; } hist[24];
+  int nh = 0, total = 0, on_image = 0;
+  bool many = false;
+  const int baseline = y + f->ascent;
+  int pen = x;
+  for (const char *q = s; *q; q++) {
+    const int gi = (unsigned char)*q - f->first;
+    if (gi < 0 || gi >= f->count) continue;
+    const ui_glyph_t *g = &f->glyphs[gi];
+    const int gx = pen + g->bx, gy = baseline - g->by;
+    pen += g->adv;
+    if (g->cov == NULL) continue;
+    for (int r = 0; r < g->h; r++) {
+      const int py = gy + r;
+      if (py < t->y0 || py >= CV_Y1(t)) continue;
+      for (int c = 0; c < g->w; c++) {
+        const int px = gx + c;
+        if (px < t->x0 || px >= CV_X1(t) || g->cov[r * g->w + c] < 128) continue;
+        const uint16_t *p = cv_ptr(t, px, py);
+        if (p < g_canvas || p >= g_canvas + (size_t)UI_W * UI_H) return; /* not the frame */
+        total++;
+        if (g_img_mask[p - g_canvas]) on_image++;
+        int k = 0;
+        while (k < nh && hist[k].c != *p) k++;
+        if (k == nh) {
+          if (nh == (int)(sizeof hist / sizeof hist[0])) { many = true; continue; }
+          hist[nh].c = *p;
+          hist[nh].n = 0;
+          nh++;
+        }
+        hist[k].n++;
+      }
+    }
+  }
+  if (total == 0) return;
+  int top = 0;
+  for (int k = 1; k < nh; k++) if (hist[k].n > hist[top].n) top = k;
+  const bool flat = !many && hist[top].n * 10 >= total * 9;
+  if (on_image > 0 && !flat) {
+    g_over_image_n++;
+    return;
+  }
+  g_judged_n++;
+  /* The worst ground that is a real share of the string's footprint. */
+  float worst = 1e9f;
+  uint16_t ground = hist[top].c;
+  for (int k = 0; k < nh; k++) {
+    if (hist[k].n * 10 < total) continue;
+    const float cr = contrast(ink, hist[k].c);
+    if (cr < worst) { worst = cr; ground = hist[k].c; }
+  }
+  const float floor = f->line_h >= AUDIT_LARGE_LINE_H ? AUDIT_FLOOR_LARGE : AUDIT_FLOOR;
+  if (worst >= floor) return;
+  for (int i = 0; i < g_contrast_n; i++) {
+    if (g_contrast[i].ink == ink && g_contrast[i].ground == ground &&
+        strncmp(g_contrast[i].s, s, sizeof g_contrast[0].s - 1) == 0) return;
+  }
+  if (g_contrast_n >= CONTRAST_MAX) return;
+  snprintf(g_contrast[g_contrast_n].s, sizeof g_contrast[0].s, "%s", s);
+  g_contrast[g_contrast_n].ink = ink;
+  g_contrast[g_contrast_n].ground = ground;
+  g_contrast[g_contrast_n].ratio = worst;
+  g_contrast[g_contrast_n].floor = floor;
+  g_contrast[g_contrast_n].screen[0] = '\0';
+  g_contrast_n++;
+}
+
+/* RGB565 as the 8-bit hex the palette tables use, expanded the way rel_lum()
+ * expands it (x*255/31, x*255/63) so a reported colour is the measured one. */
+static void hex565(uint16_t c, char out[7]) {
+  snprintf(out, 7, "%02x%02x%02x", ((c >> 11) & 31) * 255 / 31, ((c >> 5) & 63) * 255 / 63,
+           (c & 31) * 255 / 31);
+}
+
+static int contrast_report(void) {
+  if (g_contrast_n == 0) return 0;
+  fprintf(stderr, "\n%d string%s under the contrast floor (ink on ground, measured):\n",
+          g_contrast_n, g_contrast_n == 1 ? "" : "s");
+  for (int i = 0; i < g_contrast_n; i++) {
+    char ink[7], gr[7];
+    hex565(g_contrast[i].ink, ink);
+    hex565(g_contrast[i].ground, gr);
+    fprintf(stderr, "  %-30s %5.2f < %.1f  %s on %s  \"%s\"\n",
+            g_contrast[i].screen[0] != '\0' ? g_contrast[i].screen : "?",
+            (double)g_contrast[i].ratio, (double)g_contrast[i].floor, ink, gr, g_contrast[i].s);
+  }
+  return g_contrast_n;
+}
+
+/* ---- the touch-target sweep and the hand invariant ----
+ *
+ * After every scene that is a screen, hit_test() - with undo_hit() in front of
+ * it, the order the touch handler uses - is asked about every pixel of the
+ * glass. Each answer is a target, and its extent is the box of the pixels that
+ * give it. A target whose box is under 52 px either way is too small for a
+ * thumb on this glass (8.5 px/mm, 6.1 mm; D-U15), unless the allow-list below
+ * says why it is not one.
+ *
+ * The same map checks the hand: a target that is chrome on the hand's side
+ * (from_hand() in ui.c) must have its centre on that half of the panel, for
+ * both hands. A layout that hard-codes a side passes for one hand and fails
+ * here for the other. A previous/next pair also keeps its reading order for
+ * both hands: PREV left of NEXT. Mirroring the whole pair through from_hand()
+ * flips it for the left hand.
+ */
+#define TARGET_MIN 52
+
+typedef struct {
+  screen_t sc;
+  int dialog; /* -1: any; otherwise this dialog must be up */
+  int item;
+  const char *why;
+} target_allow_t;
+
+/* Targets allowed under 52 px: the screen, the item, and why a thumb is not
+ * the point. None today - the SHOOT bar's 34 px band and the time-zone pair's
+ * 40 px are #176 defects to fix, not exceptions. The sentinel keeps the
+ * array non-empty. */
+static const target_allow_t TARGET_ALLOW[] = {
+    {SCR_COUNT, -1, -1, NULL},
+};
+
+/* Chrome that from_hand() puts on the hand's side. */
+static const struct {
+  screen_t sc;
+  int item;
+  const char *what;
+} HAND_SIDE[] = {
+    {SCR_MENU, 0, "menu card"},
+    {SCR_SHOOT, SH_IT_BACK, "SHOOT back"},
+    {SCR_PHOTO, IT_BACK, "PHOTO back"},
+    {SCR_PHOTO, P_IT_DELETE, "PHOTO delete"},
+    {SCR_PHOTO, P_IT_FAV, "PHOTO favourite"},
+    {SCR_PHOTO, P_IT_ROLL, "PHOTO send"},
+    {SCR_PHOTO, P_IT_PREV, "PHOTO previous"},
+    {SCR_PHOTO, P_IT_NEXT, "PHOTO next"},
+    {SCR_GALLERY, G_IT_PREV, "GALLERY page back"},
+    {SCR_GALLERY, G_IT_NEXT, "GALLERY page on"},
+    {SCR_LOOK, LK_IT_PREV, "LOOK previous"},
+    {SCR_LOOK, LK_IT_NEXT, "LOOK next"},
+};
+
+/* Previous/next pairs: PREV's centre left of NEXT's, whichever hand. */
+static const struct {
+  screen_t sc;
+  int prev, next;
+  const char *what;
+} PAIR_ORDER[] = {
+    {SCR_PHOTO, P_IT_PREV, P_IT_NEXT, "PHOTO pair"},
+    {SCR_GALLERY, G_IT_PREV, G_IT_NEXT, "GALLERY pair"},
+    {SCR_LOOK, LK_IT_PREV, LK_IT_NEXT, "LOOK pair"},
+};
+
+#define FINDING_MAX 96
+typedef struct {
+  char screen[32];
+  char text[96];
+} finding_t;
+static finding_t g_small[FINDING_MAX], g_hand_bad[FINDING_MAX];
+static int g_small_n, g_hand_bad_n;
+
+/* Deduped on the message, which names the screen, the item and its box: the
+ * same short target on six scenes of one screen is one finding. */
+static void finding(finding_t *list, int *n, const char *name, const char *msg) {
+  for (int i = 0; i < *n; i++) {
+    if (strcmp(list[i].text, msg) == 0) return;
+  }
+  if (*n >= FINDING_MAX) return;
+  snprintf(list[*n].screen, sizeof list[0].screen, "%s", name);
+  snprintf(list[*n].text, sizeof list[0].text, "%s", msg);
+  (*n)++;
+}
+
+static const char *const AUDIT_SCREEN[SCR_COUNT] = {
+    [SCR_MENU] = "MENU",         [SCR_SHOOT] = "SHOOT",     [SCR_GALLERY] = "GALLERY",
+    [SCR_LOOK] = "LOOK",         [SCR_ROLL] = "ROLL",       [SCR_PHOTO] = "PHOTO",
+    [SCR_SETTINGS] = "SETTINGS", [SCR_DISPLAY] = "DISPLAY", [SCR_SOUND] = "SOUND",
+    [SCR_CONNECTION] = "CONNECTION", [SCR_STORAGE] = "STORAGE", [SCR_STATUS] = "STATUS",
+    [SCR_ABOUT] = "ABOUT",       [SCR_POWER] = "POWER",
+};
+
+static void sweep_targets(const char *name) {
+  struct { int id; int x0, y0, x1, y1; } reg[64];
+  int nr = 0;
+  /* undo_hit() reads the clock, and a sweep is 384,000 reads: hold the idle
+   * clock still for it, or every scene after this one would be drawn hours
+   * later than the one before it. */
+  const int64_t keep = prev_idle_clock_us;
+  prev_vclock_us = keep;
+  for (int y = 0; y < UI_H; y++) {
+    for (int x = 0; x < UI_W; x++) {
+      const int id = undo_hit(x, y) ? IT_UNDO : hit_test(x, y);
+      if (id < 0) continue;
+      int k = 0;
+      while (k < nr && reg[k].id != id) k++;
+      if (k == nr) {
+        if (nr == (int)(sizeof reg / sizeof reg[0])) continue;
+        reg[nr].id = id;
+        reg[nr].x0 = reg[nr].x1 = x;
+        reg[nr].y0 = reg[nr].y1 = y;
+        nr++;
+      }
+      if (x < reg[k].x0) reg[k].x0 = x;
+      if (x > reg[k].x1) reg[k].x1 = x;
+      if (y < reg[k].y0) reg[k].y0 = y;
+      if (y > reg[k].y1) reg[k].y1 = y;
+    }
+  }
+  prev_vclock_us = 0;
+  prev_idle_clock_us = keep;
+
+  const char *scr = s_screen < SCR_COUNT && AUDIT_SCREEN[s_screen] ? AUDIT_SCREEN[s_screen] : "?";
+  for (int k = 0; k < nr; k++) {
+    const int w = reg[k].x1 - reg[k].x0 + 1, h = reg[k].y1 - reg[k].y0 + 1;
+    if (w >= TARGET_MIN && h >= TARGET_MIN) continue;
+    bool allowed = false;
+    for (size_t a = 0; a < sizeof TARGET_ALLOW / sizeof TARGET_ALLOW[0]; a++) {
+      const target_allow_t *al = &TARGET_ALLOW[a];
+      if (al->why != NULL && al->sc == s_screen && al->item == reg[k].id &&
+          (al->dialog < 0 || al->dialog == (int)s_dialog)) {
+        allowed = true;
+      }
+    }
+    if (allowed) continue;
+    char msg[96];
+    snprintf(msg, sizeof msg, "%s%s item %d: %d x %d px at x %d..%d y %d..%d", scr,
+             s_dialog != DLG_NONE ? " dialog" : "", reg[k].id, w, h, reg[k].x0, reg[k].x1,
+             reg[k].y0, reg[k].y1);
+    finding(g_small, &g_small_n, name, msg);
+  }
+
+  if (s_dialog != DLG_NONE) return;
+  for (size_t i = 0; i < sizeof HAND_SIDE / sizeof HAND_SIDE[0]; i++) {
+    if (HAND_SIDE[i].sc != s_screen) continue;
+    for (int k = 0; k < nr; k++) {
+      if (reg[k].id != HAND_SIDE[i].item) continue;
+      const int cx = (reg[k].x0 + reg[k].x1 + 1) / 2;
+      /* hit_hand_button() stretches a button's hit area out to the hand's
+       * edge. A back button drawn on the wrong side therefore spans the whole
+       * panel, and its centre lands on the left half. A target that reaches
+       * the far margin fails, wherever its centre is. */
+      const bool far = s_right_hand ? reg[k].x0 < PAGE_M : reg[k].x1 >= UI_W - PAGE_M;
+      if ((cx >= UI_W / 2) == s_right_hand && !far) continue;
+      char msg[96];
+      if (far) {
+        snprintf(msg, sizeof msg, "%s spans x %d..%d, across to the far edge for a %s hand",
+                 HAND_SIDE[i].what, reg[k].x0, reg[k].x1, s_right_hand ? "right" : "left");
+      } else {
+        snprintf(msg, sizeof msg, "%s centre x %d is on the %s half for a %s hand",
+                 HAND_SIDE[i].what, cx, cx >= UI_W / 2 ? "right" : "left",
+                 s_right_hand ? "right" : "left");
+      }
+      finding(g_hand_bad, &g_hand_bad_n, name, msg);
+    }
+  }
+
+  for (size_t i = 0; i < sizeof PAIR_ORDER / sizeof PAIR_ORDER[0]; i++) {
+    if (PAIR_ORDER[i].sc != s_screen) continue;
+    int pc = -1, nc = -1;
+    for (int k = 0; k < nr; k++) {
+      const int cx = (reg[k].x0 + reg[k].x1 + 1) / 2;
+      if (reg[k].id == PAIR_ORDER[i].prev) pc = cx;
+      if (reg[k].id == PAIR_ORDER[i].next) nc = cx;
+    }
+    if (pc < 0 || nc < 0 || pc < nc) continue;
+    char msg[96];
+    snprintf(msg, sizeof msg, "%s reads NEXT then PREV (x %d, %d) for a %s hand", PAIR_ORDER[i].what,
+             nc, pc, s_right_hand ? "right" : "left");
+    finding(g_hand_bad, &g_hand_bad_n, name, msg);
+  }
+}
+
+static int list_report(const char *title, const finding_t *list, int n) {
+  if (n == 0) return 0;
+  fprintf(stderr, "\n%d %s:\n", n, title);
+  for (int i = 0; i < n; i++) fprintf(stderr, "  %-30s %s\n", list[i].screen, list[i].text);
+  return n;
+}
+
+/* The header's height is fixed (FW-25): every hit map and every screen's body
+ * offset is built on it. */
+_Static_assert(HEAD_H == 62, "HEAD_H is 62 px: the header band, BODY_Y and every hit map use it");
+
 /* ---- the frame-cost bench ----
  *
  * Reports how much of the canvas each kind of frame touches, in units of
@@ -1008,12 +1521,28 @@ static void bench_line(const char *what, double screens) {
 
 /* ---- output ---- */
 
-/* Set by any failed write. CI counts .ppm files and requires at least ten, so
- * a run that could not write half its screens - a full disk, a bad output
- * path, a directory that does not exist - could still satisfy the gate with
- * the ones that did land. A partial artifact is a failure, and this is what
- * makes main() say so. */
+/* Set by any failed write. A run that could not write half its screens - a
+ * full disk, a bad output path, a directory that does not exist - must not
+ * pass on the ones that did land. A partial artifact is a failure, and this
+ * is what makes main() say so. */
 static bool g_write_failed;
+/* PPMs written by this hand's pass, stills and animation frames. */
+static int g_ppm_n;
+/*
+ * How many PPMs one hand's pass writes. A scene added or dropped changes it,
+ * and the run fails until this number says so - the count is part of what a
+ * reviewer approves, the way the golden hashes are (make check). CI checks
+ * the files on disk against `preview --ppms`, which is twice this.
+ */
+#define PPMS_PER_HAND 237
+/* Set when the capture landing under the review move is not in the shade
+ * when it should be (scenes(), capture_review_stash). Fails the run. */
+static bool g_land_failed;
+/* Set when a shutter press makes the wrong sound (check_shutter_sound), or a
+ * fade or lift steps backwards or ends anywhere but its end (scenes(), the
+ * power-down and the lifts). Each fails the run. */
+static bool g_sound_failed;
+static bool g_motion_failed;
 
 void write_ppm_impl_marker(void);
 static void write_ppm(const char *path, const uint16_t *px, int w, int h) {
@@ -1047,15 +1576,86 @@ static void write_ppm(const char *path, const uint16_t *px, int w, int h) {
     g_write_failed = true;
     return;
   }
+  g_ppm_n++;
   printf("wrote %s (%dx%d)\n", path, w, h);
+}
+
+/* Findings carry the scene they were drawn in, stamped once it has a name. */
+/* ---- left edges (UI-14) ----
+ *
+ * Every left-set string's x on the scene being drawn (text() reports it,
+ * centred and right-set strings excluded). A screen whose type starts at
+ * more than EDGES_MAX different x is a column of type that wobbles: the
+ * grid says a page margin, a card's text inset and at most one more. */
+#define EDGES_MAX 3
+static int g_edge[48];
+static int g_edge_n;
+static finding_t g_edges[FINDING_MAX];
+static int g_edges_n;
+
+void ui_audit_edge(int x) {
+  if (g_anim != NULL || g_audit_off) return;
+  for (int i = 0; i < g_edge_n; i++) {
+    if (g_edge[i] == x) return;
+  }
+  if (g_edge_n < (int)(sizeof g_edge / sizeof g_edge[0])) g_edge[g_edge_n++] = x;
+}
+
+/* Screens allowed more, each with the reason. A column of controls starts
+ * its own edge; that is a grid, not a wobble. */
+static const struct {
+  screen_t sc;
+  int max;
+  const char *why;
+} EDGE_ALLOW[] = {
+    {SCR_LOOK, 5, "the title, the card's type, and three control columns, each with a caption"},
+};
+
+static void edges_judge(const char *name) {
+  int max = EDGES_MAX;
+  for (size_t i = 0; i < sizeof EDGE_ALLOW / sizeof EDGE_ALLOW[0]; i++) {
+    if (EDGE_ALLOW[i].sc == s_screen) max = EDGE_ALLOW[i].max;
+  }
+  if (g_edge_n > max && s_dialog == DLG_NONE) {
+    char msg[96];
+    int n = snprintf(msg, sizeof msg, "%d left edges:", g_edge_n);
+    for (int i = 0; i < g_edge_n && n < (int)sizeof msg - 6; i++) {
+      n += snprintf(msg + n, sizeof msg - (size_t)n, " %d", g_edge[i]);
+    }
+    finding(g_edges, &g_edges_n, name, msg);
+  }
+  g_edge_n = 0;
+}
+
+static void audit_stamp(const char *name) {
+  audit_name(name);
+  for (int i = 0; i < g_contrast_n; i++) {
+    if (g_contrast[i].screen[0] == '\0') {
+      snprintf(g_contrast[i].screen, sizeof g_contrast[0].screen, "%s", name);
+    }
+  }
+  for (int i = 0; i < g_caps_n; i++) {
+    if (g_caps[i].screen[0] == '\0') {
+      snprintf(g_caps[i].screen, sizeof g_caps[0].screen, "%s", name);
+    }
+  }
+  for (int i = 0; i < g_nullg_n; i++) {
+    if (g_nullg[i].screen[0] == '\0') {
+      snprintf(g_nullg[i].screen, sizeof g_nullg[0].screen, "%s", name);
+    }
+  }
 }
 
 char g_out[512];
 static void shot(const char *name) {
   char path[600];
   snprintf(path, sizeof path, "%s/%s.ppm", g_out, name);
-  audit_name(name);
+  audit_stamp(name);
+  edges_judge(name);
+  if (g_screen_drawn) sweep_targets(name);
+  g_screen_drawn = false;
   write_ppm(path, g_canvas, UI_W, UI_H);
+  memset(g_img_mask, 0, sizeof g_img_mask);
 }
 
 /* The conditions, before a screen is drawn. On the camera this runs on the UI
@@ -1065,7 +1665,10 @@ static void shot(const char *name) {
  * camera with nothing wrong - which, with two nodes offline and two node
  * versions apart in the stubs above, would be the one thing these pictures
  * exist to catch. */
-static void scan_conditions(void) { conditions_scan(about_cameras()); }
+static void scan_conditions(void) {
+  cams_refresh();
+  conditions_scan(s_cams);
+}
 
 /*
  * A transition, as a sequence of pictures.
@@ -1082,11 +1685,15 @@ static void shot_anim(const char *name, screen_t from, screen_t to, int pressed)
   s_pressed = pressed;
   scan_conditions();
   draw_screen();
+  /* The still the move starts from is judged like any still; name what it
+   * found after the move, not after whichever shot comes next. */
+  audit_stamp(name);
+  edges_judge(name);
 
   g_anim = name;
   g_anim_n = 0;
   prev_vclock_us = 1000000; /* the renderer owns the clock from here */
-  go(to, NAV_OPEN_MS);
+  go(to, MOTION_OPEN_MS);
   /* go() starts the move now rather than running it, so the renderer drives
    * it the way the UI loop does - one frame per tick, on the clock it owns. */
   for (int guard = 0; anim_active() && guard < 4000; guard++) {
@@ -1095,17 +1702,13 @@ static void shot_anim(const char *name, screen_t from, screen_t to, int pressed)
   }
   prev_vclock_us = 0;
   g_anim = NULL;
+  /* The frames are a move, not a still: nothing to sweep. */
+  g_screen_drawn = false;
   printf("wrote %s_00..%02d (%d frames)\n", name, g_anim_n - 1, g_anim_n);
 }
 
-
-int main(int argc, char **argv) {
-  snprintf(g_out, sizeof g_out, "%s", argc > 1 ? argv[1] : ".");
-
-  g_canvas = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
-
-  /* One helper, so every state below is "set the state, draw, name it" and
-   * the list reads as the screen inventory it is meant to be. */
+/* One helper, so every state below is "set the state, draw, name it" and
+ * the list reads as the screen inventory it is meant to be. */
 #define SHOT(scr, name)      \
   do {                       \
     s_screen = (scr);        \
@@ -1114,6 +1717,430 @@ int main(int argc, char **argv) {
     shot(name);              \
   } while (0)
 
+/*
+ * The shutter sound belongs to the capture (UI-04, ui_motion.h LAND).
+ *
+ * Four presses through fire_shutter(), the function every shutter goes
+ * through: refused by a pipeline that did not start (the warning, no
+ * shutter), accepted (one shutter), two taken while a capture saves and then
+ * the queued one firing as ui_pass fires it (one shutter, for one picture),
+ * and ignored (nothing). Writes no picture; restores what it touched.
+ */
+static void sound_expect(const char *what, int shutters, int warnings) {
+  if (g_shutter_n != shutters || g_warning_n != warnings) {
+    fprintf(stderr, "shutter sound: %s gave %d shutter and %d warning, expected %d and %d\n", what,
+            g_shutter_n, g_warning_n, shutters, warnings);
+    g_sound_failed = true;
+  }
+  g_shutter_n = g_warning_n = 0;
+}
+
+/* ---- the marks through the tiles (M2b) ----
+ *
+ * The camera never draws a frame whole. gfx_render() replays the display list
+ * once per 48 x 96 tile, each tile its own small target, and a mask clipped
+ * wrong at a tile's edge leaves a seam every 48 px that the whole-canvas
+ * render here would never show. So each mark is recorded at 48 x offsets -
+ * every phase of the tile grid across, and twice that down - replayed tile by
+ * tile into a tile-sized buffer the way gfx.c does it, and compared with the
+ * same list replayed over the whole canvas. Any pixel that differs fails. */
+static bool g_tiles_failed;
+
+typedef struct {
+  const uint8_t *cov;
+  int w, h, x, y;
+} tile_mark_t;
+
+static void tile_mark_frame(void *ctx) {
+  const tile_mark_t *m = ctx;
+  fill(0, 0, UI_W, UI_H, K_GROUND);
+  mask_blit(m->cov, m->w, m->h, m->w, m->x, m->y, K_INK);
+}
+
+static void check_mask_tiles(const char *what, const uint8_t *cov, int w, int h) {
+  enum { TW = 48, TH = 96 };
+  static uint16_t whole[UI_W * UI_H], tiled[UI_W * UI_H], tile[TW * TH];
+  uint16_t *const canvas = g_canvas;
+  for (int d = 0; d < TW; d++) {
+    tile_mark_t m = {cov, w, h, 120 + d, 140 + 2 * d};
+    dl_begin();
+    tile_mark_frame(&m);
+    if (!dl_end()) {
+      fprintf(stderr, "tiles: %s did not fit the display list\n", what);
+      g_tiles_failed = true;
+      return;
+    }
+    g_canvas = whole;
+    g_target = (gfx_target_t){whole, 0, 0, UI_W, UI_H, UI_W};
+    dl_replay(NULL);
+    g_canvas = tile;
+    for (int ty = 0; ty < UI_H; ty += TH) {
+      const int th = UI_H - ty < TH ? UI_H - ty : TH;
+      for (int tx = 0; tx < UI_W; tx += TW) {
+        const int tw = UI_W - tx < TW ? UI_W - tx : TW;
+        g_target = (gfx_target_t){tile, tx, ty, tw, th, tw};
+        dl_replay(NULL);
+        for (int r = 0; r < th; r++) {
+          memcpy(&tiled[(ty + r) * UI_W + tx], &tile[r * tw], (size_t)tw * sizeof(uint16_t));
+        }
+      }
+    }
+    g_canvas = canvas;
+    g_target = (gfx_target_t){0};
+    int inked = 0;
+    for (int i = 0; i < UI_W * UI_H; i++) inked += whole[i] == K_INK;
+    if (inked < w * h / 8) {
+      fprintf(stderr, "tiles: %s at +%d drew %d solid pixels; the check saw nothing\n", what, d, inked);
+      g_tiles_failed = true;
+      return;
+    }
+    for (int i = 0; i < UI_W * UI_H; i++) {
+      if (whole[i] != tiled[i]) {
+        fprintf(stderr, "tiles: %s at +%d differs at x=%d y=%d (%04x whole, %04x tiled)\n", what, d,
+                i % UI_W, i / UI_W, whole[i], tiled[i]);
+        g_tiles_failed = true;
+        return;
+      }
+    }
+  }
+}
+
+static void check_shutter_sound(void) {
+  const screen_t scr0 = s_screen;
+  const capture_stage_t stage0 = g_stage;
+  char toast0[sizeof s_toast];
+  memcpy(toast0, s_toast, sizeof toast0);
+  const int64_t toast_us0 = s_toast_us;
+  const bool toast_long0 = s_toast_long;
+  g_audit_off = true; /* the refusal raises a toast; it is not a scene */
+  s_screen = SCR_SHOOT;
+  g_shutter_n = g_warning_n = 0;
+
+  g_capture_ready = false;
+  g_capture_accept = false;
+  g_stage = CAPTURE_IDLE;
+  fire_shutter(false);
+  sound_expect("a press the pipeline refused", 0, 1);
+  g_capture_ready = true;
+
+  g_capture_accept = true;
+  fire_shutter(false);
+  sound_expect("an accepted press", 1, 0);
+
+  g_capture_accept = false;
+  g_stage = CAPTURE_READING;
+  s_shot_queued = false;
+  fire_shutter(false);
+  fire_shutter(false);
+  sound_expect("two presses while saving", 0, 0);
+  if (!s_shot_queued) {
+    fprintf(stderr, "shutter sound: a press while saving was not queued\n");
+    g_sound_failed = true;
+  }
+  /* The report lands: ui_pass acknowledges it and fires the queued press. */
+  g_capture_accept = true;
+  s_shot_queued = false;
+  capture_ack();
+  fire_shutter(false);
+  sound_expect("the queued press firing", 1, 0);
+
+  g_capture_accept = false;
+  g_stage = CAPTURE_IDLE;
+  fire_shutter(false);
+  sound_expect("an ignored press", 0, 0);
+
+  memcpy(s_toast, toast0, sizeof toast0);
+  s_toast_us = toast_us0;
+  s_toast_long = toast_long0;
+  s_shot_queued = false;
+  g_stage = stage0;
+  s_screen = scr0;
+  g_screen_drawn = false;
+  g_audit_off = false;
+}
+
+/*
+ * One frame of a lift or a fade, as a still: the screen under scrim `k`
+ * with the sleep mark at `mark`. Not judged for contrast or targets - type
+ * under a scrim is meant to be faint, and the screen is judged in its own
+ * still.
+ */
+static void lift_frame(screen_t sc, int k, int mark, const char *name) {
+  g_audit_off = true;
+  s_screen = sc;
+  s_dim_k = k;
+  s_lift_mark = mark;
+  scan_conditions();
+  draw_screen();
+  g_screen_drawn = false;
+  shot(name);
+  s_dim_k = 0;
+  s_lift_mark = 0;
+  g_audit_off = false;
+}
+
+/* The canvas's mean green, 0..63: how much light a frame gives off. */
+static double canvas_mean_g6(void) {
+  double sum = 0.0;
+  for (int i = 0; i < UI_W * UI_H; i++) sum += (double)((g_canvas[i] >> 5) & 0x3F);
+  return sum / (double)(UI_W * UI_H);
+}
+
+/*
+ * A move started part-way through a lift takes the rest of it. The pass skips
+ * lift_step while a move runs, so a lift left going would land after the move
+ * as one step. SETTINGS -> DISPLAY is the slide (no row behind it); the menu
+ * -> SETTINGS is the row move. After go() the lift is over, the slide's
+ * arriving screen is clear and the row move carries the scrim. A dim still
+ * arriving (stage DIM) keeps its scrim through a move.
+ *
+ * Then the row move's first frame against the last frame before it: the
+ * pressed menu under the lift's scrim. The two must give off the same light
+ * as they do with no scrim at all - the move may not drop the scrim in one
+ * frame - and the carried scrim only goes down and is gone before the land.
+ */
+static void check_move_takes_lift(void) {
+  const screen_t scr0 = s_screen;
+  g_audit_off = true;
+  static const screen_t FROM[2] = {SCR_SETTINGS, SCR_MENU};
+  static const screen_t TO[2] = {SCR_DISPLAY, SCR_SETTINGS};
+  for (int i = 0; i < 2; i++) {
+    s_screen = FROM[i];
+    lift_start(DIM_SCRIM_K / 3, 0, MOTION_UNDIM_MS);
+    go(TO[i], MOTION_OPEN_MS);
+    const int carried = s_anim.kind == ANIM_OPEN ? s_anim.scrim0 : 0;
+    s_anim.kind = ANIM_NONE;
+    s_anim.scrim0 = s_anim.scrim_k = 0;
+    if (s_lift_us != 0 || s_dim_k != 0 || s_lift_mark != 0) {
+      fprintf(stderr, "a move from screen %d left the lift running (scrim %d)\n", (int)FROM[i], s_dim_k);
+      g_motion_failed = true;
+    }
+    if (FROM[i] == SCR_MENU && carried != DIM_SCRIM_K / 3) {
+      fprintf(stderr, "the row move carried scrim %d of the lift's %d\n", carried, DIM_SCRIM_K / 3);
+      g_motion_failed = true;
+    }
+  }
+  s_screen = SCR_SETTINGS;
+  s_lift_us = 0;
+  s_dim_k = DIM_SCRIM_K / 2; /* a dim on its way in: no lift running */
+  g_power_stage = POWER_DIM;
+  go(SCR_DISPLAY, MOTION_OPEN_MS);
+  s_anim.kind = ANIM_NONE;
+  g_power_stage = POWER_AWAKE;
+  if (s_dim_k != DIM_SCRIM_K / 2) {
+    fprintf(stderr, "a move cut a dim on its way in (scrim %d)\n", s_dim_k);
+    g_motion_failed = true;
+  }
+
+  /* The row move's first frame, with and without a lift under it. */
+  const int row = menu_item_of(SCR_SETTINGS);
+  double before[2], first[2];
+  for (int pass = 0; pass < 2; pass++) {
+    const int k = pass == 0 ? 0 : DIM_SCRIM_K / 3;
+    s_screen = SCR_MENU;
+    s_pressed = row;
+    s_lift_us = 0;
+    s_dim_k = 0;
+    if (k > 0) lift_start(k, 0, MOTION_UNDIM_MS);
+    scan_conditions();
+    draw_screen();
+    before[pass] = canvas_mean_g6();
+    prev_vclock_us = 1000000;
+    go(SCR_SETTINGS, MOTION_OPEN_MS);
+    int prev_k = s_anim.scrim0, frames = 0;
+    bool first_seen = false;
+    for (int guard = 0; anim_active() && guard < 400; guard++) {
+      const uint32_t wait = anim_tick();
+      if (!first_seen) {
+        first[pass] = canvas_mean_g6();
+        first_seen = true;
+        if (s_anim.scrim_k != k) {
+          fprintf(stderr, "the row move's first frame is at scrim %d, the glass was at %d\n", s_anim.scrim_k, k);
+          g_motion_failed = true;
+        }
+      }
+      if (s_anim.scrim_k > prev_k) {
+        fprintf(stderr, "the row move's scrim goes back up at frame %d (%d -> %d)\n", frames, prev_k, s_anim.scrim_k);
+        g_motion_failed = true;
+      }
+      prev_k = s_anim.scrim_k;
+      frames++;
+      if (wait > 0) prev_vclock_us += (int64_t)wait * 1000;
+    }
+    prev_vclock_us = 0;
+    if (prev_k != 0 || s_dim_k != 0) {
+      fprintf(stderr, "the row move lands under scrim %d (dim %d)\n", prev_k, s_dim_k);
+      g_motion_failed = true;
+    }
+  }
+  /* The scrim takes the same light off both frames: they differ only as much
+   * as the two frames do with no scrim. Without the carry the first frame is
+   * the whole scrim brighter. */
+  const double drift = (first[1] - before[1]) - (first[0] - before[0]);
+  if (drift > 0.10 || drift < -0.10) {
+    fprintf(stderr, "the row move's first frame is %.2f G6 off the scrimmed menu before it\n", drift);
+    g_motion_failed = true;
+  }
+  printf("row move under a lift: first frame %.2f G6 off the menu before it (%.2f with no lift)\n",
+         first[1] - before[1], first[0] - before[0]);
+  s_anim.kind = ANIM_NONE;
+  s_anim.scrim0 = s_anim.scrim_k = 0;
+  s_dim_k = 0;
+  s_lift_us = 0;
+  s_lift_mark = 0;
+  s_pressed = -1;
+  s_screen = scr0;
+  g_screen_drawn = false;
+  g_audit_off = false;
+}
+
+/*
+ * The shutter key on a dimmed or a sleeping screen, through ui_pass().
+ *
+ * The key wakes the screen and starts the move to SHOOT on the same pass, and
+ * the pass would then start the undim or the wake lift under the pending
+ * move. The pass skips lift_step while a move runs, so the landed frame was
+ * drawn dark and cut to full on the next. Every frame from the first one on
+ * is recorded with the scrim it was drawn under; it must only go down, by no
+ * more than one frame of the faster lift at a time, and end at 0. A slide's
+ * arriving screen is drawn clear.
+ */
+#define WAKE_SEQ_MAX 512
+static int g_wake_seq[WAKE_SEQ_MAX];
+static int g_wake_seq_n;
+static int g_wake_stash_k;
+
+static void wake_hook(bool stash) {
+  if (stash) {
+    g_wake_stash_k = s_dim_k;
+    return;
+  }
+  const int k = s_dim_k + (s_anim.kind == ANIM_OPEN ? s_anim.scrim_k : 0);
+  if (g_wake_seq_n < WAKE_SEQ_MAX) g_wake_seq[g_wake_seq_n++] = k;
+}
+
+/* `lift_ms` > 0: a plain pass starts the undim first and the key comes that
+ * far into it - the release in the middle of a lift. */
+static void wake_into_move(const char *what, screen_t from, int k0, bool asleep, int lift_ms, int expect_first) {
+  s_screen = from;
+  s_pressed = -1;
+  s_anim.kind = ANIM_NONE;
+  s_dim_k = k0;
+  s_lift_us = 0;
+  s_lift_mark = 0;
+  s_sleep_mark = asleep;
+  s_sleep_stage = -1;
+  was_asleep = asleep;
+  s_dim_since_us = 0;
+  g_power_stage = POWER_AWAKE; /* power_activity() ran on the buttons task */
+  s_btn_q = xQueueCreate(4, sizeof(btn_event_t));
+  prev_vclock_us = 1000000;
+  g_wake_seq_n = 0;
+  g_wake_stash_k = -1;
+  g_frame_hook = wake_hook;
+
+  bool pressed = false, moved = false;
+  int after = 0;
+  const int64_t t0 = prev_vclock_us;
+  for (int guard = 0; guard < 2000; guard++) {
+    if (!pressed && prev_vclock_us - t0 >= (int64_t)lift_ms * 1000) {
+      on_button(BTN_SHUTTER, false);
+      pressed = true;
+    }
+    const int n0 = g_wake_seq_n;
+    const uint32_t wait = ui_pass();
+    if (anim_active()) moved = true;
+    /* A frame moves the clock itself. A pass that drew nothing and asks for
+     * no wait comes straight back on the camera; it is given a millisecond
+     * here only when no move is pending, so the idle passes before the key
+     * still let time pass. */
+    if (wait > 0) prev_vclock_us += (int64_t)wait * 1000;
+    else if (g_wake_seq_n == n0 && !anim_active()) prev_vclock_us += 1000;
+    if (moved && !anim_active() && ++after > 8) break;
+  }
+  g_frame_hook = NULL;
+  prev_vclock_us = 0;
+
+  if (!moved || s_screen != SCR_SHOOT) {
+    fprintf(stderr, "%s: the shutter did not move to SHOOT (screen %d)\n", what, (int)s_screen);
+    g_motion_failed = true;
+  }
+  if (g_wake_seq_n == 0) {
+    fprintf(stderr, "%s: nothing was drawn\n", what);
+    g_motion_failed = true;
+  } else {
+    if (expect_first >= 0 && g_wake_seq[0] != expect_first) {
+      fprintf(stderr, "%s: the first frame is under scrim %d, expected %d\n", what, g_wake_seq[0], expect_first);
+      g_motion_failed = true;
+    }
+    /* The steepest frame either lift has: the first 16 ms of motion_ease_out
+     * from the ground over MOTION_WAKE_MS is 48 of 255. */
+    for (int i = 1; i < g_wake_seq_n; i++) {
+      const int d = g_wake_seq[i - 1] - g_wake_seq[i];
+      if (d < 0 || d > 64) {
+        fprintf(stderr, "%s: frame %d steps the scrim %d -> %d\n", what, i, g_wake_seq[i - 1], g_wake_seq[i]);
+        g_motion_failed = true;
+        break;
+      }
+    }
+    if (g_wake_seq[g_wake_seq_n - 1] != 0) {
+      fprintf(stderr, "%s: ends under scrim %d\n", what, g_wake_seq[g_wake_seq_n - 1]);
+      g_motion_failed = true;
+    }
+  }
+  if (g_wake_stash_k > 0) {
+    fprintf(stderr, "%s: the arriving screen was drawn under scrim %d\n", what, g_wake_stash_k);
+    g_motion_failed = true;
+  }
+  printf("%s: %d frames, scrim %d first\n", what, g_wake_seq_n, g_wake_seq_n ? g_wake_seq[0] : -1);
+}
+
+static void check_wake_into_move(void) {
+  const screen_t scr0 = s_screen;
+  g_audit_off = true;
+  wake_into_move("shutter on the dimmed menu", SCR_MENU, DIM_SCRIM_K, false, 0, DIM_SCRIM_K);
+  wake_into_move("shutter on the sleeping menu", SCR_MENU, SLEEP_DARK_K, true, 0, 255);
+  wake_into_move("shutter 60 ms into the undim", SCR_MENU, DIM_SCRIM_K, false, 60, -1);
+  wake_into_move("shutter on the dimmed SETTINGS", SCR_SETTINGS, DIM_SCRIM_K, false, 0, -1);
+  wake_into_move("shutter on the sleeping SETTINGS", SCR_SETTINGS, SLEEP_DARK_K, true, 0, -1);
+  s_btn_q = NULL;
+  s_anim.kind = ANIM_NONE;
+  s_anim.scrim0 = s_anim.scrim_k = 0;
+  s_dim_k = 0;
+  s_lift_us = 0;
+  s_lift_mark = 0;
+  s_sleep_mark = false;
+  was_asleep = false;
+  s_pressed = -1;
+  s_screen = scr0;
+  g_screen_drawn = false;
+  g_audit_off = false;
+}
+
+/* Every millisecond of a lift: the scrim and the mark only ever go down,
+ * and both end at zero. */
+static void lift_monotone(const char *what, int32_t span_ms, int k0, int mark0) {
+  int pk = k0, pm = mark0;
+  for (int32_t ms = 0; ms <= span_ms; ms++) {
+    int k, m;
+    lift_at((int64_t)ms * 1000, span_ms, k0, mark0, &k, &m);
+    if (k > pk || m > pm || k < 0 || m < 0) {
+      fprintf(stderr, "%s: steps back at %d ms (scrim %d -> %d, mark %d -> %d)\n", what, (int)ms, pk, k, pm, m);
+      g_motion_failed = true;
+      return;
+    }
+    pk = k;
+    pm = m;
+  }
+  if (pk != 0 || pm != 0) {
+    fprintf(stderr, "%s: ends at scrim %d, mark %d, not 0\n", what, pk, pm);
+    g_motion_failed = true;
+  }
+}
+
+/* Every scene, in the order they have always been drawn. Run once per hand,
+ * each time in a fresh forked process (main). */
+static void scenes(void) {
   fake_gallery();
 
   /* A format, mid-way. The calibration used to own this banner; it runs on
@@ -1144,6 +2171,30 @@ int main(int argc, char **argv) {
   s_focus[SCR_MENU] = 4;
   SHOT(SCR_MENU, "menu_settings_focus");
   s_focus_shown = false;
+
+  /* The card's four-mark with three cameras answering: CAM3's cell is an
+   * outline. The snapshot is refilled by hand, because cams_refresh() keeps
+   * its own two-second clock. */
+  g_cam_online = 0xBu;
+  for (int i = 0; i < 4; i++) camlink_get_info_ch(i, &s_cams[i]);
+  conditions_scan(s_cams);
+  s_screen = SCR_MENU;
+  draw_screen();
+  shot("menu_cams_3of4");
+  g_cam_online = 0x5u;
+  for (int i = 0; i < 4; i++) camlink_get_info_ch(i, &s_cams[i]);
+  conditions_scan(s_cams);
+
+  /* The launch shades: the menu in each of the eight a start can wear, for
+   * the review strip. main.c picks boot_count % 8; every other picture here
+   * is row 0, the MAO pink itself. */
+  for (uint32_t i = 0; i < K_LAUNCH_N; i++) {
+    char name[32];
+    snprintf(name, sizeof name, "launch_shade_%u", (unsigned)i);
+    ui_set_launch_index(i);
+    SHOT(SCR_MENU, name);
+  }
+  ui_set_launch_index(0);
 
   /* The boot rings, frame by frame. */
   {
@@ -1214,6 +2265,13 @@ int main(int argc, char **argv) {
   SHOT(SCR_SHOOT, "shoot_back_pressed");
   s_pressed = -1;
 
+  /* The lens hint, the red pill over the finder. lens_hint_poll() raises it
+   * from the lid readings on the UI loop, which does not run here, so the
+   * string is set the way the poll sets it. One of #176's contrast pairs. */
+  snprintf(s_lens_hint, sizeof s_lens_hint, "CHECK THE SECOND LENS");
+  SHOT(SCR_SHOOT, "shoot_lens_hint");
+  s_lens_hint[0] = '\0';
+
   /* ---- capture feedback, over the viewfinder it will most often cover ---- */
   s_screen = SCR_SHOOT;
   g_stage = CAPTURE_READING;
@@ -1232,6 +2290,82 @@ int main(int argc, char **argv) {
   scan_conditions();
   draw_screen();
   shot("capture_saved");
+
+  /* The landing, at three moments of its 300 ms: held in the launch shade,
+   * and two points on the smootherstep back to ink. capture_saved above is
+   * where it ends. land_ink() is the function ui_pass steps it with. */
+  {
+    static const int LAND_AT_MS[3] = {0, 180, 240};
+    for (int i = 0; i < 3; i++) {
+      char name[32];
+      snprintf(name, sizeof name, "capture_landing_%03d", LAND_AT_MS[i]);
+      s_land_ink = land_ink((int64_t)LAND_AT_MS[i] * 1000);
+      draw_screen();
+      shot(name);
+    }
+    s_land_ink = K_INK;
+  }
+
+  /*
+   * The landing under the default AFTER SHOT (2 s). ui_pass sees the report
+   * and opens the review on the same pass; the move stashes PHOTO at once and
+   * owns the panel for 420 ms, with ui_pass returning before land_step(). The
+   * stash has to carry the landed bar in the shade, and the 300 ms have to
+   * start once the move has landed. Driven through the calls ui_pass makes -
+   * land_start(), first_review_open(), land_step() - on the renderer's clock.
+   * The stash is written as capture_review_stash.
+   */
+  {
+    prev_vclock_us = 1000000;
+    land_start();
+    first_review_open(&g_report);
+    const uint16_t *stash = gfx_stash_px();
+    const int bx = PAGE_M + 2, by = SH_PN_Y + SH_PN_H / 2;
+    if (s_screen != SCR_PHOTO || stash == NULL) {
+      fprintf(stderr, "landing: the review did not open on a DONE report\n");
+      g_land_failed = true;
+    } else {
+      if (stash[by * UI_W + bx] != K_ACCENT) {
+        fprintf(stderr, "landing: review stash bar is %04x, not the shade %04x\n",
+                stash[by * UI_W + bx], K_ACCENT);
+        g_land_failed = true;
+      }
+      char path[600];
+      snprintf(path, sizeof path, "%s/capture_review_stash.ppm", g_out);
+      audit_stamp("capture_review_stash");
+      write_ppm(path, stash, UI_W, UI_H);
+    }
+    const int64_t move_from_us = prev_vclock_us;
+    for (int guard = 0; anim_active() && guard < 4000; guard++) {
+      const uint32_t wait = anim_tick();
+      if (wait > 0) prev_vclock_us += (int64_t)wait * 1000;
+    }
+    if (anim_active() || prev_vclock_us - move_from_us < (int64_t)MOTION_OPEN_MS * 1000) {
+      fprintf(stderr, "landing: the review move did not run its %d ms\n", MOTION_OPEN_MS);
+      g_land_failed = true;
+    }
+    g_screen_drawn = false;
+    /* The first pass after the move: the hold starts here. */
+    const bool moving0 = land_step();
+    const uint16_t ink0 = s_land_ink;
+    prev_vclock_us += 210 * 1000;
+    land_step();
+    const uint16_t ink210 = s_land_ink;
+    prev_vclock_us += 140 * 1000;
+    const bool moving350 = land_step();
+    if (!moving0 || ink0 != K_ACCENT || ink210 == K_ACCENT || ink210 == K_INK || moving350 ||
+        s_land_ink != K_INK) {
+      fprintf(stderr, "landing: after the move %04x/%d, +210 ms %04x, +350 ms %04x/%d\n", ink0,
+              moving0, ink210, s_land_ink, moving350);
+      g_land_failed = true;
+    }
+    prev_vclock_us = 0;
+    s_shot_seen_us = 0;
+    land_step();
+    s_first_review_us = 0;
+    photo_release();
+    s_screen = SCR_SHOOT;
+  }
 
   g_report.stored = 3;
   scan_conditions();
@@ -1332,6 +2466,12 @@ int main(int argc, char **argv) {
   g_queue.last_upload_ms = esp_timer_get_time() / 1000 - 8000;
   SHOT(SCR_ROLL, "roll_active");
 
+  /* A 24-character name: too wide for TITLE in the right column, so it
+   * drops to LABEL - Oxanium both - and is cut there if it must be (F2). */
+  snprintf(g_roll.name, sizeof g_roll.name, "ALEX AND MAYA WEDDING 26");
+  SHOT(SCR_ROLL, "roll_long_name");
+  snprintf(g_roll.name, sizeof g_roll.name, "FRIDAY PARTY");
+
   /*
    * A Roll with nowhere to send it (#198).
    *
@@ -1407,8 +2547,8 @@ int main(int argc, char **argv) {
 
   /* A list row focused and a list row held. Rows had no press state at all
    * until now - pressing "Connection" put nothing on screen between the finger
-   * landing and the next screen arriving - and the focus rectangle inside a
-   * navy row is drawn in white, which is a case no other control has. */
+   * landing and the next screen arriving - and the focus rectangle on a row
+   * under a finger is drawn in the dark ink, which no other control has. */
   s_focus_shown = true;
   s_focus[SCR_SETTINGS] = 1;
   s_pressed = 3;
@@ -1476,7 +2616,23 @@ int main(int argc, char **argv) {
    * screen from an empty slot and used to show the same "None" as one. */
   g_card_mounted = false;
   SHOT(SCR_STORAGE, "settings_storage_unmounted");
+  /* The slot empty, or the card pulled: the two states a body is most often
+   * in without a card, and the ones that must not say "take the card out". */
+  g_card_present = false;
+  SHOT(SCR_STORAGE, "settings_storage_empty");
+  g_card_present = true;
   g_card_mounted = true;
+  /* DELETE ALL running: the Photos row counts down and both destructive rows
+   * go dark until it ends. */
+  g_deleting = true;
+  g_delete_done = 120;
+  g_delete_total = 500;
+  SHOT(SCR_STORAGE, "settings_storage_deleting");
+  g_delete_done = 1433;
+  g_delete_total = 1434;
+  SHOT(SCR_STORAGE, "settings_storage_deleting_long");
+  g_deleting = false;
+  g_delete_done = g_delete_total = 0;
   SHOT(SCR_STATUS, "settings_status");
   SHOT(SCR_ABOUT, "settings_about");
   /* With a name set: a fourth row appears above Device and the list frame
@@ -1490,8 +2646,8 @@ int main(int argc, char **argv) {
   SHOT(SCR_POWER, "power");
   /* The rows moved 12 px down into the list well to meet the hit rectangles
    * that were always there, so this is the shot that proves the three rows and
-   * the well line up - and the disabled row's grey against a focused row's
-   * navy in one frame. */
+   * the well line up - and the disabled row's dimmed words against a focused
+   * row in one frame. */
   s_focus_shown = true;
   s_focus[SCR_POWER] = 1;
   SHOT(SCR_POWER, "power_focus");
@@ -1534,6 +2690,10 @@ int main(int argc, char **argv) {
     SHOT(SCR_PHOTO, "photo_favourite");
     s_photo_fav = false;
     s_focus[SCR_PHOTO] = P_IT_DELETE;
+    /* DELETE held: the pressed destructive face, one of #176's pairs. */
+    s_pressed = P_IT_DELETE;
+    SHOT(SCR_PHOTO, "photo_delete_pressed");
+    s_pressed = -1;
     s_dialog = DLG_DELETE;
     s_dlg_focus = 0;
     scan_conditions();
@@ -1581,6 +2741,12 @@ int main(int argc, char **argv) {
     wiggle_tick();
     s_wig_pos = 2;
     SHOT(SCR_PHOTO, "photo_partial");
+    /* The same, dated: the tallest the facts well gets - number, mode, date,
+     * MISSING, CAMERAS and the mark - which no other shot has, because the
+     * preview's photographs carry no time. The well must hold all of it. */
+    s_photo_ms = 1787000000000LL;
+    SHOT(SCR_PHOTO, "photo_partial_dated");
+    s_photo_ms = 0;
     photo_release();
     g_frame_have = 0xf;
 
@@ -1657,27 +2823,77 @@ int main(int argc, char **argv) {
    * node says so on the screen it shows first. */
   {
     for (int q = 0; q < 4; q++) s_bf_cam[q] = 1.0f;
-    fill(0, 0, UI_W, UI_H, MZ_GROUND);
+    fill(0, 0, UI_W, UI_H, K_GROUND);
     boot_field(BF_REACH, 900, 0, 1.0f);
     shot("boot_field_all_four");
 
     s_bf_cam[1] = s_bf_cam[3] = BF_DARK;
-    fill(0, 0, UI_W, UI_H, MZ_GROUND);
+    fill(0, 0, UI_W, UI_H, K_GROUND);
     boot_field(BF_REACH, 900, 0, 1.0f);
     shot("boot_field_two_silent");
     for (int q = 0; q < 4; q++) s_bf_cam[q] = 1.0f;
   }
 
   /* What the camera shows while it is going away: its own mark, centred,
-   * and then the screen letting go of it. Same picture for a restart. */
+   * and then the screen letting go of it. Same picture for a restart. The
+   * fade at four of its MOTION_POWER_FADE_FRAMES frames, drawn from
+   * power_fade_k() the way power_down_anim() draws them, and every frame's
+   * scrim checked to only ever darken, from the mark to black. */
   {
-    fill(0, 0, UI_W, UI_H, MZ_GROUND);
+    fill(0, 0, UI_W, UI_H, K_GROUND);
     boot_mark();
     shot("power_down");
-    fill(0, 0, UI_W, UI_H, MZ_GROUND);
-    boot_mark();
-    scrim(0, 0, UI_W, UI_H, RGB(0x00, 0x00, 0x00), 4 * 255 / 7);
-    shot("power_down_fading");
+    int prev = 0;
+    for (int i = 0; i <= MOTION_POWER_FADE_FRAMES; i++) {
+      int k = power_fade_k((float)i / (float)MOTION_POWER_FADE_FRAMES);
+      if (k < prev || (i == 0 && k != 0) || (i == MOTION_POWER_FADE_FRAMES && k != 255)) {
+        fprintf(stderr, "power-down: frame %d scrim %d after %d - not a fade from 0 to 255\n", i, k, prev);
+        g_motion_failed = true;
+      }
+      prev = k;
+      if (i > 0 && i < MOTION_POWER_FADE_FRAMES && i % 4 == 0) {
+        char name[32];
+        snprintf(name, sizeof name, "power_down_fade_%02d", i);
+        ui_render(render_mark_fade, &k);
+        shot(name);
+      }
+    }
+  }
+
+  /*
+   * The lifts: the scrim coming off the screen rather than cutting away
+   * (UI-09). The wake from sleep at three moments of its MOTION_WAKE_MS; a
+   * sleep called off with its mark up, the mark leaving and then the picture
+   * arriving; the undim half way. Every millisecond of each is checked to go
+   * one way and end clear.
+   */
+  {
+    lift_monotone("wake", MOTION_WAKE_MS, 255, 0);
+    lift_monotone("sleep called off, mark up", MOTION_WAKE_MS, 255, 255);
+    lift_monotone("sleep called off, darkening", MOTION_WAKE_MS, 200, 0);
+    lift_monotone("undim", MOTION_UNDIM_MS, DIM_SCRIM_K, 0);
+    s_focus[SCR_MENU] = 0;
+    static const int WAKE_AT_MS[3] = {60, 120, 180};
+    for (int i = 0; i < 3; i++) {
+      int k, m;
+      char name[32];
+      lift_at((int64_t)WAKE_AT_MS[i] * 1000, MOTION_WAKE_MS, 255, 0, &k, &m);
+      snprintf(name, sizeof name, "wake_%03d", WAKE_AT_MS[i]);
+      lift_frame(SCR_MENU, k, m, name);
+    }
+    static const int CANCEL_AT_MS[2] = {40, 160};
+    for (int i = 0; i < 2; i++) {
+      int k, m;
+      char name[32];
+      lift_at((int64_t)CANCEL_AT_MS[i] * 1000, MOTION_WAKE_MS, 255, 255, &k, &m);
+      snprintf(name, sizeof name, "sleep_cancel_%03d", CANCEL_AT_MS[i]);
+      lift_frame(SCR_MENU, k, m, name);
+    }
+    {
+      int k, m;
+      lift_at((int64_t)(MOTION_UNDIM_MS / 2) * 1000, MOTION_UNDIM_MS, DIM_SCRIM_K, 0, &k, &m);
+      lift_frame(SCR_MENU, k, m, "undim_080");
+    }
   }
 
   /* ---- a toast, which every screen can raise ---- */
@@ -1699,11 +2915,14 @@ int main(int argc, char **argv) {
   draw_screen();
   shot("toast_gallery");
 
-  if (g_write_failed) {
-    fprintf(stderr, "one or more screens were not written\n");
-    return 1;
-  }
-  /* ---- what a frame costs ---- */
+  /* Last, so nothing it touches reaches a picture. */
+  check_shutter_sound();
+  check_move_takes_lift();
+  check_wake_into_move();
+}
+
+/* ---- what a frame costs ---- */
+static void bench(void) {
   printf("\nframe cost (1.00 screen = 800x480 opaque; blends count double)\n");
   {
     static const struct { screen_t sc; const char *name; } S[] = {
@@ -1766,7 +2985,7 @@ int main(int argc, char **argv) {
     for (int f = 0; f <= 16; f++) {
       const float reach = ease_ui((float)f / 16.0f) * BF_REACH;
       bench_reset();
-      fill(0, 0, UI_W, UI_H, MZ_GROUND);
+      fill(0, 0, UI_W, UI_H, K_GROUND);
       for (int q = 0; q < 4; q++) s_bf_cam[q] = 1.0f;
       boot_field(reach, 0, 0, 1.0f);
       const double c = bench_screens();
@@ -1782,7 +3001,136 @@ int main(int argc, char **argv) {
     printf("    -> min %.2f  max %.2f  mean %.2f  spread %.1fx\n", lo, hi, sum / 17.0,
            hi / (lo > 0.01 ? lo : 0.01));
   }
+}
 
-  if (audit_report() > 0) return 1;
+/*
+ * Every check fails the run: the structural ones (a string outside the safe
+ * area, hand-side chrome off the hand's side, a write that did not land, a
+ * PPM count that moved) and the two judgement ones, contrast and touch
+ * targets. The judgement checks only reported until the colour pass closed
+ * #176's list (#234); a string under its floor or a target under 52 px on
+ * either hand is now a failed build like any other.
+ */
+
+/* Exit codes of one hand's pass, to the parent. */
+#define PASS_CLEAN 0
+#define PASS_HARD 1   /* a structural failure */
+#define PASS_SOFT 2   /* contrast or targets only */
+
+static int run_hand(bool right, const char *out) {
+  g_hand = right ? "right" : "left";
+  if (right) {
+    snprintf(g_out, sizeof g_out, "%s", out);
+  } else {
+    snprintf(g_out, sizeof g_out, "%s/left", out);
+    if (mkdir(g_out, 0777) != 0 && errno != EEXIST) {
+      fprintf(stderr, "cannot create %s\n", g_out);
+      return PASS_HARD;
+    }
+  }
+  g_canvas = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
+  if (g_canvas == NULL) return PASS_HARD;
+
+  /* Row 0, the MAO pink: the camera's pick is boot_count % 8, and a picture
+   * that depended on a counter would be a different picture every run. */
+  ui_set_launch_index(0);
+  scenes();
+  /* The frame-cost figures are the same for both hands; print them once. */
+  if (right) {
+    g_audit_off = true;
+    bench();
+    check_mask_tiles("the wordmark", KINO_D4_LOGO, KINO_D4_LOGO_W, KINO_D4_LOGO_H);
+    check_mask_tiles("the ODD JOBS mark", UI_MARK_ODD_JOBS_40, UI_MARK_ODD_JOBS_40_W,
+                     UI_MARK_ODD_JOBS_40_H);
+    check_mask_tiles("the ODD JOBS mark at 128", UI_MARK_ODD_JOBS_128, UI_MARK_ODD_JOBS_128_W,
+                     UI_MARK_ODD_JOBS_128_H);
+    g_audit_off = false;
+  }
+
+  fprintf(stderr, "\n==== %s hand: %d PPMs in %s ====\n", g_hand, g_ppm_n, g_out);
+  bool hard = false;
+  if (g_write_failed) {
+    fprintf(stderr, "one or more screens were not written\n");
+    hard = true;
+  }
+  if (g_ppm_n != PPMS_PER_HAND) {
+    fprintf(stderr,
+            "wrote %d PPMs, expected %d: a scene was added or dropped. Set PPMS_PER_HAND in "
+            "preview.c and re-approve the golden hashes (make approve).\n",
+            g_ppm_n, PPMS_PER_HAND);
+    hard = true;
+  }
+  if (g_land_failed) {
+    fprintf(stderr, "the capture landing is not in the shade under the review move\n");
+    hard = true;
+  }
+  if (g_tiles_failed) {
+    fprintf(stderr, "a mark drawn tile by tile is not the mark drawn whole\n");
+    hard = true;
+  }
+  if (g_sound_failed) {
+    fprintf(stderr, "a shutter press made the wrong sound\n");
+    hard = true;
+  }
+  if (g_motion_failed) {
+    fprintf(stderr, "a fade or a lift steps back or does not end where it should\n");
+    hard = true;
+  }
+  if (audit_report() > 0) hard = true;
+  if (caps_report() > 0) hard = true;
+  if (null_glyph_report() > 0) hard = true;
+  if (list_report("hand-side controls off the hand's side", g_hand_bad, g_hand_bad_n) > 0) hard = true;
+  const int soft = contrast_report() +
+                   list_report("touch targets under 52 px", g_small, g_small_n) +
+                   list_report("screens whose type starts at more than 3 left edges", g_edges, g_edges_n);
+  fprintf(stderr, "\ncontrast: %d string draws judged, %d set on a picture and skipped\n",
+          g_judged_n, g_over_image_n);
+  if (hard) return PASS_HARD;
+  return soft > 0 ? PASS_SOFT : PASS_CLEAN;
+}
+
+int main(int argc, char **argv) {
+  const char *out = ".";
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--ppms") == 0) {
+      printf("%d\n", 2 * PPMS_PER_HAND);
+      return 0;
+    }
+    out = argv[i];
+  }
+
+  /* One process per hand, both from this untouched state: the scene list
+   * mutates the stubs and ui.c's statics as it goes, and a second pass in the
+   * same process would start from wherever the first one left them. */
+  int worst = PASS_CLEAN;
+  for (int h = 0; h < 2; h++) {
+    fflush(stdout);
+    fflush(stderr);
+    const pid_t pid = fork();
+    if (pid < 0) {
+      perror("fork");
+      return 1;
+    }
+    if (pid == 0) {
+      const int rc = run_hand(h == 0, out);
+      fflush(stdout);
+      fflush(stderr);
+      _exit(rc);
+    }
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0 || !WIFEXITED(status)) {
+      fprintf(stderr, "the %s-hand pass did not finish\n", h == 0 ? "right" : "left");
+      return 1;
+    }
+    const int rc = WEXITSTATUS(status);
+    if (rc == PASS_HARD) worst = PASS_HARD;
+    else if (rc == PASS_SOFT && worst == PASS_CLEAN) worst = PASS_SOFT;
+    else if (rc != PASS_CLEAN && rc != PASS_SOFT) worst = PASS_HARD;
+  }
+  if (worst != PASS_CLEAN) {
+    fprintf(stderr, "\naudit: %s\n",
+            worst == PASS_HARD ? "failed" : "failed on contrast or touch targets");
+    return 1;
+  }
   return 0;
 }

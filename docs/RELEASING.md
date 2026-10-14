@@ -25,9 +25,11 @@ A Studio release does not automatically bump KDP. A schema bump does not automat
   Windows 98 shell icons, which blocked every firmware release (#134). It no
   longer carries any artwork that is not ours to ship: the icons are gone with
   the tile menu, the baked Tahoma labels are gone with the header, and the type
-  is Inter and Oxanium under the OFL, rasterised by `tools/mkfont.swift`. No
-  baked raster remains: the studio's mark left the ABOUT screen in 0.4.58 and
-  `firmware/p4/main/logo_odd_jobs.h` is gone with it. What follows
+  is Inter and Oxanium under the OFL, rasterised by `tools/mkfont.swift`. The
+  two baked marks are ours: the KINO wordmark (`logo_kino_d4.h`) and the
+  studio's ODD JOBS symbol (`ui_mark_odd_jobs.h`, back on ABOUT from the
+  carrier's traced outline after the mismatched `logo_odd_jobs.h` left in
+  0.4.58), both reserved in REUSE.toml. What follows
   was the position while that was unresolved; it is kept because the release
   records it governed are still in the tree. **Operator decision, 2026-09-05:**
   the project is not

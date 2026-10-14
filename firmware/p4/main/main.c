@@ -337,8 +337,9 @@ void app_main(void) {
   esp_efuse_mac_get_default(mac);
   snprintf(id.serial, sizeof id.serial, "KD4-%02X%02X%02X", mac[3], mac[4], mac[5]);
   snprintf(id.device_id, sizeof id.device_id, "kino-%02x%02x%02x", mac[3], mac[4], mac[5]);
-  snprintf(id.session_id, sizeof id.session_id, "boot-%lu",
-           (unsigned long)next_boot_count());
+  /* Read once: it names the KDP session and picks the UI's launch shade. */
+  const uint32_t boots = next_boot_count();
+  snprintf(id.session_id, sizeof id.session_id, "boot-%lu", (unsigned long)boots);
 
   /* The clock before anything that timestamps: config_init is settings only,
    * but the first capture can happen the moment KDP is up. */
@@ -500,6 +501,9 @@ void app_main(void) {
     /* The UI replaces the test pattern once both are up. It runs without
      * touch too - a screen that shows the camera's state is worth having
      * even if nothing can be pressed. */
+    /* The pink shifts a step toward lavender on each start: ui.c holds no
+     * NVS, so the count it picks the shade by comes from here. */
+    ui_set_launch_index(boots);
     esp_err_t ui_err = ui_start();
     if (ui_err != ESP_OK) ESP_LOGE(TAG, "ui unavailable: %s", esp_err_to_name(ui_err));
     /* This far - KDP answering, the panel drawing - is what a good image
