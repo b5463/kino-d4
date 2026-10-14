@@ -147,10 +147,23 @@ static int s_back = 0;
 static bool s_ready;
 static uint32_t s_frames;
 static uint32_t s_pass; /* drawing passes begun; see gfx_pass_id() */
+/* The canvas generation, gfx_canvas_gen(). One writer, the UI task, so a
+ * store with release order is enough: no read-modify-write is shared. */
+static uint32_t s_canvas_gen = 1;
 static uint32_t s_last_ms;
 
 bool gfx_ready(void) { return s_ready; }
 uint16_t *gfx_canvas(void) { return s_canvas; }
+
+uint32_t gfx_canvas_gen(void) { return __atomic_load_n(&s_canvas_gen, __ATOMIC_ACQUIRE); }
+
+/* Before the canvas is written, so a reader that copied a page and then sees
+ * the same generation knows nothing moved under the copy. */
+static void canvas_touched(void) {
+  uint32_t g = s_canvas_gen + 1;
+  if (g == 0) g = 1;
+  __atomic_store_n(&s_canvas_gen, g, __ATOMIC_RELEASE);
+}
 
 void gfx_stats(uint32_t *frames, uint32_t *last_ms) {
   if (frames) *frames = s_frames;
@@ -312,6 +325,7 @@ static esp_err_t rotate_to(void *dst) { return rotate(s_canvas, dst); }
  * on, read back from the camera with GET_LOGS rather than assumed.
  */
 static void measure_rotate(void) {
+  canvas_touched();
   for (int y = 0; y < UI_H; y++) {
     uint16_t *row = s_canvas + (size_t)y * UI_W;
     for (int x = 0; x < UI_W; x++) row[x] = (uint16_t)((x * 7) ^ (y * 13) ^ (x >> 3));
@@ -338,6 +352,9 @@ static void show(void *fb) {
 
 void gfx_present(void) {
   if (!s_ready) return;
+  /* Whatever was drawn straight into the canvas since the last bump is going
+   * to the panel now; a picture read across it is not one picture. */
+  canvas_touched();
   const int64_t t0 = esp_timer_get_time();
 
   void *fb = s_fb[s_back];
@@ -355,6 +372,7 @@ void gfx_present(void) {
 
 void gfx_render_canvas(gfx_draw_fn draw, void *ctx) {
   if (!s_ready || draw == NULL) return;
+  canvas_touched();
   s_pass++;
   s_target = (gfx_target_t){s_canvas, 0, 0, UI_W, UI_H, UI_W};
   draw(ctx);
@@ -656,11 +674,13 @@ void gfx_layer_keep(void) {
 
 void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (!s_ready || s_layer == NULL) return;
+  canvas_touched();
   layer_blit(s_layer, dx, dy, sx, sy, w, h);
 }
 
 void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (!s_ready || s_mix == NULL) return;
+  canvas_touched();
   layer_blit(s_mix, dx, dy, sx, sy, w, h);
 }
 

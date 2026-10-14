@@ -2831,11 +2831,80 @@ static void first_start_note(void);
  */
 static bool s_in_render;
 
+/*
+ * The screen over KDP (#246): what kdp_ui.c asks of this task, and where the
+ * answers wait. The KDP task writes the asks, this task writes the answers;
+ * every field has one writer, so plain loads and stores with acquire and
+ * release order carry it, with no lock and no read-modify-write shared
+ * between the cores. In PSRAM: nothing here is touched more than once a
+ * pass, and internal SRAM is the scarce pool.
+ */
+typedef struct {
+  int16_t x, y;      /* logical */
+  uint16_t hold_ms;
+} ui_tap_t;
+#define UI_TAP_Q 4
+#define UI_PLATE_MAX_US (300LL * 1000000) /* the plate lets go by itself after 5 minutes */
+#define UI_TAP_GAP_US 40000               /* up between two taps, so each lands as its own */
+static EXT_RAM_BSS_ATTR struct {
+  /* Written by the KDP task. */
+  uint32_t shot_asked;
+  uint32_t plate_asked;
+  uint8_t plate_want;
+  uint32_t tap_head;
+  ui_tap_t taps[UI_TAP_Q];
+  /* Written by the UI task. */
+  uint32_t shot_done;
+  uint8_t shot_state;
+  ui_shot_t shot;
+  uint32_t plate_seen;
+  uint32_t tap_tail;
+  ui_tap_t tap_now;     /* the host's contact on the glass */
+  int64_t tap_until_us; /* when it lifts; 0 for none down */
+  int64_t tap_up_us;    /* when the last one lifted */
+  bool plate_on;
+  int64_t plate_since_us;
+} s_kdp;
+_Static_assert(sizeof((const char *const[]){UI_SCREEN_IDS}) / sizeof(const char *) == SCR_COUNT &&
+                   UI_SCREEN_COUNT == SCR_COUNT,
+               "UI_SCREEN_IDS names every screen_t, in order");
+
+/*
+ * The test plate, for photographs of the panel: a 32-step grey ramp, every
+ * palette colour in K_COLOURS order, the eight launch shades over their
+ * pressed steps, and a 1 px grid at a 20 px pitch with its last line on the
+ * panel's last row and column. Fills only, no words: it is a picture to
+ * measure, not a screen to read. MockScreen.ts in packages/test-fixtures
+ * draws the same layout.
+ */
+static void draw_plate(void) {
+  fill(0, 0, UI_W, UI_H, K_SCRIM);
+  for (int i = 0; i < 32; i++) {
+    const int v = (i * 255 + 15) / 31;
+    fill(i * 25, 0, 25, 80, RGB(v, v, v));
+  }
+#define PLATE_COLOUR(c) c,
+  static const uint16_t COLOURS[] = {K_COLOURS(PLATE_COLOUR)};
+#undef PLATE_COLOUR
+  const int n = (int)(sizeof COLOURS / sizeof COLOURS[0]);
+  const int cw = UI_W / n;
+  for (int i = 0; i < n; i++) fill(i * cw, 80, i == n - 1 ? UI_W - i * cw : cw, 80, COLOURS[i]);
+  for (int i = 0; i < K_LAUNCH_N; i++) {
+    fill(i * (UI_W / K_LAUNCH_N), 160, UI_W / K_LAUNCH_N, 40, K_LAUNCH[i]);
+    fill(i * (UI_W / K_LAUNCH_N), 200, UI_W / K_LAUNCH_N, 40, K_LAUNCH_DOWN[i]);
+  }
+  for (int x = 0; x < UI_W; x += 20) fill(x, 240, 1, UI_H - 240, K_INK);
+  fill(UI_W - 1, 240, 1, UI_H - 240, K_INK);
+  for (int y = 240; y < UI_H; y += 20) fill(0, y, UI_W, 1, K_INK);
+  fill(0, UI_H - 1, UI_W, 1, K_INK);
+}
+
 static void render_screen(void *ctx) {
   (void)ctx;
   const bool was = s_in_render;
   s_in_render = true;
-  draw_screen();
+  if (s_kdp.plate_on) draw_plate();
+  else draw_screen();
   s_in_render = was;
 }
 
@@ -10525,6 +10594,165 @@ static void update_poll(void) {
   ui_render(render_screen, NULL);
 }
 
+/* ------------------------------------------------------------------ */
+/* The screen over KDP (#246): the UI task's half                      */
+/* ------------------------------------------------------------------ */
+
+bool ui_screen_moving(void) { return anim_active() || s_sleep_mark || s_lift_us != 0; }
+
+uint32_t ui_shot_ask(void) {
+  uint32_t t = __atomic_load_n(&s_kdp.shot_asked, __ATOMIC_RELAXED) + 1;
+  if (t == 0) t = 1;
+  __atomic_store_n(&s_kdp.shot_asked, t, __ATOMIC_RELEASE);
+  return t;
+}
+
+ui_shot_state_t ui_shot_poll(uint32_t ticket, ui_shot_t *out) {
+  if (__atomic_load_n(&s_kdp.shot_done, __ATOMIC_ACQUIRE) != ticket) return UI_SHOT_WAITING;
+  if (out != NULL) *out = s_kdp.shot;
+  return (ui_shot_state_t)s_kdp.shot_state;
+}
+
+int ui_tap_post(int x, int y, int hold_ms) {
+  const uint32_t head = s_kdp.tap_head;
+  const uint32_t tail = __atomic_load_n(&s_kdp.tap_tail, __ATOMIC_ACQUIRE);
+  if (head - tail >= UI_TAP_Q) return 0;
+  s_kdp.taps[head % UI_TAP_Q] = (ui_tap_t){(int16_t)x, (int16_t)y, (uint16_t)hold_ms};
+  __atomic_store_n(&s_kdp.tap_head, head + 1, __ATOMIC_RELEASE);
+  return (int)(head + 1 - tail);
+}
+
+bool ui_key_post(bool shutter, bool long_press) {
+  if (s_btn_q == NULL) return false;
+  /* What buttons.c does on a down edge: activity, which wakes a dark panel,
+   * and the press is not swallowed - a shutter press means a photograph. */
+  power_activity();
+  const btn_event_t down = {.id = shutter ? BTN_SHUTTER : BTN_FN, .long_press = false};
+  if (xQueueSend(s_btn_q, &down, 0) != pdTRUE) return false;
+  if (long_press) {
+    const btn_event_t hold = {.id = down.id, .long_press = true};
+    (void)xQueueSend(s_btn_q, &hold, 0);
+  }
+  klog("P4", "host key %s%s", shutter ? "SHUTTER" : "FN", long_press ? " held" : "");
+  return true;
+}
+
+void ui_plate_post(bool on) {
+  s_kdp.plate_want = on ? 1 : 0;
+  __atomic_store_n(&s_kdp.plate_asked, s_kdp.plate_asked + 1, __ATOMIC_RELEASE);
+}
+
+/*
+ * The touch panel, or the host's tap. Every touch read in ui_pass() comes
+ * through here, so a tap from UI_TAP meets the same palm edge, drift and
+ * hold rules and the same wake as a finger. Touch is in panel space; the tap
+ * is turned back into it with the inverse of the quarter turn ui_pass()
+ * applies (lx = ty, ly = DISPLAY_H_RES - 1 - tx).
+ */
+static bool ui_touch(uint16_t *tx, uint16_t *ty) {
+  const int64_t now = esp_timer_get_time();
+  if (s_kdp.tap_until_us == 0 && now - s_kdp.tap_up_us >= UI_TAP_GAP_US) {
+    const uint32_t tail = s_kdp.tap_tail;
+    if (__atomic_load_n(&s_kdp.tap_head, __ATOMIC_ACQUIRE) != tail) {
+      s_kdp.tap_now = s_kdp.taps[tail % UI_TAP_Q];
+      __atomic_store_n(&s_kdp.tap_tail, tail + 1, __ATOMIC_RELEASE);
+      s_kdp.tap_until_us = now + (int64_t)s_kdp.tap_now.hold_ms * 1000;
+      if (s_kdp.tap_until_us == 0) s_kdp.tap_until_us = 1;
+      klog("P4", "host tap %d,%d held %d ms", s_kdp.tap_now.x, s_kdp.tap_now.y, s_kdp.tap_now.hold_ms);
+      /* touch.c reports a contact as activity on its own task; this one did
+       * not pass through it. */
+      power_activity();
+    }
+  }
+  if (s_kdp.tap_until_us != 0) {
+    if (now < s_kdp.tap_until_us) {
+      *tx = (uint16_t)(DISPLAY_H_RES - 1 - s_kdp.tap_now.y);
+      *ty = (uint16_t)s_kdp.tap_now.x;
+      return true;
+    }
+    /* The lift: this read sees no contact, which is what fires the press. */
+    s_kdp.tap_until_us = 0;
+    s_kdp.tap_up_us = now;
+    return false;
+  }
+  return touch_ready() && touch_get(tx, ty);
+}
+
+static void plate_set(bool on, const char *why) {
+  if (on == s_kdp.plate_on) return;
+  s_kdp.plate_on = on;
+  s_kdp.plate_since_us = esp_timer_get_time();
+  klog("P4", "screen plate %s: %s", on ? "on" : "off", why);
+  if (on) {
+    viewfinder_run(false);
+    power_activity();
+  }
+  s_pressed = -1;
+  held = -1;
+  ui_render(render_screen, NULL);
+}
+
+/*
+ * The plate, asked for or dropped, and its rules while it is up. True while
+ * it owns the panel: the pass ends there, so nothing under it is pressed and
+ * no screen paints over it. It holds the panel awake, and ends on a touch, a
+ * key, SCREEN_PLATE off, a sleep power.c decides on anyway, or after
+ * UI_PLATE_MAX_US. The press that ends it does nothing else.
+ */
+static bool plate_pass(void) {
+  const uint32_t asked = __atomic_load_n(&s_kdp.plate_asked, __ATOMIC_ACQUIRE);
+  if (asked != s_kdp.plate_seen && !anim_active() && !s_sleep_mark) {
+    s_kdp.plate_seen = asked;
+    plate_set(s_kdp.plate_want != 0, "asked over KDP");
+  }
+  if (!s_kdp.plate_on) return false;
+  if (power_sleep_pending()) {
+    plate_set(false, "sleep");
+    return false;
+  }
+  if (esp_timer_get_time() - s_kdp.plate_since_us >= UI_PLATE_MAX_US) {
+    plate_set(false, "5 minutes up");
+    return false;
+  }
+  bool ended = false;
+  btn_event_t ev;
+  while (s_btn_q != NULL && xQueueReceive(s_btn_q, &ev, 0) == pdTRUE) ended = true;
+  uint16_t tx, ty;
+  if (ui_touch(&tx, &ty)) {
+    /* Held until the finger lifts, so the lift presses nothing under it. */
+    swallow_touch = true;
+    ended = true;
+  }
+  if (ended) {
+    plate_set(false, "a press");
+    return true;
+  }
+  power_activity();
+  return true;
+}
+
+/*
+ * A GET_SCREEN render, on this task, into the canvas, between two passes.
+ * The canvas is only a transition's scratch: no move is running (they are
+ * refused), and every move draws its own first frame into it before it reads
+ * it. The finder's panes, the toast, the dim scrim and a held press are drawn
+ * as the glass shows them, because render_screen() is what the glass shows.
+ */
+static void shot_pass(void) {
+  const uint32_t asked = __atomic_load_n(&s_kdp.shot_asked, __ATOMIC_ACQUIRE);
+  if (asked == s_kdp.shot_done) return;
+  if (ui_screen_moving() || power_sleep_pending()) {
+    s_kdp.shot_state = UI_SHOT_BUSY;
+  } else {
+    gfx_render_canvas(render_screen, NULL);
+    s_kdp.shot.gen = gfx_canvas_gen();
+    s_kdp.shot.screen = (uint8_t)s_screen;
+    s_kdp.shot.plate = s_kdp.plate_on;
+    s_kdp.shot_state = UI_SHOT_DONE;
+  }
+  __atomic_store_n(&s_kdp.shot_done, asked, __ATOMIC_RELEASE);
+}
+
 static uint32_t ui_pass(void) {
   {
     /* The pulse, first thing and unconditionally. Several branches below
@@ -10544,6 +10772,12 @@ static uint32_t ui_pass(void) {
      * splash owns the pass; not during the other moves, which are short and
      * should not wait on a channel lock between two frames. */
     if (!anim_active() || s_anim.kind == ANIM_SPLASH) cams_refresh();
+
+    /* The screen over KDP (#246): a render the host asked for, before
+     * anything this pass draws, and the test plate, which owns the pass
+     * while it is up. */
+    shot_pass();
+    if (plate_pass()) return 20;
 
     /*
      * A move in flight gets the pass, and nothing else in this function runs.
@@ -10566,7 +10800,7 @@ static uint32_t ui_pass(void) {
     if (anim_active()) {
       if (s_anim.kind == ANIM_SPLASH) {
         uint16_t sx = 0, sy = 0;
-        const bool finger = touch_ready() && touch_get(&sx, &sy);
+        const bool finger = ui_touch(&sx, &sy);
         const bool key = s_btn_q != NULL && uxQueueMessagesWaiting(s_btn_q) > 0;
         if (finger || key) {
           klog("P4", finger ? "splash cut by touch" : "splash cut by key");
@@ -10655,7 +10889,7 @@ static uint32_t ui_pass(void) {
 
     uint16_t tx = 0, ty = 0;
     int region = -1;
-    const bool down = touch_ready() && touch_get(&tx, &ty);
+    const bool down = ui_touch(&tx, &ty);
     /* True on the first pass of a contact only. A thumb resting on the
      * picture when the count starts never sets `held`, so without this every
      * pass would read it as a new tap. */

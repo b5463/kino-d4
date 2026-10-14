@@ -155,6 +155,9 @@ void gfx_render(gfx_draw_fn draw, void *ctx) {
   draw(ctx);
   gfx_present();
 }
+/* GET_SCREEN's canvas generation (#246): the pass count, which moves whenever
+ * anything is drawn here. Never 0. */
+uint32_t gfx_canvas_gen(void) { return s_pass + 1; }
 void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (g_stash == NULL) return;
   if (dx < 0) { w += dx; sx -= dx; dx = 0; }
@@ -1615,7 +1618,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 272
+#define PPMS_PER_HAND 273
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -2380,6 +2383,116 @@ static bool tap_fires(int hold_ms, int *paint_at_lift) {
   g_touch_ready = false;
   prev_vclock_us = 0;
   return fired;
+}
+
+/*
+ * The screen over KDP (#246), driven as kdp_ui.c drives it, through
+ * ui_pass(): a tap posted with ui_tap_post() opens LOOK from the menu with no
+ * touch panel at all; a render asked during the move is BUSY and one asked
+ * after it renders LOOK; a fifth tap is refused; the plate covers the screen
+ * and a key ends it without acting.
+ */
+static void check_kdp_screen(void) {
+  const screen_t scr0 = s_screen;
+  g_audit_off = true;
+  s_screen = SCR_MENU;
+  s_pressed = -1;
+  held = -1;
+  swallow_touch = false;
+  s_anim.kind = ANIM_NONE;
+  s_dim_k = 0;
+  s_lift_us = 0;
+  s_sleep_mark = false;
+  g_power_stage = POWER_AWAKE;
+  g_touch_ready = false;
+  g_touch_down = false;
+  s_btn_q = xQueueCreate(4, sizeof(btn_event_t));
+  scan_conditions();
+  draw_screen();
+  int lx, ly;
+  const int look = 1; /* MENU_DEST[1] */
+  if (MENU_DEST[look] != SCR_LOOK || !point_on(look, &lx, &ly)) {
+    fprintf(stderr, "kdp screen: no point on the LOOK row\n");
+    g_motion_failed = true;
+    g_audit_off = false;
+    return;
+  }
+  prev_vclock_us = 1000000;
+  if (ui_tap_post(lx, ly, PURE_SCREEN_TAP_HOLD_MS) != 1) {
+    fprintf(stderr, "kdp screen: the first tap was not queued alone\n");
+    g_motion_failed = true;
+  }
+  bool moving = false;
+  for (int i = 0; i < 40 && !moving; i++) {
+    ui_pass();
+    moving = anim_active();
+    prev_vclock_us += 20000;
+  }
+  if (!moving) {
+    fprintf(stderr, "kdp screen: a host tap on LOOK started no move\n");
+    g_motion_failed = true;
+  }
+  uint32_t t = ui_shot_ask();
+  ui_shot_t shot;
+  ui_pass();
+  if (moving && ui_shot_poll(t, &shot) != UI_SHOT_BUSY) {
+    fprintf(stderr, "kdp screen: a render asked during the move was not BUSY\n");
+    g_motion_failed = true;
+  }
+  for (int guard = 0; guard < 2000 && anim_active(); guard++) ui_pass();
+  prev_vclock_us += 20000;
+  t = ui_shot_ask();
+  if (ui_shot_poll(t, &shot) != UI_SHOT_WAITING) {
+    fprintf(stderr, "kdp screen: a render was answered before a pass\n");
+    g_motion_failed = true;
+  }
+  ui_pass();
+  if (ui_shot_poll(t, &shot) != UI_SHOT_DONE || shot.screen != SCR_LOOK || shot.plate || shot.gen == 0) {
+    fprintf(stderr, "kdp screen: the render after the move is not LOOK (screen %d)\n", shot.screen);
+    g_motion_failed = true;
+  }
+  printf("kdp screen: host tap opened %s, render gen %u\n", s_screen == SCR_LOOK ? "LOOK" : "something else",
+         (unsigned)shot.gen);
+
+  /* Four deep: the fifth is refused, and nothing is left behind. */
+  int queued = 0;
+  for (int i = 0; i < 4; i++) queued = ui_tap_post(10, 470, PURE_SCREEN_TAP_HOLD_MS);
+  if (queued != 4 || ui_tap_post(10, 470, PURE_SCREEN_TAP_HOLD_MS) != 0) {
+    fprintf(stderr, "kdp screen: the tap queue is not four deep (%d)\n", queued);
+    g_motion_failed = true;
+  }
+  s_kdp.tap_tail = s_kdp.tap_head;
+
+  /* The plate: up on the next pass, rendered as the plate, and dropped by a
+   * key that does nothing else. */
+  ui_plate_post(true);
+  ui_pass();
+  t = ui_shot_ask();
+  ui_pass();
+  if (!s_kdp.plate_on || ui_shot_poll(t, &shot) != UI_SHOT_DONE || !shot.plate) {
+    fprintf(stderr, "kdp screen: the plate did not come up, or did not render\n");
+    g_motion_failed = true;
+  }
+  if (!ui_key_post(false, false)) {
+    fprintf(stderr, "kdp screen: the FN key was not queued\n");
+    g_motion_failed = true;
+  }
+  prev_vclock_us += 20000;
+  ui_pass();
+  if (s_kdp.plate_on || anim_active() || s_screen != SCR_LOOK) {
+    fprintf(stderr, "kdp screen: a key did not end the plate cleanly\n");
+    g_motion_failed = true;
+  }
+
+  s_anim.kind = ANIM_NONE;
+  s_screen = scr0;
+  s_pressed = -1;
+  held = -1;
+  swallow_touch = false;
+  s_kdp.tap_until_us = 0;
+  s_kdp.tap_up_us = 0;
+  prev_vclock_us = 0;
+  g_audit_off = false;
 }
 
 /*
@@ -4166,6 +4279,14 @@ static void scenes(void) {
     s_toast_long = toast_long0;
   }
 
+  /* The test plate SCREEN_PLATE puts up for photographs of the panel (#246):
+   * fills only, no targets, the same for both hands. */
+  s_screen = SCR_MENU;
+  s_kdp.plate_on = true;
+  render_screen(NULL);
+  shot("screen_plate");
+  s_kdp.plate_on = false;
+
   review_scenes();
 
   /* Last, so nothing it touches reaches a picture. */
@@ -4175,6 +4296,7 @@ static void scenes(void) {
   check_wake_into_move();
   check_idle_dim();
   check_tap_limit();
+  check_kdp_screen();
   check_dead_send();
   check_review_loop();
 }

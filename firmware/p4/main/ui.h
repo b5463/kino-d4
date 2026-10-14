@@ -64,4 +64,56 @@ void ui_set_launch_index(uint32_t boot_count);
  */
 void ui_liveness(uint32_t *passes, uint32_t *age_ms, bool *stalled);
 
+/*
+ * The screen over KDP (#246): the UI task's half of kdp_ui.c.
+ *
+ * The KDP task posts, the UI task answers on its next pass, and neither
+ * waits on the other: every shared field has one writer. Nothing here draws
+ * on the KDP task. Safe from any task.
+ */
+
+/** GET_SCREEN's `screen` names, lower case, in screen_t order. The host's
+ *  copy is SCREEN_IDS in packages/kdp/src/protocol/types.ts. */
+#define UI_SCREEN_IDS                                                                         \
+  "menu", "shoot", "look", "gallery", "photo", "roll", "settings", "display", "sound",       \
+      "connection", "storage", "about", "status", "power"
+#define UI_SCREEN_COUNT 14
+
+typedef enum {
+  UI_SHOT_WAITING = 0, /* the UI task has not reached the ask yet */
+  UI_SHOT_DONE,        /* rendered into the canvas: read it out */
+  UI_SHOT_BUSY,        /* a move, the boot sequence or the sleep owns the panel */
+} ui_shot_state_t;
+
+typedef struct {
+  uint32_t gen;    /* gfx_canvas_gen() as the render left it */
+  uint8_t screen;  /* index into UI_SCREEN_IDS */
+  bool plate;      /* the render is the test plate */
+} ui_shot_t;
+
+/** Ask for one render of the current screen into the canvas. Returns the
+ *  ticket ui_shot_poll() answers. */
+uint32_t ui_shot_ask(void);
+
+/** Where ticket `ticket` has got to; `out` is filled on UI_SHOT_DONE. */
+ui_shot_state_t ui_shot_poll(uint32_t ticket, ui_shot_t *out);
+
+/** True while a move, the sleep's wind-down or a wake's lift owns the panel. */
+bool ui_screen_moving(void);
+
+/**
+ * A tap at logical (x, y), held `hold_ms` and lifted, through the path a
+ * finger takes. Queued four deep. Returns how many taps are waiting with
+ * this one, or 0 when the queue is full.
+ */
+int ui_tap_post(int x, int y, int hold_ms);
+
+/** The shutter (true) or FN key, through the queue the physical keys use.
+ *  `long_press` adds the 600 ms hold report. False when the queue is full or
+ *  the UI has not started. */
+bool ui_key_post(bool shutter, bool long_press);
+
+/** Show (true) or drop the test plate. */
+void ui_plate_post(bool on);
+
 #endif

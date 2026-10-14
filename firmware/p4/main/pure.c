@@ -731,3 +731,26 @@ int64_t pure_maint_deadline(int64_t now_us) { return now_us + (int64_t)PURE_MAIN
 bool pure_maint_expired(bool active, int64_t deadline_us, int64_t now_us) {
   return active && now_us >= deadline_us;
 }
+
+pure_screen_page_t pure_screen_page(uint32_t shot, uint32_t held, uint32_t total, int64_t offset,
+                                    int64_t length, uint32_t *start, uint32_t *len) {
+  if (start != NULL) *start = 0;
+  if (len != NULL) *len = 0;
+  if (shot == 0 || held != shot) return PURE_SCREEN_PAGE_STALE;
+  if (offset < 0 || offset > (int64_t)total) return PURE_SCREEN_PAGE_RANGE;
+  int64_t n = length <= 0 || length > PURE_SCREEN_CHUNK_MAX ? PURE_SCREEN_CHUNK_MAX : length;
+  if (n > (int64_t)total - offset) n = (int64_t)total - offset;
+  if (start != NULL) *start = (uint32_t)offset;
+  if (len != NULL) *len = (uint32_t)n;
+  return PURE_SCREEN_PAGE_OK;
+}
+
+/* A whole number in [lo, hi]. `v == v` is false for NaN. */
+static bool whole_in(double v, double lo, double hi) {
+  return v == v && v >= lo && v <= hi && v == (double)(int64_t)v;
+}
+
+bool pure_screen_tap_ok(double x, double y, double hold_ms, int w, int h) {
+  return whole_in(x, 0, (double)w - 1) && whole_in(y, 0, (double)h - 1) &&
+         whole_in(hold_ms, PURE_SCREEN_TAP_HOLD_MIN_MS, PURE_SCREEN_TAP_HOLD_MAX_MS);
+}

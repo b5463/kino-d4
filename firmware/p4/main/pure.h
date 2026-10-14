@@ -1014,4 +1014,48 @@ int64_t pure_maint_deadline(int64_t now_us);
 /** True when maintenance is held and `now_us` has reached its deadline. */
 bool pure_maint_expired(bool active, int64_t deadline_us, int64_t now_us);
 
+/* ------------------------------------------------------------------ */
+/* The screen over KDP (#246)                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * GET_SCREEN reads one render of the screen out of the canvas a page at a
+ * time. The host names the render by `shot`, the canvas generation the render
+ * left behind (gfx_canvas_gen()); a page is answered only while the canvas
+ * still holds that generation. 3072 bytes a page keeps every reply under the
+ * 3.5 KB the USB link carries without a stall (a 4 KiB frame timed out on the
+ * bench), and makes a 800x480 RGB565 screen exactly 250 pages.
+ */
+#define PURE_SCREEN_CHUNK_MAX 3072
+
+typedef enum {
+  PURE_SCREEN_PAGE_OK = 0,
+  PURE_SCREEN_PAGE_STALE, /* no render, or the canvas was drawn again after it */
+  PURE_SCREEN_PAGE_RANGE, /* offset outside 0..total */
+} pure_screen_page_t;
+
+/**
+ * The bytes of render `shot` a page request gets.
+ *
+ * `held` is the canvas generation now, 0 before the first render; `shot` 0
+ * names no render. `length` <= 0 asks for a full page. On PURE_SCREEN_PAGE_OK,
+ * `*start` and `*len` say what to send: `len` is short at the end of the
+ * render and 0 at exactly `total`, which is how the host knows it has the
+ * whole picture and that the canvas did not change while it read it.
+ */
+pure_screen_page_t pure_screen_page(uint32_t shot, uint32_t held, uint32_t total, int64_t offset,
+                                    int64_t length, uint32_t *start, uint32_t *len);
+
+/** A finger's longest hold a host may ask UI_TAP for, and its default. */
+#define PURE_SCREEN_TAP_HOLD_MIN_MS 20
+#define PURE_SCREEN_TAP_HOLD_MAX_MS 4000
+#define PURE_SCREEN_TAP_HOLD_MS 80
+
+/**
+ * True when a UI_TAP asks for a point on the logical w x h screen and a hold
+ * a finger could make. The values arrive as JSON numbers: a fraction, a
+ * negative, NaN or anything past the edge is refused, not rounded.
+ */
+bool pure_screen_tap_ok(double x, double y, double hold_ms, int w, int h);
+
 #endif

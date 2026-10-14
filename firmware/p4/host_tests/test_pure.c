@@ -1449,6 +1449,70 @@ static void test_maint_deadline(void) {
   CHECK((int64_t)PURE_FW_IDLE_MS < (int64_t)PURE_MAINT_HOLD_MS, "the session idle is not shorter than the hold");
 }
 
+/* ------------------------------------------------------------------ */
+/* pure_screen_page, pure_screen_tap_ok (#246)                          */
+/* ------------------------------------------------------------------ */
+
+static void test_screen_page(void) {
+  const uint32_t total = 800u * 480u * 2u;
+  uint32_t s = 99, n = 99;
+  CHECK(PURE_SCREEN_CHUNK_MAX == 3072, "a page is %d bytes, the contract says 3072", PURE_SCREEN_CHUNK_MAX);
+  CHECK(total % PURE_SCREEN_CHUNK_MAX == 0 && total / PURE_SCREEN_CHUNK_MAX == 250,
+        "a screen is not 250 whole pages");
+
+  CHECK(pure_screen_page(7, 7, total, 0, 0, &s, &n) == PURE_SCREEN_PAGE_OK && s == 0 && n == 3072,
+        "a default page read %u at %u", n, s);
+  CHECK(pure_screen_page(7, 7, total, 3072, 9000, &s, &n) == PURE_SCREEN_PAGE_OK && s == 3072 && n == 3072,
+        "an oversized page was not clamped: %u", n);
+  CHECK(pure_screen_page(7, 7, total, 100, 2, &s, &n) == PURE_SCREEN_PAGE_OK && s == 100 && n == 2,
+        "a two-byte page read %u", n);
+  CHECK(pure_screen_page(7, 7, total, total - 10, 3072, &s, &n) == PURE_SCREEN_PAGE_OK && n == 10,
+        "the last page is not short: %u", n);
+  CHECK(pure_screen_page(7, 7, total, total, 3072, &s, &n) == PURE_SCREEN_PAGE_OK && s == total && n == 0,
+        "a page at the end is not empty: %u", n);
+  CHECK(pure_screen_page(7, 7, total, total + 1, 3072, &s, &n) == PURE_SCREEN_PAGE_RANGE && n == 0,
+        "a page past the end was answered");
+  CHECK(pure_screen_page(7, 7, total, -1, 3072, &s, &n) == PURE_SCREEN_PAGE_RANGE, "a negative offset was answered");
+
+  /* The refusal that keeps a picture whole: a page of a render the canvas no
+   * longer holds is refused, whatever its range. */
+  CHECK(pure_screen_page(7, 8, total, 0, 3072, &s, &n) == PURE_SCREEN_PAGE_STALE && n == 0,
+        "a page of a stale render was answered");
+  CHECK(pure_screen_page(7, 8, total, total, 3072, &s, &n) == PURE_SCREEN_PAGE_STALE,
+        "the end check of a stale render passed");
+  CHECK(pure_screen_page(0, 0, total, 0, 3072, &s, &n) == PURE_SCREEN_PAGE_STALE,
+        "shot 0 on a canvas never rendered was answered");
+  CHECK(pure_screen_page(0, 5, total, 0, 3072, &s, &n) == PURE_SCREEN_PAGE_STALE, "shot 0 was answered");
+  CHECK(pure_screen_page(7, 7, total, 0, 3072, NULL, NULL) == PURE_SCREEN_PAGE_OK, "NULL outputs refused");
+
+  /* Every page of one render, in order, covers it exactly once. */
+  uint32_t at = 0;
+  int pages = 0;
+  while (pure_screen_page(3, 3, total, at, 3072, &s, &n) == PURE_SCREEN_PAGE_OK && n > 0) {
+    if (s != at) break;
+    at += n;
+    pages++;
+  }
+  CHECK(at == total && pages == 250, "the pages covered %u bytes in %d pages", at, pages);
+}
+
+static void test_screen_tap(void) {
+  CHECK(pure_screen_tap_ok(0, 0, 80, 800, 480), "the top-left corner refused");
+  CHECK(pure_screen_tap_ok(799, 479, 80, 800, 480), "the bottom-right corner refused");
+  CHECK(pure_screen_tap_ok(400, 240, PURE_SCREEN_TAP_HOLD_MIN_MS, 800, 480), "the shortest hold refused");
+  CHECK(pure_screen_tap_ok(400, 240, PURE_SCREEN_TAP_HOLD_MAX_MS, 800, 480), "the longest hold refused");
+  CHECK(!pure_screen_tap_ok(800, 10, 80, 800, 480), "x 800 accepted");
+  CHECK(!pure_screen_tap_ok(10, 480, 80, 800, 480), "y 480 accepted");
+  CHECK(!pure_screen_tap_ok(-1, 10, 80, 800, 480), "x -1 accepted");
+  CHECK(!pure_screen_tap_ok(10.5, 10, 80, 800, 480), "a fractional x accepted");
+  CHECK(!pure_screen_tap_ok(10, 10, 19, 800, 480), "a 19 ms hold accepted");
+  CHECK(!pure_screen_tap_ok(10, 10, 4001, 800, 480), "a 4001 ms hold accepted");
+  const double nan = 0.0 / 0.0;
+  CHECK(!pure_screen_tap_ok(nan, 10, 80, 800, 480), "NaN accepted");
+  CHECK(!pure_screen_tap_ok(1e300, 10, 80, 800, 480), "1e300 accepted");
+  CHECK(PURE_SCREEN_TAP_HOLD_MS < PURE_TAP_MAX_MS, "the default hold is not a tap");
+}
+
 int main(void) {
   test_sync_classify();
   test_quality();
@@ -1480,6 +1544,8 @@ int main(void) {
   test_still();
   test_fw_session();
   test_maint_deadline();
+  test_screen_page();
+  test_screen_tap();
 
   if (failures != 0) {
     printf("p4 host tests: %d of %d checks FAILED\n", failures, checks);

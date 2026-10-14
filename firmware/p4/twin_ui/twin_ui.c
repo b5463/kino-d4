@@ -276,6 +276,10 @@ void gfx_render(gfx_draw_fn draw, void *ctx) {
   draw(ctx);
   gfx_present();
 }
+/* GET_SCREEN's canvas generation (#246). The Twin has no KDP task reading
+ * the canvas behind the UI's back, so the pass count stands in: it moves
+ * whenever anything is drawn. Never 0. */
+uint32_t gfx_canvas_gen(void) { return s_pass + 1; }
 
 void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (dx < 0) { w += dx; sx -= dx; dx = 0; }

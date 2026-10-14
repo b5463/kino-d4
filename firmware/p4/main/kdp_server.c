@@ -42,6 +42,7 @@
 #include "kdp_net.h"
 #include "kdp_recipes.h"
 #include "kdp_sounds.h"
+#include "kdp_ui.h"
 #include "kdp/crc32.h"
 #include "kdp/decoder.h"
 #include "kdp/packet.h"
@@ -792,6 +793,10 @@ static void handle_capabilities(uint32_t seq) {
    * nothing to move. Studio reads this to grey its slider out instead of
    * offering a control that does nothing. */
   cJSON_AddBoolToObject(caps, "brightnessControl", false);
+  /* The Screen group (#246, kdp_ui.c): dispatched in every build, so the flag
+   * is a constant like the dispatch. A body whose panel did not come up still
+   * answers, with INVALID_STATE, rather than claiming the group is gone. */
+  cJSON_AddBoolToObject(caps, "screenControl", true);
 
   /*
    * Networking and Roll. Four flags rather than two, for the same reason
@@ -3807,6 +3812,13 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case KDP_CMD_SOUND_DELETE:
       send_module(frame->type, frame->seq,
                   kdp_sounds_handle(frame->type, req, frame->payload, frame->payload_len));
+      break;
+    /* The body's own screen (#246): kdp_ui.c asks the UI task and answers. */
+    case KDP_CMD_GET_SCREEN:
+    case KDP_CMD_SCREEN_PLATE:
+    case KDP_CMD_UI_TAP:
+    case KDP_CMD_UI_KEY:
+      send_module(frame->type, frame->seq, kdp_ui_handle(frame->type, req));
       break;
     case KDP_CMD_SET_MODE: handle_set_mode(frame->seq, req); break;
     case KDP_CMD_GET_CONFIG: handle_get_config(frame->seq); break;

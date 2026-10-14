@@ -162,6 +162,19 @@ const uint16_t *gfx_stash_px(void);
 void gfx_layer_keep(void);
 void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h);
 
+/**
+ * The canvas's generation: it goes up whenever something may have drawn into
+ * the canvas - gfx_render_canvas(), a blit, a present - and is never 0.
+ *
+ * GET_SCREEN (#246, kdp_ui.c) renders the screen into the canvas once and
+ * then reads it out a page at a time from the KDP task while the UI carries
+ * on. A page is answered only while the generation is still the one the
+ * render left, so a picture read across a move is refused rather than sent
+ * half one screen and half the next. Only the UI task bumps it; any task may
+ * read it.
+ */
+uint32_t gfx_canvas_gen(void);
+
 /** Frames presented and the time they took, for bandwidth checks. */
 void gfx_stats(uint32_t *frames, uint32_t *last_ms);
 

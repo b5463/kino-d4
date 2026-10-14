@@ -11,7 +11,7 @@ The words on the glass are not here. They are in [`docs/DEVICE_COPY.md`](../docs
 | File | What it holds |
 |---|---|
 | `firmware/p4/main/ui.c` | Every screen, the hit test, the moves, the UI task. No NVS and no filesystem: the Twin compiles it to wasm. |
-| `firmware/p4/main/ui.h` | `ui_start()`, `ui_set_launch_index()`, `ui_liveness()`. |
+| `firmware/p4/main/ui.h` | `ui_start()`, `ui_set_launch_index()`, `ui_liveness()`, and the screen over KDP: `ui_shot_ask()`, `ui_tap_post()`, `ui_key_post()`, `ui_plate_post()`. |
 | `firmware/p4/main/ui_theme.h` | `RGB()`, the launch shade names, the type roles and `K_PAIRS`. |
 | `firmware/p4/main/ui_palette.h` | Generated from the palette JSON by `scripts/gen-device-palette.mjs`. Never edited by hand. |
 | `firmware/p4/main/ui_motion.h` | Every duration and curve, and the five motion rules. |
@@ -19,6 +19,7 @@ The words on the glass are not here. They are in [`docs/DEVICE_COPY.md`](../docs
 | `firmware/p4/main/logo_kino_d4.h` | The KINO D4 wordmark, 8-bit coverage. Reserved, not MIT. |
 | `firmware/p4/main/ui_mark_odd_jobs.h` | The ODD JOBS symbol at two sizes, 8-bit coverage. Reserved, not MIT. |
 | `firmware/p4/main/gfx.c` | The tile renderer and the panel-orientation moves. |
+| `firmware/p4/main/kdp_ui.c` | GET_SCREEN, SCREEN_PLATE, UI_TAP and UI_KEY on the KDP task (#246). It asks `ui.c` and never draws. |
 | `firmware/p4/main/conditions.h` | The conditions a screen reports, and their severity. |
 | `firmware/p4/host_preview/preview.c` | Renders every screen for both hands and audits them. |
 | `firmware/p4/twin_ui/twin_ui.c` | The same `ui.c` in KINO Twin. |
@@ -320,7 +321,7 @@ One sound per outcome, played at the moment the screen shows it, not when the fa
 7. The dim scrim, `DIM_SCRIM_K` at full dim, over everything.
 8. A called-off sleep's mark, leaving over the scrim.
 
-Outside `draw_screen()`, whole-panel renders replace it: the boot field, the wordmark at sleep and power-down, RESTARTING, and black.
+Outside `draw_screen()`, whole-panel renders replace it: the boot field, the wordmark at sleep and power-down, RESTARTING, black, and the test plate (`draw_plate()`).
 
 ## System states
 
@@ -343,6 +344,8 @@ Outside `draw_screen()`, whole-panel renders replace it: the boot field, the wor
 | Restart, power-down | RESTARTING for `MOTION_RESTARTING_MS`, the wordmark, a fade over `MOTION_POWER_FADE_FRAMES` frames, then black. A blocking loop: it only runs on the way to a reset. |
 | Safe mode | `COND_SAFE_MODE`: three crashes in a row left the radio and uploads out. Reported as a condition. |
 | A dead panel | Cannot show anything. Reported over KDP. |
+| Seen and driven over KDP | GET_SCREEN renders the screen once into the canvas between two passes (`shot_pass()`), through `render_screen()`, so the picture is what the glass shows: finder panes, toast, dim scrim, a held press. The host reads it out a page at a time, `PURE_SCREEN_CHUNK_MAX` bytes a page, while the UI carries on; a page is refused once the canvas generation (`gfx_canvas_gen()`) moved. Refused while a move, the sleep's wind-down or a wake's lift runs (`ui_screen_moving()`). A UI_TAP goes through `ui_touch()`, which every touch read in `ui_pass()` uses, `UI_TAP_Q` deep: the palm edge, the drift and hold rules and the wake that swallows a press all apply, and each tap is lifted for `UI_TAP_GAP_US` before the next lands. A UI_KEY goes on the physical keys' queue. The state lives in PSRAM. |
+| Test plate | SCREEN_PLATE: a 32-step grey ramp, every palette colour, the eight launch shades over their pressed steps, and a 1 px grid at a 20 px pitch, for photographs of the panel. No words. It holds the panel awake and ends on a touch, a key, SCREEN_PLATE off, a sleep power.c decides on anyway, or after `UI_PLATE_MAX_US` (5 minutes). The press that ends it does nothing else. |
 
 
 ## Renderer budget
