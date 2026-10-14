@@ -60,7 +60,7 @@ jobs:
           docker run --rm -v "$RUNNER_TEMP:/out" -e MINIO_TAG golang:1.24 sh -ec '
             git clone --quiet --depth 1 --branch "$MINIO_TAG" https://github.com/minio/minio.git /src
             cd /src
-            CGO_ENABLED=0 go build -trimpath -o /out/minio .'
+            CGO_ENABLED=0 go build -trimpath -ldflags "$(go run buildscripts/gen-ldflags.go)" -o /out/minio .'
           "$RUNNER_TEMP/minio" --version
       - name: Start pinned MinIO
         run: |
