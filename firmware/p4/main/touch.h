@@ -34,4 +34,12 @@ bool touch_get(uint16_t *x, uint16_t *y);
 /** Total touches seen since boot — a cheap "is the panel wired" counter. */
 uint32_t touch_count(void);
 
+/**
+ * Whether a resting contact counts as activity. The UI sets it every pass:
+ * true on SHOOT, where a still thumb is someone framing; false everywhere
+ * else, where a contact still for PURE_STILL_CONTACT_S stops keeping the panel
+ * awake (pure_still_step()).
+ */
+void touch_rest_counts(bool on);
+
 #endif

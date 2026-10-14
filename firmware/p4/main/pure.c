@@ -675,3 +675,42 @@ const char *pure_lid_state_name(int state) {
     default: return "unknown";
   }
 }
+
+bool pure_shoot_dim_due(uint32_t idle_s, int dim_s, int sleep_s) {
+  if (dim_s <= 0 || sleep_s <= 0) return false;
+  int from = sleep_s - PURE_SHOOT_DIM_LEAD_S;
+  if (from < dim_s) from = dim_s;
+  return idle_s >= (uint32_t)from;
+}
+
+pure_tap_t pure_tap_check(int dx, int dy, int drift_px, int64_t held_ms) {
+  if (dx * dx + dy * dy > drift_px * drift_px) return PURE_TAP_DRIFTED;
+  if (held_ms > PURE_TAP_MAX_MS) return PURE_TAP_HELD;
+  return PURE_TAP_OPEN;
+}
+
+pure_contact_t pure_still_step(pure_still_t *st, bool down, uint16_t x, uint16_t y, int64_t now_us,
+                               bool rest_counts) {
+  if (st == NULL) return down ? PURE_CONTACT_ACTIVE : PURE_CONTACT_UP;
+  if (!down) {
+    memset(st, 0, sizeof *st);
+    return PURE_CONTACT_UP;
+  }
+  /* Measured from where it last moved, not from the previous poll, so a
+   * slow creep still adds up to a move. */
+  const int dx = (int)x - (int)st->x, dy = (int)y - (int)st->y;
+  if (!st->down || dx * dx + dy * dy > PURE_STILL_CONTACT_PX * PURE_STILL_CONTACT_PX) {
+    st->down = true;
+    st->x = x;
+    st->y = y;
+    st->since_us = now_us;
+    st->still = false;
+  }
+  const int64_t limit_s = rest_counts ? PURE_REST_CONTACT_S : PURE_STILL_CONTACT_S;
+  if (now_us - st->since_us < limit_s * 1000000) {
+    return PURE_CONTACT_ACTIVE;
+  }
+  if (st->still) return PURE_CONTACT_STILL;
+  st->still = true;
+  return PURE_CONTACT_WENT_STILL;
+}

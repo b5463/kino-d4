@@ -30,10 +30,10 @@ Logical space is `UI_W` x `UI_H`, 800 x 480 px, landscape. The panel's own long 
 | Screen | Opened from | Back goes to | What it does |
 |---|---|---|---|
 | `SCR_MENU` | Boot, and Back from the top level | stays | The SHOOT card and five rows: LOOK, GALLERY, ROLL, SETTINGS, POWER. |
-| `SCR_SHOOT` | The SHOOT card | `SCR_MENU` | The four streams, a quarter of the panel each, edge to edge. A MENU button on the hand's side. A 34 px status bar at the foot with the look, the mode, the flash and the card; a press on the bar opens LOOK. |
-| `SCR_LOOK` | The LOOK row, or the SHOOT bar | `SCR_MENU`, or `SCR_SHOOT` when opened from it | The look picker, COLOUR or B&W, WIGGLE or QUAD, FLASH AUTO, ON or OFF, and in QUAD which lens. |
+| `SCR_SHOOT` | The SHOOT card | `SCR_MENU` | The four streams, a quarter of the panel each, edge to edge. A MENU button on the hand's side. A 34 px status bar at the foot with the look, the mode, the flash, the four (with a count such as 3/4 beside them only when one is missing), STUDIO while Studio talks, and the card only when it is missing or under `COND_CARD_LOW_SHOTS` photographs left and the card pill is not saying it (during the count, which hides the pill, the bar keeps it); a press on the decisions opens LOOK. Outermost at the bar's hand end, the TIMER panel: TIMER OFF in `K_INK_QUIET` or TIMER 10 S in `K_INK`, its own target in the same `SH_LOOK_HIT_H` band, out to the hand's edge. The look's panel takes what is left and cuts a long name with an ellipsis. A pane with no picture says NO PICTURE over a 248 x 52 RESTART THE CAMERAS button; the button is the target, not the pane. |
+| `SCR_LOOK` | The LOOK row, or the SHOOT bar | `SCR_MENU`, or `SCR_SHOOT` when opened from it | The look picker, COLOUR or B&W, WIGGLE or QUAD, FLASH AUTO, ON or OFF, and in QUAD which lens: ALL, or a lens as the four-mark with its cell lit (`lens_glyph()`), no camera numbers. |
 | `SCR_GALLERY` | The GALLERY row | `SCR_MENU` | Three by two tiles of 252 x 189 px, the page pair in the header, `n / N` beside the title. |
-| `SCR_PHOTO` | A gallery tile, and after a shot | `SCR_GALLERY` | The photograph in a 600 x 450 well, playing. A 162 px column on the hand's side: the facts, previous and next, DELETE, SEND TO ROLL, FAVOURITE. |
+| `SCR_PHOTO` | A gallery tile, and after a shot | `SCR_GALLERY`; `SCR_SHOOT` after a shot | The photograph in a 600 x 450 well, playing. A 162 px column on the hand's side: the facts, previous and next, DELETE, SEND TO ROLL, FAVOURITE. |
 | `SCR_ROLL` | The ROLL row | `SCR_MENU` | The QR a guest scans, the address, the code, one word for the connection, and the counts from the card. |
 | `SCR_SETTINGS` | The SETTINGS row | `SCR_MENU` | Six rows: Display, Sound, Connection, Storage, About, Status. |
 | `SCR_DISPLAY` | Settings | `SCR_SETTINGS` | Dim after, sleep after, how long a shot stays up, camera idle. |
@@ -46,10 +46,10 @@ Logical space is `UI_W` x `UI_H`, 800 x 480 px, landscape. The panel's own long 
 
 Rules that hold on every screen:
 
-- Back goes one level, to `SCREEN_PARENT`, never to a remembered screen. LOOK opened from the finder is the one exception.
-- The shutter key takes a photograph from any screen, and the capture strip reports it over whatever is on the glass. A long press starts the self-timer; any press while it runs cancels it.
+- Back goes one level, to `SCREEN_PARENT`, never to a remembered screen. Two exceptions, both back to the finder: LOOK opened from the finder (`s_look_from_shoot`), and the review after a shot (`s_review_from_shot`).
+- The shutter key takes a photograph on SHOOT and on the untouched review after a shot. On any other screen it opens the finder, and the capture strip reports a running capture over whatever is on the glass. Every key acts on its down edge; a long press does nothing. With TIMER 10 S on SHOOT's bar the shutter starts a `TIMER_S` second count instead (`fire_shutter()`), and the count's end is the capture (`shutter_now()`). Either key or a tap that lands on the picture while it runs cancels it, and so do turning the panel off and leaving SHOOT; each toasts Timer cancelled. A thumb already resting on the picture when the count starts is the framing grip and does not cancel it. Under HOLD a report that lands during the count does not take that press: the cancel comes first and the report waits for the next one. Under a resting thumb the report stays held and the count's end clears it. The setting is session state: off at boot and at the sleep, never written to config.
 - A screen sets `s_list_top` while it draws, and the hit test reads it afterwards. A rectangle the hit test computes on its own is the bug `ui.c` kept finding.
-- After a good shot on SHOOT the photograph opens for review, for the longer of `shoot.displayAfterShotS` and `MOTION_REVIEW_MIN_S`, plus `MOTION_REVIEW_TAIL_MS`, then returns to the finder. `-1` holds it until a touch.
+- After a good shot on SHOOT the photograph opens for review, for the longer of `shoot.displayAfterShotS` and `MOTION_REVIEW_MIN_S`, plus `MOTION_REVIEW_TAIL_MS`, then returns to the finder as a back move. `-1` holds it until a touch. While its clock runs and nothing has touched it, the shutter fires and the finder slides back in; `shutter_now()` acknowledges the report still up first. With TIMER 10 S on, that press starts the count, which runs on the finder. A report that lands while the self-timer counts opens no review: it stays on SHOOT's banner, and the count's end acknowledges it. A touch stops the clock, and the shutter then only opens the finder. BACK and a confirmed DELETE end on SHOOT, DELETE with the undo toast; the next photograph clears that toast. The clock never carries an open dialog off. Under HOLD the first press acknowledges and the next opens the finder. PHOTO opened from GALLERY has none of this. On PHOTO the capture strip is a card inside the photo well (`PH_STRIP_Y`), clear of the column, and a toast sits above it.
 
 Dialogs are questions and nothing else. Seven exist: `DLG_RESTART`, `DLG_DELETE`, `DLG_DELETE_ALL`, `DLG_FORMAT`, `DLG_FACTORY`, `DLG_WELCOME` and `DLG_UPDATED`. Focus starts on the safe action. Something the camera is doing, rather than asking, is a strip or a row, never a dialog.
 
@@ -71,6 +71,9 @@ The shutter sits on the body's top wall at the +X end. The right hand holds that
 | `HIT_SLOP` | 12 | How far a target reaches past a button drawn on a picture. |
 | `HAND_EDGE` | 6 | A contact that begins this close to the hand's edge is a palm, not a finger. |
 | `TOUCH_DRIFT` | 40 | A contact that travels further than this is not a tap and fires nothing. |
+| `PURE_TAP_MAX_MS` | 2500 | A contact held longer than this, ms, is not a tap. The pressed paint clears while the finger is still down, nothing fires on the lift, and one klog line says so. Not shorter: a slow, deliberate press runs to 2 s. |
+| `PURE_STILL_CONTACT_S` | 10 | Off SHOOT, a contact still this long, s, stops counting as activity. |
+| `PURE_STILL_CONTACT_PX` | 40 | Still means within this many panel px of where the contact last moved. |
 | `SH_LOOK_HIT_H` | 52 | The SHOOT bar's target, taller than the 34 px bar it covers. |
 
 ## Colour
@@ -104,7 +107,7 @@ From MAO's colour header, mao_ui_type.h in the MAO tree: ground 08080A, ink F1EC
 | `K_INK` | F1ECE2 | 0xF77C | 17.44 | Every word on the dark grounds, the marks, the star, SENT, a selected segment's fill. |
 | `K_INK_QUIET` | 8F8B85 | 0x8C50 | 5.73 | Captions, readings, a second line. Never on `K_OFF`. |
 | `K_ACCENT_INK` | 2A0E1C | 0x2863 | 1.11 | Type on the launch shade: the SHOOT card, a pressed control. |
-| `K_FAULT` | E5484D | 0xE249 | 5.14 | Red as a mark or a fill: a lost camera, a destructive press, the lens hint. |
+| `K_FAULT` | E5484D | 0xE249 | 5.14 | Red as a mark or a fill: a lost camera, a destructive press, the card pill and the lens hint. |
 | `K_FAULT_INK` | F26A60 | 0xF34C | 6.79 | Red as type on the dark grounds. |
 
 Roles point at a colour; a role changes meaning by pointing somewhere else.
@@ -153,12 +156,13 @@ The pink shifts slightly on each start. `K_LAUNCH` holds eight shades: MAO pink 
 | Disabled row | `K_ROW`, no edge, no chevron | `dim_ink(K_INK, K_ROW)` |
 | Destructive row at rest | `K_ROW` | `K_FAULT_INK` |
 | Destructive row pressed, DELETE pressed | `K_FAULT` | `K_GROUND` |
-| Lens hint on SHOOT | `K_FAULT` pill | `K_GROUND` |
+| Card pill and lens hint on SHOOT | `K_FAULT` pill | `K_GROUND` |
 | Severity on a STATUS row: PROBLEM, CHECK, NOTE | a 4 px bar beside the row | `K_FAULT_INK`, `K_INK`, `K_INK_QUIET`, always with the word |
+| The header chip | none | `K_FAULT_INK` on a FAULT, `K_INK` on a WARN; the readings beside it `K_INK_QUIET` |
 | Toast | `K_TOAST`, `K_EDGE` outline | `K_INK` |
 | Menu rows | `K_ROW`, flat | `K_INK` |
 | SHOOT card | `K_ACCENT` | `K_ACCENT_INK` |
-| Capture working | `K_INK` bar and cells | `K_INK` |
+| Capture working | `K_INK` bar; a lens asked `K_OFF`, its frame in easing to `K_INK` over `IN_EASE_MS`, a lens left out a `K_INK` outline. The ease is paced at 20 ms from SAVING only; while frames still cross the links it steps on the finder's own pass | `K_INK` |
 | Capture landed | `K_ACCENT` cells for `MOTION_LAND_HOLD_MS`, then back to `K_INK` over `MOTION_LAND_BACK_MS` | `K_INK` |
 | Capture partial or failed | `K_FAULT` on the lost cells while the strip is up | `K_INK` |
 | ROLL lamp | online `K_INK`, error `K_FAULT`, offline a `K_INK_QUIET` ring | |
@@ -196,7 +200,7 @@ Every mark is ink (`K_MARK`), drawn as coverage with `mask_blit()`, never steppe
 
 - **The KINO D4 wordmark.** `logo_kino_d4.h`, 374 x 52, baked by `tools/mkmask.mjs` from `docs/assets/brand/kino-d4-white-on-dark.png`. Shown at sleep, restart and power-down.
 - **The ODD JOBS symbol.** `ui_mark_odd_jobs.h`, baked by `tools/mkmask.mjs` from the supplied outline `hardware/pcb/kino-d4-carrier-a0/brand/odd-jobs-symbol.json` and never redrawn. The 50 x 40 bake is drawn on ABOUT under MADE BY. The 158 x 128 bake is in the header and not drawn: a boot mark is an option, not built.
-- **The four-mark.** `four_mark()`: four cells, one per camera, left to right or two by two. On the menu card a filled cell is a camera that answers and a 3 px outline is one that does not. On a capture strip a cell is a frame: `K_INK` in hand, the launch shade as it lands, `K_FAULT` lost, `K_OFF` empty.
+- **The four-mark.** `four_mark()`: four cells, one per camera, left to right or two by two. Cell i is always lens i, in slot order, never the i-th frame counted. On the menu card a filled cell is a camera that answers and a 3 px outline is one that does not. Everywhere else an outline, a sixth of the cell thick, is a lens that was not asked (`FM_ABSENT`). On a capture strip a cell is that lens's frame: `K_OFF` while it is out, easing to `K_INK` as it crosses in, the launch shade as it lands, `K_FAULT` lost. On a gallery tile and PHOTO the cells come from `gallery_item_t.have`, which lenses have a file on the card, and on PHOTO a file that would not decode is red as well. The card does not record which lenses were asked, so there every lens counts as asked; the review after a shot takes them from the report (`s_photo_asked`), so a lens left out stays an outline and is not counted MISSING, as on the strip beside it; a quad's empty quarter carries the mark with its lens red, and MISSING or DAMAGED. When all four lenses land, the strip's gaps close to one bar over `MOTION_LAND_HOLD_MS`, stay shut while the shade turns, and open again over the last `LAND_REOPEN_MS` (`close_gap()`), inside the same `MOTION_LAND_MS`. Nothing short of four closes.
 - **Icons.** One set, drawn, not baked: a 22 px box (`ICON_BOX`) and a 2.5 px anti-aliased stroke, sampled once into PSRAM. Back is an arrow; the pager's chevrons are the item before and after.
 
 ## Grid
@@ -236,7 +240,21 @@ The five rules, as `ui_motion.h` states them:
 - **SMOOTH.** No level changes in a step or a cut. A scrim, a fade or a move runs on a curve, one value per presented frame.
 - **WIGGLE.** The exception. A wigglegram is hard cuts at its frame rate (`wiggle.fps`, `PURE_WIGGLE_FPS_DEFAULT`), one way round, the subject pinned. Its smoothness is alignment, never a crossfade.
 
-Curves: `motion_smooth()` (smootherstep) for anything that travels, `motion_ease_out()` for the screen answering a touch, `motion_accel()` for something leaving for good.
+Curves: `motion_smooth()` (smootherstep) for anything that travels on its own, `motion_ease_out()` for the screen answering a touch, `motion_accel()` for something leaving for good.
+
+Who started a move picks its curve. A tap's release and a key run inside the `s_by_hand` bracket, and a move started there is by hand.
+
+| Move | Started by | Curve |
+|---|---|---|
+| Open out of a row | A tap or a key, the shutter included | `motion_by_hand()` on the move's time. 11.0 % of the travel at 16 ms. |
+| Back into the row | A tap or a key | `motion_by_hand()` on the time, flipped: it leaves fast and settles into the row. 13.5 % at 16 ms. |
+| Slide beside the parent | A tap or a key | `motion_by_hand()` on the time. |
+| The review opening after a shot, and closing on its clock | Nobody | `motion_smooth()`. |
+| The cascade, the splash | Nobody | `motion_smooth()`; the splash leaves on `motion_accel()`. |
+
+`motion_by_hand()` is cubic ease-out (`motion_ease_out()`). `MOTION_HAND_QUAD` set to 1 swaps in quadratic ease-out (`motion_ease_out_quad()`, 7.5 % at 16 ms) if the cubic reads abrupt on the panel. It is 0. The spans stay `MOTION_OPEN_MS` and `MOTION_BACK_MS` either way, and a move lands on the destination's own pixels: `lerpi()` rounds half away from zero, so no last-frame 1 px snap.
+
+The row's wash follows the card, not the clock. By hand, on an open it is gone when the card is halfway out, over about five frames; on a back move it condenses over the card's last fifth and is whole on the frame the card lands. Untouched moves keep it on the clock: the first third of an open, the last third of a back move.
 
 | Token | Value | What |
 |---|---|---|
@@ -250,6 +268,9 @@ Curves: `motion_smooth()` (smootherstep) for anything that travels, `motion_ease
 | `MOTION_LAND_HOLD_MS` | 120 ms | The landed cells in the launch shade. |
 | `MOTION_LAND_BACK_MS` | 180 ms | And back to ink on `motion_smooth()`. |
 | `MOTION_LAND_MS` | 300 ms | LAND in all. |
+| `MOTION_PILL_PULSE_UP_MS` | 140 ms | The card pill out `MOTION_PILL_PULSE_PX` a side, on a shutter capture.c refused for the card. |
+| `MOTION_PILL_PULSE_BACK_MS` | 280 ms | And back, on `motion_smooth()`. |
+| `MOTION_PILL_PULSE_MS` | 420 ms | PULSE in all. |
 | `MOTION_TOAST_MS` | 2200 ms | A toast. |
 | `MOTION_UNDO_MS` | 30000 ms | The undo toast after a delete. |
 | `MOTION_DIM_MS` | 1600 ms | The dim scrim arriving. |
@@ -259,7 +280,7 @@ Curves: `motion_smooth()` (smootherstep) for anything that travels, `motion_ease
 
 The moves:
 
-- **Open.** The pressed row is the destination's header from the first frame. The card grows to the page with the destination revealed inside it; the rows above lift and the rows below drop as two rigid blocks. Back runs it in reverse into the row you left from.
+- **Open.** The pressed row is the destination's header from the first frame. The card grows to the page with the destination revealed inside it; the rows above lift and the rows below drop as two rigid blocks. Back closes the card into the row you left from.
 - **Slide.** A detail screen arriving beside its parent, SETTINGS to STORAGE or GALLERY to PHOTO. Both frames are prepared once and shown in panel orientation by `gfx_slide_show()`.
 - **Cascade.** The menu's rows landing one after another, only after the boot.
 - **Snapshot.** SHOOT and GALLERY are too costly to draw per frame of a move, so each is drawn once into the stash and travels as a picture.
@@ -273,7 +294,7 @@ One sound per outcome, played at the moment the screen shows it, not when the fa
 | Call | When | Gate |
 |---|---|---|
 | `audio_shutter()` | A capture the pipeline accepted. A refused press is a warning only; a press queued behind a save is silent until it fires. Also the SOUND screen's preview. | `body.sounds.save` |
-| `audio_tick()` | A finger landing on a target; each second of the self-timer. | `body.sounds.ui` |
+| `audio_tick()` | A finger landing on a target; each second of the self-timer, and every 250 ms of its last 3 s. Gated where it is called, the count's ticks included. | `body.sounds.ui` |
 | `audio_warning()` | Something did not work: a refused shutter, a failed capture, a failed action. Two low 220 Hz pulses, unlike any other sound. | `body.sounds.warning` |
 | `audio_sync()` | The four marks closing on a point after a capture. | `body.sounds.ui` |
 | `audio_done()` | Something finished: sent to the roll, restored, the card ready, the card formatted, the four measured, the cameras restarted. | `body.sounds.ui` |
@@ -281,6 +302,7 @@ One sound per outcome, played at the moment the screen shows it, not when the fa
 ### On the glass
 
 - A press shows the launch shade on the control on the touch-down edge, before the action runs.
+- A control drawn dead takes no press (`press_dead()`): no shade, no tick. The lift still answers with a toast that says why. SEND TO ROLL off a Roll is the one: "No active roll".
 - A remark is a toast: under 40 characters, `MOTION_TOAST_MS` on the glass, placed clear of the control that raised it. The undo after a delete stays `MOTION_UNDO_MS`.
 - The camera at work is a strip along the foot: a capture's four cells and a word, FORMATTING THE CARD, RESTARTING THE CAMERAS. A strip never blocks a touch.
 - A question is a dialog. Only a question is a dialog.
@@ -291,7 +313,7 @@ One sound per outcome, played at the moment the screen shows it, not when the fa
 
 1. The screen, header included.
 2. The capture strip (`draw_capture_banner()`).
-3. On SHOOT only: the self-timer count, or else the lens hint.
+3. On SHOOT only, one slot: the self-timer count, or else the card pill, or else the lens hint.
 4. The working strip: FORMATTING THE CARD, or else RESTARTING THE CAMERAS.
 5. The toast.
 6. The dialog.
@@ -307,12 +329,15 @@ Outside `draw_screen()`, whole-panel renders replace it: the boot field, the wor
 | Boot | The boot field grows over `MOTION_SPLASH_GROW_MS`, holds, and leaves on `motion_accel()`. A quadrant per camera: one that has not answered stays in `K_BF_COLD` greys while the rest warm to the launch shade. A key or a touch during the splash ends it on the spot: the key fires on the first screen's first pass, the touch presses nothing. The menu cascades in; any other first screen dissolves. |
 | First start | `DLG_WELCOME`, once (`body.firstRunSeen`). |
 | First start after an update | `DLG_UPDATED`, once (`body.lastVersion`). |
-| A condition | The worst one is the first line of the SHOOT card, after its severity word: PROBLEM (`COND_FAULT`), CHECK (`COND_WARN`) or NOTE (`COND_NOTE`). The header carries the worst severity word on every detail screen. STATUS lists all of them. The list is `cond_id_t` in `conditions.h`; the words are in `docs/DEVICE_COPY.md`. |
-| Capture | SHOOTING, READING, SAVING, then SAVED, or how many cameras missed. Cells land in the shade, or stay red where a lens lost its frame. |
+| A condition | The worst one is the first line of the SHOOT card, after its severity word: PROBLEM (`COND_FAULT`), CHECK (`COND_WARN`) or NOTE (`COND_NOTE`). On every detail screen the header chip names the worst one by its short name (`chip_words()`: 1 LENS DOWN, NO CARD, DATE NOT SET), in `K_FAULT_INK` on a FAULT and `K_INK` on a WARN. A NOTE never reaches the header. While the chip names the card, the header's card reading is left out. STATUS lists all of them. The list is `cond_id_t` in `conditions.h`; the words are in `docs/DEVICE_COPY.md`. |
+| Capture | SHOOTING, then TAKEN. SAVING (TAKEN. NEXT ONE QUEUED after a second press), then SAVED, or how many cameras missed. One cell per lens throughout. Cells land in the shade, or stay red where a lens lost its frame. |
+| Self-timer | On SHOOT, one scrim plate centred on the panes' cross: the digit in `K_TYPE_TITLE`, a ring of ten dots round it, and SELF-TIMER.  PRESS TO CANCEL under it. Each dot eases from `K_INK` to `K_OFF` across its second on `motion_smooth()`, clockwise from the gap at the foot; the positions are the const `TIMER_RING` table, no trigonometry at draw time. The pass runs SHOOT at 20 ms while it counts, except while a capture's frames cross the links (#158); there the ring eases on the 60 ms pass. Monochrome: a count is a state, not an event. |
+| A card that will cost the next photograph | On SHOOT, a `K_FAULT` pill at the top from the pass's `sd_status()`: no card, card out, unreadable, failed its write test, or under the reserve capture.c refuses at (`pure_capture_reserve_bytes()`, four frames at `wiggle.resolution`). It states and never gates: capture.c is the one gate. A refusal for the card (an `SD_` code) pulses the pill. The pulse runs SHOOT at 20 ms, except while a capture's frames cross the links (#158); there it steps on the 60 ms pass. |
 | Delete all photos | The Photos row on STORAGE reads DELETING 120 OF 500 from `gallery_delete_progress()`, repainted while `gallery_deleting()` holds. Both destructive rows are disabled until it ends. The menu and other screens show nothing of it. |
 | Formatting | FORMATTING THE CARD on the working strip. |
-| Cameras restarting | RESTARTING THE CAMERAS for `MOTION_CAMS_RESTART_BANNER_MS`. |
-| Dim | After `body.autoDimS` (30 s by default) the scrim arrives over `MOTION_DIM_MS` to `DIM_SCRIM_K`. A touch lifts it over `MOTION_UNDIM_MS` and is acted on: a dim screen is still readable. |
+| Cameras restarting | From the STATUS row or a dead pane's button, the same action and no confirm. RESTARTING THE CAMERAS for `MOTION_CAMS_RESTART_BANNER_MS`. For `CAM_RESTART_GRACE_MS` (7 s, a guess until the node boot is timed on the bench) a pane with no picture says STARTING and has no button, and the STATUS row only toasts. Both entry points re-arm the finder's settle clock. While a capture runs or a shot is queued (`capture_in_flight()`) there is no button and no cycle: the pane says NO PICTURE alone and a press toasts. While the self-timer counts there is no button either: the pane is picture, a tap on it cancels the count, and a press that beat the repaint cancels the count and cycles nothing. |
+| Dim | After `body.autoDimS` (30 s by default) the scrim arrives over `MOTION_DIM_MS` to `DIM_SCRIM_K`. A touch lifts it over `MOTION_UNDIM_MS` and is acted on: a dim screen is still readable. On SHOOT the scrim waits until `PURE_SHOOT_DIM_LEAD_S` (10 s) before `body.sleepS`, or `body.autoDimS` if that is later, and never comes with sleep off (`dim_drawn()`). The scrim saves no current: the backlight is a GPIO. `power.c` still reports DIM at `body.autoDimS`, so KDP says "dim" while SHOOT draws none. |
+| A resting contact | A press held past `PURE_TAP_MAX_MS` is released under the finger and fires nothing. Off SHOOT, a contact within `PURE_STILL_CONTACT_PX` of where it last moved for `PURE_STILL_CONTACT_S` stops counting as activity until it moves or lifts (`touch.c`, `pure_still_step()`), so a water bead, a sleeve or a pocket lets the screen dim and sleep. On SHOOT a resting thumb is someone framing and counts for `PURE_REST_CONTACT_S` (120 s) before it stops, so a camera left on SHOOT in a pocket still dims and sleeps, about two minutes plus `body.sleepS` after it last moved. |
 | Sleep | After `body.sleepS` (120 s by default) the picture darkens, the wordmark fades in, holds and fades out inside `SLEEP_WIND_MS`, and `power.c` cuts the backlight. A touch brings the screen back over `MOTION_WAKE_MS`; that touch presses nothing. |
 | Restart, power-down | RESTARTING for `MOTION_RESTARTING_MS`, the wordmark, a fade over `MOTION_POWER_FADE_FRAMES` frames, then black. A blocking loop: it only runs on the way to a reset. |
 | Safe mode | `COND_SAFE_MODE`: three crashes in a row left the radio and uploads out. Reported as a condition. |

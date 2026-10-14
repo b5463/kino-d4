@@ -102,8 +102,10 @@ static void buttons_task(void *arg) {
       }
     }
 
-    /* Long press is reported while the button is still down, so holding the
-     * shutter can start something rather than only finishing it. */
+    /* Long press is reported while the button is still down, 600 ms after
+     * the down edge already reported the press. The UI ignores it
+     * (handle_button): acting on a press twice was the misfire. It stays
+     * here for the log line and for a handler that wants a hold. */
     for (int i = 0; i < BTN_COUNT; i++) {
       button_t *b = &s_btn[i];
       if (b->pin == BOARD_BTN_NONE || !b->stable || b->long_fired) continue;

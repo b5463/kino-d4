@@ -6,12 +6,14 @@
 #include "driver/i2c_master.h"
 #include "esp_lcd_touch_gt911.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "taskmon.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "klog.h"
 #include "hardware_validation.h"
 #include "power.h"
+#include "pure.h"
 
 static const char *TAG = "touch";
 
@@ -30,6 +32,13 @@ static uint32_t s_read_fail;
  * One aligned word is written and read indivisibly on this core. */
 static volatile uint32_t s_point;
 static volatile bool s_down;
+
+/* The still-contact rule. s_rest_counts is written by the UI task and read
+ * here; s_still is this task's own. */
+static volatile bool s_rest_counts;
+static pure_still_t s_still;
+
+void touch_rest_counts(bool on) { s_rest_counts = on; }
 
 bool touch_ready(void) { return s_ready; }
 uint32_t touch_count(void) { return s_count; }
@@ -103,8 +112,18 @@ static void touch_task(void *arg) {
       empty = 0;
       /* A finger on the glass is the definition of activity. Doing this on
        * every poll rather than only on the press edge means a long drag keeps
-       * the panel awake too. */
-      power_activity();
+       * the panel awake too. A contact that has not moved for
+       * PURE_STILL_CONTACT_S is not a finger working the screen: off SHOOT it
+       * stops counting, so a bead of water or a pocket lets the camera dim
+       * and sleep. On SHOOT the same holds after PURE_REST_CONTACT_S. */
+      const pure_contact_t contact =
+          pure_still_step(&s_still, true, pt[0].x, pt[0].y, esp_timer_get_time(), s_rest_counts);
+      if (contact == PURE_CONTACT_ACTIVE) {
+        power_activity();
+      } else if (contact == PURE_CONTACT_WENT_STILL) {
+        klog("P4", "contact still %d s at %u,%u - not activity", PURE_STILL_CONTACT_S, (unsigned)s_still.x,
+             (unsigned)s_still.y);
+      }
       s_point = ((uint32_t)pt[0].x << 16) | pt[0].y;
       s_down = true;
       if (!was_down) {
@@ -125,6 +144,7 @@ static void touch_task(void *arg) {
       s_down = false;
       was_down = false;
       empty = 0;
+      pure_still_step(&s_still, false, 0, 0, 0, false);
     }
     /* 15 ms, so a press is seen within one frame of the UI's own loop. */
     vTaskDelay(pdMS_TO_TICKS(15));

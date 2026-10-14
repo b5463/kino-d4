@@ -1467,6 +1467,11 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
     fail(&r, "CAMERA_OFFLINE", "No lens answered. Try a restart.");
     goto finish;
   }
+  /* Published as soon as the probe and the worker check have settled it, not
+   * at READING: the room check, the folder and the sensor settings below can
+   * take 500 ms a node, and the strip draws a lens left out as an outline
+   * from SHOOTING on. 0 until here means every lens counts as asked. */
+  s_asked_mask = ask;
 
   /*
    * Check the card has room BEFORE creating anything.
@@ -1592,7 +1597,6 @@ esp_err_t capture_fire(const char *source, capture_report_t *out) {
   /* Every worker sets its bit exactly once per capture, including on every
    * failure path, so this cannot hang on a camera that misbehaves — only on
    * one whose own timeouts have not expired yet, which they always do. */
-  s_asked_mask = ask;
   s_stage = CAPTURE_READING;
   xEventGroupWaitBits(s_done, ask, pdFALSE, pdTRUE, portMAX_DELAY);
   s_stage = CAPTURE_WRITING;

@@ -1011,6 +1011,7 @@ static void read_meta(gallery_item_t *it) {
   snprintf(it->mode, sizeof it->mode, "%s", "-");
   it->frames = 0;
   it->partial = false;
+  it->have = 0;
   it->favorite = false;
 
   snprintf(s_tile_path, sizeof s_tile_path, "%s/%s/META.JSON", CAPTURES_DIR, it->id);
@@ -1080,6 +1081,23 @@ static void read_meta(gallery_item_t *it) {
    * and playback aligns nothing. */
   it->cal_present = meta_read_calibration(m, it->cal);
   cJSON_Delete(m);
+
+  /*
+   * Which lenses, not how many: the mark's cells are lenses in slot order.
+   * frameCount alone cannot say which - a body with the third lens off writes
+   * C1, C2 and C4 and counts 3, and a partial capture can lose any one - so a
+   * capture short of four looks for its files. Four access() calls on those
+   * only; a full capture, nearly every one, costs nothing here. s_tile_path is
+   * this task's path buffer and the META path in it is done with.
+   */
+  if (it->frames >= 4 && !it->partial) {
+    it->have = 0xF;
+  } else {
+    for (int i = 0; i < 4; i++) {
+      snprintf(s_tile_path, sizeof s_tile_path, "%s/%s/C%d.JPG", CAPTURES_DIR, it->id, i + 1);
+      if (access(s_tile_path, F_OK) == 0) it->have |= (uint8_t)(1u << i);
+    }
+  }
 }
 
 /** THUMB.JPG first, then the frames. A capture from firmware without

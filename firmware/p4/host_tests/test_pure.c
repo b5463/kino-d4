@@ -1277,6 +1277,137 @@ static void test_lid(void) {
   CHECK(strcmp(pure_lid_state_name(99), "unknown") == 0, "unknown name for a stray value");
 }
 
+/* ------------------------------------------------------------------ */
+/* pure_shoot_dim_due                                                  */
+/* ------------------------------------------------------------------ */
+
+static void test_shoot_dim(void) {
+  /* The defaults: dim 30 s, sleep 120 s. SHOOT dims at 110 s, not 30 s. */
+  CHECK(!pure_shoot_dim_due(30, 30, 120), "SHOOT dimmed at autoDimS");
+  CHECK(!pure_shoot_dim_due(40, 30, 120), "SHOOT dimmed at 40 s with sleep at 120 s");
+  CHECK(!pure_shoot_dim_due(109, 30, 120), "SHOOT dimmed 11 s before the sleep");
+  CHECK(pure_shoot_dim_due(110, 30, 120), "SHOOT not dimmed 10 s before the sleep");
+  CHECK(pure_shoot_dim_due(119, 30, 120), "SHOOT not dimmed 1 s before the sleep");
+
+  /* A short sleep: sleep - 10 is before autoDimS, so autoDimS wins. */
+  CHECK(!pure_shoot_dim_due(29, 30, 35), "dimmed before autoDimS with a short sleep");
+  CHECK(pure_shoot_dim_due(30, 30, 35), "not dimmed at autoDimS with a short sleep");
+  CHECK(!pure_shoot_dim_due(4, 5, 10), "dimmed before autoDimS with sleep at 10 s");
+  CHECK(pure_shoot_dim_due(5, 5, 10), "not dimmed at autoDimS with sleep at 10 s");
+
+  /* Sleep off: nothing to warn about, never dims. */
+  CHECK(!pure_shoot_dim_due(300, 30, 0), "SHOOT dimmed with sleep off");
+  CHECK(!pure_shoot_dim_due(100000, 30, 0), "SHOOT dimmed with sleep off, a day idle");
+  CHECK(!pure_shoot_dim_due(300, 30, -1), "SHOOT dimmed with a negative sleep");
+
+  /* Dim off: never dims, whatever the sleep. */
+  CHECK(!pure_shoot_dim_due(119, 0, 120), "SHOOT dimmed with dim off");
+}
+
+/* ------------------------------------------------------------------ */
+/* pure_tap_check                                                      */
+/* ------------------------------------------------------------------ */
+
+static void test_tap(void) {
+  /* A quick tap, a slow deliberate press, and the limit itself all fire. */
+  CHECK(pure_tap_check(0, 0, 40, 80) == PURE_TAP_OPEN, "an 80 ms tap is not a tap");
+  CHECK(pure_tap_check(3, -2, 40, 2000) == PURE_TAP_OPEN, "a slow 2 s press is not a tap");
+  CHECK(pure_tap_check(0, 0, 40, PURE_TAP_MAX_MS) == PURE_TAP_OPEN,
+        "a press of exactly %d ms is not a tap", PURE_TAP_MAX_MS);
+  /* One millisecond past the limit is a rest, not a tap. */
+  CHECK(pure_tap_check(0, 0, 40, PURE_TAP_MAX_MS + 1) == PURE_TAP_HELD,
+        "a press of %d ms still fires", PURE_TAP_MAX_MS + 1);
+  CHECK(pure_tap_check(0, 0, 40, 600000) == PURE_TAP_HELD, "a 10 min contact still fires");
+
+  /* The drift rule is unchanged: exactly the radius is a tap, past it is not. */
+  CHECK(pure_tap_check(40, 0, 40, 100) == PURE_TAP_OPEN, "40 px of drift is not a tap");
+  CHECK(pure_tap_check(0, -41, 40, 100) == PURE_TAP_DRIFTED, "41 px of drift is a tap");
+  CHECK(pure_tap_check(29, 29, 40, 100) == PURE_TAP_DRIFTED, "41 px diagonal drift is a tap");
+  CHECK(pure_tap_check(28, 28, 40, 100) == PURE_TAP_OPEN, "39.6 px diagonal drift is not a tap");
+
+  /* Both at once reads as a drift: the finger moved before it rested. */
+  CHECK(pure_tap_check(60, 0, 40, 5000) == PURE_TAP_DRIFTED, "drift and hold together did not read as a drift");
+
+  /* No time at all is a tap, and a clock that steps back does not cancel. */
+  CHECK(pure_tap_check(0, 0, 40, 0) == PURE_TAP_OPEN, "a 0 ms press is not a tap");
+  CHECK(pure_tap_check(0, 0, 40, -5) == PURE_TAP_OPEN, "a negative hold cancelled the press");
+}
+
+/* ------------------------------------------------------------------ */
+/* pure_still_step                                                     */
+/* ------------------------------------------------------------------ */
+
+#define S_US(s) ((int64_t)(s) * 1000000)
+
+static void test_still(void) {
+  pure_still_t st;
+  memset(&st, 0, sizeof st);
+  const int64_t t0 = S_US(100);
+
+  /* Nothing on the glass. */
+  CHECK(pure_still_step(&st, false, 0, 0, t0, false) == PURE_CONTACT_UP, "no contact is not UP");
+
+  /* A contact counts for PURE_STILL_CONTACT_S, then stops, logged once. */
+  CHECK(pure_still_step(&st, true, 200, 300, t0, false) == PURE_CONTACT_ACTIVE, "a new contact does not count");
+  CHECK(pure_still_step(&st, true, 200, 300, t0 + S_US(PURE_STILL_CONTACT_S) - 1, false) == PURE_CONTACT_ACTIVE,
+        "a contact stopped counting before %d s", PURE_STILL_CONTACT_S);
+  CHECK(pure_still_step(&st, true, 200, 300, t0 + S_US(PURE_STILL_CONTACT_S), false) == PURE_CONTACT_WENT_STILL,
+        "a contact still at %d s was not reported", PURE_STILL_CONTACT_S);
+  CHECK(pure_still_step(&st, true, 200, 300, t0 + S_US(11), false) == PURE_CONTACT_STILL,
+        "a still contact was reported twice");
+  CHECK(pure_still_step(&st, true, 200, 300, t0 + S_US(600), false) == PURE_CONTACT_STILL,
+        "a 10 min still contact counted");
+
+  /* Rocking inside the radius is still: a water bead shimmers. */
+  CHECK(pure_still_step(&st, true, 200 + 28, 300 - 28, t0 + S_US(601), false) == PURE_CONTACT_STILL,
+        "39.6 px of rocking counted as a move");
+  /* Past the radius from where it last moved, it is a finger again. */
+  CHECK(pure_still_step(&st, true, 200 + 41, 300, t0 + S_US(602), false) == PURE_CONTACT_ACTIVE,
+        "a 41 px move did not count");
+  CHECK(st.x == 241 && st.y == 300, "the anchor did not move with the finger (%u,%u)", st.x, st.y);
+  CHECK(pure_still_step(&st, true, 241, 300, t0 + S_US(602 + PURE_STILL_CONTACT_S), false) ==
+            PURE_CONTACT_WENT_STILL,
+        "the clock did not restart from the move");
+
+  /* A slow creep adds up: each poll is 5 px, the anchor is not dragged. */
+  memset(&st, 0, sizeof st);
+  pure_contact_t c = PURE_CONTACT_UP;
+  for (int i = 0; i <= 9; i++) c = pure_still_step(&st, true, (uint16_t)(100 + 5 * i), 100, t0 + S_US(i * 2), false);
+  CHECK(c == PURE_CONTACT_ACTIVE, "a 45 px creep over 18 s did not count as a move (%d)", (int)c);
+
+  /* A lift resets it: the next contact counts. */
+  CHECK(pure_still_step(&st, false, 0, 0, t0 + S_US(700), false) == PURE_CONTACT_UP, "the lift is not UP");
+  CHECK(!st.down && !st.still, "the lift left state behind");
+  CHECK(pure_still_step(&st, true, 145, 100, t0 + S_US(701), false) == PURE_CONTACT_ACTIVE,
+        "a fresh contact on the same spot did not count");
+
+  /* Where a rest counts (SHOOT) it counts for PURE_REST_CONTACT_S, and the
+   * clock runs. */
+  memset(&st, 0, sizeof st);
+  CHECK(pure_still_step(&st, true, 50, 60, t0, true) == PURE_CONTACT_ACTIVE, "a framing thumb did not count");
+  CHECK(pure_still_step(&st, true, 50, 60, t0 + S_US(60), true) == PURE_CONTACT_ACTIVE,
+        "a framing thumb at 60 s did not count");
+  CHECK(pure_still_step(&st, true, 50, 60, t0 + S_US(61), false) == PURE_CONTACT_WENT_STILL,
+        "leaving SHOOT under a 61 s rest did not stop it counting");
+
+  /* A pocket on SHOOT: the rest stops counting at PURE_REST_CONTACT_S. */
+  memset(&st, 0, sizeof st);
+  CHECK(pure_still_step(&st, true, 50, 60, t0, true) == PURE_CONTACT_ACTIVE, "a pocketed contact did not start");
+  CHECK(pure_still_step(&st, true, 50, 60, t0 + S_US(PURE_REST_CONTACT_S) - 1, true) == PURE_CONTACT_ACTIVE,
+        "a rest on SHOOT stopped counting before %d s", PURE_REST_CONTACT_S);
+  CHECK(pure_still_step(&st, true, 50, 60, t0 + S_US(PURE_REST_CONTACT_S), true) == PURE_CONTACT_WENT_STILL,
+        "a rest on SHOOT still counted at %d s", PURE_REST_CONTACT_S);
+  CHECK(pure_still_step(&st, true, 50, 60, t0 + S_US(3600), true) == PURE_CONTACT_STILL,
+        "a rest on SHOOT counted after an hour");
+  /* A thumb that moves while framing starts its own clock again. */
+  CHECK(pure_still_step(&st, true, 50 + 41, 60, t0 + S_US(3601), true) == PURE_CONTACT_ACTIVE,
+        "a framing thumb that moved 41 px did not count");
+
+  /* No state: every contact counts, as before the rule. */
+  CHECK(pure_still_step(NULL, true, 1, 1, t0, false) == PURE_CONTACT_ACTIVE, "NULL state did not count a contact");
+  CHECK(pure_still_step(NULL, false, 1, 1, t0, false) == PURE_CONTACT_UP, "NULL state with no contact is not UP");
+}
+
 int main(void) {
   test_sync_classify();
   test_quality();
@@ -1303,6 +1434,9 @@ int main(void) {
   test_align();
   test_json_depth();
   test_lid();
+  test_shoot_dim();
+  test_tap();
+  test_still();
 
   if (failures != 0) {
     printf("p4 host tests: %d of %d checks FAILED\n", failures, checks);

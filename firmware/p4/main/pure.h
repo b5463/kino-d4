@@ -889,4 +889,96 @@ int pure_lid_update(pure_lid_t *st, const int *means, int n, uint32_t dt_ms);
 /** "unknown" | "open" | "closed". */
 const char *pure_lid_state_name(int state);
 
+/* ------------------------------------------------------------------ */
+/* The drawn dim on SHOOT                                              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The dim is a scrim the UI draws. The backlight is a GPIO with no PWM, so
+ * the dim saves no current; on SHOOT it only costs the finder its contrast
+ * while someone waits for the moment. There it arrives this long before the
+ * sleep, as the warning that the sleep is coming.
+ */
+#define PURE_SHOOT_DIM_LEAD_S 10
+
+/**
+ * Whether SHOOT draws the dim scrim after `idle_s` seconds idle, with
+ * `body.autoDimS` = `dim_s` and `body.sleepS` = `sleep_s`.
+ *
+ * True from max(dim_s, sleep_s - PURE_SHOOT_DIM_LEAD_S). Never with sleep off
+ * (sleep_s <= 0): nothing is coming to warn about. Never with dim off
+ * (dim_s <= 0). power.c still reports the DIM stage at dim_s; only the drawing
+ * waits.
+ */
+bool pure_shoot_dim_due(uint32_t idle_s, int dim_s, int sleep_s);
+
+/* ------------------------------------------------------------------ */
+/* Touch: what is a tap                                                */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A press held longer than this is not a tap: a resting thumb, a water bead
+ * or a sleeve. It is released with nothing fired, the way a drift is. 2.5 s,
+ * not less: a slow, deliberate press from an older hand runs to 2 s and must
+ * still fire.
+ */
+#define PURE_TAP_MAX_MS 2500
+
+typedef enum {
+  PURE_TAP_OPEN = 0, /* still a tap: it fires on the lift */
+  PURE_TAP_DRIFTED,  /* travelled further than the drift radius */
+  PURE_TAP_HELD,     /* down longer than PURE_TAP_MAX_MS */
+} pure_tap_t;
+
+/**
+ * Whether a contact on a control is still a tap: `dx`, `dy` from where it
+ * landed, in px, against `drift_px`, and `held_ms` since it landed. Drift is
+ * judged first. Both limits are exclusive: exactly `drift_px` away, or
+ * exactly PURE_TAP_MAX_MS down, is still a tap.
+ */
+pure_tap_t pure_tap_check(int dx, int dy, int drift_px, int64_t held_ms);
+
+/* ------------------------------------------------------------------ */
+/* Touch: what is activity                                             */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A contact that stays within PURE_STILL_CONTACT_PX of where it last moved
+ * for PURE_STILL_CONTACT_S stops counting as activity until it moves or
+ * lifts. A water bead, a sleeve or a pocket must not hold the panel awake.
+ * Panel px: the GT911 reports in the panel's native space, the same scale
+ * both ways.
+ */
+#define PURE_STILL_CONTACT_S 10
+#define PURE_STILL_CONTACT_PX 40
+/* Where a resting contact is someone framing (SHOOT) it counts this long
+ * before it stops, so a camera left on SHOOT in a pocket still dims and
+ * sleeps: two minutes of a thumb that has not moved 40 px is not framing. */
+#define PURE_REST_CONTACT_S 120
+
+typedef enum {
+  PURE_CONTACT_UP = 0,     /* nothing on the glass */
+  PURE_CONTACT_ACTIVE,     /* a finger working the screen: counts as activity */
+  PURE_CONTACT_STILL,      /* a resting contact: does not count */
+  PURE_CONTACT_WENT_STILL, /* the sample it stopped counting; log it, once */
+} pure_contact_t;
+
+typedef struct {
+  int64_t since_us; /* when the contact last moved past PURE_STILL_CONTACT_PX */
+  uint16_t x, y;    /* where, panel px */
+  bool down;
+  bool still; /* already reported PURE_CONTACT_WENT_STILL */
+} pure_still_t;
+
+/**
+ * Fold one touch poll into the still-contact state. `down` with the point at
+ * (`x`, `y`), at `now_us`. `rest_counts` is true where a resting contact is
+ * someone at work (SHOOT, framing): it then counts for PURE_REST_CONTACT_S
+ * instead of PURE_STILL_CONTACT_S, and the clock still runs, so leaving SHOOT
+ * under a thumb that has rested 10 s stops it counting on the next poll. Zeroing the struct is a valid starting point; a NULL state
+ * counts every contact, as the camera did before the rule.
+ */
+pure_contact_t pure_still_step(pure_still_t *st, bool down, uint16_t x, uint16_t y, int64_t now_us,
+                               bool rest_counts);
+
 #endif

@@ -6,19 +6,38 @@ How to read the table: `N`, `12` or `4571` stands for a number the camera fills 
 
 ## The rule
 
-The person holding the camera has read nothing and will not phone anyone. Each line names what happened and, when there is one, what to do about it. Under 40 characters for a toast, one short line for a banner, two for a dialog. Plain words: lens, photo, card, cells. No codes, no camera numbers, no contract names on the glass; those go to the log and the KDP reply. Known exceptions still on the glass: the CAM1-CAM4 pane labels on SHOOT, the LOOK TARGET band and the ABOUT lens rows (#235). Values on a band or in a reading are in capitals: `15 S`, `2 MIN`, `MEDIUM`.
+The person holding the camera has read nothing and will not phone anyone. Each line names what happened and, when there is one, what to do about it. Under 40 characters for a toast, one short line for a banner, two for a dialog. Plain words: lens, photo, card, cells. No codes, no camera numbers, no contract names on the glass; those go to the log and the KDP reply. Known exception still on the glass: the ABOUT lens rows (#235). The LOOK TARGET band names each lens by the four-mark with its cell lit. Values on a band or in a reading are in capitals: `15 S`, `2 MIN`, `MEDIUM`.
 
 ## Header chip
 
+The chip names the worst open condition when it is a PROBLEM or a CHECK, red on a PROBLEM. A NOTE never reaches the header; STATUS lists it. No chip when nothing is worse than a NOTE.
+
 | Text | When |
 |---|---|
-| `PROBLEM` / `CHECK` / `NOTE` | The worst open condition. Absent when there is none. |
-| `4571 SHOTS` | Card mounted, photographs left at 6 MB each. |
+| `1 LENS DOWN` / `2 LENSES DOWN` | A lens is not answering, or several are. |
+| `NO CARD` / `CARD OUT` / `CARD UNREADABLE` | No card in the slot, the card pulled while running, or a card in the slot that would not mount. |
+| `CARD FULL` / `CARD NEARLY FULL` | The card is full, or under 50 photographs left. |
+| `BAD CARD` | The card failed the boot write test. |
+| `SLOW CARD` | The card passed the write test, slowly. |
+| `UPDATE LENSES` | The four lenses are not on one firmware. |
+| `DATE NOT SET` | The clock has never been set. |
+| `NO WI-FI` | Safe mode: three crashes in a row left the radio out. |
+| `WARM` | The camera is warm and the finder is slowed. |
+| `POWER LOST` | This boot follows a brownout. |
+| `NO SERVER` | A Roll is joined and no Roll server is set. |
+| `PROBLEM` / `CHECK` | A condition with no short name. None today. |
+
+Beside the chip, the readings. The card reading is on the header and the SHOOT bar only when the card is short or missing: under `COND_CARD_LOW_SHOTS` (50) photographs left, full, or not mounted. A healthy card says nothing there.
+
+| Text | When |
+|---|---|
+| `31 LEFT` | Card mounted and under 50 left, at 6 MB a photograph. |
 | `LAST 5` .. `LAST 1` | Five or fewer left. |
 | `CARD FULL` | None left. |
-| `NO CARD` | No card mounted since boot. |
-| `CARD OUT` | The card was pulled while running. |
-| `USB` / `BATTERY` | Where the power comes from. |
+| `NO CARD` / `CARD OUT` / `CARD UNREADABLE` | No card mounted: none in the slot, pulled while running, or in the slot and not mounted. Not shown while the chip names the card. |
+| `STUDIO` | Studio is talking: a KDP message in the last 5 s. Nothing when it is not. The board cannot tell a charger from the cells, so no reading says what the camera runs on. |
+
+On SHOOT the bar has no card panel while the card pill says it: the pill counts at capture.c's reserve, the bar at 6 MB a photograph, and the two read LAST 1 beside CARD FULL. During the self-timer count, which hides the pill, the bar keeps the card.
 
 ## Screen titles
 
@@ -75,21 +94,28 @@ The rows at the foot of STATUS:
 | `MENU` | The way out, on the back button beside the picture. |
 | `WIGGLE` / `QUAD` | The mode, on the decisions bar. Tapping the bar opens LOOK. |
 | `AUTO` / `ON` / `OFF` | The flash, beside the bolt on the decisions bar. |
-| `NO PICTURE` / `NO RECENT FRAME` / `NO CAMERA` | A finder pane with no pixels: the lens reported an error, its frames stopped, or it is not linked. Said once the first second of SHOOT has passed. |
-| `CAM1` / `CAM2` / `CAM3` / `CAM4` | Under that word, which pane it is. |
-| `RESTART THE CAMERAS IN STATUS` | Under those two, in ink: what to do. STATUS carries the RESTART THE CAMERAS row. |
+| `TIMER OFF` / `TIMER 10 S` | The self-timer's own panel, at the hand's end of the bar. A tap switches it and says nothing. With TIMER 10 S the next shutter press starts the count. Off at boot and at the sleep. |
+| `NO PICTURE` | A finder pane with no pixels: the lens reported an error, its frames stopped, or it is not linked. One word for all three; the pane's place says which lens. Said once the first 1.5 s of SHOOT have passed. |
+| `RESTART THE CAMERAS` | The button under it, on that pane. The same action as the STATUS row, with no confirm. Not offered while a photograph is being taken or the self-timer counts: NO PICTURE alone then, and a tap on the pane during the count cancels it. |
+| `STARTING` | Instead of both, on a pane with no picture for 7 s after a restart from either place, while the lenses boot. No button then. |
 
 ## SHOOT banner
 
 | Text | When |
 |---|---|
-| `SHOOTING` / `READING` / `SAVING` | The capture's stages. |
-| `SAVING - NEXT SHOT QUEUED` | A second shutter press landed while saving; it fires when the report does. |
+| `SHOOTING` | The shutter has fired and the lenses are exposing. The four cells are the four lenses in slot order: empty for a lens asked, an outline for one left out. |
+| `TAKEN. SAVING` | The frames are crossing to the card. Each lens's cell fills as its frame arrives. |
+| `TAKEN. NEXT ONE QUEUED` | The same, after a second shutter press; the next photo fires when this one is saved. |
 | `TAKE THE LENS COVER OFF` | On SHOOT, every pane was lit and then all went dark for a second: the cover went on. A body switched on facing the desk says nothing. |
+| `NO CARD. PUT ONE IN` | On SHOOT, the card pill: the slot was empty from boot. Outranks the lens hint; the self-timer outranks it. |
+| `CARD OUT. PUT IT BACK` | The card pill: the card was pulled while running. |
+| `CARD CANNOT BE READ` | The card pill: a card is in the slot and did not mount. |
+| `CARD FAILED. CHANGE THE CARD` | The card pill: the card failed its write test. |
+| `CARD FULL. DELETE PHOTOS IN GALLERY` | The card pill: less room than capture.c reserves for one photograph. The shutter is refused there, and the pill pulses. |
 | `CHECK THE SECOND LENS` | On SHOOT, one pane was lit and then went a third as bright as the rest for a second while the others stayed lit. The word is one of `FIRST` / `SECOND` / `THIRD` / `FOURTH`. |
-| `10` .. `1`, `SELF-TIMER.  PRESS TO CANCEL` | A long shutter press started the timer. |
-| `SAVED` | Every lens that answered is on the card. |
-| `SAVED, 1 CAMERA MISSED` | A partial photograph; the cells show which. |
+| `10` .. `1`, `SELF-TIMER.  PRESS TO CANCEL` | The self-timer counting down over a ring of ten dots, after a shutter press with TIMER 10 S. Either key or a tap that lands on the picture cancels it. A thumb already resting there does not. |
+| `SAVED` | Every lens that answered is on the card. Its cells land in the shade; a lens left out stays an outline. |
+| `SAVED, 1 CAMERA MISSED` | A partial photograph; the red cell is the lens that lost its frame. |
 | `No card. Put one in.` | Shutter with no card. |
 | `Card full. Delete photos or change the card.` | Shutter with no room. |
 | `No lens answered. Try a restart.` | No camera node answered the probe. |
@@ -111,22 +137,25 @@ The rows at the foot of STATUS:
 
 | Text | When |
 |---|---|
-| Card ready, 4571 SHOTS | A card was put in while running and mounted. |
+| Card ready, 4571 left | A card was put in while running and mounted. |
+| Card full. Delete photos | The same, and the card has no room. |
 | Card taken out. Photos cannot be saved | The card was pulled while running. |
 | Card busy. Try again | The card lock was held for two seconds by a capture or an upload. |
 | Card formatted | FORMAT finished. |
 | The card could not be formatted | FORMAT failed; the log has the reason. |
-| Deleted.  TAP TO UNDO | One photograph moved to the trash; the toast stays thirty seconds and a tap restores it. |
+| Deleted.  TAP TO UNDO | One photograph moved to the trash; the toast stays thirty seconds, or until the next photograph, and a tap restores it. Deleted from the review after a shot, it shows on the finder. |
 | Deleted | One photograph deleted outright, because the trash folder could not take it. |
 | Restored | UNDO tapped in time. |
 | Could not restore it | The folder would not move back. |
-| Timer cancelled | A press during the self-timer. |
+| Timer cancelled | Either key or a tap that lands on the picture during the self-timer, TIMER turned off during it, or SHOOT left while it counts. |
 | Deleting photos | DELETE ALL started on the gallery task. |
 | No photos on the card | DELETE ALL with nothing to delete. |
 | No card in the slot | FORMAT with nothing in the slot. |
 | Cameras measured | The first photograph's measurement stored. |
 | Not measured. Aim at a busier scene | The measurement found a flat scene. |
 | The next photo measures the cameras | MEASURE AGAIN pressed. |
+| The cameras are starting | RESTART THE CAMERAS on STATUS within 7 s of the last restart. Nothing is switched. |
+| Wait for the photo to save | RESTART THE CAMERAS while a photograph is being taken or one is queued. Nothing is switched: the cycle would lose that photograph. |
 | Sent to the roll | SEND TO ROLL queued the photograph. |
 | Could not send. Try again later | SEND TO ROLL could not queue it. |
 | No active roll | SEND TO ROLL with no Roll joined. |
@@ -169,7 +198,7 @@ calls and fails when one of them is not in this table.
 |---|---|
 | `SHOOT` / `LOOK` / `GALLERY` / `ROLL` / `SETTINGS` / `POWER` | The six tiles. SHOOT is the large card. |
 | `TAP TO OPEN` | On the menu's large card. |
-| `CAMERA  4571 SHOTS` | The card's line when nothing is wrong: the card in the header chip's words. The worst condition's title takes its place when there is one, over two lines when one is too short. |
+| `CAMERA  4571 LEFT` | The card's line when nothing is wrong: the card in the header's words. The worst condition's title takes its place when there is one, over two lines when one is too short. |
 
 ### LOOK
 
@@ -182,7 +211,7 @@ calls and fails when one of them is not in this table.
 | `AUTO` / `ON` / `OFF` | The flash band. |
 | `COLOUR` / `B&W` | The colour band. |
 | `TARGET` | The band that picks which lens the next look lands on. QUAD only. |
-| `CAM1` / `CAM2` / `CAM3` / `CAM4` / `ALL` | The target band's choices, ALL at the hand's end. |
+| `ALL` | The target band's one word, at the hand's end. The four lenses beside it are the four-mark with that lens's cell lit, no words. |
 | `Four cameras, four looks. Pick one to see it.` | QUAD, under the card: what the mode does. |
 | `AT CAPTURE` | The look is applied when the photograph is taken, not to the finder. |
 | `Sets nothing on the sensor.` | A look that carries no sensor settings of its own. |
@@ -212,7 +241,9 @@ calls and fails when one of them is not in this table.
 | `SENT` | After the mode, once the Roll holds every frame. |
 | `TODAY 18:01` | When it was taken, in the clock's zone; `21 SEP 18:01` on any other day. |
 | `JAN` / `FEB` / `MAR` / `APR` / `MAY` / `JUN` / `JUL` / `AUG` / `SEP` / `OCT` / `NOV` / `DEC` | The month in that date. |
-| `2 MISSING` | A wiggle swinging fewer than four frames: how many lenses did not reach the card. |
+| `2 MISSING` | A photo whose capture lost frames: how many lenses that were asked have no file on the card. The red cells under CAMERAS say which. The card does not record which were asked, so in the gallery every lens counts. |
+| `1 DAMAGED` | A frame is on the card and would not open. Shown when no lens is missing. The red cell under CAMERAS says which. |
+| `MISSING` / `DAMAGED` | A quad's empty quarter: the four cells with that lens red, and why. |
 | `NO IMAGE` | The photograph's frames could not be decoded. |
 
 ### ROLL
@@ -222,12 +253,14 @@ calls and fails when one of them is not in this table.
 | `SCAN TO JOIN` | Over the QR, when a Roll is active. |
 | `Code` / `Enter this code to join` | The short code under the QR, for someone who cannot scan. |
 | `Status` | The row naming what the Roll is doing. |
-| `Online` / `Offline` / `Paused` / `KINO not answering` | Its value: uploading normally, no network, halted by the server, or the Roll server not answering. |
+| `Online` / `Offline` / `Paused` / `No server` / `KINO not answering` | Its value: uploading normally, no network, halted by the server, no Roll server set (`COND_ROLL_NO_SERVER`), or the Roll server not answering. |
 | `Photos` | The count of photographs on the card. |
-| `Uploaded` | The count of frames the Roll already holds. |
+| `Uploaded` | The count of photographs the Roll already holds. Parked uploads are not counted. |
 | `12 of 40` / `counting` | Its value, or `counting` while the card is still being read. |
 | `3 waiting, saved on the camera.` | Photographs not yet sent. |
 | `Check the roll in Studio.` | Under it, when the server halted uploads. |
+| `14 saved on the camera.` | No Roll server set: every photograph not on the Roll, parked ones included. Said before any `All uploaded` line. |
+| `Set the Roll server in Studio.` | Under it. |
 | `They go when KINO answers.` / `They go when Wi-Fi returns.` | Under it, when there is no route to send them. |
 | `Uploading, 12 to go.` / `Starting, 12 to go.` | Uploads running, over the progress bar. |
 | `Counting the card.` | The upload queue has not finished reading the card. |
@@ -252,7 +285,7 @@ calls and fails when one of them is not in this table.
 | `1 MIN` / `2 MIN` / `5 MIN` | Display's value: the sleep time, in the DISPLAY band's words. |
 | `OFF` / `LOW` / `MEDIUM` / `HIGH` | Sound's value: OFF when both sounds are off, else the volume in the SOUND band's words. |
 | `Not connected` | Connection's value with no network; otherwise the network's name. |
-| `4571 SHOTS` / `NO CARD` | Storage's value, in the header chip's words. About's value is the firmware version. |
+| `4571 LEFT` / `NO CARD` | Storage's value, in the header's words, always shown. About's value is the firmware version. |
 | `The card is full, and 2 more` | Status's value: the worst condition, and how many others. |
 
 ### SETTINGS > DISPLAY
@@ -289,7 +322,7 @@ calls and fails when one of them is not in this table.
 | `Wi-Fi` | `studio-net  ch 6  -54 dBm` when on a network, else `Getting address` / `Connecting` / `Scanning` / `Disconnected` / `Unavailable`. |
 | `Address` | The IP address, or a dash. |
 | `Saved networks` | How many. |
-| `USB` | `Connected` / `Not connected`. |
+| `Studio` | `Connected` / `Not connected`: whether Studio has talked in the last 5 s. |
 | `Set up Wi-Fi in Studio over USB-C.` | No network saved. |
 | `Captures upload to the active roll.` | A network is saved and a Roll is joined. |
 | `No radio on this body. Photos leave over USB-C.` | The no-radio build. |
@@ -337,13 +370,10 @@ calls and fails when one of them is not in this table.
 | `Shut down` | The row; it toasts, because the slide is the only way off. With `Hold the power slide`. |
 | `Factory reset` | The row that opens the confirm. |
 | `Settings, networks, roll` | Under it: what a reset erases. Photographs are not on the list. |
-| `RUNNING ON` | The heading over where the power comes from. |
-| `Powered from the cable.` | USB-C attached. |
-| `On the cells. This body has no battery gauge.` | On battery. There is no percentage because there is no sense pin. |
 
 ## Dim and sleep
 
-At the dim time the screen darkens under a scrim on an eased ramp over 1.6 s and stays readable; a touch lifts it. 
+At the dim time the screen darkens under a scrim on an eased ramp over 1.6 s and stays readable; a touch lifts it. On SHOOT the scrim waits until 10 s before the sleep time, or the dim time if that is later, and never comes with sleep off: the finder keeps its contrast while you frame. 
 At the sleep time the dimmed picture darkens to the ground over half a second, the mark and `GOING TO SLEEP.  TAP TO WAKE` fade in from the dark, hold half a second, fade out, and then the backlight drops: two seconds, no cut. DISPLAY says the same under BRIGHTNESS AND POWER: on or off, not dimmable; tap the screen to wake; hold the slide to switch off.
 
 ## After a shot

@@ -6,6 +6,46 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Changed
 
+- **Firmware 0.4.61: the on-device UI behaviour pass: the review shutter, true readings, the dead pane, the four lenses, the TIMER panel (#237).**
+  Behaviour only. No colour, control style or KDP field changed.
+  Shutter: a long press does nothing. buttons.c reports a held key twice, and
+  a held shutter on SHOOT took a photo and armed the 10 s self-timer, so a
+  second photo fired 10 s later. A press during the review after a shot now
+  takes the next photo and slides back to SHOOT; BACK and a confirmed DELETE
+  from that review end on SHOOT. `fire_shutter()` acks a DONE report still up,
+  so a press inside AFTER SHOT no longer leaves the next shot silent with no
+  review.
+  Readings: ROLL with no Roll server says "No server" and "14 saved on the
+  camera." instead of "All uploaded". The header chip names the worst warning
+  or fault (1 LENS DOWN, NO CARD, CARD FULL, WARM, NO SERVER, ...); a NOTE
+  stays on STATUS. The card count reads "31 LEFT" and shows only under 50.
+  USB/BATTERY was a guess from KDP traffic and is now STUDIO while Studio
+  talks, nothing otherwise; POWER loses RUNNING ON. The KDP GET_POWER
+  `usb|battery` field rests on the same guess and is untouched.
+  SHOOT: a dead pane says NO PICTURE over its own RESTART THE CAMERAS button,
+  with a 7 s STARTING grace, and no button while a photo is saving or the
+  self-timer counts. A card fault is a red pill on the finder before the
+  press; capture.c stays the one gate, and a refusal pulses the pill. The
+  scrim waits until 10 s before sleep on SHOOT, since the backlight is a GPIO
+  and the dim saved nothing. A press held past 2.5 s fires nothing, and off
+  SHOOT a contact still for 10 s stops keeping the screen awake.
+  Four cells: cell i is lens i everywhere. The capture strip shows asked,
+  not asked and frame in per lens, DONE reads each lens's result, gallery
+  tiles and PHOTO read the files on the card (`gallery_item_t.have`), and
+  PHOTO says N MISSING or N DAMAGED. Four lenses landing close into one bar
+  and open again. LOOK's TARGET names the lenses by the four-mark, not CAM1-4.
+  Motion: a move started by a tap or a key runs on cubic ease-out, 11 % of
+  its travel in the first 16 ms instead of 0.1 %. `lerpi()` rounds half away
+  from zero, so a move lands with no 1 px snap.
+  Self-timer: a TIMER panel at the hand's end of the SHOOT bar, TIMER OFF or
+  TIMER 10 S, session only. The count keeps the digit and adds a ring of ten
+  dots from a const table. A press, a tap that lands on the picture, TIMER
+  OFF or leaving SHOOT cancels it with "Timer cancelled".
+  Nothing on SHOOT paces the pass at 20 ms while frames cross the UARTs
+  (#158). Images: default 1,159,968 B, radio 1,765,440 B, 1,724 KB of the
+  1,900 KB guard (0.4.60: 1,151,728 B and 1,757,184 B). Not yet on the bench:
+  the restart grace, the GT911 still contact, the move curves at panel speed,
+  and a four-lens capture with isr_watch on.
 - **Firmware 0.4.60: the on-device UI in MAO pink, one control, and the copy held to the glass (#234, #235).**
   The screen had five accent colours at rest: a terracotta SHOOT card, a peach
   card face, mint for a frame in hand and the toast, a green ramp on the menu

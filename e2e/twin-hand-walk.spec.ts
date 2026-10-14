@@ -84,8 +84,10 @@ test('Twin hand walk: the device UI for the hand on the shutter', async ({ page 
   // The menu: the SHOOT card fills the right, the rows the left.
   // Both points clear of the card's type: TAP TO OPEN ends near x 535.
   const isMenu = async (): Promise<boolean> => near(await px(700, 300), CARD) && near(await px(700, 440), CARD);
-  // SHOOT: dark panes under the MENU plate and along the bar.
-  const isShoot = async (): Promise<boolean> => dark(await px(676, 14)) && dark(await px(760, 462)) && !(await isMenu());
+  // SHOOT: dark panes under the MENU plate and along the bar. The bar probe
+  // sits in the TIMER panel past its widest word, TIMER 10 S, which ends near
+  // x 770: the panel face or the margin, never a letter.
+  const isShoot = async (): Promise<boolean> => dark(await px(676, 14)) && dark(await px(776, 462)) && !(await isMenu());
   // Every detail screen draws one hairline under its header; the menu, SHOOT and PHOTO do not.
   const hasHeader = async (): Promise<boolean> => near(await px(400, 60), RULE, 12);
   // LOOK: the header, the lit COLOUR segment, the back button's face (732..784,
@@ -110,7 +112,9 @@ test('Twin hand walk: the device UI for the hand on the shutter', async ({ page 
   if (!(await isMenu())) await tap(400, 255);
 
   await step('SHOOT from the card', () => tap(600, 240), isShoot);
-  await step('LOOK from the finder bar', () => tap(740, 462), isLook);
+  // MODE, the decisions group's outer end (x 564..651); the TIMER panel beyond
+  // it, 660..780, switches the self-timer and opens nothing.
+  await step('LOOK from the finder bar', () => tap(600, 462), isLook);
   await step('back to SHOOT', () => tap(752, 31), isShoot);
   await step('menu from the finder', () => tap(726, 31), isMenu);
   await step('GALLERY row', () => tap(190, 149), isDetail);

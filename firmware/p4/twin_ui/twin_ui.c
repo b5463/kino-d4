@@ -395,6 +395,8 @@ bool touch_get(uint16_t *x, uint16_t *y) {
   return true;
 }
 uint32_t touch_count(void) { return s_touch_count; }
+/* The still-contact rule is touch.c's; the Twin has no idle clock to keep. */
+void touch_rest_counts(bool on) { (void)on; }
 
 /* ---- the config store ---------------------------------------------------- */
 
@@ -729,6 +731,15 @@ void kui_set_capture_report(int ok, const char *id, int stored, int online, unsi
   g_report.bytes = bytes;
   g_report.total_ms = total_ms;
   COPY(g_report.err_code, err_code);
+  /* The strip's cells are lenses (r.cam[i]). The page reports which lenses it
+   * asked and which delivered through kui_set_capture_frames() before the
+   * report; without those, the first `online` asked and the first `stored`
+   * on the card. */
+  for (int i = 0; i < CAPTURE_CAMS; i++) {
+    const unsigned b = 1u << i;
+    g_report.cam[i].attempted = g_asked_mask != 0 ? (g_asked_mask & b) != 0 : i < online;
+    g_report.cam[i].ok = g_report.ok && (g_asked_mask != 0 ? (g_frames_in & b) != 0 : i < stored);
+  }
 }
 
 /* ---- gallery ------------------------------------------------------------- */
@@ -822,6 +833,9 @@ void kui_gallery_slot(int i, const char *id, const char *label, const char *mode
   COPY(it->mode, mode);
   it->frames = frames;
   it->partial = partial != 0;
+  /* The page says how many files and not which: the first `frames` lenses,
+   * which is what the simulator's captures hold. gallery.c reads the card. */
+  it->have = (uint8_t)((1u << (frames < 0 ? 0 : frames > 4 ? 4 : frames)) - 1u);
   it->favorite = favorite != 0;
   it->state = (tile_state_t)state;
   it->pixels = state == TILE_READY ? g_tile[i] : NULL;
