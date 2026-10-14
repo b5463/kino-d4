@@ -172,7 +172,11 @@ services:
     logging: *json-logging
 
   object-storage:
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # Built from source at the pinned release tags (infra/minio/Dockerfile):
+    # Docker Hub and quay.io stopped serving them (#240). `up -d --build`
+    # builds it; the data volume and its format are unchanged.
+    build: { context: minio }
+    image: kino-minio:RELEASE.2025-04-22T22-12-26Z
     restart: unless-stopped
     # The console is pinned to 9001 instead of the release default, which picks a
     # free port at startup and therefore changes what is listening between runs.
@@ -219,7 +223,8 @@ services:
     logging: *json-logging
 
   createbucket:
-    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    build: { context: minio }
+    image: kino-minio:RELEASE.2025-04-22T22-12-26Z
     depends_on:
       object-storage: { condition: service_healthy }
     environment:
