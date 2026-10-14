@@ -172,7 +172,7 @@ The rows at the foot of STATUS:
 | Updating. Keep the camera on. | The shutter, or RESTART THE CAMERAS, while a firmware update runs: a session open or the camera in maintenance. No photograph is taken until the update ends; an abandoned one ends by itself, the session after 60 s without data, maintenance after 600 s without a command. |
 | Cameras did not start. Restart KINO | The shutter, on a body whose capture pipeline failed to come up at boot. Said instead of blaming a capture that is not running. |
 | Favourite / Not favourite | FAVOURITE pressed on PHOTO; the mark went on or came off. |
-| First photo / Last photo | PREV on the first photograph, or NEXT on the last. |
+| First photo / Last photo | PREV or a rightward swipe on the newest photograph on the card, or NEXT or a leftward swipe on the oldest. Anywhere else a step crosses gallery pages and says nothing. |
 | WIGGLE / QUAD | The mode band on LOOK was pressed. |
 | COLOUR / B&W | The colour band on LOOK was pressed. |
 

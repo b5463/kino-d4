@@ -938,6 +938,24 @@ typedef enum {
  */
 pure_tap_t pure_tap_check(int dx, int dy, int drift_px, int64_t held_ms);
 
+/*
+ * A horizontal swipe on PHOTO's well steps the photograph (#247). Judged once,
+ * on the lift, from where the contact landed to where it was last seen: at
+ * least PURE_SWIPE_TRAVEL_PX across, and under PURE_SWIPE_OFF_AXIS_PX up or
+ * down. 120 px is 14 mm on this glass, past any tap's rock; 60 px keeps a
+ * diagonal drag from reading as a step.
+ */
+#define PURE_SWIPE_TRAVEL_PX 120
+#define PURE_SWIPE_OFF_AXIS_PX 60
+
+/**
+ * Which way a contact swiped: -1 when it travelled left, +1 right, 0 when it
+ * is not a swipe. `dx`, `dy` in px from where it landed. The travel limit is
+ * inclusive (exactly `travel_px` swipes); the off-axis limit is exclusive
+ * (exactly `off_axis_px` does not).
+ */
+int pure_swipe_dir(int dx, int dy, int travel_px, int off_axis_px);
+
 /* ------------------------------------------------------------------ */
 /* Touch: what is activity                                             */
 /* ------------------------------------------------------------------ */

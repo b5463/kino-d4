@@ -662,9 +662,17 @@ int gallery_capture_files(const char *id, bool *has_thumb, uint8_t *slots, int c
   for (int i = 0; i < 4 && n < cap; i++) slots[n++] = (uint8_t)(i + 1);
   return n;
 }
-int gallery_page(void) { return 1; }
+/* Page 2 of 3 in every render. A turn moves it so check_photo_steps() can
+ * cross a page edge; the slots stay the same six, which is all a step reads,
+ * and the check puts the page back before anything else draws. */
+static int g_page = 1;
+int gallery_page(void) { return g_page; }
 int gallery_pages(void) { return 3; }
-void gallery_turn(int delta) { (void)delta; }
+void gallery_turn(int delta) {
+  g_page += delta;
+  if (g_page < 0) g_page = 0;
+  if (g_page > 2) g_page = 2;
+}
 const gallery_item_t *gallery_slots(void) { return g_slot; }
 bool gallery_loading(void) { return false; }
 void gallery_note_added(const char *id, uint64_t when) {
@@ -3395,6 +3403,109 @@ static void check_first_use(void) {
   g_audit_off = false;
 }
 
+/* A finger that lands at (x0, y0), travels to (x1, y1) in eight passes and
+ * lifts, through ui_pass(). */
+static void pass_swipe(int x0, int y0, int x1, int y1) {
+  finger_at(x0, y0);
+  g_touch_ready = true;
+  g_touch_down = true;
+  timer_passes(2);
+  for (int k = 1; k <= 8; k++) {
+    finger_at(x0 + (x1 - x0) * k / 8, y0 + (y1 - y0) * k / 8);
+    timer_passes(1);
+  }
+  g_touch_down = false;
+  timer_passes(3);
+  g_touch_ready = false;
+}
+
+/* The photograph open on PHOTO, by the preview's slot names. */
+static bool photo_is(const char *id) { return s_screen == SCR_PHOTO && strcmp(s_photo_id, id) == 0; }
+
+/*
+ * Review and gallery (#247), through ui_pass: a swipe across the well steps
+ * the photograph, leftwards to the next; a short, a diagonal and a still
+ * contact step nothing; a swipe that ends on the column presses none of its
+ * buttons. PREV on a page's first photograph opens the last of the page
+ * before, NEXT on a page's last the first of the next; NEXT at the roll's end
+ * toasts. A page that is never read falls back to the grid.
+ */
+static void check_photo_steps(void) {
+  const screen_t scr0 = s_screen;
+  g_audit_off = true;
+  pass_rig(SCR_PHOTO);
+  s_review_from_shot = false;
+  s_first_review_us = 0;
+  const gallery_item_t *slots = gallery_slots();
+  g_page = 1;
+  photo_open(&slots[1]);
+  timer_passes(2);
+
+  const int wx = ph_well_x() + PH_W / 2, wy = PH_TOP + PH_H / 2;
+  pass_swipe(wx + 100, wy, wx - 100, wy + 10);
+  review_expect(photo_is("preview-2"), "a left swipe on the well did not open the next photograph");
+  pass_swipe(wx - 100, wy, wx + 100, wy - 10);
+  review_expect(photo_is("preview-1"), "a right swipe on the well did not open the previous photograph");
+  pass_swipe(wx + 50, wy, wx - 50, wy);
+  review_expect(photo_is("preview-1"), "a 100 px drag stepped the photograph");
+  pass_swipe(wx + 100, wy, wx - 100, wy + 80);
+  review_expect(photo_is("preview-1"), "a diagonal drag stepped the photograph");
+  s_toast[0] = '\0';
+  pass_tap(wx, wy);
+  review_expect(photo_is("preview-1") && s_toast[0] == '\0' && s_pressed == -1,
+                "a tap on the well did something");
+
+  /* From the well's edge onto DELETE: a swipe, and never the button. */
+  const int cx = ph_col_x() + PH_BTN_W / 2, dy = PH_BTN_Y(0) + PH_BTN_H / 2;
+  const int ex = s_right_hand ? ph_well_x() + PH_W - 60 : ph_well_x() + 60;
+  pass_swipe(ex, dy, cx, dy);
+  review_expect(s_dialog == DLG_NONE && s_screen == SCR_PHOTO, "a swipe that ended on DELETE pressed it");
+  review_expect(photo_is(s_right_hand ? "preview-0" : "preview-2"), "a swipe onto the column did not step");
+
+  /* PREV on the page's first photograph: the page before, its last slot,
+   * opened once the gallery task has read it. */
+  const int px = ph_col_x() + PH_PN_W / 2, nx = ph_col_x() + PH_PN_W + PH_BTN_GAP + PH_PN_W / 2;
+  const int py = PH_PN_Y + PH_PN_H / 2;
+  photo_open(&slots[0]);
+  pass_tap(px, py);
+  review_expect(gallery_page() == 0 && s_photo_seek < 0 && photo_is("preview-0"),
+                "PREV on a page's first photograph did not turn the page and wait for it");
+  g_slot[5].state = TILE_READY;
+  g_slot[5].pixels = g_tile[5];
+  timer_passes(2);
+  review_expect(photo_is("preview-5") && s_photo_seek == 0,
+                "PREV across the page did not open the last photograph of the page before");
+  g_slot[5].state = TILE_PENDING;
+  g_slot[5].pixels = NULL;
+
+  /* NEXT on the page's last: the first of the next page. */
+  g_page = 1;
+  photo_open(&slots[5]);
+  pass_tap(nx, py);
+  review_expect(gallery_page() == 2 && photo_is("preview-0"),
+                "NEXT on a page's last photograph did not open the first of the next page");
+
+  /* The roll's end is the one dead end. */
+  photo_open(&slots[5]);
+  s_toast[0] = '\0';
+  pass_tap(nx, py);
+  review_expect(gallery_page() == 2 && photo_is("preview-5") && strcmp(s_toast, "Last photo") == 0,
+                "NEXT on the last photograph of the roll did not say so");
+
+  /* A page that is never read: the grid after PHOTO_SEEK_MAX_US. */
+  g_page = 1;
+  photo_open(&slots[0]);
+  pass_tap(px, py);
+  prev_vclock_us += PHOTO_SEEK_MAX_US + 1000;
+  timer_passes(2);
+  review_expect(s_screen == SCR_GALLERY && s_photo_seek == 0, "a page never read did not fall back to the grid");
+
+  g_page = 1;
+  photo_release();
+  pass_unrig(scr0);
+  g_audit_off = false;
+}
+
 /* A real sleep through ui_pass: the panel goes dark, then a touch brings it
  * back and the wake's lift (MOTION_WAKE_MS) runs out. */
 static void sleep_through(void) {
@@ -4664,6 +4775,7 @@ static void scenes(void) {
   check_kdp_screen();
   check_dead_send();
   check_review_loop();
+  check_photo_steps();
 }
 
 /* ---- what a frame costs ---- */

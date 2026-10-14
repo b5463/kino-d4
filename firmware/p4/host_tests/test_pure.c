@@ -1334,6 +1334,29 @@ static void test_tap(void) {
 }
 
 /* ------------------------------------------------------------------ */
+/* pure_swipe_dir                                                      */
+/* ------------------------------------------------------------------ */
+
+static void test_swipe(void) {
+  const int T = PURE_SWIPE_TRAVEL_PX, O = PURE_SWIPE_OFF_AXIS_PX;
+  /* A tap, a rock and a short drag are not swipes. */
+  CHECK(pure_swipe_dir(0, 0, T, O) == 0, "a tap read as a swipe");
+  CHECK(pure_swipe_dir(40, 3, T, O) == 0, "a 40 px drag read as a swipe");
+  CHECK(pure_swipe_dir(T - 1, 0, T, O) == 0, "%d px read as a swipe", T - 1);
+  CHECK(pure_swipe_dir(-(T - 1), 0, T, O) == 0, "-%d px read as a swipe", T - 1);
+  /* The travel limit is inclusive, both ways. */
+  CHECK(pure_swipe_dir(T, 0, T, O) == 1, "exactly %d px right is not a swipe", T);
+  CHECK(pure_swipe_dir(-T, 0, T, O) == -1, "exactly %d px left is not a swipe", T);
+  CHECK(pure_swipe_dir(400, -20, T, O) == 1, "a long right swipe is not one");
+  CHECK(pure_swipe_dir(-400, 20, T, O) == -1, "a long left swipe is not one");
+  /* The off-axis limit is exclusive: a diagonal is not a step. */
+  CHECK(pure_swipe_dir(200, O - 1, T, O) == 1, "%d px off axis cancelled the swipe", O - 1);
+  CHECK(pure_swipe_dir(200, O, T, O) == 0, "%d px off axis still swiped", O);
+  CHECK(pure_swipe_dir(-200, -O, T, O) == 0, "-%d px off axis still swiped", O);
+  CHECK(pure_swipe_dir(0, 300, T, O) == 0, "a vertical drag swiped");
+}
+
+/* ------------------------------------------------------------------ */
 /* pure_still_step                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -1541,6 +1564,7 @@ int main(void) {
   test_lid();
   test_shoot_dim();
   test_tap();
+  test_swipe();
   test_still();
   test_fw_session();
   test_maint_deadline();

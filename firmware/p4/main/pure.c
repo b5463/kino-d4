@@ -689,6 +689,13 @@ pure_tap_t pure_tap_check(int dx, int dy, int drift_px, int64_t held_ms) {
   return PURE_TAP_OPEN;
 }
 
+int pure_swipe_dir(int dx, int dy, int travel_px, int off_axis_px) {
+  if (dy <= -off_axis_px || dy >= off_axis_px) return 0;
+  if (dx <= -travel_px) return -1;
+  if (dx >= travel_px) return 1;
+  return 0;
+}
+
 pure_contact_t pure_still_step(pure_still_t *st, bool down, uint16_t x, uint16_t y, int64_t now_us,
                                bool rest_counts) {
   if (st == NULL) return down ? PURE_CONTACT_ACTIVE : PURE_CONTACT_UP;

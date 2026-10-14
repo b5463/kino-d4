@@ -739,6 +739,15 @@ static uint8_t s_photo_asked = 0xF;
 static bool s_photo_fav;
 static int64_t s_photo_ms;
 static bool s_photo_sent;
+/*
+ * A step past the page's edge (#247): the page has turned and the photograph
+ * at its near end opens once the gallery task has read it. +1 opens the first
+ * slot, -1 the last; 0 when nothing is owed. s_photo_seek_us is when it was
+ * asked, so a card that never answers falls back to the grid.
+ */
+static int8_t s_photo_seek;
+static int64_t s_photo_seek_us;
+#define PHOTO_SEEK_MAX_US 4000000
 
 /*
  * The wigglegram player (#160).
@@ -5742,6 +5751,7 @@ static void photo_release(void) {
   if (s_photo) { free(s_photo); s_photo = NULL; }
   s_photo_ok = false;
   s_photo_fav = false;
+  s_photo_seek = 0; /* leaving PHOTO, or opening another: nothing is owed */
 }
 
 /* Decoded at PH_W x PH_H rather than by scaling the 252 px gallery tile:
@@ -6132,32 +6142,80 @@ static bool photo_neighbour(int delta, int *slot) {
  * Step to the previous or next photograph.
  *
  * Within the page it opens the neighbour in place, on this screen. Past the
- * page's end it turns the page and returns to the grid: the six new slots
- * are ids the gallery task has not filled yet, so there is nothing here to
- * open, and the grid is where the decoding is shown. Returns true when it
- * navigated, so the caller does not present over a move it started.
+ * page's end it turns the page and stays (#247): the six new slots are ids
+ * the gallery task has not read yet, so the photograph on the glass stays up
+ * until the near end of the new page has been read, and photo_seek_poll()
+ * opens it - NEXT the first, PREV the last. The roll's two ends are the only
+ * dead ends. It never starts a move: whatever it opens is a repaint.
  */
-static bool photo_step(int delta) {
+static void photo_step(int delta) {
+  /* A step already turning the page: the next photograph opens by itself,
+   * and a second press would turn a second page under it. */
+  if (s_photo_seek != 0) return;
   int slot;
   if (!photo_neighbour(delta, &slot)) {
     toast(photo_slot() < 0 ? "Still reading the card" : (delta < 0 ? "First photo" : "Last photo"));
-    return false;
+    return;
   }
   if (slot < 0) {
     gallery_turn(delta);
-    go(SCR_GALLERY, MOTION_BACK_MS);
-    return true;
+    s_photo_seek = (int8_t)(delta < 0 ? -1 : 1);
+    s_photo_seek_us = esp_timer_get_time();
+    return;
   }
   const gallery_item_t *it = &gallery_slots()[slot];
   if (it->id[0] == '\0') {
     toast("Still reading the card");
-    return false;
+    return;
   }
   if (!photo_open(it)) {
     toast("Card busy. Try again");
     audio_warning();
   }
-  return false;
+}
+
+/*
+ * The photograph a step across the page's edge owes, opened once the gallery
+ * task has read its slot: the first of the new page after NEXT, the last
+ * after PREV. ui_pass() only, never a draw. It waits under a question, which
+ * is about the photograph still on the glass. A card that has not answered in
+ * PHOTO_SEEK_MAX_US, or a page that came back empty, gets the grid, which is
+ * where the reading is shown.
+ */
+static void photo_seek_poll(void) {
+  if (s_photo_seek == 0) return;
+  if (s_screen != SCR_PHOTO) {
+    s_photo_seek = 0;
+    return;
+  }
+  if (s_dialog != DLG_NONE || anim_active()) return;
+  const gallery_item_t *slots = gallery_slots();
+  int want = 0;
+  if (s_photo_seek < 0) {
+    want = -1;
+    for (int i = GALLERY_PAGE - 1; i >= 0 && want < 0; i--) {
+      if (slots[i].state != TILE_EMPTY) want = i;
+    }
+  }
+  const bool empty = want < 0 || slots[want].state == TILE_EMPTY;
+  if (!empty && (slots[want].state == TILE_PENDING || slots[want].id[0] == '\0')) {
+    if (esp_timer_get_time() - s_photo_seek_us <= PHOTO_SEEK_MAX_US) return;
+  }
+  if (empty || slots[want].state == TILE_PENDING || slots[want].id[0] == '\0') {
+    s_photo_seek = 0;
+    go(SCR_GALLERY, MOTION_BACK_MS);
+    return;
+  }
+  s_photo_seek = 0;
+  if (!photo_open(&slots[want])) {
+    /* The page under the glass has turned, so the photograph still up has no
+     * neighbours here any more: the grid, with the reason. */
+    toast("Card busy. Try again");
+    audio_warning();
+    go(SCR_GALLERY, MOTION_BACK_MS);
+    return;
+  }
+  ui_render(render_screen, NULL);
 }
 
 static void draw_photo(void) {
@@ -6386,13 +6444,15 @@ static void draw_photo(void) {
    * at the roll's two ends rather than hidden, the way the gallery's page
    * buttons are: a control that disappears moves the other one. Within the
    * page a step opens the neighbour here; at the page's edge it turns the
-   * page and returns to the grid, which is where the six new tiles decode.
+   * page and opens the near end of the next one (photo_seek_poll()). While
+   * that page is read both stay live: they were live a moment ago, and a
+   * pair that greys for a few hundred milliseconds reads as a fault.
    */
   const int bh = PH_BTN_H, bx = col_x, bw = PH_BTN_W;
   {
     int ignored;
-    const bool has_prev = photo_neighbour(-1, &ignored);
-    const bool has_next = photo_neighbour(1, &ignored);
+    const bool has_prev = s_photo_seek != 0 || photo_neighbour(-1, &ignored);
+    const bool has_next = s_photo_seek != 0 || photo_neighbour(1, &ignored);
     /* Half the column each, not 52 px squares: the pair is one row of the
      * column, on the same two edges as the three buttons under it. */
     const int nx0 = bx + PH_PN_W + PH_BTN_GAP;
@@ -9887,9 +9947,7 @@ static void activate(int item) {
       } else if (item == P_IT_ROLL) {
         photo_send_to_roll();
       } else if (item == P_IT_PREV || item == P_IT_NEXT) {
-        /* True when the step turned the page and started a move: nothing
-         * below may present over it. */
-        if (photo_step(item == P_IT_NEXT ? 1 : -1)) return;
+        photo_step(item == P_IT_NEXT ? 1 : -1);
       }
       break;
 
@@ -10569,6 +10627,13 @@ static bool s_touch_was_down = false;
 static int s_down_x, s_down_y;
 static int64_t s_down_us;
 #define TOUCH_DRIFT 40
+/* A contact that landed on PHOTO's well, watched as a swipe until it lifts
+ * (#247): where it landed and where it was last seen. While it is down it
+ * presses nothing, so a swipe that ends over a button fires no tap. */
+static struct {
+  bool on;
+  int16_t x0, y0, x, y;
+} s_swipe;
 /* The camera's mark is on the panel because sleep is coming (power.c asked).
  * Touches are swallowed while it is, and the screen is redrawn when the sleep
  * is called off or over. */
@@ -10987,6 +11052,7 @@ static uint32_t ui_pass(void) {
     }
     calib_poll();
     first_review_poll();
+    photo_seek_poll();
     storage_events_poll();
     lens_hint_poll();
     timer_poll();
@@ -11206,6 +11272,7 @@ static uint32_t ui_pass(void) {
       swallow_touch = true;
     }
     if (swallow_touch) {
+      s_swipe.on = false;
       return lifting ? 0 : 20;
     }
 
@@ -11214,6 +11281,14 @@ static uint32_t ui_pass(void) {
        * reverse: touch y is the logical x. */
       const int lx = ty;
       const int ly = DISPLAY_H_RES - 1 - tx;
+
+      /* A swipe under way: follow it, press nothing. Judged on the lift. */
+      if (s_swipe.on && !landed) {
+        s_swipe.x = (int16_t)lx;
+        s_swipe.y = (int16_t)ly;
+        return 20;
+      }
+      s_swipe.on = false;
 
       /*
        * The palm.
@@ -11282,6 +11357,30 @@ static uint32_t ui_pass(void) {
         ui_render(render_screen, NULL);
         return 20;
       }
+      if (landed && held == -1 && region < 0 && s_screen == SCR_PHOTO && s_dialog == DLG_NONE &&
+          in(lx, ly, ph_well_x(), PH_TOP, PH_W, PH_H)) {
+        /* On the photograph itself: nothing there is a target, so the
+         * contact is watched as a swipe instead (#247). A tap that does not
+         * travel still stops the review's clock, above, and does nothing
+         * else, as it always did. */
+        s_swipe.on = true;
+        s_swipe.x0 = s_swipe.x = (int16_t)lx;
+        s_swipe.y0 = s_swipe.y = (int16_t)ly;
+        return 20;
+      }
+    }
+
+    if (!down && s_swipe.on) {
+      s_swipe.on = false;
+      const int dir = pure_swipe_dir(s_swipe.x - s_swipe.x0, s_swipe.y - s_swipe.y0,
+                                     PURE_SWIPE_TRAVEL_PX, PURE_SWIPE_OFF_AXIS_PX);
+      if (dir != 0 && s_screen == SCR_PHOTO && s_dialog == DLG_NONE) {
+        /* Leftwards brings the next photograph in, the way a page turns,
+         * whichever hand holds the camera: reading order does not mirror. */
+        photo_step(-dir);
+        ui_render(render_screen, NULL);
+      }
+      return 20;
     }
 
     if (down && region != s_pressed) {
