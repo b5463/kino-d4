@@ -110,6 +110,14 @@ const M1B_CAPABILITIES: ProfileCapabilities = {
    * too: SYNC_BENCH answers there without a flag, exactly as in firmware.
    */
   benchDiagnostics: true,
+  /**
+   * The Screen group (#246) arrived in 0.4.63, after every build these
+   * profiles pin, and none of their whitelists carries its commands. Spelled
+   * out false rather than left absent: the reference device reports the flag
+   * true on its own, and the profile's map is merged over that, so an absent
+   * key here would advertise a group the profile then refuses.
+   */
+  screenControl: false,
 };
 
 /**

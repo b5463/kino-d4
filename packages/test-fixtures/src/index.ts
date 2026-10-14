@@ -7,6 +7,7 @@ export { MockKinoDevice } from './MockKinoDevice';
 export { type MockFrameRequest, type MockFrameSource } from './MockKinoDevice';
 export { fitLogEntries } from './logBudget';
 export { MockMediaStore, renderPreviewFrame } from './MockMediaStore';
+export { MockScreen, MOCK_SCREEN_MOVE_MS } from './MockScreen';
 export { type TwinTelemetry, type TwinSnapshot } from './telemetry';
 export {
   FIRMWARE_PROFILES,

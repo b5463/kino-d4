@@ -216,6 +216,7 @@ here is allocated; none of them is a free slot:
 | `GET_HW_VALIDATION` | `0x4b` | The runtime hardware-validation registry, 56 items. Milestone 1B (#66). Implemented |
 | `STORAGE_BENCH` | `0x4c` | Sustained throughput and per-block write latency; `worstBlockMs` is the figure that decides a four-frame burst. Milestone 1B (#66). Implemented |
 | `C6_RESET_BENCH` | `0x4d` | **Bench only, private.** One reset pulse to the C6 while the P4 keeps running, so ROLL-C test 3 can be run. Only a P4 built with `-DKINO_C6_RESET_BENCH=1` handles it; every other build NACKs `UNSUPPORTED_COMMAND` and moves no pin. Not gated by a capability, because no product client may send it |
+| `GET_SCREEN`, `SCREEN_PLATE`, `UI_TAP`, `UI_KEY` | `0xb0`–`0xb3` | The body's own screen seen and driven from the host, so a bench can check the panel without a person at the camera (#246). Gated by `screenControl`. Every build, from 0.4.63 |
 | `MEDIA_THUMB`, `MEDIA_FAVORITE` | `0x72`, `0x75` | |
 | `NETWORK_*`, `ROLL_*`, `UPLOAD_*` | `0xa0`–`0xaa` | Network, Roll membership and the upload queue (04§7 prose). Above the event range so a command id and an event id can never collide in a trace |
 
@@ -460,8 +461,8 @@ time; collapsing it into `persisted` claims it drifts. The default build still n
 
 ### D17 — 16 commands in `commands.ts` are not implemented by the D4 V1 P4 build
 
-`commands.ts` declares **72** commands. The shipping P4 firmware dispatches
-**65** (0.4.62) and answers the rest with an `UNSUPPORTED_COMMAND` NACK from the
+`commands.ts` declares **76** commands. The shipping P4 firmware dispatches
+**69** (0.4.63) and answers the rest with an `UNSUPPORTED_COMMAND` NACK from the
 dispatcher's default case. That is the documented degradation path, and it is
 exercised: no unimplemented command hangs, times out, or returns a malformed
 frame.
@@ -471,7 +472,8 @@ Audited by comparing the `Cmd` enum against the `case KDP_CMD_*` labels in
 families left the table in 0.4.8 (see
 [D18](#d18--set_recipe-takes-a-cam-and-the-two-families-that-left-d17)), and
 `SYNC_BENCH` and `STORAGE_BENCH` left it after that, and the Maintenance family
-(`ENTER_MAINTENANCE`, `EXIT_MAINTENANCE`, `FACTORY_RESET`) in 0.4.62. Re-count from the two
+(`ENTER_MAINTENANCE`, `EXIT_MAINTENANCE`, `FACTORY_RESET`) in 0.4.62. The Screen group
+(`0xb0`–`0xb3`) arrived dispatched in 0.4.63 and was never in the table. Re-count from the two
 sources rather than trusting these numbers — they have been stale twice.
 
 | Family | Commands | Roadmap |
@@ -494,7 +496,7 @@ the behaviour is simply not built yet.
 advertises `benchDiagnostics`, `configStore`, `customSounds`, `flashControl`,
 `flashHardware`, `gallery`, `mediaIndex`, `network`, `powerManagement`,
 `powerTelemetry`, `quad`, `radioFitted`, `radioRouted`, `recipes`, `roll`,
-`rollUpload` and `wiggle`; there is still no `maintenance`, `calibration` or
+`rollUpload`, `screenControl` (0.4.63) and `wiggle`; there is still no `maintenance`, `calibration` or
 `preview` flag (`firmwareUpdate` arrived with D15). A client discovers those three
 by sending and reading the NACK rather than by asking first, which contradicts the rule in
 [Versioning](#versioning) that new behaviour is gated behind a capability flag.
