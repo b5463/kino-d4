@@ -590,6 +590,11 @@ bool fw_update_progress(fw_target_t *target, int *percent) {
   if (percent != NULL) *percent = g_fw_pct;
   return true;
 }
+/* Maintenance, the same way: out unless a scene puts the body in. */
+#include "maint.h"
+static bool g_maint;
+bool maint_active(void) { return g_maint; }
+void maint_poll(void) {}
 
 /*
  * A gallery with pictures in it, invented here and only here.
@@ -1610,7 +1615,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 271
+#define PPMS_PER_HAND 272
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -1921,6 +1926,16 @@ static void check_shutter_sound(void) {
     g_sound_failed = true;
   }
   g_fw_open = false;
+  /* In maintenance with no session open: the same refusal. */
+  g_maint = true;
+  s_toast[0] = '\0';
+  fire_shutter();
+  sound_expect("a press in maintenance", 0, 1);
+  if (strcmp(s_toast, "Updating. Keep the camera on.") != 0) {
+    fprintf(stderr, "shutter sound: a press in maintenance said \"%s\"\n", s_toast);
+    g_sound_failed = true;
+  }
+  g_maint = false;
 
   g_capture_accept = true;
   fire_shutter();
@@ -4128,6 +4143,9 @@ static void scenes(void) {
     const int64_t toast_us0 = s_toast_us;
     const bool toast_long0 = s_toast_long;
     s_toast[0] = '\0';
+    /* In maintenance before the first image or between two: no number. */
+    g_maint = true;
+    SHOT(SCR_MENU, "updating_maint");
     g_fw_open = true;
     g_fw_target = FW_T_P4;
     g_fw_pct = 37;
@@ -4140,6 +4158,7 @@ static void scenes(void) {
     draw_screen();
     shot("updating_refused");
     g_fw_open = false;
+    g_maint = false;
     g_fw_target = FW_T_P4;
     g_fw_pct = 0;
     memcpy(s_toast, toast0, sizeof toast0);

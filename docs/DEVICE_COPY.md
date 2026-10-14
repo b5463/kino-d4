@@ -133,6 +133,7 @@ The rows at the foot of STATUS:
 | `RESTARTING THE CAMERAS` | RESTART THE CAMERAS pressed; three seconds. |
 | `UPDATING 42%` | A firmware update for the body itself is being received; the whole percent so far. Over every screen until the session closes. |
 | `UPDATING CAMERA 2 42%` | The same, for a lens: the number is its slot, 1 to 4. |
+| `UPDATING` | Studio has set the camera aside for an update (maintenance) and no image is crossing yet, or one has landed and the next has not started. Ends when Studio lets go, or 600 s after it last said anything. |
 | `RESTARTING` | The whole screen, between RESTART or FACTORY RESET confirmed and the panel going dark. |
 
 ## Toasts
@@ -166,7 +167,7 @@ The rows at the foot of STATUS:
 | Still reading the card | A tile tapped before the gallery had its id. |
 | No looks on this camera | LOOK with no recipes. |
 | Hold the power slide to switch off | SHUT DOWN row, which has no soft power-off. |
-| Updating. Keep the camera on. | The shutter while a firmware update session is open. No photograph is taken until the update ends, or the host has sent nothing for 60 s. |
+| Updating. Keep the camera on. | The shutter, or RESTART THE CAMERAS, while a firmware update runs: a session open or the camera in maintenance. No photograph is taken until the update ends; an abandoned one ends by itself, the session after 60 s without data, maintenance after 600 s without a command. |
 | Cameras did not start. Restart KINO | The shutter, on a body whose capture pipeline failed to come up at boot. Said instead of blaming a capture that is not running. |
 | Favourite / Not favourite | FAVOURITE pressed on PHOTO; the mark went on or came off. |
 | First photo / Last photo | PREV on the first photograph, or NEXT on the last. |

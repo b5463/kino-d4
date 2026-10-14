@@ -999,4 +999,19 @@ bool pure_fw_session_idle(bool open, int64_t last_us, int64_t now_us);
  * every byte is in. 0 for an empty image. */
 int pure_fw_percent(uint32_t received, uint32_t size);
 
+/*
+ * Maintenance ends on its own this long after the last ENTER_MAINTENANCE or
+ * FW_* command (#242). Studio closed mid-update must not leave a body that
+ * refuses the shutter until someone power-cycles it. 600 s covers the
+ * longest quiet stretch of a real update: a node's 95 s give-up after FW_END,
+ * with the host polling FW_STATUS (which refreshes it) the whole time.
+ */
+#define PURE_MAINT_HOLD_MS 600000
+
+/** The deadline for maintenance entered or refreshed at `now_us`. */
+int64_t pure_maint_deadline(int64_t now_us);
+
+/** True when maintenance is held and `now_us` has reached its deadline. */
+bool pure_maint_expired(bool active, int64_t deadline_us, int64_t now_us);
+
 #endif

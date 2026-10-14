@@ -16,6 +16,11 @@
 //
 // --corrupt flips one byte after hashing, so FW_END must answer
 // CHECKSUM_FAILED and the device must not switch slots: the negative test.
+//
+// The script enters maintenance first and leaves it at the end, as Studio
+// does (firmware 0.4.62, #242): the shutter is refused for the whole run.
+// --no-maintenance skips both and exercises FW_BEGIN outside maintenance,
+// which 0.4.62 still accepts. A P4 update ends maintenance by restarting.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { SerialPort } from 'serialport';
@@ -129,6 +134,18 @@ async function main() {
   const before = await request(Cmd.GET_DEVICE_INFO, {}, FrameFlags.NONE, 3000);
   console.log(`device: p4 ${before.body?.p4Firmware ?? '?'}, cameras ${JSON.stringify(before.body?.cameraFirmware ?? [])}`);
 
+  const maintenance = !has('--no-maintenance');
+  if (maintenance) {
+    const m = await request(Cmd.ENTER_MAINTENANCE, {}, FrameFlags.NONE, 4000);
+    if (!m.ok) throw new Error(`ENTER_MAINTENANCE refused: ${JSON.stringify(m.body)}`);
+    console.log('maintenance entered');
+  }
+  const leave = async () => {
+    if (!maintenance || !port) return;
+    const x = await request(Cmd.EXIT_MAINTENANCE, {}, FrameFlags.NONE, 3000).catch((err) => ({ ok: false, body: err.message }));
+    console.log(`EXIT_MAINTENANCE: ${x.ok ? 'ok' : JSON.stringify(x.body)}`);
+  };
+
   const t0 = Date.now();
   const begin = await request(Cmd.FW_BEGIN, { target, size: image.length, sha256, version }, FrameFlags.NONE, 12000);
   if (!begin.ok) throw new Error(`FW_BEGIN refused: ${JSON.stringify(begin.body)}`);
@@ -162,6 +179,7 @@ async function main() {
   if (!end.ok) {
     const st = await request(Cmd.FW_STATUS, { target }, FrameFlags.NONE, 3000);
     console.log(`FW_STATUS: ${JSON.stringify(st.body)}`);
+    await leave();
     await close();
     process.exit(has('--corrupt') && end.body?.code === 'CHECKSUM_FAILED' ? 0 : 1);
   }
@@ -198,6 +216,7 @@ async function main() {
     }
     console.log(`final: ${state}`);
     if (state !== 'ready') process.exitCode = 1;
+    await leave();
   }
   await close();
 }

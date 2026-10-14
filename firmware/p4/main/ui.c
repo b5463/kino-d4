@@ -23,6 +23,7 @@
 #include "esp_timer.h"
 #include "factory_reset.h"
 #include "fw_update.h"
+#include "maint.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -6851,6 +6852,11 @@ static int64_t s_cams_restart_us; /* when RESTART THE CAMERAS was pressed; the b
  * the middle of their transfers. The draw hides the button then too; this
  * catches a press that beat the repaint, and the row. */
 static void cams_restart(void) {
+  if (fw_update_busy() || maint_active()) {
+    /* A bank cycle mid-update cuts a node in the middle of its flash write. */
+    toast("Updating. Keep the camera on.");
+    return;
+  }
   if (capture_in_flight()) {
     toast("Wait for the photo to save");
     return;
@@ -8376,7 +8382,13 @@ static void draw_working_banner(const char *line) {
 static bool update_line(char *out, size_t cap) {
   fw_target_t target = FW_T_P4;
   int pct = 0;
-  if (!fw_update_progress(&target, &pct)) return false;
+  if (!fw_update_progress(&target, &pct)) {
+    /* In maintenance between two images, or before the first: the body is
+     * still set aside, so the strip stays, without a number (#242). */
+    if (!maint_active()) return false;
+    snprintf(out, cap, "UPDATING");
+    return true;
+  }
   char done[8];
   snprintf(done, sizeof done, "%d%%", pct);
   if (target == FW_T_P4) snprintf(out, cap, "UPDATING %s", done);
@@ -9910,9 +9922,10 @@ static void shutter_now(void) {
       s_toast_long = false;
     }
   } else {
-    if (fw_update_busy()) {
+    if (fw_update_busy() || maint_active()) {
       /* The shutter waits for the update: capture.c refuses while a session
-       * is open (#242). Said, because a silent shutter reads as broken. */
+       * is open, and maintenance holds the capture lock (#242). Said, because
+       * a silent shutter reads as broken. */
       toast("Updating. Keep the camera on.");
       audio_warning();
       klog("P4", "shutter refused - an update is running");
@@ -10495,7 +10508,9 @@ static void update_poll(void) {
   static int drawn = -1;
   fw_target_t target = FW_T_P4;
   int pct = 0;
-  const int key = fw_update_progress(&target, &pct) ? (int)target * 1000 + pct : -1;
+  const int key = fw_update_progress(&target, &pct) ? (int)target * 1000 + pct
+                  : maint_active()                    ? -2
+                                                      : -1;
   if (key == drawn) return;
   if (s_screen == SCR_SHOOT) {
     drawn = key;
@@ -10630,6 +10645,8 @@ static uint32_t ui_pass(void) {
     lens_hint_poll();
     timer_poll();
     undo_poll();
+    /* Maintenance's deadline: here and on kdp_server's loop (maint.h). */
+    maint_poll();
     update_poll();
     if (s_cams_restart_us != 0 && esp_timer_get_time() - s_cams_restart_us >= CAMS_RESTART_BANNER_US) {
       s_cams_restart_us = 0;

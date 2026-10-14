@@ -11,6 +11,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "klog.h"
+#include "maint.h"
 #include "mbedtls/sha256.h"
 #include "node_link/node_link.h"
 #include "power.h"
@@ -150,7 +151,9 @@ esp_err_t fw_update_begin(fw_target_t t, uint32_t size, const char *sha256_hex,
     refuse(why, "BUSY", "An update session is already open");
     return ESP_ERR_INVALID_STATE;
   }
-  if (capture_busy()) {
+  /* In maintenance the capture lock is maintenance's own (maint.c), and no
+   * capture can be running behind it. */
+  if (!maint_active() && capture_busy()) {
     xSemaphoreGive(s.lock);
     refuse(why, "INVALID_STATE", "A capture is running");
     return ESP_ERR_INVALID_STATE;
@@ -431,10 +434,13 @@ static void watch_node(fw_target_t t) {
   /* Through the node scheduler like every background HELLO (cam_sched.h): a
    * capture owns the link while it runs, and this asks again on the next
    * FW_STATUS poll. A bare HELLO here could land between two chunk reads of a
-   * live capture. */
-  if (!capture_probe_begin(cam)) return;
+   * live capture. In maintenance the capture lock is held by maintenance, so
+   * the scheduler defers every probe, and no capture can run: the HELLO goes
+   * straight out. */
+  const bool gated = !maint_active();
+  if (gated && !capture_probe_begin(cam)) return;
   const esp_err_t hello = camlink_hello_ch_timeout(cam, 400);
-  capture_probe_end(cam);
+  if (gated) capture_probe_end(cam);
   if (hello == ESP_OK) {
     camlink_info_t info;
     camlink_get_info_ch(cam, &info);

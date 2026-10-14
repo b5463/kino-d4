@@ -287,6 +287,9 @@ const UPLOAD_TICK_MS = 1200;
  * enough to overlap, which is when that showed up.
  */
 const FRAME_SOURCE_TIMEOUT_MS = 1500;
+/** Maintenance ends by itself this long after the last ENTER_MAINTENANCE or
+ * FW_* command, as on the D4-V1 (firmware 0.4.62, PURE_MAINT_HOLD_MS). */
+const MAINT_HOLD_MS = 600_000;
 
 /**
  * Resolves to null when `produce` throws, rejects, or takes longer than
@@ -466,6 +469,8 @@ export class MockKinoDevice implements MockDeviceLike {
   private bootBlockedUntil = 0;
   private resetReason = 'power-on';
   private maintenance = false;
+  /** When maintenance ends by itself; refreshed by ENTER and every FW_*. */
+  private maintenanceUntil = 0;
   /**
    * The pack, as the Twin's own POWER tab models it. Twin-only: on D4-V1 no
    * sense divider or gauge bus reaches the P4 (contract D10), so this figure
@@ -2561,6 +2566,17 @@ export class MockKinoDevice implements MockDeviceLike {
       return;
     }
 
+    // Maintenance's own deadline, checked on the next command as the body
+    // checks it on its read loop; every FW_* command pushes it out.
+    if (this.maintenance && this.now() >= this.maintenanceUntil) {
+      this.maintenance = false;
+      this.startAmbient();
+      this.log('P4', 'maintenance ended: no command for 600 s');
+    }
+    if (this.maintenance && frame.type >= Cmd.FW_QUERY && frame.type <= Cmd.FW_STATUS) {
+      this.maintenanceUntil = this.now() + MAINT_HOLD_MS;
+    }
+
     switch (cmd) {
       case Cmd.HELLO: {
         // KINO Twin §12: a boot glitch that swallows the first handshake —
@@ -3071,16 +3087,40 @@ export class MockKinoDevice implements MockDeviceLike {
         this.respond(frame, stats);
         return;
       }
-      case Cmd.ENTER_MAINTENANCE:
-        this.maintenance = true;
-        this.stopAmbient();
-        this.log('P4', 'maintenance mode — capture disabled');
-        this.respond(frame, { ok: true });
+      case Cmd.ENTER_MAINTENANCE: {
+        // The D4-V1 takes the capture lock to enter and waits up to 2 s for
+        // it: a capture that ends inside that is waited out, one that does
+        // not (or a soak run) is INVALID_STATE. Entering again refreshes the
+        // deadline.
+        const enter = () => {
+          this.maintenanceUntil = this.now() + MAINT_HOLD_MS;
+          if (!this.maintenance) {
+            this.maintenance = true;
+            this.stopAmbient();
+            this.log('P4', 'maintenance mode — capture disabled');
+          }
+          this.respond(frame, { ok: true });
+        };
+        if (this.maintenance || !this.captureBusy()) {
+          enter();
+          return;
+        }
+        const waitMs = this.captureBusyUntil - this.now();
+        if (this.soakRunning || waitMs > 2000) {
+          this.respondError(frame, 'INVALID_STATE', 'A capture is running');
+          return;
+        }
+        this.after(waitMs, enter);
         return;
+      }
       case Cmd.EXIT_MAINTENANCE:
-        this.maintenance = false;
-        this.startAmbient();
-        this.log('P4', 'maintenance mode exited');
+        // Ok while out, too: the updater exits after a halted run without
+        // knowing whether the deadline already ended it.
+        if (this.maintenance) {
+          this.maintenance = false;
+          this.startAmbient();
+          this.log('P4', 'maintenance mode exited');
+        }
         this.respond(frame, { ok: true });
         return;
       case Cmd.REBOOT:
@@ -3208,6 +3248,12 @@ export class MockKinoDevice implements MockDeviceLike {
         // this is the one condition allowed to actually refuse a shot.
         if (this.scenarios.sdFull) {
           this.respondError(frame, 'SD_FULL', 'SD card full — 0 MB free');
+          return;
+        }
+        // Maintenance holds the capture lock on the D4-V1: CAMERA_CAPTURE is
+        // BUSY until it ends.
+        if (this.maintenance) {
+          this.respondError(frame, 'BUSY', 'In maintenance: the camera is set aside for an update');
           return;
         }
         // KINO Twin §5: a host-triggered capture runs the same pipeline as

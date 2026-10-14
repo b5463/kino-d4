@@ -660,6 +660,13 @@ timing metrics at the end of this document, and a host must not present it as sk
 |---|---:|---|
 | `ENTER_MAINTENANCE` | `0x50` | → `{}` ← **mock** `{ "ok": true }` — capture disabled while in maintenance |
 | `EXIT_MAINTENANCE` | `0x51` | → `{}` ← **mock** `{ "ok": true }` |
+
+D4-V1 (firmware 0.4.62 on): `ENTER_MAINTENANCE` answers `INVALID_STATE` when a capture or a bench
+command still holds the capture lock after 2 s, and `{ "ok": true }` again while already in, with a
+fresh deadline. In maintenance the shutter and `CAMERA_CAPTURE` (`BUSY`) are refused and uploads start
+no new step. It ends on `EXIT_MAINTENANCE`, on a restart, or by itself 600 s after the last
+`ENTER_MAINTENANCE` or `FW_*` command. `EXIT_MAINTENANCE` while out is `{ "ok": true }`. See
+[README D15](README.md#d15--targetid-gained-c6-and-fw_query-is-implemented-without-the-rest-of-fw_).
 | `REBOOT` | `0x52` | → `{}` ← **mock** `{ "ok": true }`, **then** reboot. Answer first, reboot after |
 | `FACTORY_RESET` | `0x53` | → `{}` ← `{ "ok": true }`, then the body erases its settings (as `RESET_CONFIG`, keeping the device identity), its saved networks and its Roll membership with the device credential, clears the crash counter and reboots. Photographs on the card are not touched. Same door as the POWER screen's FACTORY RESET. Timeout 6 s |
 

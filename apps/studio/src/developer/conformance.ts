@@ -621,9 +621,14 @@ const CASES: Case[] = [
     name: 'MAINTENANCE enter/exit',
     active: true,
     run: async (dev) => {
+      /* Twice each way, as the updater does it: a retry re-enters a body
+       * already in maintenance, and a halted run exits one the deadline may
+       * already have let go. Both answer ok (contract commands.md, D4-V1). */
+      await dev.enterMaintenance();
       await dev.enterMaintenance();
       await dev.exitMaintenance();
-      return 'entered and exited cleanly';
+      await dev.exitMaintenance();
+      return 'entered and exited cleanly, twice each';
     },
   },
 ];

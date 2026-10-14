@@ -725,3 +725,9 @@ int pure_fw_percent(uint32_t received, uint32_t size) {
   if (received >= size) return 100;
   return (int)(((uint64_t)received * 100u) / size);
 }
+
+int64_t pure_maint_deadline(int64_t now_us) { return now_us + (int64_t)PURE_MAINT_HOLD_MS * 1000; }
+
+bool pure_maint_expired(bool active, int64_t deadline_us, int64_t now_us) {
+  return active && now_us >= deadline_us;
+}

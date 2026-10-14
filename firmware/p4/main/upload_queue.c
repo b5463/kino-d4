@@ -23,6 +23,7 @@
 #include "hwv_rules.h"
 #include "capture.h"
 #include "klog.h"
+#include "maint.h"
 #include "net_link.h"
 #include "roll_api.h"
 /* For ROLL_HTTP_CARD_YIELD_DETAIL only. The header declares no radio types
@@ -844,10 +845,12 @@ static void worker_task(void *arg) {
   (void)arg;
   for (;;) {
     uint32_t ignored;
-    if (storage_capture_active()) {
+    if (storage_capture_active() || maint_active()) {
       /* Photography wins. The lock's own state, not a boolean this module keeps,
        * so there is nothing to get out of step with. Only an optimisation:
-       * correctness is the lock's job, not this check's. */
+       * correctness is the lock's job, not this check's. Maintenance (#242)
+       * stops new work the same way while an image crosses the links; a step
+       * already running finishes. */
       xTaskNotifyWait(0, 0, &ignored, PAUSED_TICKS);
       continue;
     }
@@ -1110,7 +1113,7 @@ void upload_queue_status(upload_queue_report_t *out) {
   if (out->pending + out->card_pending == 0 && s_active < 0) s_burst_done = 0;
   out->burst_done = s_burst_done;
   out->last_upload_ms = s_last_upload_ms;
-  out->draining = !storage_capture_active() && s_net_ready && !s_halted &&
+  out->draining = !storage_capture_active() && !maint_active() && s_net_ready && !s_halted &&
                   (out->pending > 0 || s_active >= 0);
   memcpy(out->last_error, s_last_error, sizeof out->last_error);
   unlock();

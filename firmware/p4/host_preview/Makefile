@@ -61,7 +61,7 @@ DEPS := $(SRCS) $(MAIN)/ui.c $(MAIN)/ui.h \
         $(MAIN)/wifi_creds.h $(MAIN)/roll_state.h $(MAIN)/upload_queue.h \
         $(MAIN)/roll_queue.h $(MAIN)/gallery.h $(MAIN)/audio.h \
         $(MAIN)/kdp_server.h $(MAIN)/kdp_recipes.h $(MAIN)/pure.h \
-        $(MAIN)/fw_update.h \
+        $(MAIN)/fw_update.h $(MAIN)/maint.h \
         $(KDP_CORE)/kdp/protocol.h \
         $(wildcard shim/*.h shim/freertos/*.h) Makefile
 

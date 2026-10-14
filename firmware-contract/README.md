@@ -387,8 +387,23 @@ Two conventions this establishes for the response:
 the shapes in [commands.md](commands.md#firmware--0x600x66) and Studio's updater as the client they
 were written against. What the D4-V1 does differently from the reference device:
 
-- No maintenance mode exists, so `MAINT_REQUIRED` is never sent. A `BEGIN` during a capture gets
-  `INVALID_STATE`; a second `BEGIN` while a session is open gets `BUSY`.
+- `MAINT_REQUIRED` is never sent: `FW_BEGIN` outside maintenance is still accepted. Maintenance exists
+  since 0.4.62 (below); the gate is held back one release so `scripts/kino-fw-update.mjs` runs from
+  older checkouts, and lands in the release after. A `BEGIN` during a capture gets `INVALID_STATE`; a
+  second `BEGIN` while a session is open gets `BUSY`.
+- An open session refuses the shutter and `CAMERA_CAPTURE` (`BUSY` to the host) until it closes. A
+  session that no `FW_CHUNK` has reached for 60 s is torn down like `FW_ABORT`, and its target reports
+  `error` with `No data for 60 s. Update abandoned` (0.4.62, `fw_update_poll()`).
+- `ENTER_MAINTENANCE` / `EXIT_MAINTENANCE` (0.4.62, `firmware/p4/main/maint.c`) answer the contract's
+  `{ "ok": true }`. Entering takes the capture lock and keeps it, so the shutter and `CAMERA_CAPTURE`
+  (`BUSY`) and the background node probes wait; uploads start no new step; a settings save in flight
+  lands first. A capture or a bench command holding the lock past 2 s makes `ENTER` answer
+  `INVALID_STATE`. `ENTER` while in refreshes the deadline; `EXIT` while out is still `ok`.
+  Maintenance ends on `EXIT`, on a restart, or by itself 600 s after the last `ENTER` or `FW_*`
+  command. The deadline is checked on kdp_server's read loop and on the UI task, never in an
+  `esp_timer` callback. `ENTER` and each `FW_*` command in maintenance count as activity, so
+  `body.camIdleTimeoutS` cannot cut the camera bank under a node mid-image. There is no `maintenance` capability flag: the commands answer, and an older
+  body answers `UNSUPPORTED_COMMAND`.
 - `chunkSize` is 8192 for every target. A camera image is forwarded down the node's UART in 2 KB
   `NL_CMD_FW_*` frames (`node_link.h`), each acknowledged, inside the host's 8 KB chunk.
 - The P4 answers `FW_END` and restarts 0.8 s later; the link drops, which the updater already
@@ -446,7 +461,7 @@ time; collapsing it into `persisted` claims it drifts. The default build still n
 ### D17 — 16 commands in `commands.ts` are not implemented by the D4 V1 P4 build
 
 `commands.ts` declares **72** commands. The shipping P4 firmware dispatches
-**56** and answers the rest with an `UNSUPPORTED_COMMAND` NACK from the
+**65** (0.4.62) and answers the rest with an `UNSUPPORTED_COMMAND` NACK from the
 dispatcher's default case. That is the documented degradation path, and it is
 exercised: no unimplemented command hangs, times out, or returns a malformed
 frame.
@@ -455,14 +470,14 @@ Audited by comparing the `Cmd` enum against the `case KDP_CMD_*` labels in
 `firmware/p4/main/kdp_server.c`. The count was 27 at 0.4.2; the looks and sounds
 families left the table in 0.4.8 (see
 [D18](#d18--set_recipe-takes-a-cam-and-the-two-families-that-left-d17)), and
-`SYNC_BENCH` and `STORAGE_BENCH` left it after that. Re-count from the two
+`SYNC_BENCH` and `STORAGE_BENCH` left it after that, and the Maintenance family
+(`ENTER_MAINTENANCE`, `EXIT_MAINTENANCE`, `FACTORY_RESET`) in 0.4.62. Re-count from the two
 sources rather than trusting these numbers — they have been stale twice.
 
 | Family | Commands | Roadmap |
 |---|---|---|
 | Camera control beyond capture | `CAMERA_ARM` `0x31`, `CAMERA_PREVIEW` `0x34`, `CAMERA_CALIBRATE` `0x35`, `CAMERA_PHASE` `0x36`, `CAMERA_FOCUS` `0x37` | Yes |
 | Firmware update | `FW_ROLLBACK` `0x66` only. `FW_BEGIN`..`FW_STATUS` are implemented since 0.4.58 — see [D15](#d15--targetid-gained-c6-and-fw_query-is-implemented-without-the-rest-of-fw_) | Yes |
-| Maintenance | `ENTER_MAINTENANCE` `0x50`, `EXIT_MAINTENANCE` `0x51`, `FACTORY_RESET` `0x53` | Yes |
 | Bench | `LINK_BENCH` `0x44` | Yes |
 | Link | `SET_LINK_BAUD` `0x45` | Yes |
 
@@ -479,9 +494,9 @@ the behaviour is simply not built yet.
 advertises `benchDiagnostics`, `configStore`, `customSounds`, `flashControl`,
 `flashHardware`, `gallery`, `mediaIndex`, `network`, `powerManagement`,
 `powerTelemetry`, `quad`, `radioFitted`, `radioRouted`, `recipes`, `roll`,
-`rollUpload` and `wiggle`; there is still no `firmwareUpdate`, `maintenance`,
-`calibration` or `preview` flag. A client discovers those four by sending and
-reading the NACK rather than by asking first, which contradicts the rule in
+`rollUpload` and `wiggle`; there is still no `maintenance`, `calibration` or
+`preview` flag (`firmwareUpdate` arrived with D15). A client discovers those three
+by sending and reading the NACK rather than by asking first, which contradicts the rule in
 [Versioning](#versioning) that new behaviour is gated behind a capability flag.
 
 The fix was stated here as "a flag per family, with the first family to be
@@ -508,8 +523,9 @@ fitted on that unit.
 |---|---|---|
 | `CAMERA_CALIBRATE (get)` | `0x35` | Not dispatched. Per-camera alignment calibration is not built; the D4 V1 body has no stored calibration to read back. |
 | `CAMERA_PREVIEW frame` | `0x34` | Not dispatched, and **nothing replaces it**. There is no KDP way to get a preview frame off this body. |
-| `MAINTENANCE enter/exit` | `0x50` | Not dispatched — the whole Maintenance family is on the roadmap, not in the build. |
-| `FW_BEGIN gate (outside maintenance)` | `0x61` | Not dispatched. A near miss worth noting: the case expects a refusal citing maintenance and gets `UNSUPPORTED_COMMAND`, so the gate it tests is satisfied in substance while the assertion still fails. |
+| `FW_BEGIN gate (outside maintenance)` | `0x61` | Dispatched since 0.4.58 and still accepted outside maintenance in 0.4.62 (see D15): the case reports `ERROR`, aborts the session it opened, and passes against the mock, which answers `MAINT_REQUIRED`. Passes on the body once the gate lands. It opens a real `cam1` session first, so the node erases the first 4 KB sector of its inactive OTA slot before the abort. |
+
+`MAINTENANCE enter/exit` (`0x50`) left this table at 0.4.62: both commands are dispatched (D15).
 
 **There is no live-viewfinder KDP command.** This entry named
 `CAMERA_VIEWFINDER` as "the live viewfinder path"; no such identifier exists in

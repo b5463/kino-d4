@@ -729,6 +729,10 @@ bool fw_update_progress(fw_target_t *target, int *percent) {
   (void)percent;
   return false;
 }
+/* Nor maintenance: nothing on the page enters it. */
+#include "maint.h"
+bool maint_active(void) { return false; }
+void maint_poll(void) {}
 
 KUI_EXPORT("kui_set_capture_stage") void kui_set_capture_stage(int stage) { g_stage = (capture_stage_t)stage; }
 KUI_EXPORT("kui_set_capture_count") void kui_set_capture_count(unsigned n) { g_capture_count = n; }
