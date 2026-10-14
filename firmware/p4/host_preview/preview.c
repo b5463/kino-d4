@@ -2772,6 +2772,8 @@ static void review_open_cams(uint32_t asked, uint32_t ok) {
   memset(&g_report, 0, sizeof g_report);
   g_report.ok = true;
   snprintf(g_report.id, sizeof g_report.id, "CAP_000042");
+  /* capture.c always names the mode; the review's column says it. */
+  snprintf(g_report.mode, sizeof g_report.mode, "wiggle");
   g_report.stored = __builtin_popcount(ok & asked);
   g_report.online = __builtin_popcount(asked);
   report_cams(asked, ok & asked);

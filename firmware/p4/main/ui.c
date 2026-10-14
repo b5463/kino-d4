@@ -325,7 +325,7 @@ static int ph_well_x(void) { return s_right_hand ? PAGE_M : UI_W - PAGE_M - PH_W
  * standing between the caption and the buttons was measuring a column a third
  * shorter than the one being drawn. */
 #define PH_LINE 24
-#define PH_CAP_LINES 4    /* label, mode, frame count, and the short-wiggle note */
+#define PH_CAP_LINES 4    /* date, mode, place, and the short-wiggle note */
 /* Three buttons, full column width, top to bottom: DELETE, SEND TO ROLL,
  * FAVOURITE - the harmless one nearest the thumb's rest at the foot of the
  * column and the one that deletes a photograph furthest from it. Written as
@@ -351,10 +351,10 @@ _Static_assert(PH_TOP >= 2 && PH_TOP + PH_H + 2 <= UI_H, "the photo well's bevel
 _Static_assert(2 * PAGE_M + PH_W + 6 + PH_COL_W <= UI_W, "the control column runs into the well");
 _Static_assert(PH_CAP_Y + PH_CAP_LINES * PH_LINE + 8 <= PH_PN_Y,
                "the caption runs into the page buttons");
-/* The facts well at its tallest - number (LABEL, 27), mode, date, the
- * MISSING line, CAMERAS and the mark (CAPTION lines of 18) - a grid step
- * clear of the page buttons. draw_photo() sizes the well the same way. */
-#define PH_WELL_MAX_H (2 * PH_BLK_PAD + 27 + 18 + 18 + (6 + 18) + (18 + 18 + 6 + 14))
+/* The facts well at its tallest - date, mode, place, the MISSING line,
+ * CAMERAS and the mark (CAPTION lines of 18) - a grid step clear of the page
+ * buttons. draw_photo() sizes the well the same way. */
+#define PH_WELL_MAX_H (2 * PH_BLK_PAD + 18 + 18 + 18 + (6 + 18) + (18 + 18 + 6 + 14))
 _Static_assert(PH_CAP_Y - PH_BLK_PAD + PH_WELL_MAX_H + GRID <= PH_PN_Y,
                "the photo facts well runs into the page buttons");
 _Static_assert(PH_BTN_Y(0) < PH_BTN_Y(1) && PH_BTN_Y(1) < PH_BTN_Y(2) &&
@@ -721,7 +721,6 @@ static int64_t s_undo_until_us;
 static uint16_t *s_photo;        /* PH_W * PH_H, decoded on entering SCR_PHOTO */
 static bool s_photo_ok;
 static char s_photo_id[40];
-static char s_photo_label[16];
 static char s_photo_mode[12];
 static int s_photo_frames;
 /* Which lenses the open photograph has on the card (bit i for C(i+1)), and
@@ -739,6 +738,9 @@ static uint8_t s_photo_asked = 0xF;
 static bool s_photo_fav;
 static int64_t s_photo_ms;
 static bool s_photo_sent;
+/* Its place in the gallery when it was opened, 1 for the newest; 0 when it
+ * was not opened from a gallery slot (the review after a shot). */
+static int16_t s_photo_pos;
 /*
  * A step past the page's edge (#247): the page has turned and the photograph
  * at its near end opens once the gallery task has read it. +1 opens the first
@@ -5817,7 +5819,6 @@ static bool photo_open(const gallery_item_t *it) {
 
   photo_release();
   snprintf(s_photo_id, sizeof s_photo_id, "%s", it->id);
-  snprintf(s_photo_label, sizeof s_photo_label, "%s", it->label);
   snprintf(s_photo_mode, sizeof s_photo_mode, "%s", it->mode);
   s_photo_frames = it->frames;
   s_photo_have = it->have;
@@ -5830,6 +5831,13 @@ static bool photo_open(const gallery_item_t *it) {
   s_photo_fav = it->favorite;
   s_photo_ms = it->captured_ms;
   s_photo_sent = it->sent;
+  s_photo_pos = 0;
+  {
+    const gallery_item_t *slots = gallery_slots();
+    for (int i = 0; i < GALLERY_PAGE; i++) {
+      if (it == &slots[i]) s_photo_pos = (int16_t)(gallery_page() * GALLERY_PAGE + i + 1);
+    }
+  }
 
   /* 64-byte aligned, because this is a PPA destination and the PPA is a DMA
    * engine: a plain heap_caps_malloc gave 4-byte alignment and every scale
@@ -6178,6 +6186,18 @@ static bool photo_neighbour(int delta, int *slot) {
 }
 
 /*
+ * PHOTO 37: the open photograph's place in the gallery, 1 the newest. From its
+ * slot while its page is the one in RAM, else the place it was opened at, so
+ * the line holds while a step turns the page under it. 0 when neither knows:
+ * the review after a shot, before the gallery's page holds it.
+ */
+static int photo_pos(void) {
+  const int at = photo_slot();
+  if (at >= 0) return gallery_page() * GALLERY_PAGE + at + 1;
+  return s_photo_pos;
+}
+
+/*
  * Step to the previous or next photograph.
  *
  * Within the page it opens the neighbour in place, on this screen. Past the
@@ -6360,12 +6380,25 @@ static void draw_photo(void) {
     for (int k = 0; k < 4; k++) damaged += (s_photo_have & (1u << k)) && !(s_wig_have & (1u << k));
   }
   const bool short_wiggle = missing > 0 || damaged > 0;
+  /*
+   * The facts, top to bottom (#247): when it was taken, what kind of capture
+   * it is, and where it is in the gallery - PHOTO 37. The raw capture number
+   * led here and said nothing a person can use: CAP_000039 is a folder name,
+   * the same prefix on every capture, and the number in it is not the
+   * gallery's count. The date leads in ink, the other two are quiet.
+   *
+   * All three in the caption face. The date does not fit the column in the
+   * label face at either length - 170 px for 14 OCT 18:02, 185 for DATE NOT
+   * SET, against 140 - and a date cut to fit is no date.
+   */
+  char mode[24];
+  snprintf(mode, sizeof mode, "%s", s_photo_mode);
+  upcase(mode);
+  const int pos = photo_pos();
   const int blk_pad = PH_BLK_PAD;
-  int blk_h = blk_pad + K_TYPE_LABEL->line_h + K_TYPE_CAPTION->line_h;
-  /* The date line. It was left out, so on a dated photograph - every one the
-   * camera takes once the clock is set - the four-mark hung 18 px out of the
-   * bottom of its well. */
-  if (s_photo_ms > 0) blk_h += K_TYPE_CAPTION->line_h;
+  int blk_h = blk_pad + K_TYPE_CAPTION->line_h;
+  if (mode[0] != '\0') blk_h += K_TYPE_CAPTION->line_h;
+  if (pos > 0) blk_h += K_TYPE_CAPTION->line_h;
   if (short_wiggle) blk_h += 6 + K_TYPE_CAPTION->line_h;
   blk_h += 18 + K_TYPE_CAPTION->line_h + 6 + 14; /* CAMERAS, then the mark */
   blk_h += blk_pad;
@@ -6373,48 +6406,30 @@ static void draw_photo(void) {
 
   int cy = PH_CAP_Y;
   {
-    /*
-     * The number, and then what kind of thing it is.
-     *
-     * A capture is called CAP_000039 and the whole string will not fit the
-     * column at a size worth reading - measured, it is about 165 px in a 158
-     * px column at either face. Cutting it to fit produced "CAP_0000...",
-     * which throws away the only part that identifies anything: the prefix is
-     * the same on every capture this camera has ever taken.
-     *
-     * So the number gets the billing and the prefix goes on the line below
-     * with the mode, where it costs nothing and can still be read back to
-     * reconstruct the folder name on the card.
-     */
-    char raw[32], mode[24];
-    snprintf(raw, sizeof raw, "%s", s_photo_label);
-    snprintf(mode, sizeof mode, "%s", s_photo_mode);
-    upcase(raw);
-    upcase(mode);
-
-    char *tail = strrchr(raw, '_');
-    const char *num = tail != NULL ? tail + 1 : raw;
-    if (tail != NULL) *tail = '\0';
-
+    /* A date the clock never set is 1970 plus the uptime: said as such, not
+     * printed as 1 JAN. */
+    char when[24];
+    if (pure_epoch_plausible(s_photo_ms)) date_words(when, sizeof when, s_photo_ms);
+    else snprintf(when, sizeof when, "DATE NOT SET");
     char fitted[32];
-    text_fit(fitted, sizeof fitted, K_TYPE_LABEL, num, PH_COL_W - 2 * PH_FPAD - 4);
-    text(K_TYPE_LABEL, fx, cy, fitted, K_INK);
-    cy += K_TYPE_LABEL->line_h;
-
-    /* Sized for both inputs whole. The compiler cannot see that a capture id
-     * is ten characters and is right to insist. */
-    /* The mode, and whether the Roll has it. The "CAP" prefix said nothing a
-     * person needed; the date that replaced it on the next line does. */
-    char sub[64];
-    snprintf(sub, sizeof sub, "%s%s", mode[0] != '\0' ? mode : raw, s_photo_sent ? "  SENT" : "");
-    text(K_TYPE_CAPTION, fx, cy, sub, s_photo_sent ? K_INK : K_INK_QUIET);
-    if (s_photo_ms > 0) {
-      cy += K_TYPE_CAPTION->line_h;
-      char when[24];
-      date_words(when, sizeof when, s_photo_ms);
-      text(K_TYPE_CAPTION, fx, cy, when, K_INK_QUIET);
-    }
+    text_fit(fitted, sizeof fitted, K_TYPE_CAPTION, when, PH_COL_W - PH_FPAD - 4);
+    text(K_TYPE_CAPTION, fx, cy, fitted, K_INK);
     cy += K_TYPE_CAPTION->line_h;
+
+    /* The mode, and whether the Roll has it. */
+    if (mode[0] != '\0') {
+      char sub[48];
+      snprintf(sub, sizeof sub, "%s%s", mode, s_photo_sent ? "  SENT" : "");
+      text(K_TYPE_CAPTION, fx, cy, sub, s_photo_sent ? K_INK : K_INK_QUIET);
+      cy += K_TYPE_CAPTION->line_h;
+    }
+
+    if (pos > 0) {
+      char place[24];
+      snprintf(place, sizeof place, "PHOTO %d", pos);
+      text(K_TYPE_CAPTION, fx, cy, place, K_INK_QUIET);
+      cy += K_TYPE_CAPTION->line_h;
+    }
   }
 
   /*
