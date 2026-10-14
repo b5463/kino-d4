@@ -43,7 +43,6 @@
 #include "klog.h"
 #include "lid.h"
 #include "taskmon.h"
-#include "logo_kino_d4.h"
 #include "meta.h"
 #include "net_link.h"
 #include "power.h"
@@ -2487,26 +2486,19 @@ static void odd_mark(int dy, uint16_t ink) {
   mask_blit(UI_MARK_ODD_JOBS_128, ST_MARK_W, ST_MARK_H, ST_MARK_W, ST_MARK_X, ST_MARK_Y + dy, ink);
 }
 
-/**
- * The camera's own mark, in the middle of the screen.
+/*
+ * The maker's mark while the camera goes away (#245): going to sleep,
+ * restarting and switching off show the ODD JOBS mark the start opens on, at
+ * the same place, so a camera opens and closes on one picture. It was the
+ * KINO D4 wordmark (logo_kino_d4.h); that bake is not drawn any more, which
+ * gives back the flash the 128 px mark costs.
  *
- * Not part of the boot any more - the boot is the field and nothing else.
- * This is what the camera shows while it is going away: shutting down or
- * restarting, one mark, centred, until the screen does. A machine that is
- * leaving should say which machine is leaving and nothing else.
- *
- * Coverage, not bits: logo_kino_d4.h is the white-on-dark brand raster box-
- * filtered to 374 x 52 by tools/mkmask.mjs, the size the 1-bit bake had on
- * the glass, and every edge of the italic is a ramp instead of a staircase.
- * Centred on its box, not its centroid: the D4 badge is open and light, and
- * the word reads as centred when the box is.
+ * `k` is its visibility, 0 the ground alone, 255 full: through the neutral
+ * greys (fade_in()), like the start.
  */
-static void boot_mark_ink(uint16_t ink) {
-  const int lx = (UI_W - KINO_D4_LOGO_W) / 2;
-  const int ly = (UI_H - KINO_D4_LOGO_H) / 2;
-  mask_blit(KINO_D4_LOGO, KINO_D4_LOGO_W, KINO_D4_LOGO_H, KINO_D4_LOGO_W, lx, ly, ink);
+static void leave_mark(int k) {
+  if (k > 0) odd_mark(0, fade_in(K_MARK, k));
 }
-static void boot_mark(void) { boot_mark_ink(K_MARK); }
 
 /* ------------------------------------------------------------------ */
 /* The animation driver                                                */
@@ -2642,19 +2634,23 @@ static void render_screen(void *ctx) {
 
 /* render_open() is with the animation state it reads, below. */
 
-/* The camera's mark on the ground, and the same mark fading to black. */
+/* The maker's mark on the ground, and the same mark going to black: `*ctx`
+ * is how far, 0 the mark, 255 black. The ground darkens to K_SCRIM and the
+ * mark's ink goes down through the greys, never through khaki. */
 static void render_mark(void *ctx) {
   (void)ctx;
   fill(0, 0, UI_W, UI_H, K_GROUND);
-  boot_mark();
+  leave_mark(255);
 }
 static void render_sleep(void *ctx);
 
 static void render_mark_fade(void *ctx) {
-  const int *k = ctx;
-  fill(0, 0, UI_W, UI_H, K_GROUND);
-  boot_mark();
-  scrim(0, 0, UI_W, UI_H, K_SCRIM, *k);
+  const int k = *(const int *)ctx;
+  /* K_GROUND is one code step above black in each channel; any level between
+   * the two is tinted (green truncated, magenta rounded), so the ground takes
+   * its one step at the middle, which no eye sees at that depth. */
+  fill(0, 0, UI_W, UI_H, k < 128 ? K_GROUND : K_SCRIM);
+  leave_mark(255 - k);
 }
 
 static void render_black(void *ctx) {
@@ -3109,8 +3105,8 @@ static int power_fade_k(float t) { return (int)(motion_smooth(t) * 255.0f + 0.5f
  * It used to put the four-cell mark up and take the cells out one at a time,
  * which is a sentence about the four cameras - the right thing to say while a
  * capture is happening and the wrong thing to say while the camera is
- * switching off. What is leaving is the camera, so the camera's own mark is
- * what is on the screen, and then it is not.
+ * switching off. What is leaving is the camera, so its maker's mark is what
+ * is on the screen, where the start put it, and then it is not (#245).
  *
  * A blocking loop, and it stays one (UI-09): it runs only on the way to
  * esp_restart() or power-off, where no input is acted on, and an animation
@@ -8361,9 +8357,9 @@ static void timer_cancel(const char *why) {
  * picture while a called-off sleep's mark leaves.
  */
 static void draw_sleep_mark(int k) {
-  boot_mark_ink(mix(K_GROUND, K_MARK, k));
+  leave_mark(k);
   text_mid(K_TYPE_CAPTION, UI_W / 2, UI_H - PAGE_M - K_TYPE_CAPTION->line_h, "GOING TO SLEEP.  TAP TO WAKE",
-           mix(K_GROUND, K_INK_QUIET, k));
+           fade_in(K_INK_QUIET, k));
 }
 
 /* One frame of the sleep's fade-in and fade-out: `ctx` is the visibility. */

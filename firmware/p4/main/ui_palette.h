@@ -74,7 +74,9 @@
 #define K_ON_INK K_GROUND
 /* A screen's or a dialog's title. Monochrome at rest. */
 #define K_TITLE K_INK
-/* The wordmark at sleep and at power-down. Marks are ink, never colour. */
+/* The ODD JOBS mark at the start, at sleep and at power-down. Marks are ink,
+ * never colour.
+ */
 #define K_MARK K_INK
 /* The toast's plate, with a K_EDGE outline and K_INK words. A remark is not an
  * event and carries no colour.

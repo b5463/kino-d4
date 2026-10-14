@@ -1655,7 +1655,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 266
+#define PPMS_PER_HAND 268
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -4827,14 +4827,13 @@ static void scenes(void) {
     g_slot[0].cal_present = false;
   }
 
-  /* What the camera shows while it is going away: its own mark, centred,
-   * and then the screen letting go of it. Same picture for a restart. The
-   * fade at four of its MOTION_POWER_FADE_FRAMES frames, drawn from
-   * power_fade_k() the way power_down_anim() draws them, and every frame's
-   * scrim checked to only ever darken, from the mark to black. */
+  /* What the camera shows while it is going away: the ODD JOBS mark where the
+   * start puts it, and then the screen letting go of it (#245). Same picture
+   * for a restart. The fade at four of its MOTION_POWER_FADE_FRAMES frames,
+   * drawn from power_fade_k() the way power_down_anim() draws them, and every
+   * frame's step checked to only ever darken, from the mark to black. */
   {
-    fill(0, 0, UI_W, UI_H, K_GROUND);
-    boot_mark();
+    render_mark(NULL);
     shot("power_down");
     int prev = 0;
     for (int i = 0; i <= MOTION_POWER_FADE_FRAMES; i++) {
@@ -4851,6 +4850,17 @@ static void scenes(void) {
         shot(name);
       }
     }
+    /* Going to sleep: the same mark and the line under it, full and half
+     * way through their fade (#245). */
+    int full = 255, half = 128;
+    ui_render(render_sleep, &full);
+    shot("sleep_mark");
+    /* A frame of a fade: its line is under the floor on the way, as every
+     * fade's is, so the audit judges the full one only. */
+    g_audit_off = true;
+    ui_render(render_sleep, &half);
+    shot("sleep_mark_half");
+    g_audit_off = false;
   }
 
   /*
@@ -5132,7 +5142,6 @@ static int run_hand(bool right, const char *out) {
   if (right) {
     g_audit_off = true;
     bench();
-    check_mask_tiles("the wordmark", KINO_D4_LOGO, KINO_D4_LOGO_W, KINO_D4_LOGO_H);
     check_mask_tiles("the ODD JOBS mark", UI_MARK_ODD_JOBS_40, UI_MARK_ODD_JOBS_40_W,
                      UI_MARK_ODD_JOBS_40_H);
     check_mask_tiles("the ODD JOBS mark at 128", UI_MARK_ODD_JOBS_128, UI_MARK_ODD_JOBS_128_W,
