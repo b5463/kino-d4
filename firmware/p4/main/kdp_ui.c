@@ -106,6 +106,8 @@ static kdp_module_reply_t screen_plate(const cJSON *req) {
 }
 
 static kdp_module_reply_t ui_tap(const cJSON *req) {
+  /* Nothing reads the tap queue on a body whose panel did not come up. */
+  if (!gfx_ready()) return kdp_module_fail("INVALID_STATE", "The screen is not running.");
   const cJSON *jx = cJSON_GetObjectItem(req, "x");
   const cJSON *jy = cJSON_GetObjectItem(req, "y");
   const cJSON *jh = cJSON_GetObjectItem(req, "holdMs");
@@ -124,6 +126,9 @@ static kdp_module_reply_t ui_tap(const cJSON *req) {
 }
 
 static kdp_module_reply_t ui_key(const cJSON *req) {
+  /* Nor the key queue, which the UI task makes: BUSY would ask for a retry
+   * that cannot work. */
+  if (!gfx_ready()) return kdp_module_fail("INVALID_STATE", "The screen is not running.");
   const cJSON *jk = cJSON_GetObjectItem(req, "key");
   const cJSON *jl = cJSON_GetObjectItem(req, "longPress");
   const char *key = cJSON_IsString(jk) ? jk->valuestring : NULL;
