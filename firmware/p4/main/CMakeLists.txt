@@ -16,7 +16,7 @@ set(kino_srcs
   "roll_queue.c" "upload_queue.c" "upload_store.c" "roll_state.c" "kdp_net.c" "qr.c"
   "roll_api.c" "roll_client.c" "bench_c6.c" "radio_recovery.c" "cam_sched.c"
   "kdp_recipes.c" "kdp_sounds.c" "recipe_rules.c" "wav_probe.c" "isr_watch.c"
-  "fw_update.c" "safe_mode.c" "factory_reset.c" "storage_watch.c")
+  "fw_update.c" "maint.c" "safe_mode.c" "factory_reset.c" "storage_watch.c")
 
 set(kino_reqs kdp_core node_link json nvs_flash fatfs sdmmc esp_driver_sdmmc
               esp_driver_uart esp_driver_usb_serial_jtag esp_driver_tsens esp_timer
@@ -87,6 +87,27 @@ if(NOT CONFIG_PARTITION_TABLE_CUSTOM)
           "ESP-IDF's built-in table instead of firmware/p4/partitions.csv. An "
           "sdkconfig from before issue #143 is the usual cause: delete "
           "firmware/p4/sdkconfig and build again so sdkconfig.defaults is read.")
+endif()
+
+# App rollback, same failure mode (#242). sdkconfig.defaults sets it, a stale
+# sdkconfig can still have it off, and an image built that way boots an update
+# straight to VALID: a bad image written over KDP can no longer be rolled
+# back. 16 of 21 local build dirs were in that state when the audit counted.
+if(NOT CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE)
+  message(FATAL_ERROR
+          "CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE is not set, so an update "
+          "written over KDP could not be rolled back. Delete the build's "
+          "sdkconfig and build again so sdkconfig.defaults is read.")
+endif()
+
+# The coredump partition is written only when the panic handler is told to.
+# Off, a crash after an update leaves nothing to read back (main.c reads the
+# last dump at boot).
+if(NOT CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH)
+  message(FATAL_ERROR
+          "CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH is not set, so a panic is not "
+          "recorded. Delete the build's sdkconfig and build again so "
+          "sdkconfig.defaults is read.")
 endif()
 
 if(KINO_RADIO_BUILD)

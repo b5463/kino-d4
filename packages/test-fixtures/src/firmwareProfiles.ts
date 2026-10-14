@@ -414,18 +414,18 @@ export const FIRMWARE_PROFILES: Record<FirmwareProfileId, FirmwareProfile> = {
   },
   'd4-settings-0-4-9': {
     id: 'd4-settings-0-4-9',
-    label: 'CURRENT FIRMWARE 0.4.61 — settings reach the hardware',
+    label: 'CURRENT FIRMWARE 0.4.62 — settings reach the hardware',
     simulatedFuture: false,
     /* This profile covers every release from 0.4.9 up to the current
      * firmware/VERSION (see PROFILE_FOR_VERSION) — none of them added a KDP
      * command or a capability — so it reports the newest of them, which is
      * what a camera flashed with today's build answers. Bump alongside
      * firmware/VERSION. */
-    p4Fw: '0.4.61',
+    p4Fw: '0.4.62',
     /* The node image is built from the same firmware/VERSION, so a camera
      * node on this body reports the same version — 0.4.9 was the first
      * release where the node has work of its own to do (NL_CMD_SENSOR). */
-    camFw: '0.4.61',
+    camFw: '0.4.62',
     /* Unchanged: one node is jumpered to the bench harness. Per-camera
      * exposure reaches the one sensor that is wired. */
     camsOnline: [true, false, false, false],
@@ -442,8 +442,8 @@ export const FIRMWARE_PROFILES: Record<FirmwareProfileId, FirmwareProfile> = {
      * capabilities it does not have yet (labelled SIMULATED FUTURE wherever
      * they surface), and the version a body reports is the build's. Bump
      * alongside firmware/VERSION. */
-    p4Fw: '0.4.61',
-    camFw: '0.4.61',
+    p4Fw: '0.4.62',
+    camFw: '0.4.62',
     camsOnline: [true, true, true, true],
     capabilities: null,
     maxUartBaud: 3_000_000,
@@ -666,4 +666,12 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // pill, the four cells as the four lenses, moves by hand, the TIMER panel
   // (#237). Screen only, same profile.
   '0.4.61': 'd4-settings-0-4-9',
+  // 0.4.62: update safety (#242) - ENTER_MAINTENANCE and EXIT_MAINTENANCE
+  // answer, the shutter waits for an update, an abandoned session or
+  // maintenance ends by itself, GET_CONFIG copies under the lock, and an
+  // image built with rollback off fails to configure. The two maintenance
+  // commands are new on the wire; this profile's whitelist already lags the
+  // body on FW_BEGIN..FW_STATUS (0.4.58) and FACTORY_RESET, and lags it on
+  // these two as well. d4-sim-full answers all of them.
+  '0.4.62': 'd4-settings-0-4-9',
 };

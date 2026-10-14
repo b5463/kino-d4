@@ -981,4 +981,37 @@ typedef struct {
 pure_contact_t pure_still_step(pure_still_t *st, bool down, uint16_t x, uint16_t y, int64_t now_us,
                                bool rest_counts);
 
+/*
+ * An update session no chunk has reached for this long is abandoned: the host
+ * crashed, the cable came out, or Studio was closed mid-update (#242). Before
+ * this only an explicit FW_ABORT ended a session, and an open session refuses
+ * the shutter. 60 s is far past one 8 KB chunk on USB (milliseconds) and past
+ * a node chunk (8 KB at 921600 baud is under 0.1 s per hop).
+ */
+#define PURE_FW_IDLE_MS 60000
+
+/** True when an open session has had no chunk for PURE_FW_IDLE_MS. `last_us`
+ * is when the session opened or last took a chunk. A clock that reads earlier
+ * than `last_us` is not idle. */
+bool pure_fw_session_idle(bool open, int64_t last_us, int64_t now_us);
+
+/** Whole percent of an image received, 0..100, rounded down: 100 only when
+ * every byte is in. 0 for an empty image. */
+int pure_fw_percent(uint32_t received, uint32_t size);
+
+/*
+ * Maintenance ends on its own this long after the last ENTER_MAINTENANCE or
+ * FW_* command (#242). Studio closed mid-update must not leave a body that
+ * refuses the shutter until someone power-cycles it. 600 s covers the
+ * longest quiet stretch of a real update: a node's 95 s give-up after FW_END,
+ * with the host polling FW_STATUS (which refreshes it) the whole time.
+ */
+#define PURE_MAINT_HOLD_MS 600000
+
+/** The deadline for maintenance entered or refreshed at `now_us`. */
+int64_t pure_maint_deadline(int64_t now_us);
+
+/** True when maintenance is held and `now_us` has reached its deadline. */
+bool pure_maint_expired(bool active, int64_t deadline_us, int64_t now_us);
+
 #endif

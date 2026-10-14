@@ -714,3 +714,20 @@ pure_contact_t pure_still_step(pure_still_t *st, bool down, uint16_t x, uint16_t
   st->still = true;
   return PURE_CONTACT_WENT_STILL;
 }
+
+bool pure_fw_session_idle(bool open, int64_t last_us, int64_t now_us) {
+  if (!open || now_us < last_us) return false;
+  return (now_us - last_us) / 1000 >= PURE_FW_IDLE_MS;
+}
+
+int pure_fw_percent(uint32_t received, uint32_t size) {
+  if (size == 0) return 0;
+  if (received >= size) return 100;
+  return (int)(((uint64_t)received * 100u) / size);
+}
+
+int64_t pure_maint_deadline(int64_t now_us) { return now_us + (int64_t)PURE_MAINT_HOLD_MS * 1000; }
+
+bool pure_maint_expired(bool active, int64_t deadline_us, int64_t now_us) {
+  return active && now_us >= deadline_us;
+}

@@ -304,7 +304,7 @@ One sound per outcome, played at the moment the screen shows it, not when the fa
 - A press shows the launch shade on the control on the touch-down edge, before the action runs.
 - A control drawn dead takes no press (`press_dead()`): no shade, no tick. The lift still answers with a toast that says why. SEND TO ROLL off a Roll is the one: "No active roll".
 - A remark is a toast: under 40 characters, `MOTION_TOAST_MS` on the glass, placed clear of the control that raised it. The undo after a delete stays `MOTION_UNDO_MS`.
-- The camera at work is a strip along the foot: a capture's four cells and a word, FORMATTING THE CARD, RESTARTING THE CAMERAS. A strip never blocks a touch.
+- The camera at work is a strip along the foot: a capture's four cells and a word, UPDATING 42%, FORMATTING THE CARD, RESTARTING THE CAMERAS. A strip never blocks a touch.
 - A question is a dialog. Only a question is a dialog.
 
 ## Overlay order
@@ -314,7 +314,7 @@ One sound per outcome, played at the moment the screen shows it, not when the fa
 1. The screen, header included.
 2. The capture strip (`draw_capture_banner()`).
 3. On SHOOT only, one slot: the self-timer count, or else the card pill, or else the lens hint.
-4. The working strip: FORMATTING THE CARD, or else RESTARTING THE CAMERAS.
+4. The working strip: UPDATING 42% (UPDATING in maintenance between images), or else FORMATTING THE CARD, or else RESTARTING THE CAMERAS.
 5. The toast.
 6. The dialog.
 7. The dim scrim, `DIM_SCRIM_K` at full dim, over everything.
@@ -334,6 +334,7 @@ Outside `draw_screen()`, whole-panel renders replace it: the boot field, the wor
 | Self-timer | On SHOOT, one scrim plate centred on the panes' cross: the digit in `K_TYPE_TITLE`, a ring of ten dots round it, and SELF-TIMER.  PRESS TO CANCEL under it. Each dot eases from `K_INK` to `K_OFF` across its second on `motion_smooth()`, clockwise from the gap at the foot; the positions are the const `TIMER_RING` table, no trigonometry at draw time. The pass runs SHOOT at 20 ms while it counts, except while a capture's frames cross the links (#158); there the ring eases on the 60 ms pass. Monochrome: a count is a state, not an event. |
 | A card that will cost the next photograph | On SHOOT, a `K_FAULT` pill at the top from the pass's `sd_status()`: no card, card out, unreadable, failed its write test, or under the reserve capture.c refuses at (`pure_capture_reserve_bytes()`, four frames at `wiggle.resolution`). It states and never gates: capture.c is the one gate. A refusal for the card (an `SD_` code) pulses the pill. The pulse runs SHOOT at 20 ms, except while a capture's frames cross the links (#158); there it steps on the 60 ms pass. |
 | Delete all photos | The Photos row on STORAGE reads DELETING 120 OF 500 from `gallery_delete_progress()`, repainted while `gallery_deleting()` holds. Both destructive rows are disabled until it ends. The menu and other screens show nothing of it. |
+| Updating | While a firmware update session is open (`fw_update_progress()`): UPDATING 42% on the working strip for the body's own image, UPDATING CAMERA 2 42% for a lens. In maintenance with no session open, before the first image or between two (`maint_active()`): UPDATING with no number. Ink, no shade: an update is a state. Repainted per whole percent by `update_poll()`, never per chunk, and on SHOOT by SHOOT's own clock. The shutter and RESTART THE CAMERAS are refused for the whole time and toast "Updating. Keep the camera on.", the shutter with the warning sound. A session no chunk reaches for `PURE_FW_IDLE_MS` (60 s) is abandoned, and maintenance ends `PURE_MAINT_HOLD_MS` (600 s) after the last ENTER_MAINTENANCE or FW_* command; both are checked on kdp_server's loop, maintenance on the UI task too (`maint_poll()`). Then the shutter works again. |
 | Formatting | FORMATTING THE CARD on the working strip. |
 | Cameras restarting | From the STATUS row or a dead pane's button, the same action and no confirm. RESTARTING THE CAMERAS for `MOTION_CAMS_RESTART_BANNER_MS`. For `CAM_RESTART_GRACE_MS` (7 s, a guess until the node boot is timed on the bench) a pane with no picture says STARTING and has no button, and the STATUS row only toasts. Both entry points re-arm the finder's settle clock. While a capture runs or a shot is queued (`capture_in_flight()`) there is no button and no cycle: the pane says NO PICTURE alone and a press toasts. While the self-timer counts there is no button either: the pane is picture, a tap on it cancels the count, and a press that beat the repaint cancels the count and cycles nothing. |
 | Dim | After `body.autoDimS` (30 s by default) the scrim arrives over `MOTION_DIM_MS` to `DIM_SCRIM_K`. A touch lifts it over `MOTION_UNDIM_MS` and is acted on: a dim screen is still readable. On SHOOT the scrim waits until `PURE_SHOOT_DIM_LEAD_S` (10 s) before `body.sleepS`, or `body.autoDimS` if that is later, and never comes with sleep off (`dim_drawn()`). The scrim saves no current: the backlight is a GPIO. `power.c` still reports DIM at `body.autoDimS`, so KDP says "dim" while SHOOT draws none. |
@@ -343,7 +344,6 @@ Outside `draw_screen()`, whole-panel renders replace it: the boot field, the wor
 | Safe mode | `COND_SAFE_MODE`: three crashes in a row left the radio and uploads out. Reported as a condition. |
 | A dead panel | Cannot show anything. Reported over KDP. |
 
-Not built: firmware update progress on the glass (UPDATING 42 %), which ships with the update-session work.
 
 ## Renderer budget
 

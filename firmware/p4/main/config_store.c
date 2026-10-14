@@ -1,5 +1,7 @@
 #include "config_store.h"
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "esp_log.h"
@@ -57,8 +59,46 @@ static void unlock(void) {
   if (s_lock) xSemaphoreGive(s_lock);
 }
 
+/**
+ * One NVS writer at a time, held from the serialise to the commit (#242).
+ *
+ * config_save() prints under s_lock and writes outside it, so the audio task's
+ * next volume read does not wait on flash. Two savers - the KDP task on
+ * SAVE_CONFIG and the UI task on a settings tap - could each print a revision
+ * and then commit in the other order, leaving the older document in NVS while
+ * RAM held the newer one. Holding this across both halves makes the commit
+ * order the print order. Readers never take it.
+ */
+static SemaphoreHandle_t s_save_lock;
+
+/**
+ * A save that was asked for and not yet written. Nothing sets it while saves
+ * are immediate; a debounced save (FW-03b) would, and config_flush() is the
+ * one place that writes it out. Cleared by every completed config_save().
+ */
+static bool s_save_pending;
+
+static void save_lock(void) {
+  if (s_save_lock) xSemaphoreTake(s_save_lock, portMAX_DELAY);
+}
+static void save_unlock(void) {
+  if (s_save_lock) xSemaphoreGive(s_save_lock);
+}
+
 const cJSON *config_get(void) { return s_config; }
 uint32_t config_revision(void) { return s_revision; }
+
+cJSON *config_snapshot(uint32_t *revision) {
+  lock();
+  /* Duplicated under the lock: a merge on another task relinks and frees the
+   * very nodes cJSON_Duplicate walks. GET_CONFIG copied the live document
+   * without it (kdp_server.c config_envelope) and could follow a freed child
+   * while a settings tap was being merged. */
+  cJSON *copy = s_config ? cJSON_Duplicate(s_config, true) : NULL;
+  if (revision != NULL) *revision = s_revision;
+  unlock();
+  return copy;
+}
 
 /* ------------------------------------------------------------------ */
 /* Defaults                                                            */
@@ -229,7 +269,29 @@ esp_err_t config_merge(const cJSON *patch) {
 /* Persistence                                                         */
 /* ------------------------------------------------------------------ */
 
+static esp_err_t save_locked(void);
+
 esp_err_t config_save(void) {
+  save_lock();
+  const esp_err_t err = save_locked();
+  save_unlock();
+  return err;
+}
+
+esp_err_t config_flush(bool force) {
+  /* `force` waits out a save another task has in flight even when nothing is
+   * pending here, so a caller about to restart or erase flash knows NVS holds
+   * the last save that was asked for. Without it a pending save is written
+   * and an in-flight one is not waited for. */
+  if (!force && !s_save_pending) return ESP_OK;
+  save_lock();
+  const esp_err_t err = s_save_pending ? save_locked() : ESP_OK;
+  save_unlock();
+  return err;
+}
+
+/* The save itself. Caller holds s_save_lock. */
+static esp_err_t save_locked(void) {
   lock();
   if (s_root == NULL) {
     unlock();
@@ -240,6 +302,7 @@ esp_err_t config_save(void) {
    * has no business blocking the audio task's next volume lookup. */
   char *text = cJSON_PrintUnformatted(s_root);
   const uint32_t rev = s_revision;
+  s_save_pending = false;
   unlock();
   if (text == NULL) return ESP_ERR_NO_MEM;
 
@@ -290,6 +353,10 @@ esp_err_t config_init(void) {
   if (s_lock == NULL) {
     s_lock = xSemaphoreCreateMutex();
     if (s_lock == NULL) return ESP_ERR_NO_MEM;
+  }
+  if (s_save_lock == NULL) {
+    s_save_lock = xSemaphoreCreateMutex();
+    if (s_save_lock == NULL) return ESP_ERR_NO_MEM;
   }
 
   /* NVS is already started by main before this runs; opening a namespace that

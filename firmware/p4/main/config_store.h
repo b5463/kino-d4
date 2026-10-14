@@ -35,6 +35,14 @@ esp_err_t config_init(void);
  */
 const cJSON *config_get(void);
 
+/**
+ * A deep copy of the config object, taken under the store's lock, and the
+ * revision it was taken at. The caller owns the copy and cJSON_Delete()s it.
+ * NULL when there is no config or no memory. This is what a reader on any
+ * task other than the writer uses to walk the whole document (GET_CONFIG).
+ */
+cJSON *config_snapshot(uint32_t *revision);
+
 /** A number with its fraction, false when the path is absent or not numeric. */
 bool config_num(const char *path, double *out);
 
@@ -61,6 +69,18 @@ esp_err_t config_merge(const cJSON *patch);
  * means the document grew a way it was not meant to.
  */
 esp_err_t config_save(void);
+
+/**
+ * Write out a save that was asked for and has not landed yet.
+ *
+ * Saves are immediate today, so nothing is ever pending and config_flush(false)
+ * returns at once. config_flush(true) also waits for a save another task has
+ * in flight, so on return NVS holds the last save that was asked for. Called
+ * before anything that restarts the body or writes flash under it (entering
+ * maintenance). Never saves a merge nobody asked to save: SET_CONFIG without
+ * SAVE_CONFIG stays RAM-only.
+ */
+esp_err_t config_flush(bool force);
 
 /** Restore the built-in defaults and persist them. */
 esp_err_t config_reset(void);

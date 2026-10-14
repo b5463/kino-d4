@@ -15,6 +15,7 @@
 #include "cam_link.h"
 #include "capture.h"
 #include "fw_update.h"
+#include "maint.h"
 #include "viewfinder.h"
 #include "clock.h"
 #include <dirent.h>
@@ -957,12 +958,15 @@ static void handle_power_status(uint32_t seq) {
 
 /* The envelope, minus anything that is write-only. */
 static cJSON *config_envelope(void) {
+  /* A locked copy, and the revision it was taken at, so the pair agrees. The
+   * live document is written from the UI task too (#242). */
+  uint32_t rev = 0;
+  cJSON *copy = config_snapshot(&rev);
   cJSON *json = cJSON_CreateObject();
   cJSON_AddNumberToObject(json, "schemaVersion", 1);
   cJSON_AddStringToObject(json, "device", s_id.device_id);
-  cJSON_AddNumberToObject(json, "configRevision", config_revision());
+  cJSON_AddNumberToObject(json, "configRevision", rev);
 
-  cJSON *copy = cJSON_Duplicate(config_get(), true);
   if (copy != NULL) {
     /* deviceToken is write-only by contract: it may be set, never read back,
      * and never lands in a Studio backup. What is safe to report is whether
@@ -1120,6 +1124,33 @@ static void handle_fw_abort(uint32_t seq) {
   send_json(KDP_CMD_FW_ABORT, seq, json);
 }
 
+/*
+ * Maintenance (contract 0x50/0x51; maint.c does the work, #242). ENTER takes
+ * the capture lock and keeps it, so the shutter and CAMERA_CAPTURE answer
+ * BUSY until EXIT, a restart, or 600 s without an ENTER or FW_* command.
+ * Entering while a capture or a bench command holds the lock past 2 s is
+ * INVALID_STATE. ENTER while already in refreshes the deadline. EXIT while
+ * out is still ok. FW_BEGIN outside maintenance still works this release
+ * (firmware-contract/README.md, the FW_* deviations); MAINT_REQUIRED comes
+ * after.
+ */
+static void handle_enter_maintenance(uint32_t seq) {
+  if (maint_enter() != ESP_OK) {
+    send_nack(KDP_CMD_ENTER_MAINTENANCE, seq, "INVALID_STATE", "A capture is running");
+    return;
+  }
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "ok", true);
+  send_json(KDP_CMD_ENTER_MAINTENANCE, seq, json);
+}
+
+static void handle_exit_maintenance(uint32_t seq) {
+  maint_exit("EXIT_MAINTENANCE from the host");
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "ok", true);
+  send_json(KDP_CMD_EXIT_MAINTENANCE, seq, json);
+}
+
 static void handle_fw_status(uint32_t seq, cJSON *req) {
   const cJSON *target = cJSON_GetObjectItem(req, "target");
   fw_target_t t = FW_T_P4;
@@ -1232,7 +1263,7 @@ void kdp_server_import_roll_credential(void) {
   /* A token a firmware up to 0.4.22 saved into the config document on Studio's
    * behalf. Moved into roll_state once, then blanked and the document saved,
    * so the secret leaves the NVS config envelope. Runs after roll_state_init. */
-  cJSON *copy = cJSON_Duplicate(config_get(), true);
+  cJSON *copy = config_snapshot(NULL);
   if (copy == NULL) return;
   char id[ROLL_DEVICE_ID_LEN];
   char tok[ROLL_DEVICE_TOKEN_LEN];
@@ -3728,6 +3759,10 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     req = cJSON_ParseWithLength((const char *)frame->payload, frame->payload_len);
   }
 
+  /* Every FW_* command holds maintenance open another 600 s: an update in
+   * progress, or a host polling a node back after FW_END, is not abandoned. */
+  if (frame->type >= KDP_CMD_FW_QUERY && frame->type <= KDP_CMD_FW_STATUS) maint_touch();
+
   switch (frame->type) {
     case KDP_CMD_HELLO: handle_hello(frame->seq, req); break;
     case KDP_CMD_GET_DEVICE_INFO: handle_device_info(frame->seq); break;
@@ -3779,6 +3814,8 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case KDP_CMD_CLEAR_LOGS: handle_clear_logs(frame->seq); break;
     case KDP_CMD_SELF_TEST: handle_self_test(frame->seq); break;
     case KDP_CMD_REBOOT: handle_reboot(frame->seq); break;
+    case KDP_CMD_ENTER_MAINTENANCE: handle_enter_maintenance(frame->seq); break;
+    case KDP_CMD_EXIT_MAINTENANCE: handle_exit_maintenance(frame->seq); break;
     case KDP_CMD_FACTORY_RESET: handle_factory_reset(frame->seq); break;
     case KDP_CMD_C6_RESET_BENCH: handle_c6_reset_bench(frame->seq); break;
     case KDP_CMD_SYNC_BENCH: handle_sync_bench(frame->seq, req); break;
@@ -3838,6 +3875,13 @@ static void server_task(void *arg) {
      * task's 12 KB stack is created before anything can push it into TCM, and
      * it turns over every 100 ms whether or not a host is connected. */
     hwv_persist();
+    /* An update session the host walked away from ends here, on this loop
+     * and not on an esp_timer: the teardown takes the session lock and may
+     * talk to a node (#242). */
+    fw_update_poll();
+    /* Maintenance's deadline, here as well as on the UI task, so a body
+     * whose panel or UI task is gone still leaves maintenance. */
+    maint_poll();
   }
 }
 

@@ -1408,6 +1408,47 @@ static void test_still(void) {
   CHECK(pure_still_step(NULL, false, 1, 1, t0, false) == PURE_CONTACT_UP, "NULL state with no contact is not UP");
 }
 
+/* #242: an abandoned update session ends; the glass reads whole percents. */
+static void test_fw_session(void) {
+  const int64_t t0 = S_US(500);
+  const int64_t idle = (int64_t)PURE_FW_IDLE_MS * 1000;
+  CHECK(!pure_fw_session_idle(false, t0, t0 + idle * 10), "a closed session went idle");
+  CHECK(!pure_fw_session_idle(true, t0, t0), "a session idle at its first chunk");
+  CHECK(!pure_fw_session_idle(true, t0, t0 + idle - 1), "a session idle before %d ms",
+        PURE_FW_IDLE_MS);
+  CHECK(pure_fw_session_idle(true, t0, t0 + idle), "a session not idle at %d ms", PURE_FW_IDLE_MS);
+  CHECK(!pure_fw_session_idle(true, t0, t0 - S_US(5)), "a clock behind the last chunk read as idle");
+
+  CHECK(pure_fw_percent(0, 0) == 0, "an empty image is not done");
+  CHECK(pure_fw_percent(0, 1000) == 0, "nothing in is not 0%%");
+  CHECK(pure_fw_percent(999, 1000) == 99, "one byte short read %d%%", pure_fw_percent(999, 1000));
+  CHECK(pure_fw_percent(1000, 1000) == 100, "every byte in is not 100%%");
+  CHECK(pure_fw_percent(1500, 1000) == 100, "more than the image is not 100%%");
+  /* A 3 MB image does not overflow the multiply. */
+  CHECK(pure_fw_percent(3000000u, 4000000u) == 75, "3 of 4 MB read %d%%",
+        pure_fw_percent(3000000u, 4000000u));
+  CHECK(pure_fw_percent(4294967295u, 4294967295u) == 100, "a 4 GiB edge");
+}
+
+/* #242: maintenance ends on its own PURE_MAINT_HOLD_MS after the last touch. */
+static void test_maint_deadline(void) {
+  const int64_t t0 = S_US(1000);
+  const int64_t d = pure_maint_deadline(t0);
+  CHECK(d == t0 + (int64_t)PURE_MAINT_HOLD_MS * 1000, "the deadline is not %d ms out", PURE_MAINT_HOLD_MS);
+  CHECK(PURE_MAINT_HOLD_MS == 600000, "the hold is %d ms, the issue says 600 s", PURE_MAINT_HOLD_MS);
+  CHECK(!pure_maint_expired(true, d, t0), "expired at entry");
+  CHECK(!pure_maint_expired(true, d, d - 1), "expired a microsecond early");
+  CHECK(pure_maint_expired(true, d, d), "not expired at the deadline");
+  CHECK(pure_maint_expired(true, d, d + S_US(3600)), "not expired an hour late");
+  CHECK(!pure_maint_expired(false, d, d + S_US(1)), "maintenance not held expired");
+  /* A refresh moves it: an FW_STATUS poll at 599 s holds it another 600 s. */
+  const int64_t d2 = pure_maint_deadline(t0 + S_US(599));
+  CHECK(!pure_maint_expired(true, d2, d + S_US(1)), "a refresh did not hold it past the first deadline");
+  CHECK(pure_maint_expired(true, d2, t0 + S_US(599 + 600)), "a refreshed deadline did not expire");
+  /* The idle session ends well before maintenance does. */
+  CHECK((int64_t)PURE_FW_IDLE_MS < (int64_t)PURE_MAINT_HOLD_MS, "the session idle is not shorter than the hold");
+}
+
 int main(void) {
   test_sync_classify();
   test_quality();
@@ -1437,6 +1478,8 @@ int main(void) {
   test_shoot_dim();
   test_tap();
   test_still();
+  test_fw_session();
+  test_maint_deadline();
 
   if (failures != 0) {
     printf("p4 host tests: %d of %d checks FAILED\n", failures, checks);

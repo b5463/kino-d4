@@ -11,9 +11,11 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "klog.h"
+#include "maint.h"
 #include "mbedtls/sha256.h"
 #include "node_link/node_link.h"
 #include "power.h"
+#include "pure.h"
 
 static const char *TAG_P4 = "FW";
 
@@ -46,6 +48,7 @@ static struct {
   uint32_t id;
   uint32_t size;
   uint32_t received;
+  int64_t last_us; /* BEGIN or the last chunk taken, for fw_update_poll() */
   uint8_t want[32];
   char version[24];
   mbedtls_sha256_context sha;
@@ -148,7 +151,9 @@ esp_err_t fw_update_begin(fw_target_t t, uint32_t size, const char *sha256_hex,
     refuse(why, "BUSY", "An update session is already open");
     return ESP_ERR_INVALID_STATE;
   }
-  if (capture_busy()) {
+  /* In maintenance the capture lock is maintenance's own (maint.c), and no
+   * capture can be running behind it. */
+  if (!maint_active() && capture_busy()) {
     xSemaphoreGive(s.lock);
     refuse(why, "INVALID_STATE", "A capture is running");
     return ESP_ERR_INVALID_STATE;
@@ -202,6 +207,7 @@ esp_err_t fw_update_begin(fw_target_t t, uint32_t size, const char *sha256_hex,
   s.id = s_next_id++;
   s.size = size;
   s.received = 0;
+  s.last_us = esp_timer_get_time();
   memcpy(s.want, want, sizeof want);
   strlcpy(s.version, version != NULL ? version : "", sizeof s.version);
   mbedtls_sha256_init(&s.sha);
@@ -275,6 +281,7 @@ esp_err_t fw_update_chunk(uint32_t session_id, uint32_t offset, const uint8_t *d
   }
   mbedtls_sha256_update(&s.sha, data, len);
   s.received += (uint32_t)len;
+  s.last_us = esp_timer_get_time();
   xSemaphoreGive(s.lock);
   return ESP_OK;
 }
@@ -389,6 +396,33 @@ void fw_update_abort(void) {
 
 bool fw_update_busy(void) { return s.open; }
 
+void fw_update_poll(void) {
+  /* Unlocked first look: the 100 ms loop asks every pass and nearly every
+   * pass the answer is no. The decision is taken again under the lock. */
+  if (!s.open || s.lock == NULL) return;
+  xSemaphoreTake(s.lock, portMAX_DELAY);
+  if (pure_fw_session_idle(s.open, s.last_us, esp_timer_get_time())) {
+    const fw_target_t t = s.target;
+    klog(TAG_P4, "%s update abandoned: no chunk for %d s at %lu of %lu B", NAMES[t],
+         PURE_FW_IDLE_MS / 1000, (unsigned long)s.received, (unsigned long)s.size);
+    /* FW_ABORT's teardown; the state says why, for a host that comes back
+     * and asks FW_STATUS. */
+    drop_session();
+    set_error(t, "No data for 60 s. Update abandoned");
+  }
+  xSemaphoreGive(s.lock);
+}
+
+bool fw_update_progress(fw_target_t *target, int *percent) {
+  /* Plain reads of words the KDP task writes, for the glass: true at the
+   * instant they are read. The UI task must not wait on s.lock, which is held
+   * across a flash write. */
+  if (!s.open) return false;
+  if (target != NULL) *target = s.target;
+  if (percent != NULL) *percent = pure_fw_percent(s.received, s.size);
+  return true;
+}
+
 /* A node's way back: HELLO answered with the version we sent. Called from
  * FW_STATUS, so the host's polling is what advances it. */
 static void watch_node(fw_target_t t) {
@@ -397,7 +431,17 @@ static void watch_node(fw_target_t t) {
   const int64_t elapsed_ms = (esp_timer_get_time() - tt->end_us) / 1000;
   if (elapsed_ms < 3000) return; /* still writing otadata and resetting */
   const int cam = (int)t - 1;
-  if (camlink_hello_ch_timeout(cam, 400) == ESP_OK) {
+  /* Through the node scheduler like every background HELLO (cam_sched.h): a
+   * capture owns the link while it runs, and this asks again on the next
+   * FW_STATUS poll. A bare HELLO here could land between two chunk reads of a
+   * live capture. In maintenance the capture lock is held by maintenance, so
+   * the scheduler defers every probe, and no capture can run: the HELLO goes
+   * straight out. */
+  const bool gated = !maint_active();
+  if (gated && !capture_probe_begin(cam)) return;
+  const esp_err_t hello = camlink_hello_ch_timeout(cam, 400);
+  if (gated) capture_probe_end(cam);
+  if (hello == ESP_OK) {
     camlink_info_t info;
     camlink_get_info_ch(cam, &info);
     if (tt->pending_version[0] == '\0' || strcmp(info.firmware, tt->pending_version) == 0) {

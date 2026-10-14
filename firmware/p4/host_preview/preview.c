@@ -577,6 +577,25 @@ static void report_cams(uint32_t asked, uint32_t ok) {
 }
 uint32_t capture_count(void) { return 0; }
 
+/* An update session, driven by the preview so the banner and the refused
+ * shutter can be looked at (#242). Closed unless a scene opens it. */
+#include "fw_update.h"
+static bool g_fw_open;
+static fw_target_t g_fw_target = FW_T_P4;
+static int g_fw_pct;
+bool fw_update_busy(void) { return g_fw_open; }
+bool fw_update_progress(fw_target_t *target, int *percent) {
+  if (!g_fw_open) return false;
+  if (target != NULL) *target = g_fw_target;
+  if (percent != NULL) *percent = g_fw_pct;
+  return true;
+}
+/* Maintenance, the same way: out unless a scene puts the body in. */
+#include "maint.h"
+static bool g_maint;
+bool maint_active(void) { return g_maint; }
+void maint_poll(void) {}
+
 /*
  * A gallery with pictures in it, invented here and only here.
  *
@@ -1596,7 +1615,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 268
+#define PPMS_PER_HAND 272
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -1896,6 +1915,27 @@ static void check_shutter_sound(void) {
   fire_shutter();
   sound_expect("a press the pipeline refused", 0, 1);
   g_capture_ready = true;
+
+  /* An update session open: refused with the update's line, not the
+   * pipeline's (#242). */
+  g_fw_open = true;
+  fire_shutter();
+  sound_expect("a press during an update", 0, 1);
+  if (strcmp(s_toast, "Updating. Keep the camera on.") != 0) {
+    fprintf(stderr, "shutter sound: a press during an update said \"%s\"\n", s_toast);
+    g_sound_failed = true;
+  }
+  g_fw_open = false;
+  /* In maintenance with no session open: the same refusal. */
+  g_maint = true;
+  s_toast[0] = '\0';
+  fire_shutter();
+  sound_expect("a press in maintenance", 0, 1);
+  if (strcmp(s_toast, "Updating. Keep the camera on.") != 0) {
+    fprintf(stderr, "shutter sound: a press in maintenance said \"%s\"\n", s_toast);
+    g_sound_failed = true;
+  }
+  g_maint = false;
 
   g_capture_accept = true;
   fire_shutter();
@@ -4092,6 +4132,39 @@ static void scenes(void) {
   scan_conditions();
   draw_screen();
   shot("toast_gallery");
+
+  /* ---- an update, mid-way (#242) ----
+   * The working banner in ink over whatever is up: the body's own image on
+   * the menu, a lens's on SHOOT, and the shutter refused under it. The toast
+   * state is put back so the scenes after this one draw what they did. */
+  {
+    char toast0[sizeof s_toast];
+    memcpy(toast0, s_toast, sizeof toast0);
+    const int64_t toast_us0 = s_toast_us;
+    const bool toast_long0 = s_toast_long;
+    s_toast[0] = '\0';
+    /* In maintenance before the first image or between two: no number. */
+    g_maint = true;
+    SHOT(SCR_MENU, "updating_maint");
+    g_fw_open = true;
+    g_fw_target = FW_T_P4;
+    g_fw_pct = 37;
+    SHOT(SCR_MENU, "updating_37");
+    g_fw_target = FW_T_CAM2;
+    SHOT(SCR_SHOOT, "updating_cam2_37");
+    s_screen = SCR_SHOOT;
+    toast("Updating. Keep the camera on.");
+    scan_conditions();
+    draw_screen();
+    shot("updating_refused");
+    g_fw_open = false;
+    g_maint = false;
+    g_fw_target = FW_T_P4;
+    g_fw_pct = 0;
+    memcpy(s_toast, toast0, sizeof toast0);
+    s_toast_us = toast_us0;
+    s_toast_long = toast_long0;
+  }
 
   review_scenes();
 

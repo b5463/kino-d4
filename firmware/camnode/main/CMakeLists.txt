@@ -5,6 +5,18 @@ idf_component_register(
            app_update esp_partition mbedtls # firmware update over the link (node_server.c)
 )
 
+# App rollback (#242). sdkconfig.defaults sets it, a stale sdkconfig can still
+# have it off, and a node built that way boots an update straight to VALID: a
+# bad image written over the link could no longer be rolled back. CONFIG_* is
+# only populated in the build pass, which is why this sits after
+# idf_component_register.
+if(NOT CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE)
+  message(FATAL_ERROR
+          "CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE is not set, so an update "
+          "written over the link could not be rolled back. Delete the build's "
+          "sdkconfig and build again so sdkconfig.defaults is read.")
+endif()
+
 file(READ "${CMAKE_CURRENT_LIST_DIR}/../../VERSION" KINO_FW_VERSION)
 string(STRIP "${KINO_FW_VERSION}" KINO_FW_VERSION)
 # Same rule as p4/main/CMakeLists.txt, for the same reason: file(READ) is
