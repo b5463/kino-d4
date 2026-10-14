@@ -67,8 +67,8 @@ static inline float motion_ease_out_quad(float t) {
 /*
  * The curve of a move a person started: a tap, a key, the shutter. Applied to
  * the move's time, so the first frame answers the press. A move nobody touched
- * (the review opening and closing on its own, the cascade, the splash) stays
- * on motion_smooth().
+ * (the review opening and closing on its own, the start) stays on
+ * motion_smooth().
  *
  * Cubic ease-out puts the card 11.0 % of the way there at 16 ms of an open and
  * 13.5 % at 16 ms of a back move, about 1.5x the smootherstep peak speed in
@@ -81,35 +81,58 @@ static inline float motion_by_hand(float t) {
   return MOTION_HAND_QUAD ? motion_ease_out_quad(t) : motion_ease_out(t);
 }
 
-/* Quadratic ease-in: gathering speed and gone. The curve for something
- * leaving for good, the boot field's retreat. */
-static inline float motion_accel(float t) {
-  if (t <= 0.0f) return 0.0f;
-  if (t >= 1.0f) return 1.0f;
-  return t * t;
-}
-
 /* ---- moves between screens -------------------------------------------- */
 
 /* Going in is slower than coming back: opening is where you arrive. A move a
  * person started runs on motion_by_hand(), any other on motion_smooth(). */
-#define MOTION_OPEN_MS 420    /* a screen opening out of the row pressed */
-#define MOTION_BACK_MS 340    /* and closing back into it */
-#define MOTION_CASCADE_MS 700 /* the menu's rows arriving after the boot */
+#define MOTION_OPEN_MS 420 /* a screen opening out of the row pressed */
+#define MOTION_BACK_MS 340 /* and closing back into it */
 
-/* ---- the boot --------------------------------------------------------- */
-
-#define MOTION_SPLASH_GROW_MS 1820 /* the field, out of nothing to the panel */
-#define MOTION_SPLASH_HOLD_MS 860  /* full, the cells re-rolling */
-#define MOTION_SPLASH_BACK_MS 1080 /* and away, on motion_accel */
-#define MOTION_HANDOFF_MS 420      /* any first screen but the menu, dissolving in out of the field */
-/* The launch shade warms the field over this window of the whole splash. */
-#define MOTION_SPLASH_WARM_FROM_MS 350
-#define MOTION_SPLASH_WARM_TO_MS 2300
-#define MOTION_FIELD_CELL_MS 260 /* how long a cell holds its mark before re-rolling */
-/* Each quadrant closes this fraction of the gap to its camera's state per
- * frame, so a node that answers mid-boot opens its quarter out. */
-#define MOTION_FIELD_CAM_FOLLOW 0.10f
+/* ---- the start (#245) --------------------------------------------------
+ *
+ * The ODD JOBS mark, the four cameras answering under it, and the four
+ * becoming the SHOOT card's mark as the menu builds round them. Times from
+ * the first frame. A cell fills when its own camera answers, never before
+ * MOTION_START_CELL_FROM_MS and never within MOTION_START_CELL_GAP_MS of the
+ * cell before it. The build starts MOTION_START_SETTLE_MS after the last
+ * cell is in, never before MOTION_START_MIN_HOLD_MS. A camera silent at
+ * MOTION_START_WAIT_MS is drawn missing and the build starts without it: the
+ * worst case lands the menu at WAIT + MISSING + SETTLE + BUILD, 2950 ms.
+ */
+#define MOTION_START_MARK_IN_MS 450    /* the mark, ground to ink */
+#define MOTION_START_SLOTS_FROM_MS 250 /* the four outlines under it */
+#define MOTION_START_SLOTS_IN_MS 300
+#define MOTION_START_CELL_FROM_MS 450 /* the first a cell can fill */
+#define MOTION_START_CELL_GAP_MS 70   /* the least between two cells' fills */
+#define MOTION_START_CELL_IN_MS 180   /* one cell, outline to filled */
+#define MOTION_START_SETTLE_MS 150
+#define MOTION_START_MIN_HOLD_MS 1000
+#define MOTION_START_WAIT_MS 1600
+#define MOTION_START_MISSING_MS 200 /* a silent camera's outline, quiet to ink */
+/* The build, on its own clock from the frame it starts. */
+#define MOTION_START_RECEDE_MS 320 /* the mark, ink to ground, lifting */
+#define MOTION_START_RISE_PX 16
+#define MOTION_START_INK_MS 180 /* the cells to the card's ink, their box to the shade */
+#define MOTION_START_TRAVEL_FROM_MS 140
+#define MOTION_START_TRAVEL_MS 580 /* the cells and their box out to the card */
+#define MOTION_START_ROWS_FROM_MS 300
+#define MOTION_START_ROWS_MS 700 /* the five rows, staggered */
+#define MOTION_START_WORDS_FROM_MS 700
+#define MOTION_START_WORDS_MS 300 /* the card's words, shade to ink */
+#define MOTION_START_BUILD_MS 1000
+/* A finger during the start: the rest of the build, every beat in step, in
+ * this long. A key lands the menu on the spot and fires on the same pass. */
+#define MOTION_START_CUT_MS 300
+_Static_assert(MOTION_START_ROWS_FROM_MS + MOTION_START_ROWS_MS <= MOTION_START_BUILD_MS &&
+                   MOTION_START_WORDS_FROM_MS + MOTION_START_WORDS_MS <= MOTION_START_BUILD_MS &&
+                   MOTION_START_TRAVEL_FROM_MS + MOTION_START_TRAVEL_MS <= MOTION_START_BUILD_MS &&
+                   MOTION_START_RECEDE_MS <= MOTION_START_BUILD_MS,
+               "every beat of the build ends inside it");
+_Static_assert(MOTION_START_INK_MS <= MOTION_START_TRAVEL_FROM_MS + MOTION_START_TRAVEL_MS,
+               "the cells reach the card's ink before they land");
+_Static_assert(MOTION_START_WAIT_MS + MOTION_START_MISSING_MS + MOTION_START_SETTLE_MS +
+                       MOTION_START_BUILD_MS <= 3000,
+               "a start with a silent camera lands the menu inside 3 s");
 
 /* ---- outcomes --------------------------------------------------------- */
 

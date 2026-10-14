@@ -1,7 +1,7 @@
 {
   "$comment": "The camera's on-glass palette: the one source for firmware/p4/main/ui_palette.h. Edit here, then run npm run palette:gen. npm run palette:check fails when the header is stale. Values are sRGB hex; the panel shows them as RGB565, so the low 3 bits of red and blue and the low 2 of green are dropped. The base is MAO's (mao_ui_type.h: ground 08080A, ink F1ECE2); the one colour is MAO pink F3A2C4, shifted slightly toward lavender on each launch (K_LAUNCH). Greys are neutral in their RGB565 code: G6 = 2 R5 = 2 B5.",
   "colours": {
-    "K_GROUND": { "hex": "08080a", "note": "The ground: every screen's face, the shoot and photograph views, the boot field, sleep." },
+    "K_GROUND": { "hex": "08080a", "note": "The ground: every screen's face, the shoot and photograph views, the start, sleep." },
     "K_SCRIM": { "hex": "000000", "note": "Black: the scrim over a screen and the panel going dark." },
     "K_SURFACE": { "hex": "101010", "note": "A window or list ground, a status panel, the toast plate, the pane behind a photograph. 1.05:1 on the ground, so it is found by its edge or its content." },
     "K_ROW": { "hex": "181818", "note": "A row you can press, and a disabled one: one flat tone for every row of every list. K_INK on it is 15.5:1." },
@@ -30,23 +30,6 @@
     "K_LAUNCH_DOWN": {
       "note": "The launch shade, pressed: the same hue at 84 % of its OKLCH lightness. K_ACCENT_INK on each is 5.6:1 or more.",
       "values": ["c67d9c", "c6799c", "c67da5", "c679a5", "c67dad", "bd7dad", "bd79ad", "bd7db5"]
-    },
-    "K_BF_WARM": {
-      "note": "The boot field's four inks per launch shade, in the order the field picks them: the ink, the shade, the shade half way to the ink, and the shade 55 % of the way to the ground (ui.c mix() on the RGB565 codes). Row i goes with K_LAUNCH[i].",
-      "rows": [
-        { "values": ["f1ece2", "f3a2c4", "f6c6d5", "734c5a"] },
-        { "values": ["f1ece2", "efa2c6", "eec6d5", "6a4c5a"] },
-        { "values": ["f1ece2", "efa6ce", "eecad5", "6a4c5a"] },
-        { "values": ["f1ece2", "efa2ce", "eec6d5", "6a4c5a"] },
-        { "values": ["f1ece2", "efa2d6", "eec6de", "6a4c62"] },
-        { "values": ["f1ece2", "e7a6d6", "eecade", "6a4c62"] },
-        { "values": ["f1ece2", "e7a2d6", "eec6de", "6a4c62"] },
-        { "values": ["f1ece2", "e7a6de", "eecade", "6a4c62"] }
-      ]
-    },
-    "K_BF_COLD": {
-      "note": "Cold: the instrument before it knows what it is shooting. The field comes up in these and travels to the launch shade's inks as the cameras answer. Code-neutral greys, light to dark.",
-      "values": ["989898", "707070", "484848", "202020"]
     }
   }
 }

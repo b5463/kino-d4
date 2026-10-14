@@ -275,7 +275,11 @@ int config_int(const char *path, int fallback) {
  * toast would cover the one it checks. Every other flag is its default. */
 static bool g_sounds_ui = true;
 static bool g_calibrated = false;
+/* A body that has seen the first-start note and runs the version it last
+ * ran: the start runs that land on the menu, not on a note. */
+static bool g_first_seen;
 bool config_bool(const char *path, bool fallback) {
+  if (g_first_seen && strcmp(path, "body.firstRunSeen") == 0) return true;
   if (!g_sounds_ui && strcmp(path, "body.sounds.ui") == 0) return false;
   if (g_calibrated && strcmp(path, "body.calibration.done") == 0) return true;
   return fallback;
@@ -302,6 +306,7 @@ static const char *g_hand = "right";
 static const char *g_resolution = "1600x1200";
 
 const char *config_str(const char *path, const char *fallback) {
+  if (g_first_seen && strcmp(path, "body.lastVersion") == 0) return KINO_FW_VERSION;
   if (strcmp(path, "body.name") == 0) return g_body_name;
   if (strcmp(path, "wiggle.resolution") == 0) return g_resolution;
   if (strcmp(path, "body.hand") == 0) return g_hand;
@@ -1650,7 +1655,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 279
+#define PPMS_PER_HAND 266
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -1659,6 +1664,9 @@ static bool g_land_failed;
  * power-down and the lifts). Each fails the run. */
 static bool g_sound_failed;
 static bool g_motion_failed;
+/* Set when a start run does not land on the menu it hands over to, opens the
+ * wrong note, or a start fade leans green (start_run(), bench()). */
+static bool g_start_failed;
 /* Set when the self-timer breaks one of its rules (check_self_timer). */
 static bool g_timer_failed;
 
@@ -3695,6 +3703,151 @@ static void check_sleep_safe(void) {
   g_audit_off = false;
 }
 
+/*
+ * The start (#245), frame by frame through the real driver, on the
+ * renderer's clock. answer_ms[i] is when camera i first answers (-1 never),
+ * tap_ms when a finger lands (-1 never), which goes through start_input() the
+ * way ui_pass() sends it. Prints when the build began and the menu landed,
+ * the display list per frame and the canvas traffic, and fails the run when
+ * the start's last frame is not the menu it hands over to, pixel for pixel.
+ *
+ * The committed run steps 100 ms of virtual time a frame, to keep the PPM
+ * count near the boot field's; START_ONLY=1 renders the runs alone at 30 fps
+ * for the review GIFs and checks no count.
+ */
+static int64_t g_start_step_us = 100000;
+/* The three newest presents, for the landing check. */
+static uint16_t *g_start_ring[3];
+static int g_start_ring_n;
+static void start_hook(bool stash) {
+  if (stash) return;
+  uint16_t *f = g_start_ring[g_start_ring_n % 3];
+  if (f != NULL) memcpy(f, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t));
+  g_start_ring_n++;
+}
+
+static void start_run(const char *name, const int answer_ms[4], int tap_ms, bool first_seen) {
+  static const char *const OPN[] = {"fill", "rrect", "routl", "cut", "disc", "scrim", "text",
+                                    "shblit", "blit", "bits", "focus", "mask", "half"};
+  _Static_assert(sizeof OPN / sizeof OPN[0] == DL_OPS, "one name per display-list op");
+  for (int i = 0; i < 3; i++)
+    if (g_start_ring[i] == NULL) g_start_ring[i] = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
+  camlink_info_t keep[4];
+  memcpy(keep, s_cams, sizeof keep);
+  const unsigned online0 = g_cam_online;
+  g_first_seen = first_seen;
+  g_anim = name;
+  g_anim_n = 0;
+  g_start_ring_n = 0;
+  g_frame_hook = start_hook;
+  prev_vclock_us = 1000000;
+  prev_vclock_step_us = g_start_step_us;
+  s_screen = SCR_MENU;
+  s_dialog = DLG_NONE;
+  s_pressed = -1;
+  /* A body at power-on: no camera has said anything yet. */
+  g_cam_online = 0;
+  memset(s_cams, 0, sizeof s_cams);
+  anim_start_boot();
+  const int64_t t0 = s_anim.start_us;
+  int frames = 0, ops_max = 0, ops_sum = 0, peak_f = 0, end_ms = -1;
+  int hist[DL_OPS] = {0};
+  double px_max = 0, px_sum = 0;
+  bool tapped = false;
+  for (int guard = 0; anim_active() && guard < 600; guard++) {
+    const int32_t ms = (int32_t)((prev_vclock_us - t0) / 1000);
+    unsigned now = 0;
+    for (int i = 0; i < 4; i++)
+      if (answer_ms[i] >= 0 && ms >= answer_ms[i]) now |= 1u << i;
+    g_cam_online = now;
+    if (tap_ms >= 0 && !tapped && ms >= tap_ms) {
+      tapped = true;
+      start_input(true, false);
+    }
+    bench_reset();
+    const uint32_t wait = anim_tick();
+    const double px = bench_screens();
+    if (s_dl.n > ops_max) {
+      ops_max = s_dl.n;
+      peak_f = frames;
+      memset(hist, 0, sizeof hist);
+      for (int k = 0; k < s_dl.n; k++) hist[s_dl.cmd[k].op]++;
+    }
+    ops_sum += s_dl.n;
+    if (px > px_max) px_max = px;
+    px_sum += px;
+    if (!anim_active()) end_ms = ms;
+    frames++;
+    if (wait > 0) prev_vclock_us += (int64_t)wait * 1000;
+  }
+  g_frame_hook = NULL;
+  const bool note = s_dialog != DLG_NONE;
+  printf("\n  start %s: answers %d/%d/%d/%d ms, tap %d: build at %d ms, menu at %d ms, %d frames, %s\n", name,
+         answer_ms[0], answer_ms[1], answer_ms[2], answer_ms[3], tap_ms, s_anim.st_exit, end_ms, g_anim_n,
+         note ? "then the note" : "no note");
+  printf("    display list per frame: max %d (frame %d), mean %.1f;", ops_max, peak_f,
+         frames ? (double)ops_sum / frames : 0.0);
+  for (int o = 0; o < DL_OPS; o++)
+    if (hist[o]) printf(" %s %d", OPN[o], hist[o]);
+  printf("\n    canvas traffic per frame: max %.2f, mean %.2f screens\n", px_max, frames ? px_sum / frames : 0.0);
+
+  /* The landing: the start's last frame against the menu presented after it. */
+  const int menu_i = g_start_ring_n - (note ? 2 : 1), last_i = menu_i - 1;
+  if (anim_active() || last_i < 0) {
+    fprintf(stderr, "start %s: did not land (%d presents)\n", name, g_start_ring_n);
+    g_start_failed = true;
+  } else {
+    const uint16_t *a = g_start_ring[last_i % 3], *m = g_start_ring[menu_i % 3];
+    int diff = 0, fx = -1, fy = -1;
+    for (int i = 0; i < UI_W * UI_H; i++) {
+      if (a[i] == m[i]) continue;
+      if (diff++ == 0) {
+        fx = i % UI_W;
+        fy = i / UI_W;
+      }
+    }
+    printf("    landing: the last frame and the menu differ in %d pixels\n", diff);
+    if (diff != 0) {
+      fprintf(stderr, "start %s (%s hand): the last frame is not the menu: %d pixels differ, first at %d,%d\n",
+              name, g_hand, diff, fx, fy);
+      g_start_failed = true;
+    }
+  }
+  if (first_seen == note) {
+    fprintf(stderr, "start %s: the first-start note %s\n", name, note ? "opened on a body that has seen it" : "did not open");
+    g_start_failed = true;
+  }
+  prev_vclock_step_us = 16000;
+  prev_vclock_us = 0;
+  g_anim = NULL;
+  s_dialog = DLG_NONE;
+  s_dlg_focus = 0;
+  g_first_seen = false;
+  g_cam_online = online0;
+  memcpy(s_cams, keep, sizeof keep);
+  conditions_scan(s_cams);
+  s_anim.kind = ANIM_NONE;
+}
+
+static void start_scenes(void) {
+  /* All four answering as they come up; a fresh body, so the note follows. */
+  static const int ALL4[4] = {400, 700, 900, 1100};
+  /* The third never answers: its outline hardens and lands on the card. */
+  static const int THREE[4] = {400, 700, -1, 1100};
+  start_run("start_all4", ALL4, -1, false);
+  start_run("start_three", THREE, -1, true);
+  /* A finger at 600 ms: the rest of the build, quickly, the truth then. */
+  start_run("start_tap", ALL4, 600, true);
+  if (getenv("START_ONLY") != NULL) {
+    /* Media only: the nodes already up when the UI starts, which is the
+     * likely body, and two that come up late. */
+    static const int READY[4] = {0, 0, 0, 0};
+    static const int SLOW[4] = {1300, 1700, 2400, 2900};
+    start_run("start_ready", READY, -1, true);
+    start_run("start_slow", SLOW, -1, true);
+  }
+}
+
 /* Every scene, in the order they have always been drawn. Run once per hand,
  * each time in a fresh forked process (main). */
 static void scenes(void) {
@@ -3753,32 +3906,8 @@ static void scenes(void) {
   }
   ui_set_launch_index(0);
 
-  /* The boot rings, frame by frame. */
-  {
-    g_anim = "anim_boot";
-    g_anim_n = 0;
-    /* The real sequence, through the real driver, on the renderer's clock -
-     * so the frames reviewed here are the frames the camera presents. The
-     * step is coarse (16 ms of virtual time per present) to keep the dump to
-     * a readable number of pictures. */
-    prev_vclock_us = 1000000;
-    prev_vclock_step_us = 60000;
-    s_screen = SCR_MENU;
-    splash();
-    /* The clock here only advances when a frame is presented, so a hold - a
-     * phase that returns a delay and draws nothing - has to move it by hand.
-     * On the camera and in the Twin the clock is real and this is free. */
-    for (int guard = 0; anim_active() && guard < 4000; guard++) {
-      const uint32_t wait = anim_tick();
-      if (wait > 0) prev_vclock_us += (int64_t)wait * 1000;
-    }
-    prev_vclock_step_us = 16000;
-    prev_vclock_us = 0;
-    g_anim = NULL;
-    /* The first-start note the cascade raises stays up until dismissed; the
-     * scenes after this one are of a body that has seen it. */
-    s_dialog = DLG_NONE;
-  }
+  /* The start, frame by frame (#245). */
+  start_scenes();
 
   /* The menu's two moves, frame by frame. */
   shot_anim("anim_open", SCR_MENU, SCR_GALLERY, 2);
@@ -4698,23 +4827,6 @@ static void scenes(void) {
     g_slot[0].cal_present = false;
   }
 
-  /* The boot field at full reach, in the two states that matter: every camera
-   * answered, and two of them not. The second is the whole reason the field
-   * is drawn from the cameras rather than from a clock - a body with a dead
-   * node says so on the screen it shows first. */
-  {
-    for (int q = 0; q < 4; q++) s_bf_cam[q] = 1.0f;
-    fill(0, 0, UI_W, UI_H, K_GROUND);
-    boot_field(BF_REACH, 900, 0, 1.0f);
-    shot("boot_field_all_four");
-
-    s_bf_cam[1] = s_bf_cam[3] = BF_DARK;
-    fill(0, 0, UI_W, UI_H, K_GROUND);
-    boot_field(BF_REACH, 900, 0, 1.0f);
-    shot("boot_field_two_silent");
-    for (int q = 0; q < 4; q++) s_bf_cam[q] = 1.0f;
-  }
-
   /* What the camera shows while it is going away: its own mark, centred,
    * and then the screen letting go of it. Same picture for a restart. The
    * fade at four of its MOTION_POWER_FADE_FRAMES frames, drawn from
@@ -4950,29 +5062,30 @@ static void bench(void) {
            hi / (lo > 0.01 ? lo : 0.01));
   }
 
-  /* The splash, which is the one the eye judges first and the one whose cost
-   * grows fastest: each ring out adds a whole ring of cells. */
+  /* The start's fades, level by level: the mark's ink from the ground to
+   * K_INK (#245). A straight mix() leans green where green's sixth bit rounds
+   * up, and its dark half is khaki; fade_in() keeps the dark half grey. */
   {
-    printf("\n  the boot field, frame by frame\n");
-    double lo = 1e9, hi = 0, sum = 0;
-    for (int f = 0; f <= 16; f++) {
-      const float reach = ease_ui((float)f / 16.0f) * BF_REACH;
-      bench_reset();
-      fill(0, 0, UI_W, UI_H, K_GROUND);
-      for (int q = 0; q < 4; q++) s_bf_cam[q] = 1.0f;
-      boot_field(reach, 0, 0, 1.0f);
-      const double c = bench_screens();
-      if (f == 0 || f == 8 || f == 16) {
-        char lbl[32];
-        snprintf(lbl, sizeof lbl, "reach %.0f px", (double)reach);
-        bench_line(lbl, c);
+    int lean_mix = 0, lean_fade = 0, chroma_dark = 0;
+    for (int k = 1; k < 255; k++) {
+      const uint16_t a = mix(K_GROUND, K_INK, k), f = fade_in(K_INK, k);
+      const int ar = ((a >> 11) & 31) * 255 / 31, ag = ((a >> 5) & 63) * 255 / 63;
+      const int fr = ((f >> 11) & 31) * 255 / 31, fg = ((f >> 5) & 63) * 255 / 63, fb = (f & 31) * 255 / 31;
+      if (ag > ar + 1) lean_mix++;
+      if (fg > fr + 1) lean_fade++;
+      if (k <= 128) {
+        const int hi = fr > fg ? (fr > fb ? fr : fb) : (fg > fb ? fg : fb);
+        const int lo = fr < fg ? (fr < fb ? fr : fb) : (fg < fb ? fg : fb);
+        if (hi - lo > chroma_dark) chroma_dark = hi - lo;
       }
-      if (c < lo) lo = c;
-      if (c > hi) hi = c;
-      sum += c;
     }
-    printf("    -> min %.2f  max %.2f  mean %.2f  spread %.1fx\n", lo, hi, sum / 17.0,
-           hi / (lo > 0.01 ? lo : 0.01));
+    printf("\n  the mark's fade, ground to ink: %d of 254 levels lean green with mix(), %d with fade_in(); "
+           "the dark half's chroma is at most %d\n",
+           lean_mix, lean_fade, chroma_dark);
+    if (lean_fade > 0 || chroma_dark > 3) {
+      fprintf(stderr, "the mark's fade leans green on %d levels, dark-half chroma %d\n", lean_fade, chroma_dark);
+      g_start_failed = true;
+    }
   }
 }
 
@@ -5007,6 +5120,13 @@ static int run_hand(bool right, const char *out) {
   /* Row 0, the MAO pink: the camera's pick is boot_count % 8, and a picture
    * that depended on a counter would be a different picture every run. */
   ui_set_launch_index(0);
+  if (getenv("START_ONLY") != NULL) {
+    g_start_step_us = 33333;
+    fake_gallery();
+    start_scenes();
+    fprintf(stderr, "\n==== %s hand: start runs only, %d PPMs in %s ====\n", g_hand, g_ppm_n, g_out);
+    return g_write_failed || g_start_failed ? PASS_HARD : PASS_CLEAN;
+  }
   scenes();
   /* The frame-cost figures are the same for both hands; print them once. */
   if (right) {
@@ -5047,6 +5167,10 @@ static int run_hand(bool right, const char *out) {
   }
   if (g_motion_failed) {
     fprintf(stderr, "a fade or a lift steps back or does not end where it should\n");
+    hard = true;
+  }
+  if (g_start_failed) {
+    fprintf(stderr, "the start does not land on the menu it hands over to\n");
     hard = true;
   }
   if (g_timer_failed) {

@@ -117,8 +117,6 @@ static void test_arc(void) {
       snprintf(what, sizeof what, "shades %d and %d share code %04X", j, i, s);
       check(K_LAUNCH[j] != s, what);
     }
-    snprintf(what, sizeof what, "boot field row %d does not carry shade %d", i, i);
-    check(K_BF_WARM[i][1] == s, what);
   }
 }
 
@@ -134,16 +132,6 @@ static void test_no_yellow(void) {
     check(!yellow(K_LAUNCH[i]), what);
     snprintf(what, sizeof what, "K_LAUNCH_DOWN[%d] %04X is yellow", i, K_LAUNCH_DOWN[i]);
     check(!yellow(K_LAUNCH_DOWN[i]), what);
-  }
-  for (int r = 0; r < K_BF_WARM_N; r++) {
-    for (int i = 0; i < K_BF_WARM_W; i++) {
-      snprintf(what, sizeof what, "K_BF_WARM[%d][%d] %04X is yellow", r, i, K_BF_WARM[r][i]);
-      check(!yellow(K_BF_WARM[r][i]), what);
-    }
-  }
-  for (int i = 0; i < K_BF_COLD_N; i++) {
-    snprintf(what, sizeof what, "K_BF_COLD[%d] %04X is yellow", i, K_BF_COLD[i]);
-    check(!yellow(K_BF_COLD[i]), what);
   }
 }
 
@@ -161,10 +149,6 @@ static void test_greys(void) {
   for (size_t i = 0; i < sizeof GREYS / sizeof GREYS[0]; i++) {
     snprintf(what, sizeof what, "%s %04X is not code-neutral", GREYS[i].name, GREYS[i].c);
     check(neutral(GREYS[i].c), what);
-  }
-  for (int i = 0; i < K_BF_COLD_N; i++) {
-    snprintf(what, sizeof what, "K_BF_COLD[%d] %04X is not code-neutral", i, K_BF_COLD[i]);
-    check(neutral(K_BF_COLD[i]), what);
   }
 }
 

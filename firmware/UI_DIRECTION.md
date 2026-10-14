@@ -84,14 +84,14 @@ The shutter sits on the body's top wall at the +X end. The right hand holds that
 ### The rule
 
 - Monochrome at rest. Colour is an event.
-- One colour: MAO pink, as the launch shade. It means a press, the SHOOT card, a capture landing, and the boot field warming. Nothing else.
+- One colour: MAO pink, as the launch shade. It means a press, the SHOOT card, a capture landing, and the card growing out of the four cells at the start. Nothing else.
 - Red means a fault. Type in red is `K_FAULT_INK`; a red fill carries `K_GROUND` type, never `K_INK`.
 - A selection that stays (the live segment, a toggle that is on, a favourite) is `K_ON`: an ink fill with a ground label. Ink, not colour.
-- No yellow anywhere: not in the palette, not in the boot field. Cobalt 3D63FF is reserved and unused in v1.
+- No yellow anywhere. Cobalt 3D63FF is reserved and unused in v1.
 - Greys are neutral in their RGB565 code: G6 = 2 R5 = 2 B5, so the panel shows no green cast.
 - Something unavailable recedes: `dim_ink()` on its own row, no edge, no chevron. Never a grey box.
 
-Retired with the MAO base: terracotta E8734A, the peach card E8A183, mint 86D6B4, the green menu ramp, the green-cast greys, and the amber and green boot-field inks.
+Retired with the MAO base: terracotta E8734A, the peach card E8A183, mint 86D6B4, the green menu ramp, the green-cast greys, the amber and green boot-field inks, and with the boot field itself (#245) its pink and grey inks.
 
 ### The base
 
@@ -100,7 +100,7 @@ From MAO's colour header, mao_ui_type.h in the MAO tree: ground 08080A, ink F1EC
 <!-- ui-doc:palette -->
 | Colour | sRGB | RGB565 | On `K_GROUND` | Use |
 |---|---|---|---|---|
-| `K_GROUND` | 08080A | 0x0841 | 1.00 | Every screen's face, the finder, the photograph, the boot field, sleep. |
+| `K_GROUND` | 08080A | 0x0841 | 1.00 | Every screen's face, the finder, the photograph, the start, sleep. |
 | `K_SCRIM` | 000000 | 0x0000 | 1.05 | The scrim over a screen, the panel going dark. |
 | `K_SURFACE` | 101010 | 0x1082 | 1.05 | A window or list ground, a status panel, the toast plate, a button at rest on the page. Found by its edge or its content. |
 | `K_ROW` | 181818 | 0x18C3 | 1.13 | Every row you can press, and a disabled one. |
@@ -123,7 +123,7 @@ Roles point at a colour; a role changes meaning by pointing somewhere else.
 | `K_TITLE` | `K_INK` | A screen's or a dialog's title. |
 | `K_MARK` | `K_INK` | The wordmark at sleep and power-down, and every other mark. |
 | `K_TOAST` | `K_SURFACE` | The toast's plate, with a `K_EDGE` outline and `K_INK` words. |
-| `K_ACCENT` | the launch shade | The SHOOT card, a landed four-mark cell. The boot field's warm inks, `K_BF_WARM`, are built from it. |
+| `K_ACCENT` | the launch shade | The SHOOT card, a landed four-mark cell, the card growing out of the cells at the start. |
 | `K_ACCENT_DOWN` | the shade, pressed | The SHOOT card under a finger. |
 | `K_PRESS` | `K_ACCENT` | Any control under a finger, with `K_PRESS_INK` (`K_ACCENT_INK`) on it. |
 
@@ -131,7 +131,7 @@ Roles point at a colour; a role changes meaning by pointing somewhere else.
 
 The pink shifts slightly on each start. `K_LAUNCH` holds eight shades: MAO pink F3A2C4 and seven steps toward lavender C7A6F7, computed offline in OKLCH with the lightness and chroma of F3A2C4 kept and the hue moved by at most 40 % of the gap, 20 degrees in all. It never moves toward orange, peach or yellow. Each shade is a distinct RGB565 code. `K_LAUNCH_DOWN` is the same hue at 84 % of its OKLCH lightness, for a press.
 
-`main.c` owns the boot count and passes it once through `ui_set_launch_index()`; `ui.c` keeps row `boot_count % K_LAUNCH_N` in two halfwords and never reads NVS. `host_preview` and the Twin pass 0, so every render and every Twin picture is row 0. The launch shade colours the SHOOT card, a press, the capture landing and the boot field (`K_BF_WARM`, one row of four inks per shade).
+`main.c` owns the boot count and passes it once through `ui_set_launch_index()`; `ui.c` keeps row `boot_count % K_LAUNCH_N` in two halfwords and never reads NVS. `host_preview` and the Twin pass 0, so every render and every Twin picture is row 0. The launch shade colours the SHOOT card, a press, the capture landing and the card at the start.
 
 `K_LAUNCH_N` is 8. Contrast is `K_ACCENT_INK` on the shade, the shade on `K_GROUND`, and `K_ACCENT_INK` on the pressed shade. The floors are 7.0, 7.0 and 4.5.
 
@@ -177,7 +177,7 @@ The pink shifts slightly on each start. `K_LAUNCH` holds eight shades: MAO pink 
 
 A failed capture keeps its red while the strip is up: a lost frame is a fact, not an event. That is the one departure from LAND.
 
-`K_PAIRS` in `ui_theme.h` lists every ink-on-fill pair `ui.c` draws, with its floor: 4.5 for text, 3.0 for edges, marks and the one face over 18 pt. `firmware/p4/host_tests/test_theme.c` measures each with `rel_lum()` once per launch shade, checks the no-yellow guard over the palette and the boot field, the code neutrality of every grey, and that no two colours share a 565 code. `host_preview` measures the same strings again from the pixels they land on. A pair goes into `K_PAIRS` in the same change that first draws it.
+`K_PAIRS` in `ui_theme.h` lists every ink-on-fill pair `ui.c` draws, with its floor: 4.5 for text, 3.0 for edges, marks and the one face over 18 pt. `firmware/p4/host_tests/test_theme.c` measures each with `rel_lum()` once per launch shade, checks the no-yellow guard over the palette and the launch shades, the code neutrality of every grey, and that no two colours share a 565 code. `host_preview` measures the same strings again from the pixels they land on. A pair goes into `K_PAIRS` in the same change that first draws it.
 
 ## Type
 
@@ -244,7 +244,7 @@ The five rules, as `ui_motion.h` states them:
 - **SMOOTH.** No level changes in a step or a cut. A scrim, a fade or a move runs on a curve, one value per presented frame.
 - **WIGGLE.** The exception. A wigglegram is hard cuts at its frame rate (`wiggle.fps`, `PURE_WIGGLE_FPS_DEFAULT`), one way round, the subject pinned. Its smoothness is alignment, never a crossfade.
 
-Curves: `motion_smooth()` (smootherstep) for anything that travels on its own, `motion_ease_out()` for the screen answering a touch, `motion_accel()` for something leaving for good.
+Curves: `motion_smooth()` (smootherstep) for anything that travels on its own, `motion_ease_out()` for the screen answering a touch.
 
 Who started a move picks its curve. A tap's release and a key run inside the `s_by_hand` bracket, and a move started there is by hand.
 
@@ -254,7 +254,7 @@ Who started a move picks its curve. A tap's release and a key run inside the `s_
 | Back into the row | A tap or a key | `motion_by_hand()` on the time, flipped: it leaves fast and settles into the row. 13.5 % at 16 ms. |
 | Slide beside the parent | A tap or a key | `motion_by_hand()` on the time. |
 | The review opening after a shot, and closing on its clock | Nobody | `motion_smooth()`. |
-| The cascade, the splash | Nobody | `motion_smooth()`; the splash leaves on `motion_accel()`. |
+| The start | Nobody; a finger shortens it | `motion_smooth()` on every beat. |
 
 `motion_by_hand()` is cubic ease-out (`motion_ease_out()`). `MOTION_HAND_QUAD` set to 1 swaps in quadratic ease-out (`motion_ease_out_quad()`, 7.5 % at 16 ms) if the cubic reads abrupt on the panel. It is 0. The spans stay `MOTION_OPEN_MS` and `MOTION_BACK_MS` either way, and a move lands on the destination's own pixels: `lerpi()` rounds half away from zero, so no last-frame 1 px snap.
 
@@ -264,11 +264,27 @@ The row's wash follows the card, not the clock. By hand, on an open it is gone w
 |---|---|---|
 | `MOTION_OPEN_MS` | 420 ms | A screen opening out of the row pressed. |
 | `MOTION_BACK_MS` | 340 ms | And closing back into it. |
-| `MOTION_CASCADE_MS` | 700 ms | The menu's rows arriving after the boot. |
-| `MOTION_HANDOFF_MS` | 420 ms | Any first screen but the menu, dissolving in out of the field. |
-| `MOTION_SPLASH_GROW_MS` | 1820 ms | The boot field, out of nothing to the panel. |
-| `MOTION_SPLASH_HOLD_MS` | 860 ms | Full, the cells re-rolling. |
-| `MOTION_SPLASH_BACK_MS` | 1080 ms | And away, on `motion_accel()`. |
+| `MOTION_START_MARK_IN_MS` | 450 ms | The start: the ODD JOBS mark, ground to ink, through neutral greys (`fade_in()`). |
+| `MOTION_START_SLOTS_FROM_MS` | 250 ms | The four slots' outlines start to come in under it. |
+| `MOTION_START_SLOTS_IN_MS` | 300 ms | And are in. |
+| `MOTION_START_CELL_FROM_MS` | 450 ms | The first a cell can fill. |
+| `MOTION_START_CELL_GAP_MS` | 70 ms | The least between two cells' fills; a tie goes in slot order. |
+| `MOTION_START_CELL_IN_MS` | 180 ms | One cell, outline to filled, from the frame its camera is seen answering. |
+| `MOTION_START_SETTLE_MS` | 150 ms | The last cell in, then the build. |
+| `MOTION_START_MIN_HOLD_MS` | 1000 ms | The build never starts before this. |
+| `MOTION_START_WAIT_MS` | 1600 ms | A camera silent this long is drawn missing and the build starts without it. |
+| `MOTION_START_MISSING_MS` | 200 ms | Its outline, quiet to ink. |
+| `MOTION_START_RECEDE_MS` | 320 ms | The build: the mark back to the ground, lifting `MOTION_START_RISE_PX`. |
+| `MOTION_START_RISE_PX` | 16 | How far it lifts. |
+| `MOTION_START_INK_MS` | 180 ms | The cells to the card's ink while their box turns to the shade behind them. |
+| `MOTION_START_TRAVEL_FROM_MS` | 140 ms | The box and the cells start out to the card and its four-mark. |
+| `MOTION_START_TRAVEL_MS` | 580 ms | And arrive. |
+| `MOTION_START_ROWS_FROM_MS` | 300 ms | The five rows start in from the panel's right edge, staggered. |
+| `MOTION_START_ROWS_MS` | 700 ms | And are down. |
+| `MOTION_START_WORDS_FROM_MS` | 700 ms | The card's words, shade to `K_ACCENT_INK`. |
+| `MOTION_START_WORDS_MS` | 300 ms | And are set. |
+| `MOTION_START_BUILD_MS` | 1000 ms | The build in all. |
+| `MOTION_START_CUT_MS` | 300 ms | The rest of the build after a finger lands. |
 | `MOTION_LAND_HOLD_MS` | 120 ms | The landed cells in the launch shade. |
 | `MOTION_LAND_BACK_MS` | 180 ms | And back to ink on `motion_smooth()`. |
 | `MOTION_LAND_MS` | 300 ms | LAND in all. |
@@ -286,7 +302,7 @@ The moves:
 
 - **Open.** The pressed row is the destination's header from the first frame. The card grows to the page with the destination revealed inside it; the rows above lift and the rows below drop as two rigid blocks. Back closes the card into the row you left from.
 - **Slide.** A detail screen arriving beside its parent, SETTINGS to STORAGE or GALLERY to PHOTO. Both frames are prepared once and shown in panel orientation by `gfx_slide_show()`.
-- **Cascade.** The menu's rows landing one after another, only after the boot.
+- **The start.** The menu builds once, out of the start: its rows land one after another and the card grows out of the four cells (System states, Start).
 - **Snapshot.** SHOOT and GALLERY are too costly to draw per frame of a move, so each is drawn once into the stash and travels as a picture.
 
 ## Feedback
@@ -324,14 +340,15 @@ One sound per outcome, played at the moment the screen shows it, not when the fa
 7. The dim scrim, `DIM_SCRIM_K` at full dim, over everything.
 8. A called-off sleep's mark, leaving over the scrim.
 
-Outside `draw_screen()`, whole-panel renders replace it: the boot field, the wordmark at sleep and power-down, RESTARTING, black, and the test plate (`draw_plate()`).
+Outside `draw_screen()`, whole-panel renders replace it: the start (`render_start()`), the wordmark at sleep and power-down, RESTARTING, black, and the test plate (`draw_plate()`).
 
 ## System states
 
 | State | What the glass does |
 |---|---|
-| Boot | The boot field grows over `MOTION_SPLASH_GROW_MS`, holds, and leaves on `motion_accel()`. A quadrant per camera: one that has not answered stays in `K_BF_COLD` greys while the rest warm to the launch shade. A key or a touch during the splash ends it on the spot: the key fires on the first screen's first pass, the touch presses nothing. The menu cascades in; any other first screen dissolves. |
-| First start | `DLG_WELCOME`, once (`body.firstRunSeen`). |
+| Power-on | The backlight stays off until the first frame (`display_first_light()`); a product boot shows no test bars (`KINO_BOOT_TEST_PATTERN` is a bench build). The orphan sweep before the panel is held to 800 ms. The boot logs `orphan sweep N ms` and `first frame lit N ms after start`. |
+| Start | `ANIM_START`, from black. The ODD JOBS mark (the 128 px bake, centred on its coverage centroid, `K_INK`) fades up over `MOTION_START_MARK_IN_MS`, and four `K_INK_QUIET` slot outlines come in 40 px under it, 2 x 2, CAM1 top left. Each cell fills in `K_INK` when its own camera answers (`camlink_online_mask()`, one atomic byte, no channel lock), within the gaps in the MOTION table. A camera silent at `MOTION_START_WAIT_MS` is drawn missing: its outline hardens to `K_INK`. Then the build: the mark recedes and lifts, the cells turn to `K_ACCENT_INK` while their own box turns to the launch shade, the box grows into the SHOOT card on the hand side and the cells into its four-mark (a missing camera lands as the card's outline cell), the five rows land from the right, and the card's words come in. The last frame is the menu, pixel for pixel (`host_preview` checks it on both hands). The start tells `s_cams` and the conditions what it drew (`start_tell()`), so the card's status line is the truth it shows. All four answering: the menu in about 2.0-2.5 s; a silent camera: 2.95 s. A finger runs the rest of the build in `MOTION_START_CUT_MS` and presses nothing; a key lands the menu at once and fires on the same pass, and the first-start note waits for the next start. The boot logs `start: N frames in M ms (F fps)` and when each lens answered. |
+| First start | `DLG_WELCOME`, once (`body.firstRunSeen`), on the frame after the start lands. |
 | First start after an update | `DLG_UPDATED`, once (`body.lastVersion`). |
 | A condition | The worst one is the first line of the SHOOT card, after its severity word: PROBLEM (`COND_FAULT`), CHECK (`COND_WARN`) or NOTE (`COND_NOTE`). On every detail screen the header chip names the worst one by its short name (`chip_words()`: 1 LENS DOWN, NO CARD, DATE NOT SET), in `K_FAULT_INK` on a FAULT and `K_INK` on a WARN. A NOTE never reaches the header. While the chip names the card, the header's card reading is left out. STATUS lists all of them. The list is `cond_id_t` in `conditions.h`; the words are in `docs/DEVICE_COPY.md`. |
 | Capture | SHOOTING, then TAKEN. SAVING (TAKEN. NEXT ONE QUEUED after a second press), then SAVED, or how many cameras missed. One cell per lens throughout. Cells land in the shade, or stay red where a lens lost its frame. |
@@ -374,7 +391,7 @@ The rules a change must keep:
 - A frame is recorded once (`dl_begin()`, `dl_push()`) and replayed per tile (`dl_replay()`). A draw callback must be a function of state only: it may run once per tile.
 - No per-pixel float maths in a hot loop. A fixed picture that moves (a slide, a snapshot) moves in panel orientation.
 - Internal SRAM is the scarce pool: about 66 KB free after boot, and the C6 recovery reserve must read 2/2. No new internal `.bss` or `.data` beyond a few hundred bytes. A table goes in flash as `const`, or in PSRAM with EXT_RAM_BSS_ATTR. Nothing goes in IRAM.
-- No camlink lock inside a draw. Screens read the `s_cams` snapshot `ui_pass()` refreshes.
+- No camlink lock inside a draw. Screens read the `s_cams` snapshot `ui_pass()` refreshes; the start reads `camlink_online_mask()` between frames.
 - `ui.c` touches no NVS and no filesystem. A new FreeRTOS, heap or ESP-IDF call in `ui.c` needs a stub in `firmware/p4/host_preview/shim` and `firmware/p4/host_preview/preview.c`, and in `firmware/p4/twin_ui/shim` and `firmware/p4/twin_ui/twin_ui.c`.
 
 ## Verify a change
