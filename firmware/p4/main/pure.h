@@ -981,4 +981,22 @@ typedef struct {
 pure_contact_t pure_still_step(pure_still_t *st, bool down, uint16_t x, uint16_t y, int64_t now_us,
                                bool rest_counts);
 
+/*
+ * An update session no chunk has reached for this long is abandoned: the host
+ * crashed, the cable came out, or Studio was closed mid-update (#242). Before
+ * this only an explicit FW_ABORT ended a session, and an open session refuses
+ * the shutter. 60 s is far past one 8 KB chunk on USB (milliseconds) and past
+ * a node chunk (8 KB at 921600 baud is under 0.1 s per hop).
+ */
+#define PURE_FW_IDLE_MS 60000
+
+/** True when an open session has had no chunk for PURE_FW_IDLE_MS. `last_us`
+ * is when the session opened or last took a chunk. A clock that reads earlier
+ * than `last_us` is not idle. */
+bool pure_fw_session_idle(bool open, int64_t last_us, int64_t now_us);
+
+/** Whole percent of an image received, 0..100, rounded down: 100 only when
+ * every byte is in. 0 for an empty image. */
+int pure_fw_percent(uint32_t received, uint32_t size);
+
 #endif

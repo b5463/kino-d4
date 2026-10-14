@@ -25,6 +25,7 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "fw_update.h"
 #include "hardware_validation.h"
 #include "kdp/crc32.h"
 #include "kdp_recipes.h"
@@ -1285,6 +1286,10 @@ static void apply_sensor_settings(uint32_t ask, capture_report_t *r) {
 }
 
 esp_err_t capture_fire(const char *source, capture_report_t *out) {
+  /* An update owns the links and the flash until its session closes (#242):
+   * a node mid-update cannot take a picture, and the P4's own update is
+   * erasing and writing the flash this would log to. BUSY to the host. */
+  if (fw_update_busy()) return ESP_ERR_INVALID_STATE;
   if (!capture_lock(0)) return ESP_ERR_INVALID_STATE;
   /* Admitted. Photography wins from here; a probe already on a wire gets its
    * one bounded transaction and the capture starts the instant it returns. */
@@ -1901,6 +1906,9 @@ bool capture_request(const char *source) {
    * task to drain it, and queuing into that is how the shutter went quiet
    * with nothing said (#210). */
   if (!s_ready || s_requests == NULL || capture_busy()) return false;
+  /* Refused while an update session is open (#242); the UI asks
+   * fw_update_busy() to say why. */
+  if (fw_update_busy()) return false;
   char slot[16];
   snprintf(slot, sizeof slot, "%s", source != NULL ? source : "shutter");
   return xQueueSend(s_requests, slot, 0) == pdTRUE;

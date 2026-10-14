@@ -248,7 +248,9 @@ esp_err_t capture_fire(const char *source, capture_report_t *out);
 /** Queue a capture and return immediately. The UI and the physical button use
  * this; watch capture_stage() and read capture_last() when it reaches DONE.
  * Returns false when one is already running, so a double-press is ignored
- * rather than queued — nobody wants their second press two shots later. */
+ * rather than queued — nobody wants their second press two shots later.
+ * Also false while a firmware update session is open (fw_update_busy()),
+ * and capture_fire() answers ESP_ERR_INVALID_STATE then too (#242). */
 bool capture_request(const char *source);
 
 /**

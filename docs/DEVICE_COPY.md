@@ -6,7 +6,7 @@ How to read the table: `N`, `12` or `4571` stands for a number the camera fills 
 
 ## The rule
 
-The person holding the camera has read nothing and will not phone anyone. Each line names what happened and, when there is one, what to do about it. Under 40 characters for a toast, one short line for a banner, two for a dialog. Plain words: lens, photo, card, cells. No codes, no camera numbers, no contract names on the glass; those go to the log and the KDP reply. Known exception still on the glass: the ABOUT lens rows (#235). The LOOK TARGET band names each lens by the four-mark with its cell lit. Values on a band or in a reading are in capitals: `15 S`, `2 MIN`, `MEDIUM`.
+The person holding the camera has read nothing and will not phone anyone. Each line names what happened and, when there is one, what to do about it. Under 40 characters for a toast, one short line for a banner, two for a dialog. Plain words: lens, photo, card, cells. No codes, no camera numbers, no contract names on the glass; those go to the log and the KDP reply. Known exceptions still on the glass: the ABOUT lens rows (#235), and the update banner's camera number (#242). The LOOK TARGET band names each lens by the four-mark with its cell lit. Values on a band or in a reading are in capitals: `15 S`, `2 MIN`, `MEDIUM`.
 
 ## Header chip
 
@@ -131,6 +131,8 @@ The rows at the foot of STATUS:
 |---|---|
 | `FORMATTING THE CARD` | FORMAT confirmed; the card is locked for the seconds it takes. |
 | `RESTARTING THE CAMERAS` | RESTART THE CAMERAS pressed; three seconds. |
+| `UPDATING 42%` | A firmware update for the body itself is being received; the whole percent so far. Over every screen until the session closes. |
+| `UPDATING CAMERA 2 42%` | The same, for a lens: the number is its slot, 1 to 4. |
 | `RESTARTING` | The whole screen, between RESTART or FACTORY RESET confirmed and the panel going dark. |
 
 ## Toasts
@@ -164,6 +166,7 @@ The rows at the foot of STATUS:
 | Still reading the card | A tile tapped before the gallery had its id. |
 | No looks on this camera | LOOK with no recipes. |
 | Hold the power slide to switch off | SHUT DOWN row, which has no soft power-off. |
+| Updating. Keep the camera on. | The shutter while a firmware update session is open. No photograph is taken until the update ends, or the host has sent nothing for 60 s. |
 | Cameras did not start. Restart KINO | The shutter, on a body whose capture pipeline failed to come up at boot. Said instead of blaming a capture that is not running. |
 | Favourite / Not favourite | FAVOURITE pressed on PHOTO; the mark went on or came off. |
 | First photo / Last photo | PREV on the first photograph, or NEXT on the last. |

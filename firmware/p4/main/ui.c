@@ -22,6 +22,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "factory_reset.h"
+#include "fw_update.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -8367,6 +8368,23 @@ static void draw_working_banner(const char *line) {
 }
 
 /*
+ * The update banner's line while a firmware update session is open (#242):
+ * the body's own image, or which lens, and the whole percent received. False
+ * when no session is open. Ink, like every working banner: an update is a
+ * state, not an event. Redrawn per percent by update_poll(), not per chunk.
+ */
+static bool update_line(char *out, size_t cap) {
+  fw_target_t target = FW_T_P4;
+  int pct = 0;
+  if (!fw_update_progress(&target, &pct)) return false;
+  char done[8];
+  snprintf(done, sizeof done, "%d%%", pct);
+  if (target == FW_T_P4) snprintf(out, cap, "UPDATING %s", done);
+  else snprintf(out, cap, "UPDATING CAMERA %d %s", (int)target - FW_T_CAM1 + 1, done);
+  return true;
+}
+
+/*
  * The landing: colour arrives, does its job and leaves.
  *
  * The cells that reached the card, and the bar at the strip's end, are in
@@ -8833,7 +8851,9 @@ static void draw_screen(void) {
       text_mid(K_TYPE_CAPTION, UI_W / 2, 12 + (h - K_TYPE_CAPTION->line_h) / 2, pill, K_GROUND);
     }
   }
-  if (s_formatting) draw_working_banner("FORMATTING THE CARD");
+  char update[32];
+  if (update_line(update, sizeof update)) draw_working_banner(update);
+  else if (s_formatting) draw_working_banner("FORMATTING THE CARD");
   else if (s_cams_restart_us != 0 && esp_timer_get_time() - s_cams_restart_us < CAMS_RESTART_BANNER_US)
     draw_working_banner("RESTARTING THE CAMERAS");
   draw_toast();
@@ -9890,7 +9910,14 @@ static void shutter_now(void) {
       s_toast_long = false;
     }
   } else {
-    if (!capture_ready()) {
+    if (fw_update_busy()) {
+      /* The shutter waits for the update: capture.c refuses while a session
+       * is open (#242). Said, because a silent shutter reads as broken. */
+      toast("Updating. Keep the camera on.");
+      audio_warning();
+      klog("P4", "shutter refused - an update is running");
+      ui_render(render_screen, NULL);
+    } else if (!capture_ready()) {
       /* Not "a capture is already running", which is what this used to say to
        * a body whose capture pipeline never started (#210). */
       toast("Cameras did not start. Restart KINO");
@@ -10461,6 +10488,28 @@ static bool dim_drawn(const power_state_t *p) {
 }
 
 /** One pass of the UI loop. Returns how long the task sleeps before the next. */
+/* The update banner, repainted when its percent or its target changes and
+ * once more when the session closes. SHOOT repaints on its own clock; a
+ * finger, a move or the sleep own the frame, and the next pass catches up. */
+static void update_poll(void) {
+  static int drawn = -1;
+  fw_target_t target = FW_T_P4;
+  int pct = 0;
+  const int key = fw_update_progress(&target, &pct) ? (int)target * 1000 + pct : -1;
+  if (key == drawn) return;
+  if (s_screen == SCR_SHOOT) {
+    drawn = key;
+    return;
+  }
+  power_state_t ps;
+  power_get(&ps);
+  if (held != -1 || anim_active() || s_sleep_mark || power_sleep_pending() ||
+      ps.stage == POWER_ASLEEP)
+    return;
+  drawn = key;
+  ui_render(render_screen, NULL);
+}
+
 static uint32_t ui_pass(void) {
   {
     /* The pulse, first thing and unconditionally. Several branches below
@@ -10581,6 +10630,7 @@ static uint32_t ui_pass(void) {
     lens_hint_poll();
     timer_poll();
     undo_poll();
+    update_poll();
     if (s_cams_restart_us != 0 && esp_timer_get_time() - s_cams_restart_us >= CAMS_RESTART_BANNER_US) {
       s_cams_restart_us = 0;
       ui_render(render_screen, NULL);

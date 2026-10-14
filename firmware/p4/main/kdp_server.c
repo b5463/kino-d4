@@ -3841,6 +3841,10 @@ static void server_task(void *arg) {
      * task's 12 KB stack is created before anything can push it into TCM, and
      * it turns over every 100 ms whether or not a host is connected. */
     hwv_persist();
+    /* An update session the host walked away from ends here, on this loop
+     * and not on an esp_timer: the teardown takes the session lock and may
+     * talk to a node (#242). */
+    fw_update_poll();
   }
 }
 

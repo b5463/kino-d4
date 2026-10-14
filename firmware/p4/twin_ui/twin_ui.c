@@ -718,6 +718,18 @@ void capture_last(capture_report_t *out) {
 }
 uint32_t capture_count(void) { return g_capture_count; }
 
+/* ---- firmware update ------------------------------------------------------ */
+
+/* The Twin has no update path: no session is ever open, so the shutter is
+ * never refused for one and no update banner is drawn (#242). */
+#include "fw_update.h"
+bool fw_update_busy(void) { return false; }
+bool fw_update_progress(fw_target_t *target, int *percent) {
+  (void)target;
+  (void)percent;
+  return false;
+}
+
 KUI_EXPORT("kui_set_capture_stage") void kui_set_capture_stage(int stage) { g_stage = (capture_stage_t)stage; }
 KUI_EXPORT("kui_set_capture_count") void kui_set_capture_count(unsigned n) { g_capture_count = n; }
 KUI_EXPORT("kui_set_capture_report")

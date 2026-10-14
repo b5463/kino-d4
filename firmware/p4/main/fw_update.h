@@ -63,8 +63,24 @@ esp_err_t fw_update_end(bool *verified, fw_refusal_t *why);
 /** Drop the open session, if any. Nothing is switched. */
 void fw_update_abort(void);
 
-/** True while a session is open: captures and a second BEGIN wait. */
+/** True while a session is open: the shutter is refused and a second BEGIN
+ *  waits. */
 bool fw_update_busy(void);
+
+/**
+ * End a session no chunk has reached for PURE_FW_IDLE_MS (60 s), through the
+ * same teardown as FW_ABORT; the target reports "error" with the reason.
+ * Called on kdp_server's 100 ms read loop, never from an esp_timer, so a host
+ * that vanished mid-update cannot hold the shutter off for ever (#242).
+ */
+void fw_update_poll(void);
+
+/**
+ * While a session is open: true, the target, and the whole percent received.
+ * For the glass. Lock-free on purpose: the UI task must not wait behind a
+ * flash write, so the answer is true at the instant it is read.
+ */
+bool fw_update_progress(fw_target_t *target, int *percent);
 
 /** The contract's FwTargetState for a target: idle | receiving | verifying |
  *  applying | rebooting | ready | error. Polling a rebooting node is what
