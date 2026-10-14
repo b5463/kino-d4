@@ -6,6 +6,32 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Changed
 
+- **Firmware 0.4.62: update safety: Studio can update the camera, the shutter waits for it, and an image with rollback off does not build (#242).**
+  Studio's updater opens with ENTER_MAINTENANCE (0x50), which the P4 never
+  dispatched, so every Studio update stopped before a byte moved.
+  ENTER_MAINTENANCE and EXIT_MAINTENANCE now answer `{ "ok": true }`
+  (`maint.c`). Entering holds the capture lock, stops new upload steps and
+  lets a settings save in flight land; a capture that keeps the lock past 2 s
+  is INVALID_STATE. Maintenance ends on EXIT, on a restart, or 600 s after the
+  last ENTER or FW_* command, checked on the UI task and on kdp_server's
+  100 ms loop. FW_BEGIN outside maintenance still works for this release.
+  The shutter and CAMERA_CAPTURE are refused while an update session is open
+  or the body is in maintenance; the glass toasts "Updating. Keep the camera
+  on." and the working strip reads UPDATING, UPDATING 42% or UPDATING CAMERA
+  2 42%, in ink. A session with no chunk for 60 s is abandoned like FW_ABORT
+  and reports why. The node HELLO after a node update goes through the probe
+  gate.
+  GET_CONFIG copied the live settings without the store's lock while the UI
+  task could be merging into them; it now takes a locked snapshot. Two
+  savers commit in revision order, and `config_flush()` exists for
+  maintenance and restart.
+  p4 and camnode stop at configure time when
+  CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE is off, and p4 when the coredump is
+  not written to flash.
+  Host tests: test-config (two writers, a snapshot reader), and the session
+  idle and maintenance deadline decisions in test_pure. MockKinoDevice and
+  the conformance case follow the same maintenance rules.
+
 - **Firmware 0.4.61: the on-device UI behaviour pass: the review shutter, true readings, the dead pane, the four lenses, the TIMER panel (#237).**
   Behaviour only. No colour, control style or KDP field changed.
   Shutter: a long press does nothing. buttons.c reports a held key twice, and
