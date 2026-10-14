@@ -3409,7 +3409,8 @@ static void sleep_through(void) {
  * row focused, slept and woken through ui_pass. The question closes with
  * its safe answer and nothing is formatted; the SETTINGS subtree, POWER and
  * LOOK land on the menu with the row that led there focused; SHOOT, MENU,
- * GALLERY and ROLL stay. PHOTO is the review scene's (scenes()).
+ * GALLERY and ROLL stay. PHOTO is the review scene's (scenes()). The two
+ * notes stay open over a sleep.
  */
 static void check_sleep_safe(void) {
   const screen_t scr0 = s_screen;
@@ -3444,6 +3445,26 @@ static void check_sleep_safe(void) {
       honest_expect(s_focus[SCR_MENU] == T[i].row && !s_look_from_shoot, what);
     }
   }
+  /* The two notes ask nothing and are marked seen when they open: a sleep
+   * leaves them up, or a fresh camera put down unread loses its first step.
+   * One over a screen that moves stays over the menu. */
+  static const struct {
+    screen_t s;
+    dialog_t d;
+  } N[] = {{SCR_MENU, DLG_WELCOME}, {SCR_MENU, DLG_UPDATED}, {SCR_DISPLAY, DLG_WELCOME}};
+  for (size_t i = 0; i < sizeof N / sizeof N[0]; i++) {
+    char what[96];
+    pass_rig(N[i].s);
+    s_dialog = N[i].d;
+    s_dlg_focus = 0;
+    sleep_through();
+    snprintf(what, sizeof what, "note %d on screen %d was closed by a sleep", (int)N[i].d, (int)N[i].s);
+    honest_expect(s_dialog == N[i].d && s_toast[0] == '\0', what);
+    snprintf(what, sizeof what, "note %d on screen %d woke on screen %d", (int)N[i].d, (int)N[i].s, (int)s_screen);
+    honest_expect(s_screen == SCR_MENU, what);
+  }
+  s_dialog = DLG_NONE;
+  s_dlg_focus = 0;
   s_focus[SCR_MENU] = 0;
   s_focus_shown = focus0;
   pass_unrig(scr0);

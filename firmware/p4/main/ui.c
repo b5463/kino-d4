@@ -10506,17 +10506,24 @@ static void boot_bench(void) {
  * A camera that went to sleep in a bag on FORMAT's question, or on LOOK with a
  * thumb near QUAD, woke on the same question under a thumb that only meant to
  * wake it. So when the panel goes dark: an open dialog closes with its safe
- * answer - the cancel row, never dialog_commit(); the two notes are simply
- * dismissed - and the SETTINGS subtree, POWER and LOOK go back to the menu,
- * with the menu's focus on the row that led there. SHOOT, MENU, GALLERY,
- * PHOTO and ROLL stay: they are where a person picks up from. Done while the
- * panel is dark, so the wake's lift is the first frame of the new place and
- * nothing moves on the glass.
+ * answer - the cancel row, never dialog_commit() - and the SETTINGS subtree,
+ * POWER and LOOK go back to the menu, with the menu's focus on the row that
+ * led there. SHOOT, MENU, GALLERY, PHOTO and ROLL stay: they are where a
+ * person picks up from. The two notes stay open: they ask nothing, the wake
+ * touch presses nothing (power_wake_gesture()), and first_start_note() has
+ * already marked them seen, so a note closed here would never come back - a
+ * fresh camera put down unread would lose its first step. A note over a
+ * screen that moves stays over the menu. Done while the panel is dark, so
+ * the wake's lift is the first frame of the new place and nothing moves on
+ * the glass.
  */
 static void sleep_safe_state(void) {
   const dialog_t d = s_dialog;
-  s_dialog = DLG_NONE;
-  s_dlg_focus = 0;
+  const bool note = d == DLG_WELCOME || d == DLG_UPDATED;
+  if (!note) {
+    s_dialog = DLG_NONE;
+    s_dlg_focus = 0;
+  }
   const screen_t from = s_screen;
   screen_t top = from;
   while (SCREEN_PARENT[top] != SCR_MENU && SCREEN_PARENT[top] != top) top = SCREEN_PARENT[top];
@@ -10528,8 +10535,8 @@ static void sleep_safe_state(void) {
     s_screen = SCR_MENU;
   }
   s_pressed = -1;
-  if (d != DLG_NONE || home)
-    klog("P4", "sleep: dialog %d closed, screen %d -> %d", (int)d, (int)from, (int)s_screen);
+  if ((d != DLG_NONE && !note) || home)
+    klog("P4", "sleep: dialog %d closed, screen %d -> %d", (int)(note ? DLG_NONE : d), (int)from, (int)s_screen);
 }
 
 /*

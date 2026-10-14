@@ -180,7 +180,7 @@ The look's own name is also toasted when a look is picked.
 
 ## Dialogs
 
-Every dialog has two rows: the action on top, CANCEL under it, where the thumb reaches first. A sleep closes an open dialog with its safe answer, the lower row; the two notes are dismissed. Nothing is said: the camera wakes without the question.
+Every dialog has two rows: the action on top, CANCEL under it, where the thumb reaches first. A sleep closes an open question with its safe answer, the lower row. Nothing is said: the camera wakes without the question. FIRST START and UPDATED stay up over a sleep: they ask nothing and show once, so a note put down unread is still there at the wake.
 
 | Title | Question | Line | Buttons | When |
 |---|---|---|---|---|
