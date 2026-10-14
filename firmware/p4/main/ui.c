@@ -2811,9 +2811,9 @@ static int32_t start_end_ms(void) {
 
 /**
  * How far cell k is filled at `ms`, 0..1: from its turn, over
- * MOTION_START_CELL_IN_MS, or faster when less of the build is left. A cell
- * whose turn comes after the build's last frame stays empty: the menu card
- * shows it at the next refresh.
+ * MOTION_START_CELL_IN_MS, or faster when less of the build is left. No
+ * heard camera's turn falls on or after the build's last frame:
+ * start_hear() and start_input() pull it inside.
  */
 static float start_cell_k(int k, int32_t ms) {
   const int32_t at = s_anim.st_fill[k];
@@ -2866,11 +2866,31 @@ static void start_hear(int32_t ms) {
     for (int j = 0; j < 4; j++)
       if (s_anim.st_fill[j] >= 0 && s_anim.st_fill[j] + MOTION_START_CELL_GAP_MS > at)
         at = s_anim.st_fill[j] + MOTION_START_CELL_GAP_MS;
+    /* Heard during the build: the turn comes before its last frame, so the
+     * cell lands filled (start_cell_k() shortens the fill to what is left).
+     * Never before the frame it was heard on. */
+    if (s_anim.st_exit >= 0) {
+      const int32_t last = start_end_ms() - 1;
+      if (at > last) at = last > ms ? last : ms;
+    }
     s_anim.st_fill[i] = (int16_t)(at < 30000 ? at : 30000);
   }
 }
 
-/* When the build begins: the last cell in and settled, or the wait over. */
+/* The cameras heard so far, bit i for CAM(i+1). */
+static uint8_t start_heard(void) {
+  uint8_t m = 0;
+  for (int i = 0; i < 4; i++)
+    if (s_anim.st_seen[i] >= 0) m |= (uint8_t)(1u << i);
+  return m;
+}
+
+/*
+ * When the build begins: the last cell in and settled, or the wait over. A
+ * camera heard just before the wait ends does not push the build past it:
+ * the build starts by WAIT + MISSING + SETTLE whatever is still filling, and
+ * a cell still filling finishes inside the travel.
+ */
 static void start_decide(int32_t ms) {
   if (s_anim.st_exit >= 0) return;
   uint8_t unseen = 0;
@@ -2887,6 +2907,8 @@ static void start_decide(int32_t ms) {
     if (s_anim.st_missing == 0) s_anim.st_missing = unseen;
     go_at = MOTION_START_WAIT_MS + MOTION_START_MISSING_MS + MOTION_START_SETTLE_MS;
   }
+  const int32_t cap = MOTION_START_WAIT_MS + MOTION_START_MISSING_MS + MOTION_START_SETTLE_MS;
+  if (go_at > cap) go_at = cap;
   if (go_at >= 0 && ms >= go_at) s_anim.st_exit = (int16_t)ms;
 }
 
@@ -2911,12 +2933,13 @@ static void anim_start_boot(void) {
 
 /*
  * The start is over: the menu as itself, then the bench lines and the
- * first-start note when it is due. `ms` is the frame the cells are read at.
- * A key skips the note: it fires on this same pass, and the note stays due
- * for the next start.
+ * first-start note when it is due. `cams` is the cameras the card shows as
+ * answering: what the last frame drew, or on a cut, what was heard. A key
+ * skips the note: it fires on this same pass, and the note stays due for
+ * the next start.
  */
-static void start_done(int32_t ms, bool note) {
-  start_tell(start_shown(ms));
+static void start_done(uint8_t cams, bool note) {
+  start_tell(cams);
   anim_report("start");
   klog("P4", "start: lenses answered at %d %d %d %d ms, build at %d ms%s", s_anim.st_seen[0],
        s_anim.st_seen[1], s_anim.st_seen[2], s_anim.st_seen[3], s_anim.st_exit,
@@ -2929,15 +2952,16 @@ static void start_done(int32_t ms, bool note) {
 
 /*
  * A finger or a key during the start, from ui_pass(). A key lands the menu
- * now, and the key fires on this pass. A finger runs what is left of the
- * build in MOTION_START_CUT_MS, every beat in step: the cells that have
- * answered land filled, the rest as outlines, the truth at that moment.
- * Returns true when the start is over.
+ * now, with the cameras heard so far, and the key fires on this pass. A
+ * finger runs what is left of the build in MOTION_START_CUT_MS, every beat in
+ * step: every camera heard so far lands filled (a cell whose turn had not
+ * come yet fills now, 20 ms apart in slot order), the rest as outlines, the
+ * truth at that moment. Returns true when the start is over.
  */
 static bool start_input(bool finger, bool key) {
   if (key) {
     klog("P4", "start cut by key");
-    start_done(start_ms(), false);
+    start_done(start_heard(), false);
     return true;
   }
   if (finger && !s_anim.st_quick) {
@@ -2952,6 +2976,14 @@ static bool start_input(bool finger, bool key) {
       s_anim.st_exit = (int16_t)(ms - b * MOTION_START_CUT_MS / MOTION_START_BUILD_MS);
     }
     s_anim.st_quick = true;
+    /* Pull every heard camera's turn into what is left of the build. */
+    const int32_t last = start_end_ms() - 1;
+    for (int i = 0; i < 4; i++) {
+      if (s_anim.st_seen[i] < 0 || s_anim.st_fill[i] <= ms) continue;
+      int32_t at = ms + i * 20;
+      if (at > last) at = last > ms ? last : ms;
+      s_anim.st_fill[i] = (int16_t)at;
+    }
   }
   return false;
 }
@@ -3038,14 +3070,30 @@ static uint32_t anim_tick(void) {
 
   switch (s_anim.kind) {
     case ANIM_START: {
+      /* A loop that stalled past MOTION_START_LATE_MS (a Twin in a hidden
+       * tab, a UI task held) would find start_ms() held at its 30 s cap
+       * short of a build end it can no longer reach. Land the menu now with
+       * the cameras that answer: a cut, the same as a key. */
+      const int64_t raw = (esp_timer_get_time() - s_anim.start_us) / 1000;
+      if (raw >= MOTION_START_LATE_MS) {
+        const uint8_t on = camlink_online_mask() & 0xFu;
+        for (int i = 0; i < 4; i++)
+          if (s_anim.st_seen[i] < 0 && (on & (1u << i))) s_anim.st_seen[i] = (int16_t)start_ms();
+        klog("P4", "start cut: the loop stalled, %ld ms in", (long)raw);
+        start_done(on, true);
+        return 0;
+      }
       const int32_t ms = start_ms();
-      start_hear(ms);
+      /* Nothing new is heard on the frame the build ends: every camera heard
+       * before it has filled by then (start_hear(), start_input()), so the
+       * card says what the last frame drew. */
+      if (s_anim.st_exit < 0 || ms < start_end_ms()) start_hear(ms);
       start_decide(ms);
       if (s_anim.st_exit >= 0) start_tell(start_shown(ms));
       int32_t at = ms;
       ui_render(render_start, &at);
       const int32_t end = start_end_ms();
-      if (ms >= end) start_done(end, true);
+      if (ms >= end) start_done(start_shown(end), true);
       return 0;
     }
 

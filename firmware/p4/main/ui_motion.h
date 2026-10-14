@@ -96,8 +96,10 @@ static inline float motion_by_hand(float t) {
  * MOTION_START_CELL_FROM_MS and never within MOTION_START_CELL_GAP_MS of the
  * cell before it. The build starts MOTION_START_SETTLE_MS after the last
  * cell is in, never before MOTION_START_MIN_HOLD_MS. A camera silent at
- * MOTION_START_WAIT_MS is drawn missing and the build starts without it: the
- * worst case lands the menu at WAIT + MISSING + SETTLE + BUILD, 2950 ms.
+ * MOTION_START_WAIT_MS is drawn missing and the build starts without it. The
+ * build never starts after WAIT + MISSING + SETTLE, even for a camera that
+ * answered just before it: that cell finishes inside the travel. So the menu
+ * lands by WAIT + MISSING + SETTLE + BUILD, 2950 ms.
  */
 #define MOTION_START_MARK_IN_MS 450    /* the mark, ground to ink */
 #define MOTION_START_SLOTS_FROM_MS 250 /* the four outlines under it */
@@ -123,6 +125,15 @@ static inline float motion_by_hand(float t) {
 /* A finger during the start: the rest of the build, every beat in step, in
  * this long. A key lands the menu on the spot and fires on the same pass. */
 #define MOTION_START_CUT_MS 300
+/* A start still running this long after its first frame had its loop stalled
+ * (a hidden Twin tab, a UI task held): it lands the menu at once with the
+ * cameras that answer. Well past the 2950 ms ceiling plus a build, and well
+ * inside the 30 s an int16 st_* field holds. */
+#define MOTION_START_LATE_MS 5000
+_Static_assert(MOTION_START_WAIT_MS + MOTION_START_MISSING_MS + MOTION_START_SETTLE_MS +
+                       2 * MOTION_START_BUILD_MS < MOTION_START_LATE_MS &&
+                   MOTION_START_LATE_MS < 30000,
+               "the stall guard never cuts a start that is still on time");
 _Static_assert(MOTION_START_ROWS_FROM_MS + MOTION_START_ROWS_MS <= MOTION_START_BUILD_MS &&
                    MOTION_START_WORDS_FROM_MS + MOTION_START_WORDS_MS <= MOTION_START_BUILD_MS &&
                    MOTION_START_TRAVEL_FROM_MS + MOTION_START_TRAVEL_MS <= MOTION_START_BUILD_MS &&

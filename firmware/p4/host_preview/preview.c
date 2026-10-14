@@ -96,6 +96,9 @@ int64_t prev_vclock_step_us = 16000;
 int64_t prev_idle_clock_us = 8040LL * 1000000;
 static const char *g_anim;
 static int g_anim_n;
+/* An animation run as a check, not a picture: frames are counted, not
+ * written, so the PPM count stays put. */
+static bool g_anim_quiet;
 
 /* Called on every presented frame and every stash render while set:
  * check_wake_into_move() reads the scrim each frame was drawn under. */
@@ -103,7 +106,9 @@ static void (*g_frame_hook)(bool stash);
 
 void gfx_present(void) {
   if (g_frame_hook != NULL) g_frame_hook(false);
-  if (g_anim != NULL) {
+  if (g_anim != NULL && g_anim_quiet) {
+    g_anim_n++;
+  } else if (g_anim != NULL) {
     char path[600];
     snprintf(path, sizeof path, "%s/%s_%02d.ppm", g_out, g_anim, g_anim_n++);
     write_ppm(path, g_canvas, UI_W, UI_H);
@@ -3705,17 +3710,31 @@ static void check_sleep_safe(void) {
 
 /*
  * The start (#245), frame by frame through the real driver, on the
- * renderer's clock. answer_ms[i] is when camera i first answers (-1 never),
- * tap_ms when a finger lands (-1 never), which goes through start_input() the
- * way ui_pass() sends it. Prints when the build began and the menu landed,
- * the display list per frame and the canvas traffic, and fails the run when
- * the start's last frame is not the menu it hands over to, pixel for pixel.
+ * renderer's clock. A case says when each camera first answers (-1 never),
+ * when a finger lands or a key goes down (-1 never), both through
+ * start_input() the way ui_pass() sends them, and where the loop stalls (the
+ * Twin in a hidden tab, a held UI task). Prints when the build began and the
+ * menu landed, the display list per frame and the canvas traffic, and fails
+ * the run when:
+ *   - the start does not end within START_TICKS_MAX ticks of the stall, or
+ *     with no stall, of the ceiling and a build;
+ *   - the start's last frame is not the menu it hands over to, pixel for
+ *     pixel (not on a cut: a key or a stall lands the menu at once);
+ *   - the card shows a camera as answering that was not heard, or as silent
+ *     one that was: the last frame draws the card's cells, so this is the
+ *     last frame's filled cells against the cameras heard by then;
+ *   - a case with `ceiling` lands the menu after it.
  *
- * The committed run steps 100 ms of virtual time a frame, to keep the PPM
- * count near the boot field's; START_ONLY=1 renders the runs alone at 30 fps
- * for the review GIFs and checks no count.
+ * The committed runs step 100 ms of virtual time a frame, to keep the PPM
+ * count near the boot field's; START_ONLY=1 renders them alone at 30 fps for
+ * the review GIFs and checks no count. The quiet cases are checks, not
+ * pictures: they write no PPMs and run on their own step.
  */
 static int64_t g_start_step_us = 100000;
+#define START_TICKS_MAX 200
+/* The latest a start can land the menu, with a silent or late camera. */
+#define START_CEILING_MS \
+  (MOTION_START_WAIT_MS + MOTION_START_MISSING_MS + MOTION_START_SETTLE_MS + MOTION_START_BUILD_MS)
 /* The three newest presents, for the landing check. */
 static uint16_t *g_start_ring[3];
 static int g_start_ring_n;
@@ -3726,7 +3745,18 @@ static void start_hook(bool stash) {
   g_start_ring_n++;
 }
 
-static void start_run(const char *name, const int answer_ms[4], int tap_ms, bool first_seen) {
+typedef struct {
+  const char *name;
+  int answer_ms[4];
+  int tap_ms, key_ms;
+  bool first_seen;
+  int stall_at_ms, stall_ms; /* the loop stalls stall_ms before the frame at stall_at_ms; -1 none */
+  int ceiling_ms;            /* the menu lands by this, 0 for no check */
+  bool quiet;                /* no PPMs */
+  int step_ms;               /* 0 for g_start_step_us */
+} start_case_t;
+
+static void start_run(const start_case_t *c) {
   static const char *const OPN[] = {"fill", "rrect", "routl", "cut", "disc", "scrim", "text",
                                     "shblit", "blit", "bits", "focus", "mask", "half"};
   _Static_assert(sizeof OPN / sizeof OPN[0] == DL_OPS, "one name per display-list op");
@@ -3735,13 +3765,15 @@ static void start_run(const char *name, const int answer_ms[4], int tap_ms, bool
   camlink_info_t keep[4];
   memcpy(keep, s_cams, sizeof keep);
   const unsigned online0 = g_cam_online;
-  g_first_seen = first_seen;
-  g_anim = name;
+  const int64_t step_us = c->step_ms > 0 ? (int64_t)c->step_ms * 1000 : g_start_step_us;
+  g_first_seen = c->first_seen;
+  g_anim = c->name;
+  g_anim_quiet = c->quiet;
   g_anim_n = 0;
   g_start_ring_n = 0;
   g_frame_hook = start_hook;
   prev_vclock_us = 1000000;
-  prev_vclock_step_us = g_start_step_us;
+  prev_vclock_step_us = step_us;
   s_screen = SCR_MENU;
   s_dialog = DLG_NONE;
   s_pressed = -1;
@@ -3750,22 +3782,41 @@ static void start_run(const char *name, const int answer_ms[4], int tap_ms, bool
   memset(s_cams, 0, sizeof s_cams);
   anim_start_boot();
   const int64_t t0 = s_anim.start_us;
-  int frames = 0, ops_max = 0, ops_sum = 0, peak_f = 0, end_ms = -1;
+  int frames = 0, ops_max = 0, ops_sum = 0, peak_f = 0, end_ms = -1, since_stall = 0;
   int hist[DL_OPS] = {0};
   double px_max = 0, px_sum = 0;
-  bool tapped = false;
-  for (int guard = 0; anim_active() && guard < 600; guard++) {
+  bool tapped = false, keyed = false, stalled = false, cut = false;
+  /* A stalled run lands within START_TICKS_MAX ticks of the stall, any
+   * other within that many past the ceiling and a build. */
+  const int max_ticks =
+      c->stall_at_ms >= 0 ? START_TICKS_MAX : (int)((int64_t)(START_CEILING_MS + 1000) * 1000 / step_us) + START_TICKS_MAX;
+  for (; anim_active() && since_stall < max_ticks; since_stall++) {
+    if (c->stall_at_ms >= 0 && !stalled && (prev_vclock_us - t0) / 1000 >= c->stall_at_ms) {
+      stalled = true;
+      cut = true;
+      since_stall = 0;
+      prev_vclock_us += (int64_t)c->stall_ms * 1000;
+    }
     const int32_t ms = (int32_t)((prev_vclock_us - t0) / 1000);
     unsigned now = 0;
     for (int i = 0; i < 4; i++)
-      if (answer_ms[i] >= 0 && ms >= answer_ms[i]) now |= 1u << i;
+      if (c->answer_ms[i] >= 0 && ms >= c->answer_ms[i]) now |= 1u << i;
     g_cam_online = now;
-    if (tap_ms >= 0 && !tapped && ms >= tap_ms) {
-      tapped = true;
-      start_input(true, false);
-    }
+    const bool tap = c->tap_ms >= 0 && !tapped && ms >= c->tap_ms;
+    const bool key = c->key_ms >= 0 && !keyed && ms >= c->key_ms;
+    tapped |= tap;
+    keyed |= key;
+    if (key) cut = true;
     bench_reset();
-    const uint32_t wait = anim_tick();
+    uint32_t wait = 0;
+    if (tap || key) {
+      if (start_input(tap, key)) {
+        end_ms = ms;
+        frames++;
+        break;
+      }
+    }
+    wait = anim_tick();
     const double px = bench_screens();
     if (s_dl.n > ops_max) {
       ops_max = s_dl.n;
@@ -3782,44 +3833,69 @@ static void start_run(const char *name, const int answer_ms[4], int tap_ms, bool
   }
   g_frame_hook = NULL;
   const bool note = s_dialog != DLG_NONE;
-  printf("\n  start %s: answers %d/%d/%d/%d ms, tap %d: build at %d ms, menu at %d ms, %d frames, %s\n", name,
-         answer_ms[0], answer_ms[1], answer_ms[2], answer_ms[3], tap_ms, s_anim.st_exit, end_ms, g_anim_n,
-         note ? "then the note" : "no note");
+  printf("\n  start %s: answers %d/%d/%d/%d ms, tap %d, key %d, stall %d ms at %d: build at %d ms, menu at %d ms, "
+         "%d frames, %s\n",
+         c->name, c->answer_ms[0], c->answer_ms[1], c->answer_ms[2], c->answer_ms[3], c->tap_ms, c->key_ms,
+         c->stall_ms, c->stall_at_ms, s_anim.st_exit, end_ms, g_anim_n, note ? "then the note" : "no note");
   printf("    display list per frame: max %d (frame %d), mean %.1f;", ops_max, peak_f,
          frames ? (double)ops_sum / frames : 0.0);
   for (int o = 0; o < DL_OPS; o++)
     if (hist[o]) printf(" %s %d", OPN[o], hist[o]);
   printf("\n    canvas traffic per frame: max %.2f, mean %.2f screens\n", px_max, frames ? px_sum / frames : 0.0);
 
-  /* The landing: the start's last frame against the menu presented after it. */
-  const int menu_i = g_start_ring_n - (note ? 2 : 1), last_i = menu_i - 1;
-  if (anim_active() || last_i < 0) {
-    fprintf(stderr, "start %s: did not land (%d presents)\n", name, g_start_ring_n);
+  if (anim_active()) {
+    fprintf(stderr, "start %s (%s hand): still running %d ticks %s\n", c->name, g_hand, max_ticks,
+            stalled ? "after the stall" : "in");
     g_start_failed = true;
-  } else {
-    const uint16_t *a = g_start_ring[last_i % 3], *m = g_start_ring[menu_i % 3];
-    int diff = 0, fx = -1, fy = -1;
-    for (int i = 0; i < UI_W * UI_H; i++) {
-      if (a[i] == m[i]) continue;
-      if (diff++ == 0) {
-        fx = i % UI_W;
-        fy = i / UI_W;
+  } else if (!cut) {
+    /* The landing: the start's last frame against the menu presented after it. */
+    const int menu_i = g_start_ring_n - (note ? 2 : 1), last_i = menu_i - 1;
+    if (last_i < 0) {
+      fprintf(stderr, "start %s: did not land (%d presents)\n", c->name, g_start_ring_n);
+      g_start_failed = true;
+    } else {
+      const uint16_t *a = g_start_ring[last_i % 3], *m = g_start_ring[menu_i % 3];
+      int diff = 0, fx = -1, fy = -1;
+      for (int i = 0; i < UI_W * UI_H; i++) {
+        if (a[i] == m[i]) continue;
+        if (diff++ == 0) {
+          fx = i % UI_W;
+          fy = i / UI_W;
+        }
+      }
+      printf("    landing: the last frame and the menu differ in %d pixels\n", diff);
+      if (diff != 0) {
+        fprintf(stderr, "start %s (%s hand): the last frame is not the menu: %d pixels differ, first at %d,%d\n",
+                c->name, g_hand, diff, fx, fy);
+        g_start_failed = true;
       }
     }
-    printf("    landing: the last frame and the menu differ in %d pixels\n", diff);
-    if (diff != 0) {
-      fprintf(stderr, "start %s (%s hand): the last frame is not the menu: %d pixels differ, first at %d,%d\n",
-              name, g_hand, diff, fx, fy);
-      g_start_failed = true;
-    }
   }
-  if (first_seen == note) {
-    fprintf(stderr, "start %s: the first-start note %s\n", name, note ? "opened on a body that has seen it" : "did not open");
+  /* The card's cells against the cameras heard. */
+  unsigned card = 0, heard = 0;
+  for (int i = 0; i < 4; i++) {
+    if (s_cams[i].online) card |= 1u << i;
+    if (s_anim.st_seen[i] >= 0) heard |= 1u << i;
+  }
+  printf("    cameras heard 0x%x, on the card 0x%x\n", heard, card);
+  if (!anim_active() && card != heard) {
+    fprintf(stderr, "start %s (%s hand): the card shows cameras 0x%x, heard 0x%x\n", c->name, g_hand, card, heard);
+    g_start_failed = true;
+  }
+  if (c->ceiling_ms > 0 && (end_ms < 0 || end_ms > c->ceiling_ms)) {
+    fprintf(stderr, "start %s (%s hand): the menu landed at %d ms, past %d ms\n", c->name, g_hand, end_ms,
+            c->ceiling_ms);
+    g_start_failed = true;
+  }
+  if (c->first_seen == note) {
+    fprintf(stderr, "start %s: the first-start note %s\n", c->name,
+            note ? "opened on a body that has seen it" : "did not open");
     g_start_failed = true;
   }
   prev_vclock_step_us = 16000;
   prev_vclock_us = 0;
   g_anim = NULL;
+  g_anim_quiet = false;
   s_dialog = DLG_NONE;
   s_dlg_focus = 0;
   g_first_seen = false;
@@ -3830,22 +3906,43 @@ static void start_run(const char *name, const int answer_ms[4], int tap_ms, bool
 }
 
 static void start_scenes(void) {
-  /* All four answering as they come up; a fresh body, so the note follows. */
-  static const int ALL4[4] = {400, 700, 900, 1100};
-  /* The third never answers: its outline hardens and lands on the card. */
-  static const int THREE[4] = {400, 700, -1, 1100};
-  start_run("start_all4", ALL4, -1, false);
-  start_run("start_three", THREE, -1, true);
-  /* A finger at 600 ms: the rest of the build, quickly, the truth then. */
-  start_run("start_tap", ALL4, 600, true);
+  static const start_case_t PICTURES[] = {
+      /* All four answering as they come up; a fresh body, so the note follows. */
+      {"start_all4", {400, 700, 900, 1100}, -1, -1, false, -1, 0, 0, false, 0},
+      /* The third never answers: its outline hardens and lands on the card. */
+      {"start_three", {400, 700, -1, 1100}, -1, -1, true, -1, 0, START_CEILING_MS + 100, false, 0},
+      /* A finger at 600 ms: the rest of the build, quickly, the truth then. */
+      {"start_tap", {400, 700, 900, 1100}, 600, -1, true, -1, 0, 0, false, 0},
+  };
+  for (size_t i = 0; i < sizeof PICTURES / sizeof PICTURES[0]; i++) start_run(&PICTURES[i]);
   if (getenv("START_ONLY") != NULL) {
     /* Media only: the nodes already up when the UI starts, which is the
      * likely body, and two that come up late. */
-    static const int READY[4] = {0, 0, 0, 0};
-    static const int SLOW[4] = {1300, 1700, 2400, 2900};
-    start_run("start_ready", READY, -1, true);
-    start_run("start_slow", SLOW, -1, true);
+    static const start_case_t MEDIA[] = {
+        {"start_ready", {0, 0, 0, 0}, -1, -1, true, -1, 0, 0, false, 0},
+        {"start_slow", {1300, 1700, 2400, 2900}, -1, -1, true, -1, 0, 0, false, 0},
+    };
+    for (size_t i = 0; i < sizeof MEDIA / sizeof MEDIA[0]; i++) start_run(&MEDIA[i]);
   }
+  /* Checks, no pictures. 10 ms steps put a frame on every beat, so the
+   * ceiling is exact. */
+  static const start_case_t CHECKS[] = {
+      /* All four up at power-on and a finger at 300 ms, before any cell's
+       * turn: all four land filled, none drawn dead. */
+      {"start_tap_early", {0, 0, 0, 0}, 300, -1, true, -1, 0, 0, true, 10},
+      /* A key at 300 ms: the menu at once, with the four that answered. */
+      {"start_key_early", {0, 0, 0, 0}, -1, 300, true, -1, 0, 0, true, 10},
+      /* A camera that answers just before the wait ends does not hold the
+       * build: the menu still lands by the ceiling. */
+      {"start_late_one", {400, 700, 900, 1900}, -1, -1, true, -1, 0, START_CEILING_MS, true, 10},
+      {"start_late_two", {400, 700, 1880, 1940}, -1, -1, true, -1, 0, START_CEILING_MS, true, 10},
+      /* The loop stalls 31 s before the first frame, 31 s at 500 ms with
+       * CAM3 silent, and 40 s before a finger: each lands at once. */
+      {"start_stall", {400, 700, 900, 1100}, -1, -1, true, 0, 31000, 0, true, 33},
+      {"start_stall_three", {400, 700, -1, 1100}, -1, -1, true, 500, 31000, 0, true, 33},
+      {"start_stall_tap", {400, 700, 900, 1100}, 40000, -1, true, 0, 40000, 0, true, 33},
+  };
+  for (size_t i = 0; i < sizeof CHECKS / sizeof CHECKS[0]; i++) start_run(&CHECKS[i]);
 }
 
 /* Every scene, in the order they have always been drawn. Run once per hand,
