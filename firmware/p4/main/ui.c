@@ -6352,9 +6352,9 @@ static void draw_photo(void) {
     if (foc(SCR_PHOTO, IT_BACK)) focus_inset(bx0, HD_BTN_Y, HD_BTN_W, HD_BTN, K_INK);
   }
 
-  /* The caption, one fact per line down the column: what it is called and
-   * what kind of capture it is. The frame count was a third line - "4 frames"
-   * - and it is the mark below instead: the gallery already says this with
+  /* The caption, one fact per line down the column: when, what kind, and
+   * where in the gallery. The frame count was a line too - "4 frames" - and
+   * it is the mark below instead: the gallery already says this with
    * four cells and saying it twice in two grammars is how an interface stops
    * having one. */
   /*
@@ -6388,7 +6388,8 @@ static void draw_photo(void) {
    * it is, and where it is in the gallery - PHOTO 37. The raw capture number
    * led here and said nothing a person can use: CAP_000039 is a folder name,
    * the same prefix on every capture, and the number in it is not the
-   * gallery's count. The date leads in ink, the other two are quiet.
+   * gallery's count. The date leads in ink; the mode and the place are
+   * quiet, the mode in ink once the Roll has it.
    *
    * All three in the caption face. The date does not fit the column in the
    * label face at either length - 170 px for 14 OCT 18:02, 185 for DATE NOT
