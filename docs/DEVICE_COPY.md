@@ -180,7 +180,7 @@ The look's own name is also toasted when a look is picked.
 
 ## Dialogs
 
-Every dialog has two rows: the action on top, CANCEL under it, where the thumb reaches first.
+Every dialog has two rows: the action on top, CANCEL under it, where the thumb reaches first. A sleep closes an open dialog with its safe answer, the lower row; the two notes are dismissed. Nothing is said: the camera wakes without the question.
 
 | Title | Question | Line | Buttons | When |
 |---|---|---|---|---|
@@ -381,6 +381,7 @@ calls and fails when one of them is not in this table.
 
 At the dim time the screen darkens under a scrim on an eased ramp over 1.6 s and stays readable; a touch lifts it. On SHOOT the scrim waits until 10 s before the sleep time, or the dim time if that is later, and never comes with sleep off: the finder keeps its contrast while you frame. 
 At the sleep time the dimmed picture darkens to the ground over half a second, the mark and `GOING TO SLEEP.  TAP TO WAKE` fade in from the dark, hold half a second, fade out, and then the backlight drops: two seconds, no cut. DISPLAY says the same under BRIGHTNESS AND POWER: on or off, not dimmable; tap the screen to wake; hold the slide to switch off.
+The camera wakes somewhere safe: an open dialog is gone, answered with its safe answer, and SETTINGS and everything under it, POWER and LOOK wake on the menu. SHOOT, the menu, GALLERY, a photograph and ROLL wake where they were. No line says so.
 
 ## After a shot
 

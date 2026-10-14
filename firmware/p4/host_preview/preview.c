@@ -1631,7 +1631,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 276
+#define PPMS_PER_HAND 278
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -3395,6 +3395,61 @@ static void check_first_use(void) {
   g_audit_off = false;
 }
 
+/* A real sleep through ui_pass: the panel goes dark, then a touch brings it
+ * back and the wake's lift (MOTION_WAKE_MS) runs out. */
+static void sleep_through(void) {
+  g_power_stage = POWER_ASLEEP;
+  timer_passes(2);
+  g_power_stage = POWER_AWAKE;
+  timer_passes(24);
+}
+
+/*
+ * After a sleep (#247): every screen with FORMAT's question open, its commit
+ * row focused, slept and woken through ui_pass. The question closes with
+ * its safe answer and nothing is formatted; the SETTINGS subtree, POWER and
+ * LOOK land on the menu with the row that led there focused; SHOOT, MENU,
+ * GALLERY and ROLL stay. PHOTO is the review scene's (scenes()).
+ */
+static void check_sleep_safe(void) {
+  const screen_t scr0 = s_screen;
+  const bool focus0 = s_focus_shown;
+  g_audit_off = true;
+  static const struct {
+    screen_t s, want;
+    int row;
+  } T[] = {
+      {SCR_MENU, SCR_MENU, -1},       {SCR_SHOOT, SCR_SHOOT, -1},  {SCR_GALLERY, SCR_GALLERY, -1},
+      {SCR_ROLL, SCR_ROLL, -1},       {SCR_LOOK, SCR_MENU, 1},     {SCR_SETTINGS, SCR_MENU, 4},
+      {SCR_DISPLAY, SCR_MENU, 4},     {SCR_SOUND, SCR_MENU, 4},    {SCR_CONNECTION, SCR_MENU, 4},
+      {SCR_STORAGE, SCR_MENU, 4},     {SCR_ABOUT, SCR_MENU, 4},    {SCR_STATUS, SCR_MENU, 4},
+      {SCR_POWER, SCR_MENU, 5},
+  };
+  for (size_t i = 0; i < sizeof T / sizeof T[0]; i++) {
+    char what[96];
+    pass_rig(T[i].s);
+    s_focus[SCR_MENU] = 0;
+    s_dialog = DLG_FORMAT;
+    s_dlg_focus = 1;
+    s_look_from_shoot = T[i].s == SCR_LOOK;
+    sleep_through();
+    snprintf(what, sizeof what, "screen %d: the question was answered, or not closed, over a sleep", (int)T[i].s);
+    honest_expect(s_dialog == DLG_NONE && s_toast[0] == '\0', what);
+    snprintf(what, sizeof what, "screen %d woke on screen %d, expected %d", (int)T[i].s, (int)s_screen,
+             (int)T[i].want);
+    honest_expect(s_screen == T[i].want, what);
+    if (T[i].row >= 0) {
+      snprintf(what, sizeof what, "screen %d woke with menu focus %d, expected %d", (int)T[i].s,
+               s_focus[SCR_MENU], T[i].row);
+      honest_expect(s_focus[SCR_MENU] == T[i].row && !s_look_from_shoot, what);
+    }
+  }
+  s_focus[SCR_MENU] = 0;
+  s_focus_shown = focus0;
+  pass_unrig(scr0);
+  g_audit_off = false;
+}
+
 /* Every scene, in the order they have always been drawn. Run once per hand,
  * each time in a fresh forked process (main). */
 static void scenes(void) {
@@ -4475,6 +4530,45 @@ static void scenes(void) {
     }
   }
 
+  /* ---- after a sleep (#247) ----
+   * Two places the camera went dark, driven through ui_pass, and the wake's
+   * frame 60 ms into MOTION_WAKE_MS: STORAGE with FORMAT's question open
+   * wakes on the menu, the question gone; PHOTO with DELETE's question open
+   * stays on the photograph, the question gone. check_sleep_safe() holds the
+   * rule for every screen. */
+  {
+    int k, m;
+    lift_at(60 * 1000, MOTION_WAKE_MS, 255, 0, &k, &m);
+
+    pass_rig(SCR_STORAGE);
+    s_dialog = DLG_FORMAT;
+    g_audit_off = true;
+    g_power_stage = POWER_ASLEEP;
+    timer_passes(2);
+    g_audit_off = false;
+    honest_expect(s_screen == SCR_MENU && s_dialog == DLG_NONE && s_focus[SCR_MENU] == 4,
+                  "STORAGE under FORMAT did not go to the menu, SETTINGS row, at the sleep");
+    lift_frame(SCR_MENU, k, m, "sleep_woke_from_format");
+    pass_unrig(SCR_MENU);
+    s_focus[SCR_MENU] = 0;
+
+    const gallery_item_t *slots = gallery_slots();
+    photo_open(&slots[0]);
+    s_focus[SCR_PHOTO] = P_IT_DELETE;
+    pass_rig(SCR_PHOTO);
+    s_dialog = DLG_DELETE;
+    s_first_review_us = 0;
+    g_audit_off = true;
+    g_power_stage = POWER_ASLEEP;
+    timer_passes(2);
+    g_audit_off = false;
+    honest_expect(s_screen == SCR_PHOTO && s_dialog == DLG_NONE && s_toast[0] == '\0',
+                  "PHOTO under DELETE did not stay on the photograph with the question closed");
+    lift_frame(SCR_PHOTO, k, m, "sleep_woke_on_photo");
+    pass_unrig(SCR_MENU);
+    photo_release();
+  }
+
   /* ---- a toast, which every screen can raise ---- */
   /* On the menu it is the status bar's message. It used to float 44 px off the
    * bottom, which put it across the SETTINGS tile's label - a tooltip covering
@@ -4541,6 +4635,7 @@ static void scenes(void) {
   check_shutter_sound();
   check_self_timer();
   check_first_use();
+  check_sleep_safe();
   check_move_takes_lift();
   check_wake_into_move();
   check_idle_dim();

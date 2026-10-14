@@ -10501,6 +10501,38 @@ static void boot_bench(void) {
 }
 
 /*
+ * After a sleep, a safe place to wake to (#247).
+ *
+ * A camera that went to sleep in a bag on FORMAT's question, or on LOOK with a
+ * thumb near QUAD, woke on the same question under a thumb that only meant to
+ * wake it. So when the panel goes dark: an open dialog closes with its safe
+ * answer - the cancel row, never dialog_commit(); the two notes are simply
+ * dismissed - and the SETTINGS subtree, POWER and LOOK go back to the menu,
+ * with the menu's focus on the row that led there. SHOOT, MENU, GALLERY,
+ * PHOTO and ROLL stay: they are where a person picks up from. Done while the
+ * panel is dark, so the wake's lift is the first frame of the new place and
+ * nothing moves on the glass.
+ */
+static void sleep_safe_state(void) {
+  const dialog_t d = s_dialog;
+  s_dialog = DLG_NONE;
+  s_dlg_focus = 0;
+  const screen_t from = s_screen;
+  screen_t top = from;
+  while (SCREEN_PARENT[top] != SCR_MENU && SCREEN_PARENT[top] != top) top = SCREEN_PARENT[top];
+  const bool home = top == SCR_SETTINGS || top == SCR_POWER || top == SCR_LOOK;
+  if (home) {
+    const int row = menu_item_of(top);
+    if (row >= 0) s_focus[SCR_MENU] = row;
+    s_look_from_shoot = false;
+    s_screen = SCR_MENU;
+  }
+  s_pressed = -1;
+  if (d != DLG_NONE || home)
+    klog("P4", "sleep: dialog %d closed, screen %d -> %d", (int)d, (int)from, (int)s_screen);
+}
+
+/*
  * The loop's carry-over state, which used to be ui_task's locals.
  *
  * One pass of the loop is a function, ui_pass(), and the task below is the
@@ -11005,6 +11037,7 @@ static uint32_t ui_pass(void) {
       /* The timer setting does not outlive the session it was set in. */
       s_timer_on = false;
       s_timer_end_us = 0;
+      sleep_safe_state();
     }
     was_asleep = asleep_now;
 
