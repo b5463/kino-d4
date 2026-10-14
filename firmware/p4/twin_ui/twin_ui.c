@@ -721,6 +721,8 @@ void capture_last(capture_report_t *out) {
   if (out) *out = g_report;
 }
 uint32_t capture_count(void) { return g_capture_count; }
+/* The Twin is a D4-V1: no flash since ECN-0003, so no flash control (#247). */
+bool capture_has_flash(void) { return false; }
 
 /* ---- firmware update ------------------------------------------------------ */
 

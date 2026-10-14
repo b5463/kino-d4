@@ -427,7 +427,13 @@ bool kdp_sounds_info(int index, char *id, size_t id_cap, char *name, size_t name
  * mutated a config file would be a surprising side effect of looking. The
  * cJSON stubs exist so ui.c's real write path compiles; main() drives the
  * globals above directly, so none of this is reached. */
-esp_err_t config_merge(const cJSON *patch) { (void)patch; return ESP_OK; }
+/* Writes asked for, so a check can see that a press wrote nothing. */
+static int g_merge_n;
+esp_err_t config_merge(const cJSON *patch) {
+  (void)patch;
+  g_merge_n++;
+  return ESP_OK;
+}
 esp_err_t config_save(void) { return ESP_OK; }
 
 /* meta.c is not linked here - it needs the real cJSON, which lives in
@@ -579,6 +585,11 @@ static void report_cams(uint32_t asked, uint32_t ok) {
   }
 }
 uint32_t capture_count(void) { return 0; }
+/* D4-V1 has no flash (ECN-0003), so the scenes draw the body as it is. The
+ * flash-fitted scenes set this to keep the layout with a FLASH control
+ * reviewed for the external module (#247). */
+static bool g_flash_fitted;
+bool capture_has_flash(void) { return g_flash_fitted; }
 
 /* An update session, driven by the preview so the banner and the refused
  * shutter can be looked at (#242). Closed unless a scene opens it. */
@@ -1620,7 +1631,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 273
+#define PPMS_PER_HAND 274
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -1696,7 +1707,7 @@ static const struct {
   int max;
   const char *why;
 } EDGE_ALLOW[] = {
-    {SCR_LOOK, 5, "the title, the card's type, and three control columns, each with a caption"},
+    {SCR_LOOK, 5, "the title, the card's type, and two or three control columns, each with a caption"},
 };
 
 static void edges_judge(const char *name) {
@@ -2725,6 +2736,16 @@ static void review_expect(bool ok, const char *what) {
   g_review_failed = true;
 }
 
+/* Honest glass (#247): no flash control without a flash, the first-use
+ * hint, and the safe state after a sleep. A broken rule fails the run. */
+static bool g_honest_failed;
+
+static void honest_expect(bool ok, const char *what) {
+  if (ok) return;
+  fprintf(stderr, "honest glass (%s hand): %s\n", g_hand, what);
+  g_honest_failed = true;
+}
+
 static void review_run_move(void) {
   for (int guard = 0; anim_active() && guard < 4000; guard++) {
     const uint32_t wait = anim_tick();
@@ -3391,6 +3412,10 @@ static void scenes(void) {
    */
   s_focus[SCR_SHOOT] = 3; /* the shutter, where focus lands on entry */
   SHOT(SCR_SHOOT, "shoot");
+  /* The two flash shots are a body with a flash fitted: the external module
+   * ECN-0003 left open. D4-V1 has none, and "shoot" above has no flash
+   * panel (#247). */
+  g_flash_fitted = true;
   g_flash_mode = "on";
   SHOT(SCR_SHOOT, "shoot_flash_on");
   /* QUAD, flash off, and the third lens not answering: the strip's count on
@@ -3400,6 +3425,7 @@ static void scenes(void) {
   g_mode = "quad";
   g_vf_dead = 1u << 2;
   SHOT(SCR_SHOOT, "shoot_quad_flash_off");
+  g_flash_fitted = false;
   /* The button held, and the same pane inside the boot grace after a
    * restart: STARTING and no button. */
   s_pressed = SH_IT_PANE0 + 2;
@@ -3783,12 +3809,45 @@ static void scenes(void) {
    * the picker buttons and a group box's top edge all meet: the dotted
    * rectangle has to read inside a 40 px button that is itself inside an etched
    * frame, and at 1 px that is only judgeable as a picture. */
+  /* With a flash fitted, so the three-column row and its FLASH band stay
+   * reviewed for the external module; every other LOOK shot is D4-V1's two
+   * columns (#247). */
+  g_flash_fitted = true;
   s_focus_shown = true;
   s_focus[SCR_LOOK] = LK_IT_NEXT;
   s_pressed = LK_IT_FLASH + 1; /* FLASH / ON, held */
   SHOT(SCR_LOOK, "look_focus_pressed");
   s_pressed = -1;
   s_focus_shown = false;
+  g_flash_fitted = false;
+  /* D4-V1: the same press on the two-column row. MODE / QUAD held. */
+  s_focus_shown = true;
+  s_pressed = LK_IT_MODE + 1;
+  SHOT(SCR_LOOK, "look_no_flash_pressed");
+  s_pressed = -1;
+  s_focus_shown = false;
+  {
+    /* No point on LOOK presses a FLASH item when no flash is fitted, and FN
+     * steps nothing. Audit off: activate() repaints, and no shot follows. */
+    g_audit_off = true;
+    s_screen = SCR_LOOK;
+    bool hit = false;
+    for (int y = 0; y < UI_H && !hit; y += 2)
+      for (int x = 0; x < UI_W && !hit; x += 2) {
+        const int it = hit_test(x, y);
+        hit = it >= LK_IT_FLASH && it < LK_IT_PREV;
+      }
+    honest_expect(!hit, "a point on LOOK hits a FLASH item with no flash fitted");
+    const int merges0 = g_merge_n;
+    flash_cycle();
+    activate(LK_IT_FLASH + 1);
+    honest_expect(g_merge_n == merges0, "FN or a FLASH item wrote the flash mode with no flash fitted");
+    g_flash_fitted = true;
+    flash_cycle();
+    honest_expect(g_merge_n == merges0 + 1, "FN did not step the flash with a flash fitted");
+    g_flash_fitted = false;
+    g_audit_off = false;
+  }
 
   s_focus[SCR_GALLERY] = 0;
   SHOT(SCR_GALLERY, "gallery");
@@ -4535,6 +4594,10 @@ static int run_hand(bool right, const char *out) {
   }
   if (g_review_failed) {
     fprintf(stderr, "the review after a shot broke one of its rules\n");
+    hard = true;
+  }
+  if (g_honest_failed) {
+    fprintf(stderr, "the glass offered something the camera cannot do, or kept an unsafe state\n");
     hard = true;
   }
   if (audit_report() > 0) hard = true;

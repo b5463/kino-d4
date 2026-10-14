@@ -93,7 +93,7 @@ The rows at the foot of STATUS:
 |---|---|
 | `MENU` | The way out, on the back button beside the picture. |
 | `WIGGLE` / `QUAD` | The mode, on the decisions bar. Tapping the bar opens LOOK. |
-| `AUTO` / `ON` / `OFF` | The flash, beside the bolt on the decisions bar. |
+| `AUTO` / `ON` / `OFF` | The flash, beside the bolt on the decisions bar. Only on a body with a flash fitted (`capture_has_flash()`); D4-V1 has none since ECN-0003, so its bar has no flash panel. |
 | `TIMER OFF` / `TIMER 10 S` | The self-timer's own panel, at the hand's end of the bar. A tap switches it and says nothing. With TIMER 10 S the next shutter press starts the count. Off at boot and at the sleep. |
 | `NO PICTURE` | A finder pane with no pixels: the lens reported an error, its frames stopped, or it is not linked. One word for all three; the pane's place says which lens. Said once the first 1.5 s of SHOOT have passed. |
 | `RESTART THE CAMERAS` | The button under it, on that pane. The same action as the STATUS row, with no confirm. Not offered while a photograph is being taken or the self-timer counts: NO PICTURE alone then, and a tap on the pane during the count cancels it. |
@@ -210,9 +210,9 @@ calls and fails when one of them is not in this table.
 |---|---|
 | `MIXED` | The four lenses carry different looks. |
 | `NONE` | No look is set. |
-| `MODE` / `FLASH` / `COLOUR` | The legends over the three bands. |
+| `MODE` / `FLASH` / `COLOUR` | The legends over the bands: three with a flash fitted, `MODE` and `COLOUR` only on D4-V1. |
 | `WIGGLE` / `QUAD` | The mode band. |
-| `AUTO` / `ON` / `OFF` | The flash band. |
+| `AUTO` / `ON` / `OFF` | The flash band. Not drawn and not pressable with no flash fitted. |
 | `COLOUR` / `B&W` | The colour band. |
 | `TARGET` | The band that picks which lens the next look lands on. QUAD only. |
 | `ALL` | The target band's one word, at the hand's end. The four lenses beside it are the four-mark with that lens's cell lit, no words. |

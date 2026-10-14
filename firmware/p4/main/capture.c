@@ -1951,6 +1951,8 @@ void capture_last(capture_report_t *out) {
 
 uint32_t capture_count(void) { return s_count; }
 
+bool capture_has_flash(void) { return BOARD_FLASH_EN != BOARD_GPIO_NONE; }
+
 void capture_on_done(capture_done_cb_t cb) {
   if (cb == NULL || s_listeners >= CAPTURE_MAX_LISTENERS) return;
   s_on_done[s_listeners++] = cb;

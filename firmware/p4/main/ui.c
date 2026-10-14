@@ -2362,8 +2362,12 @@ static int flash_index(void) {
  * in 0.4.15, where the pressed segment says the same thing permanently and the
  * finder is not even on screen - so the timestamp had no reader left and the
  * burn had nothing to burn on. Both are gone. The SHOOT strip states the flash
- * mode instead of flashing about it, which is what a status bar is for. */
+ * mode instead of flashing about it, which is what a status bar is for.
+ * A body with no flash (capture_has_flash(), D4-V1 since ECN-0003) steps
+ * nothing: no screen shows the mode, so a change would be a setting nobody
+ * can see (#247). */
 static void flash_cycle(void) {
+  if (!capture_has_flash()) return;
   const int next = (flash_index() + 1) % 3;
   cfg_set_str("shoot.flashMode", FLASH_ORDER[next]);
 }
@@ -4764,6 +4768,10 @@ static void draw_shoot(void) {
 
   /* ---- how it will shoot ---- */
 
+  /* No flash fitted, no flash panel (#247): D4-V1 has had nothing to fire
+   * since ECN-0003, and AUTO on the bar promised light that does not exist.
+   * The panel and its gap go; the look's panel takes the room. */
+  const bool flash_fitted = capture_has_flash();
   const char *const flash = FLASH_NAMES[flash_index()];
   /* `live` counts the four panes, so this is nine characters. The buffer is
    * sized for a full int anyway: the compiler cannot see the bound and
@@ -4779,7 +4787,8 @@ static void draw_shoot(void) {
   const int bolt_w = 10, bolt_gap = 6;
   const char *const mode = mode_is_quad() ? "QUAD" : "WIGGLE";
   const int w_mode = text_w(K_TYPE_CAPTION, mode) + 2 * SH_PN_PAD;
-  const int w_flash = bolt_w + bolt_gap + text_w(K_TYPE_CAPTION, flash) + 2 * SH_PN_PAD;
+  const int w_flash = flash_fitted ? bolt_w + bolt_gap + text_w(K_TYPE_CAPTION, flash) + 2 * SH_PN_PAD : 0;
+  const int g_flash = flash_fitted ? SH_PN_GAP : 0;
   /* The mark, then the count. Four 8 px cells and three 6 px gaps. */
 #define SH_FM_CELL 8
 #define SH_FM_W (4 * SH_FM_CELL + 3 * FM_GAP)
@@ -4856,7 +4865,7 @@ static void draw_shoot(void) {
 
   /* The decisions, mode outermost, look nearest the readings. */
   int mode_x, flash_x, look_x;
-  const int w_look = (set_x1 - set_x0) - w_mode - w_flash - 2 * SH_PN_GAP;
+  const int w_look = (set_x1 - set_x0) - w_mode - SH_PN_GAP - w_flash - g_flash;
   if (s_right_hand) {
     mode_x = set_x1 - w_mode;
     flash_x = mode_x - SH_PN_GAP - w_flash;
@@ -4864,10 +4873,10 @@ static void draw_shoot(void) {
   } else {
     mode_x = set_x0;
     flash_x = mode_x + w_mode + SH_PN_GAP;
-    look_x = flash_x + w_flash + SH_PN_GAP;
+    look_x = flash_x + w_flash + g_flash;
   }
   sh_panel(mode_x, w_mode, mode, set_down);
-  {
+  if (flash_fitted) {
     /* The flash panel by hand, because it is the one with a glyph in it. */
     const uint16_t ink = set_down ? K_PRESS_INK : K_INK;
     round_rect(flash_x, SH_PN_Y, w_flash, SH_PN_H, UI_R, set_down ? K_PRESS : K_SURFACE);
@@ -4975,7 +4984,6 @@ static void look_set_mono(bool mono) {
 #define LK_GAP (2 * GRID)
 #define LK_COL_GAP (2 * GRID)
 #define LK_W (UI_W - 2 * PAGE_M)
-#define LK_COL_W ((LK_W - 2 * LK_COL_GAP) / 3)
 #define LK_PICK_BTN BTN_SQ
 
 /*
@@ -5001,11 +5009,20 @@ static int lk_text_x1(void) { return s_right_hand ? lk_pair_outer_x() - 3 * GRID
  * MODE, the one changed least, sat at the far left. The visual column `c`
  * maps to a group through this, so the near column is FLASH whichever hand
  * holds the body.
+ *
+ * With no flash fitted (capture_has_flash()) there is no FLASH column at all
+ * (#247): two columns share the row, MODE nearer the hand, and nothing drawn
+ * or hit-tested offers AUTO / ON / OFF for light that does not exist.
  */
 enum { LK_G_MODE = 0, LK_G_FLASH, LK_G_COLOR };
+static int lk_cols(void) { return capture_has_flash() ? 3 : 2; }
+static int lk_col_w(void) { return (LK_W - (lk_cols() - 1) * LK_COL_GAP) / lk_cols(); }
 static int lk_group_of_col(int c) {
   static const int RIGHT[3] = {LK_G_COLOR, LK_G_MODE, LK_G_FLASH};
   static const int LEFT[3] = {LK_G_FLASH, LK_G_MODE, LK_G_COLOR};
+  static const int RIGHT_DARK[2] = {LK_G_COLOR, LK_G_MODE};
+  static const int LEFT_DARK[2] = {LK_G_MODE, LK_G_COLOR};
+  if (!capture_has_flash()) return s_right_hand ? RIGHT_DARK[c] : LEFT_DARK[c];
   return s_right_hand ? RIGHT[c] : LEFT[c];
 }
 
@@ -5036,8 +5053,8 @@ static int lk_trio_y(bool quad) { return lk_hero_y(quad) + lk_hero_h(quad) + LK_
  * twice, and both times it was this row. */
 static int lk_pick_y(bool quad) { return lk_hero_y(quad) + lk_hero_h(quad) - 2 * GRID - LK_PICK_BTN; }
 static int lk_tgt_y(bool quad) { return lk_trio_y(quad) + LK_CAP_H + LK_CTL_H + LK_GAP; }
-/** Column `i` of the three-up row. */
-static int lk_col_x(int i) { return PAGE_M + i * (LK_COL_W + LK_COL_GAP); }
+/** Column `i` of the row under the card: three up, or two with no flash. */
+static int lk_col_x(int i) { return PAGE_M + i * (lk_col_w() + LK_COL_GAP); }
 
 /* Item ranges. The target row is last so the item indices below it are the
  * same in both modes, which is what lets item_count() simply drop it. */
@@ -5347,20 +5364,21 @@ static void draw_look(void) {
   /* ---- the three that modify it ---- */
   const int ty = lk_trio_y(quad);
   static const char *const CAPS[3] = {"MODE", "FLASH", "COLOUR"};
-  for (int c = 0; c < 3; c++) {
+  const int cw = lk_col_w();
+  for (int c = 0; c < lk_cols(); c++) {
     const int g = lk_group_of_col(c);
     text(K_TYPE_CAPTION, lk_col_x(c), ty, CAPS[g], K_INK_QUIET);
     switch (g) {
       case LK_G_MODE:
-        draw_segments(lk_col_x(c), ty + LK_CAP_H, LK_COL_W, LK_CTL_H, MODE_NAMES, 2, quad ? 1 : 0,
+        draw_segments(lk_col_x(c), ty + LK_CAP_H, cw, LK_CTL_H, MODE_NAMES, 2, quad ? 1 : 0,
                       band_rel(p0, LK_IT_MODE, 2), band_rel(f0, LK_IT_MODE, 2));
         break;
       case LK_G_FLASH:
-        draw_segments(lk_col_x(c), ty + LK_CAP_H, LK_COL_W, LK_CTL_H, FLASH_NAMES, 3,
+        draw_segments(lk_col_x(c), ty + LK_CAP_H, cw, LK_CTL_H, FLASH_NAMES, 3,
                       flash_index(), band_rel(p0, LK_IT_FLASH, 3), band_rel(f0, LK_IT_FLASH, 3));
         break;
       default:
-        draw_segments(lk_col_x(c), ty + LK_CAP_H, LK_COL_W, LK_CTL_H, COLOR_NAMES, 2,
+        draw_segments(lk_col_x(c), ty + LK_CAP_H, cw, LK_CTL_H, COLOR_NAMES, 2,
                       look_is_mono() ? 1 : 0, band_rel(p0, LK_IT_COLOR, 2),
                       band_rel(f0, LK_IT_COLOR, 2));
         break;
@@ -9517,15 +9535,16 @@ static int hit_test(int x, int y) {
       if (in(x, y, lk_prev_x(), by, LK_PICK_BTN, LK_PICK_BTN)) return LK_IT_PREV;
       if (in(x, y, lk_next_x(), by, LK_PICK_BTN, LK_PICK_BTN)) return LK_IT_NEXT;
 
-      /* The three columns under it, in the order the draw put them. */
+      /* The columns under it, in the order the draw put them. With no flash
+       * there are two and no FLASH item can be hit. */
       const int ty = lk_trio_y(quad) + LK_CAP_H;
       static const int BASE[3] = {LK_IT_MODE, LK_IT_FLASH, LK_IT_COLOR};
       static const int COUNT[3] = {2, 3, 2};
       if (y >= ty && y < ty + LK_CTL_H) {
-        for (int c = 0; c < 3; c++) {
+        for (int c = 0; c < lk_cols(); c++) {
           const int g = lk_group_of_col(c);
           const int cx = lk_col_x(c);
-          const int cw = LK_COL_W / COUNT[g];
+          const int cw = lk_col_w() / COUNT[g];
           for (int i = 0; i < COUNT[g]; i++) {
             if (in(x, y, cx + i * cw, ty, cw, LK_CTL_H)) return BASE[g] + i;
           }
@@ -9792,7 +9811,8 @@ static void activate(int item) {
          * next key press acts on nothing. */
         if (s_focus[SCR_LOOK] >= item_count(SCR_LOOK)) s_focus[SCR_LOOK] = 0;
       } else if (item < LK_IT_PREV) {
-        cfg_set_str("shoot.flashMode", FLASH_ORDER_BY_INDEX[item - LK_IT_FLASH]);
+        /* Never reached with no flash: the column is not drawn or hit. */
+        if (capture_has_flash()) cfg_set_str("shoot.flashMode", FLASH_ORDER_BY_INDEX[item - LK_IT_FLASH]);
       } else if (item <= LK_IT_NEXT) {
         look_step(item == LK_IT_NEXT ? 1 : -1);
       } else if (item < LK_IT_TARGET) {
