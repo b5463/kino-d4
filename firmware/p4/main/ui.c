@@ -10701,7 +10701,7 @@ static void plate_set(bool on, const char *why) {
  * The plate, asked for or dropped, and its rules while it is up. True while
  * it owns the panel: the pass ends there, so nothing under it is pressed and
  * no screen paints over it. It holds the panel awake, and ends on a touch, a
- * key, SCREEN_PLATE off, a sleep power.c decides on anyway, or after
+ * key, SCREEN_PLATE off, a sleep asked for (the lens cover closing), or after
  * UI_PLATE_MAX_US. The press that ends it does nothing else.
  */
 static bool plate_pass(void) {
@@ -10735,6 +10735,19 @@ static bool plate_pass(void) {
   if (ended) {
     plate_set(false, "a press");
     return true;
+  }
+  /* A sleep asked for (the lens cover closing, power_sleep_now()) only ages
+   * the idle clock, and power.c acts on it on its next 500 ms poll. This
+   * pass refreshes the clock every 20 ms, so it would cancel that ask nearly
+   * every time and power_sleep_pending() would never go true. While the
+   * plate is up nothing else can age the clock past body.sleepS: let go of
+   * the panel and leave the clock aged. */
+  power_state_t ps;
+  power_get(&ps);
+  const int sleep_s = config_int("body.sleepS", 120);
+  if (sleep_s > 0 && ps.idle_s >= (uint32_t)sleep_s) {
+    plate_set(false, "sleep asked");
+    return false;
   }
   power_activity();
   return true;

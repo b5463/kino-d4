@@ -2486,6 +2486,31 @@ static void check_kdp_screen(void) {
     g_motion_failed = true;
   }
 
+  /* A sleep asked for under the plate: power_sleep_now() ages the idle clock
+   * past body.sleepS, and the plate lets go of the panel instead of
+   * refreshing the clock. */
+  ui_plate_post(true);
+  prev_vclock_us += 20000;
+  ui_pass();
+  if (!s_kdp.plate_on) {
+    fprintf(stderr, "kdp screen: the plate did not come up a second time\n");
+    g_motion_failed = true;
+  }
+  g_idle_s = 120;
+  prev_vclock_us += 20000;
+  ui_pass();
+  if (s_kdp.plate_on) {
+    fprintf(stderr, "kdp screen: the plate held the panel through a sleep asked for\n");
+    g_motion_failed = true;
+  }
+  g_idle_s = 12;
+  for (int guard = 0; guard < 400 && ui_screen_moving(); guard++) {
+    prev_vclock_us += 20000;
+    ui_pass();
+  }
+  s_dim_k = 0;
+  printf("kdp screen: the plate let go on a sleep asked for\n");
+
   /* A body asleep, its wind-down over: the mark is still set until a wake
    * clears it, and that is not a move. A render is answered, and the plate
    * wakes the body and goes up on the next pass; when it drops, the wake's

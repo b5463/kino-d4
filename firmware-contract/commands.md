@@ -907,8 +907,8 @@ answers `INVALID_STATE`.
 
 **`SCREEN_PLATE`** `{ "on": true }` covers the screen with a test plate for panel photos: a 32-step grey
 ramp, every palette colour, the eight launch shades and their pressed steps, and a 1 px grid. A body
-asleep wakes and shows it. It holds the panel awake and ends on a touch, a key, `{ "on": false }`, a sleep the body is told to take, or
-after 5 minutes. A press that ends it does nothing else.
+asleep wakes and shows it. It holds the panel awake and ends on a touch, a key, `{ "on": false }`, a sleep the body is told to take (the lens
+cover closing), or after 5 minutes. A press that ends it does nothing else.
 
 The reference device answers all four. Its pictures are flat blocks where the real screens have their
 rows and card, and its taps move between screens on the right-hand layout, so
