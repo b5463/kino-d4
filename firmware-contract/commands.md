@@ -897,11 +897,13 @@ the plate it names the screen the plate covers, and `plate` is true.
 **`UI_TAP`** holds a contact at `x` 0–799, `y` 0–479 for `holdMs` (20–4000, default 80) and lifts it,
 through the same pass a finger goes through: the palm edge, the drift and hold rules (a contact held
 past 2500 ms is not a tap), and the wake that swallows a press on a dark screen. Taps queue four deep
-and run one after another; a fifth is `BUSY`. Out-of-range values are `INVALID_ARGUMENT`.
+and run one after another; a fifth is `BUSY`. Out-of-range values are `INVALID_ARGUMENT`. A body
+whose screen is not running answers `INVALID_STATE`.
 
 **`UI_KEY`** puts a press on the queue the physical keys use, with the same wake. The shutter on SHOOT
 takes a photograph. `longPress` adds the 600 ms hold report the button sends, which the screen
-ignores, as it ignores the button's. A full key queue is `BUSY`.
+ignores, as it ignores the button's. A full key queue is `BUSY`. A body whose screen is not running
+answers `INVALID_STATE`.
 
 **`SCREEN_PLATE`** `{ "on": true }` covers the screen with a test plate for panel photos: a 32-step grey
 ramp, every palette colour, the eight launch shades and their pressed steps, and a 1 px grid. A body
