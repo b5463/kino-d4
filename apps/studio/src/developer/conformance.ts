@@ -623,8 +623,20 @@ const CASES: Case[] = [
     run: async (dev) => {
       /* Twice each way, as the updater does it: a retry re-enters a body
        * already in maintenance, and a halted run exits one the deadline may
-       * already have let go. Both answer ok (contract commands.md, D4-V1). */
-      await dev.enterMaintenance();
+       * already have let go. Both answer ok (contract commands.md, D4-V1).
+       *
+       * Enter waits up to 2 s for the capture lock and then answers
+       * INVALID_STATE. A capture an earlier case started can still hold it -
+       * longer with a camera offline, where the capture waits out the dead
+       * node - so the same rule as CAMERA_CAPTURE: one retry after a real
+       * settle, and a second refusal is reported. */
+      try {
+        await dev.enterMaintenance();
+      } catch (err) {
+        if (!(err instanceof KinoCommandError) || err.code !== 'INVALID_STATE') throw err;
+        await new Promise((res) => setTimeout(res, 4000));
+        await dev.enterMaintenance();
+      }
       await dev.enterMaintenance();
       await dev.exitMaintenance();
       await dev.exitMaintenance();
