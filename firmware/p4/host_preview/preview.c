@@ -944,6 +944,9 @@ void camlink_get_info_ch(int cam, camlink_info_t *out) {
   out->temp_c = 31;
   out->latency_ms = 4;
 }
+/* The same set as one byte, the way cam_link keeps it for the start (#245).
+ * The start scenes set g_cam_online frame by frame to have cameras answer. */
+uint8_t camlink_online_mask(void) { return (uint8_t)(g_cam_online & 0xFu); }
 
 /* Driven from main() so the STORAGE screen's two states both get a picture:
  * the new band under the list is a capacity bar when the card is mounted and

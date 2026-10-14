@@ -1007,6 +1007,13 @@ void camlink_get_info_ch(int cam, camlink_info_t *out) {
   }
   *out = g_cam[cam];
 }
+/* What kui_set_cam() said, as cam_link's byte (#245). */
+uint8_t camlink_online_mask(void) {
+  uint8_t m = 0;
+  for (int i = 0; i < 4; i++)
+    if (g_cam[i].online) m |= (uint8_t)(1u << i);
+  return m;
+}
 KUI_EXPORT("kui_set_cam")
 void kui_set_cam(int cam, int online, const char *fw, const char *sensor, int temp_c, unsigned latency_ms) {
   if (cam < 0 || cam >= 4) return;
