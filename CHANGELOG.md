@@ -6,6 +6,34 @@ KINO has no published release yet. Changes intended for the first release collec
 
 ### Changed
 
+- **Firmware 0.4.63: the start opens on the ODD JOBS mark, the screen is seen over KDP, review is faster and the glass offers only what the body has (#244, #245, #246, #247).**
+  The boot field, its splash and the menu cascade are gone. The start fades
+  up the 128 px ODD JOBS mark over four slot outlines; a cell fills when its
+  own camera answers (`camlink_online_mask()`, one atomic byte, no lock). A
+  camera silent at 1.6 s is drawn missing. The box takes the launch shade,
+  then grows into the SHOOT card on the hand side and the menu rows land.
+  All four up: menu at 2.30 s. Ceiling with a silent or late camera: 2.77 s.
+  A stall past 5 s lands the menu at once. A finger runs the rest in 300 ms;
+  a key lands the menu and fires. A lens not yet heard is still booting, not
+  PROBLEM, until 1.6 s. Sleep, restart and power-down close on the same
+  mark; the KINO D4 wordmark is not drawn. No colour bars on a product boot:
+  the backlight lights on the first frame. The orphan sweep budget is 800 ms,
+  was 3000.
+  GET_SCREEN, SCREEN_PLATE, UI_TAP and UI_KEY (0xb0-0xb3, capability
+  `screenControl`) read the body's screen as RGB565 pages and drive it with
+  taps and keys that go through the same touch rules as a finger.
+  `scripts/kino-ui-walk.mjs` saves and walks the screen from a terminal.
+  D4-V1 has no flash, so SHOOT and LOOK draw no flash control. SHOOT says
+  PRESS THE SHUTTER ON TOP until the first photograph. A sleep closes an
+  open question with its safe answer and leaves SETTINGS, POWER and LOOK for
+  the menu. PHOTO steps across gallery pages and on a horizontal swipe; its
+  column reads the date (NO DATE before the clock was set), the mode, then
+  PHOTO 37. DELETE shows the photograph and its safe answer reads KEEP;
+  DELETE ALL and FORMAT CARD show the count. A question keeps the room it
+  opened with. A gallery decode writes only to the page it read.
+  Internal SRAM: upload, media, scratch and audio buffers of 4 KB and up and
+  every cJSON allocation go to PSRAM first.
+
 - **Firmware 0.4.62: update safety: Studio can update the camera, the shutter waits for it, and an image with rollback off does not build (#242).**
   Studio's updater opens with ENTER_MAINTENANCE (0x50), which the P4 never
   dispatched, so every Studio update stopped before a byte moved.
