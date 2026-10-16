@@ -6160,10 +6160,14 @@ static void draw_photo(void) {
     text(K_TYPE_CAPTION, fx, cy, fitted, K_INK);
     cy += K_TYPE_CAPTION->line_h;
 
-    /* The mode, and whether the Roll has it. */
+    /* The mode, and whether the Roll has it. One space: WIGGLE  SENT with
+     * two ran 136 px, over PH_FACT_W. The mode comes from the card's manifest,
+     * so it is fitted first and the suffix always shows. */
     if (mode[0] != '\0') {
-      char sub[48];
-      snprintf(sub, sizeof sub, "%s%s", mode, s_photo_sent ? "  SENT" : "");
+      char fitmode[24], sub[48];
+      text_fit(fitmode, sizeof fitmode, K_TYPE_CAPTION, mode,
+               PH_FACT_W - (s_photo_sent ? text_w(K_TYPE_CAPTION, " SENT") : 0));
+      snprintf(sub, sizeof sub, "%s%s", fitmode, s_photo_sent ? " SENT" : "");
       text(K_TYPE_CAPTION, fx, cy, sub, s_photo_sent ? K_INK : K_INK_QUIET);
       cy += K_TYPE_CAPTION->line_h;
     }

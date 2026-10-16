@@ -1660,7 +1660,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 268
+#define PPMS_PER_HAND 269
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -3589,8 +3589,11 @@ static void check_photo_facts_fit(void) {
   review_expect(widest <= PH_FACT_W, msg);
   review_expect(text_w(K_TYPE_CAPTION, "NO DATE") <= PH_FACT_W, "NO DATE is wider than PH_FACT_W");
   review_expect(text_w(K_TYPE_CAPTION, "PHOTO 9999") <= PH_FACT_W, "PHOTO 9999 is wider than PH_FACT_W");
-  printf("photo facts (%s hand): widest date %s %d px, NO DATE %d px, fit %d px\n", g_hand, w, widest,
-         text_w(K_TYPE_CAPTION, "NO DATE"), PH_FACT_W);
+  review_expect(text_w(K_TYPE_CAPTION, "WIGGLE SENT") <= PH_FACT_W, "WIGGLE SENT is wider than PH_FACT_W");
+  review_expect(text_w(K_TYPE_CAPTION, "QUAD SENT") <= PH_FACT_W, "QUAD SENT is wider than PH_FACT_W");
+  review_expect(text_w(K_TYPE_CAPTION, "SINGLE SENT") <= PH_FACT_W, "SINGLE SENT is wider than PH_FACT_W");
+  printf("photo facts (%s hand): widest date %s %d px, NO DATE %d px, WIGGLE SENT %d px, fit %d px\n", g_hand, w,
+         widest, text_w(K_TYPE_CAPTION, "NO DATE"), text_w(K_TYPE_CAPTION, "WIGGLE SENT"), PH_FACT_W);
 }
 
 /*
@@ -4809,6 +4812,11 @@ static void scenes(void) {
     SHOT(SCR_PHOTO, "photo_favourite");
     s_photo_fav = false;
     s_focus[SCR_PHOTO] = P_IT_DELETE;
+    /* The Roll holds every frame: WIGGLE SENT, the widest mode line. Set
+     * directly; the fixture gallery has no sent capture. */
+    s_photo_sent = true;
+    SHOT(SCR_PHOTO, "photo_sent");
+    s_photo_sent = false;
     /* DELETE held: the pressed destructive face, one of #176's pairs. */
     s_pressed = P_IT_DELETE;
     SHOT(SCR_PHOTO, "photo_delete_pressed");
