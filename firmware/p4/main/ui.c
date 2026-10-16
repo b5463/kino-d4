@@ -3892,10 +3892,6 @@ static void card_mark_at(int x, int y, int w, int *mx, int *my) {
   *mx = x + (w - (2 * MZ_MARK_CELL + MZ_MARK_GAP)) / 2;
   *my = y + 18 + K_TYPE_CAPTION->line_h + 52;
 }
-/* Set by render_start() round one menu_words() call: the card's words
- * without its four-mark, which the start draws itself as it arrives. */
-static bool s_card_bare;
-
 /**
  * Everything on a menu item but its face, in one ink.
  *
@@ -3903,7 +3899,9 @@ static bool s_card_bare;
  * growing card in an ink that fades with the wash: the label dissolves into
  * the screen arriving under it instead of vanishing on the first frame.
  */
-static void menu_words(int i, int x, int y, int w, int h, uint16_t ink, bool with_word) {
+/* with_mark false draws the card's words without its four-mark: the start
+ * (render_start()) draws the four itself as they arrive. */
+static void menu_words(int i, int x, int y, int w, int h, uint16_t ink, bool with_word, bool with_mark) {
   /* One left rule and one right rule for everything on this screen. Three
    * left edges and two right ones is what it had, and a 10 px disagreement
    * between the card's type and the rows' type is visible at arm's length as
@@ -3940,7 +3938,7 @@ static void menu_words(int i, int x, int y, int w, int h, uint16_t ink, bool wit
      * from s_cams, the snapshot ui_pass() refreshes every two seconds - never
      * from camlink inside a draw - in the card's own ink, so no new colour.
      * Four filled cells was a picture of a camera that might not be there. */
-    if (!s_card_bare) {
+    if (with_mark) {
       const int cell = MZ_MARK_CELL, gap = MZ_MARK_GAP, keyline = MZ_MARK_KEY;
       int mx, my;
       card_mark_at(x, y, w, &mx, &my);
@@ -4004,7 +4002,7 @@ static uint16_t menu_ink(int i, bool down) {
 
 static void menu_item(int i, int x, int y, int w, int h, bool down, bool with_word) {
   round_rect(x, y, w, h, UI_R, menu_face(i, down));
-  menu_words(i, x, y, w, h, menu_ink(i, down), with_word);
+  menu_words(i, x, y, w, h, menu_ink(i, down), with_word, true);
 }
 
 static void draw_menu(void) {
@@ -9134,9 +9132,7 @@ static void render_start(void *ctx) {
                                        (float)(MOTION_START_WORDS_FROM_MS + MOTION_START_WORDS_MS))
                              : 0.0f;
   if (wk > 0.0f) {
-    s_card_bare = true;
-    menu_words(0, cx, cy, cw, ch, mix_even(K_ACCENT, K_ACCENT_INK, (int)(wk * 255.0f + 0.5f)), true);
-    s_card_bare = false;
+    menu_words(0, cx, cy, cw, ch, mix_even(K_ACCENT, K_ACCENT_INK, (int)(wk * 255.0f + 0.5f)), true, false);
   }
 
   /* The four, CAM1 top left. A filled cell is a camera that answered; an
@@ -9293,7 +9289,7 @@ static void open_frame(int row, float t) {
   if (wash > 0.01f) {
     const int k = (int)(wash * 255.0f);
     scrim(ox, oy, ow, oh, tint, k);
-    menu_words(row, rx, ry, rw, rh, mix(tint, menu_ink(row, s_anim.opening), k), true);
+    menu_words(row, rx, ry, rw, rh, mix(tint, menu_ink(row, s_anim.opening), k), true, true);
   }
 
   cut_corners(ox, oy, ow, oh, (float)UI_R * (1.0f - e), K_GROUND);
