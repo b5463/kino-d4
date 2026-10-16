@@ -2814,7 +2814,8 @@ static int32_t start_end_ms(void) {
 
 /**
  * How far cell k is filled at `ms`, 0..1: from its turn, over
- * MOTION_START_CELL_IN_MS, or faster when less of the build is left. No
+ * MOTION_START_CELL_IN_MS, or faster when less of the build is left, never
+ * under MOTION_START_LATE_FILL_MS for a camera heard during the build. No
  * heard camera's turn falls on or after the build's last frame:
  * start_hear() and start_input() pull it inside.
  */
@@ -2864,18 +2865,21 @@ static void start_hear(int32_t ms) {
   const uint8_t on = camlink_online_mask();
   for (int i = 0; i < 4; i++) {
     if (s_anim.st_seen[i] >= 0 || !(on & (1u << i))) continue;
-    s_anim.st_seen[i] = (int16_t)ms;
     int32_t at = ms > MOTION_START_CELL_FROM_MS ? ms : MOTION_START_CELL_FROM_MS;
     for (int j = 0; j < 4; j++)
       if (s_anim.st_fill[j] >= 0 && s_anim.st_fill[j] + MOTION_START_CELL_GAP_MS > at)
         at = s_anim.st_fill[j] + MOTION_START_CELL_GAP_MS;
-    /* Heard during the build: the turn comes before its last frame, so the
-     * cell lands filled (start_cell_k() shortens the fill to what is left).
-     * Never before the frame it was heard on. */
+    /* Heard during the build: the cell still opens, and lands filled. Its
+     * turn comes at least MOTION_START_LATE_FILL_MS before the build ends
+     * and never before the frame it was heard on. Heard later than that, it
+     * is not heard by the start: it lands an outline and the menu's next
+     * cams_refresh() fills it, rather than a cell that pops in one frame. */
     if (s_anim.st_exit >= 0) {
-      const int32_t last = start_end_ms() - 1;
-      if (at > last) at = last > ms ? last : ms;
+      const int32_t last = start_end_ms() - MOTION_START_LATE_FILL_MS;
+      if (ms > last) continue;
+      if (at > last) at = last;
     }
+    s_anim.st_seen[i] = (int16_t)ms;
     s_anim.st_fill[i] = (int16_t)(at < 30000 ? at : 30000);
   }
 }
@@ -2979,8 +2983,9 @@ static bool start_input(bool finger, bool key) {
       s_anim.st_exit = (int16_t)(ms - b * MOTION_START_CUT_MS / MOTION_START_BUILD_MS);
     }
     s_anim.st_quick = true;
-    /* Pull every heard camera's turn into what is left of the build. */
-    const int32_t last = start_end_ms() - 1;
+    /* Pull every heard camera's turn into what is left of the build, a
+     * late fill's length before its end where there is room for one. */
+    const int32_t last = start_end_ms() - MOTION_START_LATE_FILL_MS;
     for (int i = 0; i < 4; i++) {
       if (s_anim.st_seen[i] < 0 || s_anim.st_fill[i] <= ms) continue;
       int32_t at = ms + i * 20;

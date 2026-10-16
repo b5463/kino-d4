@@ -379,6 +379,10 @@ calls and fails when one of them is not in this table.
 | `Factory reset` | The row that opens the confirm. |
 | `Settings, networks, roll` | Under it: what a reset erases. Photographs are not on the list. |
 
+## The start
+
+The start says nothing in words. The ODD JOBS mark comes up from black with four outlines under it, one per lens in position, the top-left lens first. A cell fills when its lens answers. A cell that stays an outline at about 1.6 s is the lens in that position not answering: its outline turns solid and stays hollow. The cells then become the SHOOT card's four-mark, and the card says the rest in words: `A LENS IS NOT ANSWERING` under PROBLEM, with the same cell hollow. A tap shortens the start and presses nothing.
+
 ## Dim and sleep
 
 At the dim time the screen darkens under a scrim on an eased ramp over 1.6 s and stays readable; a touch lifts it. On SHOOT the scrim waits until 10 s before the sleep time, or the dim time if that is later, and never comes with sleep off: the finder keeps its contrast while you frame. 

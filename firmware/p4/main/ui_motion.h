@@ -99,7 +99,10 @@ static inline float motion_by_hand(float t) {
  * MOTION_START_WAIT_MS is drawn missing and the build starts without it. The
  * build never starts after WAIT + MISSING + SETTLE, even for a camera that
  * answered just before it: that cell finishes inside the travel. So the menu
- * lands by WAIT + MISSING + SETTLE + BUILD, 2950 ms.
+ * lands by WAIT + MISSING + SETTLE + BUILD, 2770 ms. A camera that answers
+ * during the build still fills, over what is left of it but never less than
+ * MOTION_START_LATE_FILL_MS; one that answers later than that is left an
+ * outline, and the menu's next camera read fills its cell on the card.
  */
 #define MOTION_START_MARK_IN_MS 450    /* the mark, ground to ink */
 #define MOTION_START_SLOTS_FROM_MS 250 /* the four outlines under it */
@@ -108,26 +111,28 @@ static inline float motion_by_hand(float t) {
 #define MOTION_START_CELL_GAP_MS 70   /* the least between two cells' fills */
 #define MOTION_START_CELL_IN_MS 180   /* one cell, outline to filled */
 #define MOTION_START_SETTLE_MS 150
-#define MOTION_START_MIN_HOLD_MS 1000
+#define MOTION_START_MIN_HOLD_MS 800
 #define MOTION_START_WAIT_MS 1600
 #define MOTION_START_MISSING_MS 200 /* a silent camera's outline, quiet to ink */
 /* The build, on its own clock from the frame it starts. */
-#define MOTION_START_RECEDE_MS 320 /* the mark, ink to ground, lifting */
+#define MOTION_START_RECEDE_MS 280 /* the mark, ink to ground, lifting */
 #define MOTION_START_RISE_PX 16
 #define MOTION_START_INK_MS 180 /* the cells to the card's ink, their box to the shade */
-#define MOTION_START_TRAVEL_FROM_MS 140
-#define MOTION_START_TRAVEL_MS 580 /* the cells and their box out to the card */
-#define MOTION_START_ROWS_FROM_MS 300
-#define MOTION_START_ROWS_MS 700 /* the five rows, staggered */
-#define MOTION_START_WORDS_FROM_MS 700
-#define MOTION_START_WORDS_MS 300 /* the card's words, shade to ink */
-#define MOTION_START_BUILD_MS 1000
+#define MOTION_START_TRAVEL_FROM_MS 120
+#define MOTION_START_TRAVEL_MS 480 /* the cells and their box out to the card */
+#define MOTION_START_ROWS_FROM_MS 240
+#define MOTION_START_ROWS_MS 580 /* the five rows, staggered */
+#define MOTION_START_WORDS_FROM_MS 580
+#define MOTION_START_WORDS_MS 240 /* the card's words, shade to ink */
+#define MOTION_START_BUILD_MS 820
+/* The shortest fill a camera heard during the build gets. */
+#define MOTION_START_LATE_FILL_MS 120
 /* A finger during the start: the rest of the build, every beat in step, in
  * this long. A key lands the menu on the spot and fires on the same pass. */
 #define MOTION_START_CUT_MS 300
 /* A start still running this long after its first frame had its loop stalled
  * (a hidden Twin tab, a UI task held): it lands the menu at once with the
- * cameras that answer. Well past the 2950 ms ceiling plus a build, and well
+ * cameras that answer. Well past the 2770 ms ceiling plus a build, and well
  * inside the 30 s an int16 st_* field holds. */
 #define MOTION_START_LATE_MS 5000
 _Static_assert(MOTION_START_WAIT_MS + MOTION_START_MISSING_MS + MOTION_START_SETTLE_MS +
@@ -139,6 +144,8 @@ _Static_assert(MOTION_START_ROWS_FROM_MS + MOTION_START_ROWS_MS <= MOTION_START_
                    MOTION_START_TRAVEL_FROM_MS + MOTION_START_TRAVEL_MS <= MOTION_START_BUILD_MS &&
                    MOTION_START_RECEDE_MS <= MOTION_START_BUILD_MS,
                "every beat of the build ends inside it");
+_Static_assert(MOTION_START_LATE_FILL_MS <= MOTION_START_CELL_IN_MS && MOTION_START_LATE_FILL_MS < MOTION_START_CUT_MS,
+               "a late fill is a compressed fill, and fits a finger's build");
 _Static_assert(MOTION_START_INK_MS <= MOTION_START_TRAVEL_FROM_MS + MOTION_START_TRAVEL_MS,
                "the cells reach the card's ink before they land");
 _Static_assert(MOTION_START_WAIT_MS + MOTION_START_MISSING_MS + MOTION_START_SETTLE_MS +

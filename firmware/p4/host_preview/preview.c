@@ -1660,7 +1660,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 269
+#define PPMS_PER_HAND 267
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -3944,8 +3944,9 @@ static void start_scenes(void) {
   static const start_case_t PICTURES[] = {
       /* All four answering as they come up; a fresh body, so the note follows. */
       {"start_all4", {400, 700, 900, 1100}, -1, -1, false, -1, 0, 0, false, 0},
-      /* The third never answers: its outline hardens and lands on the card. */
-      {"start_three", {400, 700, -1, 1100}, -1, -1, true, -1, 0, START_CEILING_MS + 100, false, 0},
+      /* The third never answers: its outline hardens and lands on the card.
+       * The ceiling is two of this run's 100 ms steps late at most. */
+      {"start_three", {400, 700, -1, 1100}, -1, -1, true, -1, 0, START_CEILING_MS + 200, false, 0},
       /* A finger at 600 ms: the rest of the build, quickly, the truth then. */
       {"start_tap", {400, 700, 900, 1100}, 600, -1, true, -1, 0, 0, false, 0},
   };
@@ -3971,6 +3972,11 @@ static void start_scenes(void) {
        * build: the menu still lands by the ceiling. */
       {"start_late_one", {400, 700, 900, 1900}, -1, -1, true, -1, 0, START_CEILING_MS, true, 10},
       {"start_late_two", {400, 700, 1880, 1940}, -1, -1, true, -1, 0, START_CEILING_MS, true, 10},
+      /* CAM3 silent until the build is under way: it still opens and lands
+       * filled. CAM4 later still, inside the last late fill: an outline on
+       * the card, never a cell that pops in on the last frame. */
+      {"start_late_build", {400, 700, 2300, -1}, -1, -1, true, -1, 0, START_CEILING_MS, true, 10},
+      {"start_too_late", {400, 700, 900, 2700}, -1, -1, true, -1, 0, START_CEILING_MS, true, 10},
       /* The loop stalls 31 s before the first frame, 31 s at 500 ms with
        * CAM3 silent, and 40 s before a finger: each lands at once. */
       {"start_stall", {400, 700, 900, 1100}, -1, -1, true, 0, 31000, 0, true, 33},

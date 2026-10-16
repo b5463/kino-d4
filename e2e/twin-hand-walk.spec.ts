@@ -102,8 +102,8 @@ test('Twin hand walk: the device UI for the hand on the shutter', async ({ page 
     });
   };
 
-  // The start (#245) ends on its own in 2.0-3.0 s; the menu is the first
-  // screen. The card covers both probes about 0.3 s before the rows are down,
+  // The start (#245) ends on its own in 1.8-2.8 s; the menu is the first
+  // screen. The card covers both probes about 0.2 s before the rows are down,
   // and a tap during the start would cut it short and press nothing, so the
   // walk waits the build out before its first tap.
   await reach('menu after boot', isMenu, 15_000);
