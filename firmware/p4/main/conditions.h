@@ -104,13 +104,17 @@ static inline bool conditions_has(cond_id_t id) {
 
 /**
  * Take a reading. `cams` is camlink's four, already fetched by the caller so
- * this never reaches for the channel itself.
+ * this never reaches for the channel itself. `lens_grace` is the start's own
+ * wait, still running (ui.c lens_grace()): a lens that has not answered yet
+ * is not called down, because it may still be booting. A start cut short by
+ * a finger lands the menu before the lenses are all up, and the card said
+ * PROBLEM on a working body.
  *
  * Ordered worst first, and inside a severity in the order of the enumeration,
  * so the list is stable between scans - a list that reshuffles while someone
  * reads it is worse than one that is out of date.
  */
-static void conditions_scan(const camlink_info_t *cams) {
+static void conditions_scan(const camlink_info_t *cams, bool lens_grace) {
   cond_t found[COND_MAX];
   memset(found, 0, sizeof found);
   int n = 0;
@@ -172,7 +176,7 @@ static void conditions_scan(const camlink_info_t *cams) {
     static const char *const POS[4] = {"first", "second", "third", "fourth"};
     uint8_t mask = 0;
     int ndown = 0, last = 0;
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4 && !lens_grace; i++) {
       if (cams[i].online) continue;
       mask |= (uint8_t)(1u << i);
       ndown++;

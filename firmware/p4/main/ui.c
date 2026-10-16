@@ -2844,11 +2844,26 @@ static uint8_t start_shown(int32_t ms) {
  * cams_refresh() after the start, which conditions_scan() does not need: it
  * reads `online`, and the firmware only from a camera with one.
  */
+/*
+ * The start's wait, MOTION_START_WAIT_MS from its first frame. Inside it a
+ * lens that has not answered is still booting, not down: the conditions do
+ * not call it down (conditions_scan()). A full start ends after the wait and
+ * never sees this; a start cut by a finger or a key lands the menu inside it,
+ * and the card says nothing wrong until a lens is late. Its own clock, not
+ * s_anim.start_us, which the next move overwrites. 8 bytes.
+ */
+static int64_t s_start_from_us;
+static bool lens_grace(void) {
+  if (s_start_from_us == 0) return false;
+  const int64_t d = esp_timer_get_time() - s_start_from_us;
+  return d >= 0 && d < (int64_t)MOTION_START_WAIT_MS * 1000;
+}
+
 static void start_tell(uint8_t shown) {
   if (shown == s_anim.st_told) return;
   s_anim.st_told = shown;
   for (int i = 0; i < 4; i++) s_cams[i].online = (shown >> i) & 1u;
-  conditions_scan(s_cams);
+  conditions_scan(s_cams, lens_grace());
 }
 
 /*
@@ -2933,6 +2948,7 @@ static void anim_start_boot(void) {
   s_anim.st_told = 0xFF;
   s_anim.st_quick = false;
   s_anim.start_us = esp_timer_get_time();
+  s_start_from_us = s_anim.start_us;
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
   anim_phase(0, 0);
@@ -7692,7 +7708,8 @@ _Static_assert(LIST_TOP_DEFAULT + AB_ROW + 4 * AB_CAM_ROW + GRID + AB_QR_MIN + 1
                "the ABOUT help QR has no room for 3 px modules under the cameras");
 
 /**
- * Refill s_cams, at most every two seconds. ui_pass() only, never a draw.
+ * Refill s_cams, at most every two seconds, or within 100 ms of a camera
+ * answering or dropping. ui_pass() only, never a draw.
  *
  * camlink_get_info_ch() bounds its wait at 20 ms per channel and then reads
  * unlocked anyway (cam_link.c), so four channels is up to 80 ms of contention
@@ -7704,12 +7721,24 @@ _Static_assert(LIST_TOP_DEFAULT + AB_ROW + 4 * AB_CAM_ROW + GRID + AB_QR_MIN + 1
  * firmware and the sensor model do not change while someone reads a screen,
  * and `online` going stale by two seconds is still news by the time it is
  * shown.
+ *
+ * Except when `online` itself has changed. camlink_online_mask() is one
+ * atomic byte and costs nothing to ask every pass. When it disagrees with
+ * the copy, the copy is read again now: a start cut by a finger lands the
+ * menu with the lenses heard so far, and the rest must fill as they answer,
+ * not two seconds later. Held to once per 100 ms so a link that flaps cannot
+ * put the channel-lock waits on every pass.
  */
 static void cams_refresh(void) {
   assert(!s_in_render && "camlink lock inside a draw");
   static int64_t s_when_us;
   const int64_t now = esp_timer_get_time();
-  if (s_when_us != 0 && now - s_when_us <= 2000000) return;
+  uint8_t had = 0;
+  for (int i = 0; i < 4; i++)
+    if (s_cams[i].online) had |= (uint8_t)(1u << i);
+  const int64_t gap_us = (camlink_online_mask() & 0xFu) != had ? 100000 : 2000000;
+  /* A clock behind the last read is host_preview starting a scene at 0. */
+  if (s_when_us != 0 && now >= s_when_us && now - s_when_us <= gap_us) return;
   s_when_us = now;
   for (int i = 0; i < 4; i++) camlink_get_info_ch(i, &s_cams[i]);
 }
@@ -10437,7 +10466,7 @@ static void storage_events_poll(void) {
       toast("Card taken out. Photos cannot be saved");
       audio_warning();
     }
-    conditions_scan(s_cams);
+    conditions_scan(s_cams, lens_grace());
     ui_render(render_screen, NULL);
   }
 }
@@ -11021,7 +11050,7 @@ static uint32_t ui_pass(void) {
       const int64_t now_us = esp_timer_get_time();
       if (scan_us == 0 || now_us - scan_us > 2000000) {
         scan_us = now_us;
-        conditions_scan(s_cams);
+        conditions_scan(s_cams, lens_grace());
         /* Above the warm line the finder drops to a few frames a second: the
          * four nodes and the PPA are most of the heat. STATUS says why. */
         viewfinder_throttle(conditions_has(COND_WARM));
@@ -11036,16 +11065,21 @@ static uint32_t ui_pass(void) {
      * dropped kept its filled cell until the next touch. The rescan puts the
      * card line in the same frame as the cells. Not on SHOOT, which repaints
      * on its own clock; not under a finger, a move or the sleep's wind-down,
-     * which own the frame. A change while asleep is drawn by the wake.
+     * which own the frame. A change while asleep is drawn by the wake. So
+     * does the start's wait running out (lens_grace()): a lens still silent
+     * then is called down on that pass, not on the next slow scan.
      */
     {
       static uint8_t drawn_on = 0xFF;
+      static bool drawn_grace;
+      const bool grace = lens_grace();
       uint8_t on = 0;
       for (int i = 0; i < 4; i++)
         if (s_cams[i].online) on |= (uint8_t)(1u << i);
-      if (on != drawn_on) {
+      if (on != drawn_on || grace != drawn_grace) {
         drawn_on = on;
-        conditions_scan(s_cams);
+        drawn_grace = grace;
+        conditions_scan(s_cams, grace);
         power_state_t ps;
         power_get(&ps);
         if (s_screen != SCR_SHOOT && held == -1 && !anim_active() && !s_sleep_mark &&

@@ -1798,7 +1798,7 @@ static void shot(const char *name) {
  * exist to catch. */
 static void scan_conditions(void) {
   cams_refresh();
-  conditions_scan(s_cams);
+  conditions_scan(s_cams, false);
 }
 
 /* go() as a tap's release calls it: inside the by-hand bracket, so the move
@@ -3789,6 +3789,10 @@ typedef struct {
   int ceiling_ms;            /* the menu lands by this, 0 for no check */
   bool quiet;                /* no PPMs */
   int step_ms;               /* 0 for g_start_step_us */
+  /* After the start, ui_pass() on the menu until this ms with the cameras
+   * still answering on their times; 0 for none. The card must never say a
+   * lens is down while each answers on time, and shows all heard at the end. */
+  int menu_ms;
 } start_case_t;
 
 static void start_run(const start_case_t *c) {
@@ -3927,6 +3931,51 @@ static void start_run(const start_case_t *c) {
             note ? "opened on a body that has seen it" : "did not open");
     g_start_failed = true;
   }
+  if (c->menu_ms > 0 && !anim_active()) {
+    /* The menu after the start, through the real loop. */
+    const int64_t clock = prev_vclock_us;
+    pass_rig(SCR_MENU);
+    prev_vclock_us = clock;
+    int down_ms = -1, passes = 0;
+    for (; passes < 4000; passes++) {
+      const int32_t ms = (int32_t)((prev_vclock_us - t0) / 1000);
+      if (ms > c->menu_ms) break;
+      unsigned now = 0;
+      for (int i = 0; i < 4; i++)
+        if (c->answer_ms[i] >= 0 && ms >= c->answer_ms[i]) now |= 1u << i;
+      g_cam_online = now;
+      const int64_t before = prev_vclock_us;
+      const uint32_t wait = ui_pass();
+      if (down_ms < 0 && conditions_has(COND_CAMERA_DOWN)) down_ms = ms;
+      if (prev_vclock_us == before) prev_vclock_us += (int64_t)(wait > 0 ? wait : 10) * 1000;
+    }
+    unsigned shown = 0;
+    for (int i = 0; i < 4; i++)
+      if (s_cams[i].online) shown |= 1u << i;
+    printf("    menu to %d ms over %d passes: a lens called down at %d ms, the card shows 0x%x\n", c->menu_ms,
+           passes, down_ms, shown);
+    /* A lens that never answers is called down when the wait runs out, on
+     * that pass; one that answers on time never is. */
+    bool silent = false;
+    for (int i = 0; i < 4; i++) silent |= c->answer_ms[i] < 0;
+    if (!silent && down_ms >= 0) {
+      fprintf(stderr, "start %s (%s hand): the menu called a lens down at %d ms on a body whose lenses answer on time\n",
+              c->name, g_hand, down_ms);
+      g_start_failed = true;
+    }
+    if (silent && (down_ms < MOTION_START_WAIT_MS || down_ms > MOTION_START_WAIT_MS + 100)) {
+      fprintf(stderr, "start %s (%s hand): a silent lens was called down at %d ms, not as the wait ran out at %d ms\n",
+              c->name, g_hand, down_ms, MOTION_START_WAIT_MS);
+      g_start_failed = true;
+    }
+    if (shown != g_cam_online) {
+      fprintf(stderr, "start %s (%s hand): at %d ms the card shows cameras 0x%x, 0x%x answer\n", c->name, g_hand,
+              c->menu_ms, shown, g_cam_online);
+      g_start_failed = true;
+    }
+    pass_unrig(SCR_MENU);
+  }
+  s_start_from_us = 0; /* the next scene's clock starts again at 0 */
   prev_vclock_step_us = 16000;
   prev_vclock_us = 0;
   g_anim = NULL;
@@ -3936,7 +3985,7 @@ static void start_run(const start_case_t *c) {
   g_first_seen = false;
   g_cam_online = online0;
   memcpy(s_cams, keep, sizeof keep);
-  conditions_scan(s_cams);
+  conditions_scan(s_cams, false);
   s_anim.kind = ANIM_NONE;
 }
 
@@ -3968,6 +4017,11 @@ static void start_scenes(void) {
       {"start_tap_early", {0, 0, 0, 0}, 300, -1, true, -1, 0, 0, true, 10},
       /* A key at 300 ms: the menu at once, with the four that answered. */
       {"start_key_early", {0, 0, 0, 0}, -1, 300, true, -1, 0, 0, true, 10},
+      /* A finger at 600 ms with two lenses still booting: the menu then never
+       * says a lens is down, and fills each cell as its lens answers. */
+      {"start_tap_menu", {400, 700, 900, 1100}, 600, -1, true, -1, 0, 0, true, 10, 2500},
+      /* The same with the third lens dead: PROBLEM as the wait runs out. */
+      {"start_tap_three", {400, 700, -1, 1100}, 600, -1, true, -1, 0, 0, true, 10, 2500},
       /* A camera that answers just before the wait ends does not hold the
        * build: the menu still lands by the ceiling. */
       {"start_late_one", {400, 700, 900, 1900}, -1, -1, true, -1, 0, START_CEILING_MS, true, 10},
@@ -4025,13 +4079,13 @@ static void scenes(void) {
    * its own two-second clock. */
   g_cam_online = 0xBu;
   for (int i = 0; i < 4; i++) camlink_get_info_ch(i, &s_cams[i]);
-  conditions_scan(s_cams);
+  conditions_scan(s_cams, false);
   s_screen = SCR_MENU;
   draw_screen();
   shot("menu_cams_3of4");
   g_cam_online = 0x5u;
   for (int i = 0; i < 4; i++) camlink_get_info_ch(i, &s_cams[i]);
-  conditions_scan(s_cams);
+  conditions_scan(s_cams, false);
 
   /* The launch shades: the menu in each of the eight a start can wear, for
    * the review strip. main.c picks boot_count % 8; every other picture here

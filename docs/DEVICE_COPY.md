@@ -381,7 +381,7 @@ calls and fails when one of them is not in this table.
 
 ## The start
 
-The start says nothing in words. The ODD JOBS mark comes up from black with four outlines under it, one per lens in position, the top-left lens first. A cell fills when its lens answers. A cell that stays an outline at about 1.6 s is the lens in that position not answering: its outline turns solid and stays hollow. The cells then become the SHOOT card's four-mark, and the card says the rest in words: `A LENS IS NOT ANSWERING` under PROBLEM, with the same cell hollow. A tap shortens the start and presses nothing.
+The start says nothing in words. The ODD JOBS mark comes up from black with four outlines under it, one per lens in position, the top-left lens first. A cell fills when its lens answers. A cell that stays an outline at about 1.6 s is the lens in that position not answering: its outline turns solid and stays hollow. The cells then become the SHOOT card's four-mark, and the card says the rest in words: `A LENS IS NOT ANSWERING` under PROBLEM, with the same cell hollow. A tap shortens the start and presses nothing. After a tap the card can land before every lens is up: a lens still starting is an outline with no PROBLEM line, and its cell fills when it answers. Only a lens still silent at about 1.6 s gets `A LENS IS NOT ANSWERING`.
 
 ## Dim and sleep
 
