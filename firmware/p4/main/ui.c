@@ -11090,8 +11090,14 @@ static uint32_t ui_pass(void) {
       }
     }
     calib_poll();
-    first_review_poll();
-    photo_seek_poll();
+    /* The review clock and a page turn's owed photograph both repaint or start
+     * a move, so neither runs under the sleep's wind-down or while the body
+     * is asleep: s_sleep_mark holds until the wake clears it. Whatever is owed
+     * runs on the first pass after the wake. */
+    if (!s_sleep_mark && !power_sleep_pending()) {
+      first_review_poll();
+      photo_seek_poll();
+    }
     dlg_content_poll();
     storage_events_poll();
     lens_hint_poll();
