@@ -2837,14 +2837,6 @@ static uint8_t start_shown(int32_t ms) {
 }
 
 /*
- * The menu card reads s_cams and the conditions, and the start lands on the
- * card, so they have to say what the start drew: a camera filled on the
- * glass is online on the card and in its status line, one left an outline is
- * not. Only `online` is written. The rest of each struct waits for the first
- * cams_refresh() after the start, which conditions_scan() does not need: it
- * reads `online`, and the firmware only from a camera with one.
- */
-/*
  * The start's wait, MOTION_START_WAIT_MS from its first frame. Inside it a
  * lens that has not answered is still booting, not down: the conditions do
  * not call it down (conditions_scan()). A full start ends after the wait and
@@ -2859,6 +2851,14 @@ static bool lens_grace(void) {
   return d >= 0 && d < (int64_t)MOTION_START_WAIT_MS * 1000;
 }
 
+/*
+ * The menu card reads s_cams and the conditions, and the start lands on the
+ * card, so they have to say what the start drew: a camera filled on the
+ * glass is online on the card and in its status line, one left an outline is
+ * not. Only `online` is written. The rest of each struct waits for the first
+ * cams_refresh() after the start, which conditions_scan() does not need: it
+ * reads `online`, and the firmware only from a camera with one.
+ */
 static void start_tell(uint8_t shown) {
   if (shown == s_anim.st_told) return;
   s_anim.st_told = shown;
@@ -3956,8 +3956,10 @@ static void menu_words(int i, int x, int y, int w, int h, uint16_t ink, bool wit
      *
      * Each cell is a camera, CAM1 to CAM4 in reading order, and says whether
      * it answers: filled when it does, a 3 px outline when it does not. Read
-     * from s_cams, the snapshot ui_pass() refreshes every two seconds - never
-     * from camlink inside a draw - in the card's own ink, so no new colour.
+     * from s_cams, the snapshot ui_pass() refreshes (every 2 s, or within
+     * 100 ms of a camera answering or dropping; the start writes it through
+     * start_tell()) - never from camlink inside a draw - in the card's own
+     * ink, so no new colour.
      * Four filled cells was a picture of a camera that might not be there. */
     if (with_mark) {
       const int cell = MZ_MARK_CELL, gap = MZ_MARK_GAP, keyline = MZ_MARK_KEY;
