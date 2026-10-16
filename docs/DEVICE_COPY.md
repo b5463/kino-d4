@@ -246,7 +246,7 @@ calls and fails when one of them is not in this table.
 | `DELETE` | The button that opens the DELETE dialog. |
 | `SENT` | After the mode, once the Roll holds every frame. |
 | `TODAY 18:01` | The column's first line: when it was taken, in the clock's zone; `21 SEP 18:01` on any other day. |
-| `DATE NOT SET` | The first line instead, for a photograph taken before the clock was ever set. |
+| `NO DATE` | The first line instead, for a photograph taken before the clock was ever set. |
 | `PHOTO 37` | The third line, under the mode: its place in the gallery, 1 the newest. Not shown on the review after a shot until the gallery's page holds it. |
 | `JAN` / `FEB` / `MAR` / `APR` / `MAY` / `JUN` / `JUL` / `AUG` / `SEP` / `OCT` / `NOV` / `DEC` | The month in that date. |
 | `2 MISSING` | A photo whose capture lost frames: how many lenses that were asked have no file on the card. The red cells under CAMERAS say which. The card does not record which were asked, so in the gallery every lens counts. |

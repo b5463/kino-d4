@@ -3562,6 +3562,38 @@ static int dlg_box_not(int x, int y, int w, int h, uint16_t k) {
 }
 
 /*
+ * PHOTO's facts lines fit PH_FACT_W uncut (#247): every date date_words()
+ * can print, NO DATE, and the place up to PHOTO 9999. The text fit would
+ * cut a wider one silently, so measure them all.
+ */
+static void check_photo_facts_fit(void) {
+  static const char *const MON[12] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                                      "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+  int widest = 0;
+  char w[32], line[32];
+  for (int h = 0; h < 24; h++) {
+    for (int m = 0; m < 60; m++) {
+      snprintf(line, sizeof line, "TODAY %02d:%02d", h, m);
+      if (text_w(K_TYPE_CAPTION, line) > widest) { widest = text_w(K_TYPE_CAPTION, line); snprintf(w, sizeof w, "%s", line); }
+      for (int mo = 0; mo < 12; mo++) {
+        for (int d = 1; d <= 31; d++) {
+          snprintf(line, sizeof line, "%d %s %02d:%02d", d, MON[mo], h, m);
+          const int tw = text_w(K_TYPE_CAPTION, line);
+          if (tw > widest) { widest = tw; snprintf(w, sizeof w, "%s", line); }
+        }
+      }
+    }
+  }
+  char msg[96];
+  snprintf(msg, sizeof msg, "the widest date %s is %d px, over PH_FACT_W %d", w, widest, PH_FACT_W);
+  review_expect(widest <= PH_FACT_W, msg);
+  review_expect(text_w(K_TYPE_CAPTION, "NO DATE") <= PH_FACT_W, "NO DATE is wider than PH_FACT_W");
+  review_expect(text_w(K_TYPE_CAPTION, "PHOTO 9999") <= PH_FACT_W, "PHOTO 9999 is wider than PH_FACT_W");
+  printf("photo facts (%s hand): widest date %s %d px, NO DATE %d px, fit %d px\n", g_hand, w, widest,
+         text_w(K_TYPE_CAPTION, "NO DATE"), PH_FACT_W);
+}
+
+/*
  * A question's room is fixed when it opens (#247), through ui_pass: what
  * arrives later - a count, a tile decoded or dropped - is drawn into it and
  * moves no row. FORMAT opened before the card is counted keeps an empty line
@@ -5110,6 +5142,7 @@ static void scenes(void) {
   check_dead_send();
   check_review_loop();
   check_photo_steps();
+  check_photo_facts_fit();
   check_dialog_room();
 }
 

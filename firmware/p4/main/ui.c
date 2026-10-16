@@ -314,6 +314,9 @@ static int ph_well_x(void) { return s_right_hand ? PAGE_M : UI_W - PAGE_M - PH_W
  * Its type is inset instead. */
 #define PH_FPAD INSET_TEXT
 #define PH_BLK_PAD 12 /* the well's padding above and below its type */
+/* What a facts line may span: INSET_TEXT on the left, the well's own
+ * padding on the right, so no line runs into the well's edge. */
+#define PH_FACT_W (PH_COL_W - PH_FPAD - PH_BLK_PAD)
 /* The first caption line, under the back button: the well starts where the
  * button ends, because its tallest state needs every pixel (below). */
 #define PH_CAP_Y (HD_BTN_Y + HD_BTN + PH_BLK_PAD)
@@ -6128,8 +6131,9 @@ static void draw_photo(void) {
    * quiet, the mode in ink once the Roll has it.
    *
    * All three in the caption face. The date does not fit the column in the
-   * label face at either length - 170 px for 14 OCT 18:02, 185 for DATE NOT
-   * SET, against 140 - and a date cut to fit is no date.
+   * label face - 170 px for 14 OCT 18:02 against PH_FACT_W - and a date cut
+   * to fit is no date. A photograph from before the clock was set reads NO
+   * DATE: DATE NOT SET ran to 6 px from the well's right edge.
    */
   char mode[24];
   snprintf(mode, sizeof mode, "%s", s_photo_mode);
@@ -6150,9 +6154,9 @@ static void draw_photo(void) {
      * printed as 1 JAN. */
     char when[24];
     if (pure_epoch_plausible(s_photo_ms)) date_words(when, sizeof when, s_photo_ms);
-    else snprintf(when, sizeof when, "DATE NOT SET");
+    else snprintf(when, sizeof when, "NO DATE");
     char fitted[32];
-    text_fit(fitted, sizeof fitted, K_TYPE_CAPTION, when, PH_COL_W - PH_FPAD - 4);
+    text_fit(fitted, sizeof fitted, K_TYPE_CAPTION, when, PH_FACT_W);
     text(K_TYPE_CAPTION, fx, cy, fitted, K_INK);
     cy += K_TYPE_CAPTION->line_h;
 
