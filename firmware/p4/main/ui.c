@@ -9115,19 +9115,25 @@ static void render_start(void *ctx) {
   int gx1, gy1;
   card_mark_at(cx, cy, cw, &gx1, &gy1);
 
-  /* The colour event. The cells turn from cream to the card's ink while
-   * their own box turns from the ground to the shade behind them, both on
-   * one curve, so the shade never stands in the gaps of grey cells. Then the
-   * box travels out to the card and the cells to its four-mark. */
-  const float ik = b >= 0.0f ? span01(b, 0.0f, (float)MOTION_START_INK_MS) : 0.0f;
-  const int ik8 = (int)(ik * 255.0f + 0.5f);
+  /* The colour event, in two halves so the cells always stand out from what
+   * is under them. First their box turns from the ground to the shade and
+   * grows a gap's width out past the grid, while the cells stay cream: cream
+   * on a pink frame. Then, on full pink, the cells turn to the card's ink.
+   * The two never run at once, so cells and gaps never meet in one mauve.
+   * Then the box travels out to the card and the cells to its four-mark. */
+  const float gk = b >= 0.0f ? span01(b, 0.0f, (float)MOTION_START_INK_MS * 0.5f) : 0.0f;
+  const float ck = b >= 0.0f ? span01(b, (float)MOTION_START_INK_MS * 0.5f, (float)MOTION_START_INK_MS) : 0.0f;
+  const int gk8 = (int)(gk * 255.0f + 0.5f), ck8 = (int)(ck * 255.0f + 0.5f);
   const float tv = b >= 0.0f ? span01(b, (float)MOTION_START_TRAVEL_FROM_MS,
                                        (float)(MOTION_START_TRAVEL_FROM_MS + MOTION_START_TRAVEL_MS))
                              : 0.0f;
-  const uint16_t gnd = mix_even(K_GROUND, K_ACCENT, ik8);
-  if (ik8 > 0) {
-    const int fx = lerpi(gx0, cx, tv), fy = lerpi(gy0, cy, tv);
-    const int fw = lerpi(g0, cw, tv), fh = lerpi(g0, ch, tv);
+  const uint16_t gnd = mix_even(K_GROUND, K_ACCENT, gk8);
+  if (gk8 > 0) {
+    /* The frame is whole before the travel starts (ui_motion.h), so the
+     * travel always leaves from the padded box. */
+    const int pad = lerpi(0, ST_GAP0, gk);
+    const int fx = lerpi(gx0 - pad, cx, tv), fy = lerpi(gy0 - pad, cy, tv);
+    const int fw = lerpi(g0 + 2 * pad, cw, tv), fh = lerpi(g0 + 2 * pad, ch, tv);
     int r = UI_R;
     if (r > fw / 2) r = fw / 2;
     if (r > fh / 2) r = fh / 2;
@@ -9147,8 +9153,8 @@ static void render_start(void *ctx) {
   const int cell = lerpi(ST_CELL0, MZ_MARK_CELL, tv), gap = lerpi(ST_GAP0, MZ_MARK_GAP, tv);
   const int gx = lerpi(gx0, gx1, tv), gy = lerpi(gy0, gy1, tv);
   const int kl = lerpi(ST_KEY0, MZ_MARK_KEY, tv);
-  const uint16_t ink = mix_even(K_INK, K_ACCENT_INK, ik8);
-  const uint16_t quiet = mix_even(K_INK_QUIET, K_ACCENT_INK, ik8);
+  const uint16_t ink = mix_even(K_INK, K_ACCENT_INK, ck8);
+  const uint16_t quiet = mix_even(K_INK_QUIET, K_ACCENT_INK, ck8);
   const float slots = span01((float)ms, (float)MOTION_START_SLOTS_FROM_MS,
                              (float)(MOTION_START_SLOTS_FROM_MS + MOTION_START_SLOTS_IN_MS));
   const int slots8 = (int)(slots * 255.0f + 0.5f);
@@ -9162,9 +9168,9 @@ static void render_start(void *ctx) {
     const float edge = fk > lost ? fk : lost;
     /* On the ground, up through the greys; on the card's box, straight. */
     const int fk8 = (int)(fk * 255.0f + 0.5f);
-    if (fk8 > 0) fill(x, y, cell, cell, ik8 == 0 ? fade_in(ink, fk8) : mix_even(gnd, ink, fk8));
+    if (fk8 > 0) fill(x, y, cell, cell, gk8 == 0 ? fade_in(ink, fk8) : mix_even(gnd, ink, fk8));
     const uint16_t edge_ink = mix_even(quiet, ink, (int)(edge * 255.0f + 0.5f));
-    const uint16_t line = ik8 == 0 ? fade_in(edge_ink, slots8) : mix_even(gnd, edge_ink, slots8);
+    const uint16_t line = gk8 == 0 ? fade_in(edge_ink, slots8) : mix_even(gnd, edge_ink, slots8);
     fill(x, y, cell, kl, line);
     fill(x, y + cell - kl, cell, kl, line);
     fill(x, y + kl, kl, cell - 2 * kl, line);

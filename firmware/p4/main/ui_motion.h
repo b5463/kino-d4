@@ -117,7 +117,7 @@ static inline float motion_by_hand(float t) {
 /* The build, on its own clock from the frame it starts. */
 #define MOTION_START_RECEDE_MS 280 /* the mark, ink to ground, lifting */
 #define MOTION_START_RISE_PX 16
-#define MOTION_START_INK_MS 180 /* the cells to the card's ink, their box to the shade */
+#define MOTION_START_INK_MS 180 /* first half their box to the shade, second half the cells to the card's ink */
 #define MOTION_START_TRAVEL_FROM_MS 120
 #define MOTION_START_TRAVEL_MS 480 /* the cells and their box out to the card */
 #define MOTION_START_ROWS_FROM_MS 240
@@ -148,6 +148,8 @@ _Static_assert(MOTION_START_LATE_FILL_MS <= MOTION_START_CELL_IN_MS && MOTION_ST
                "a late fill is a compressed fill, and fits a finger's build");
 _Static_assert(MOTION_START_INK_MS <= MOTION_START_TRAVEL_FROM_MS + MOTION_START_TRAVEL_MS,
                "the cells reach the card's ink before they land");
+_Static_assert(MOTION_START_INK_MS / 2 <= MOTION_START_TRAVEL_FROM_MS,
+               "the shade's frame round the cells is whole before it travels");
 _Static_assert(MOTION_START_WAIT_MS + MOTION_START_MISSING_MS + MOTION_START_SETTLE_MS +
                        MOTION_START_BUILD_MS <= 3000,
                "a start with a silent camera lands the menu inside 3 s");
