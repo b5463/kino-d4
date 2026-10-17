@@ -47,6 +47,12 @@ KINO has no published release yet. Changes intended for the first release collec
   one 468 ms move. A move's log is two lines now, and the second counts the
   time spent recording the display list beside drawing, writing out and
   waiting for the panel; the blocked record had been in none of them.
+  Moves, slides and ramps go up a frame a refresh on the bench, SHOOT's
+  and the dim's few held frames aside (#248): three framebuffers and a
+  third tile buffer, moves and ramps drawn for the
+  moment their frame is shown, the scrim on PIE, the ramps unthrottled,
+  and a stale PPA completion that sent the start's first frames out by
+  CPU is gone. Dim 14 -> 44 fps, slides 40-56 -> 60, moves 37-56 -> 55-64.
 
 - **Firmware 0.4.62: update safety: Studio can update the camera, the shutter waits for it, and an image with rollback off does not build (#242).**
   Studio's updater opens with ENTER_MAINTENANCE (0x50), which the P4 never

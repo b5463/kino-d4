@@ -381,7 +381,7 @@ Outside `draw_screen()`, whole-panel renders replace it: the start (`render_star
 | Motion clock | A move or a ramp is drawn at the moment its frame goes up (`gfx_due_us()`), so on a steady cadence the picture steps one refresh of motion a frame. |
 | Display list | `DL_MAX` commands in PSRAM, their 10-byte boxes in internal SRAM (3.75 KB), and a `DL_STR` string arena in PSRAM. |
 | A full list | The frame is drawn directly instead. Nothing is lost; the frame is slower. |
-| Moves | 51 to 58 fps measured on the panel. SHOOT and GALLERY move as snapshots: drawn per frame they ran at 30 and 25 fps. |
+| Moves | Every frame on the next refresh for LOOK, ROLL, SETTINGS, POWER, GALLERY and the settings slides, measured on the panel (#248): gaps 16.4 ms at the median and p90, none over 20 ms in most runs. The start runs 166-169 frames in 2.76 s. SHOOT moves hold one or two frames for a refresh (12 ms of drawing a frame, the snapshot read from PSRAM), the slide into PHOTO four (its copy shares the bus with the photograph's decode). SHOOT and GALLERY move as snapshots: drawn per frame they ran at 30 and 25 fps. |
 
 | Constant | Value | Meaning |
 |---|---|---|
