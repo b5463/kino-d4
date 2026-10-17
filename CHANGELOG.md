@@ -40,6 +40,11 @@ KINO has no published release yet. Changes intended for the first release collec
   conditions read `storage_get_status_cached()`; the card watcher reads free
   space again after a capture comes or goes and every 10 s. LOOK's numbers
   for a custom look and the saved-network count are read outside the draw.
+  The upload worker no longer spins (#248): a reconciliation pass that
+  admits nothing sleeps until a wake or 1 s, and a full RAM window owes no
+  pass for `cardPending` alone (`rq_scan_more(scan, room)`) until a job
+  leaves it. With no Roll API base it had run passes back to back, 12 in
+  one 468 ms move.
 
 - **Firmware 0.4.62: update safety: Studio can update the camera, the shutter waits for it, and an image with rollback off does not build (#242).**
   Studio's updater opens with ENTER_MAINTENANCE (0x50), which the P4 never

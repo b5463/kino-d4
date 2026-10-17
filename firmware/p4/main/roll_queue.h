@@ -608,11 +608,30 @@ void rq_job_revive(rq_job_t *job);
 
 
 /**
- * True when another pass is owed: the cursor is mid-cycle, or the last complete
- * cycle found eligible work the window could not take. This is the honest
- * answer to "is there durable work the RAM list is not showing".
+ * True when another pass is owed: the cursor is mid-cycle, the card changed
+ * since the last cycle, or the last complete cycle found eligible work the
+ * window could not take AND `room` says the RAM list now has a free slot.
+ *
+ * `room` is the worker's question, "can a pass admit anything". Without it a
+ * full window and cardPending > 0 owed a pass for ever, and every pass admitted
+ * nothing (#248: no Roll API base, 28 jobs backing off and 4 parked in RAM, 60
+ * on the card, passes back to back holding the FatFs volume lock). A slot that
+ * frees makes it true again. Reporting asks with room=true: "is durable work
+ * owed at all".
  */
-bool rq_scan_more(const rq_scan_t *s);
+bool rq_scan_more(const rq_scan_t *s, bool room);
+
+/**
+ * After a reconciliation pass: go straight round the worker's loop, or sleep
+ * on its notification until a wake or the idle timeout.
+ *
+ * Straight on only when the pass had the card and admitted work: those jobs
+ * have steps due now. A pass that admitted nothing changed nothing the next
+ * pass would find sooner, and a pass straight after it is the spin #248
+ * measured. A refused card was always a sleep. So the worker runs at most one
+ * pass that admits nothing per wake, whatever the card holds.
+ */
+bool rq_scan_run_on(bool got_card, uint32_t admitted);
 
 /* ------------------------------------------------------------------ */
 /* Naming and safety                                                  */
