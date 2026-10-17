@@ -721,54 +721,20 @@ void gfx_snapshot(void) {
  * is already there (gfx_snapshot() rotates the canvas into s_from); this
  * rotates the stash, the arriving screen, into s_to. rotate_block() maps a
  * landscape column to a panel row, so a landscape offset is a row offset and
- * one frame is two contiguous copies into the back buffer. Measured on the
- * panel (#248) that is 14 ms by the engine and 15 by the CPU - 768 KB read
- * and 768 KB written on the PSRAM bus the panel is also reading - against
- * 13 ms of blitting the same pixels through the tiles plus their write-out,
- * and the 28 fps of the compositor loop this replaced.
+ * one frame is two contiguous copies into the back buffer: 768 KB read and
+ * 768 KB written on the PSRAM bus the panel is also reading, 15 ms a frame
+ * measured on the panel (#248), 18 behind a photograph being decoded. The
+ * 28 fps compositor loop this replaced, and 13 ms of blitting the same
+ * pixels through the tiles before their write-out, were slower.
+ *
+ * By the CPU, on purpose. The PPA's SRM copied it in 14 ms, but the engine is
+ * shared and takes transactions in order: sliding into PHOTO, the copies
+ * queued behind the photograph's scaling and a frame was held 65 ms, where
+ * the CPU's copy only ever missed one refresh (#248).
  */
 void gfx_slide_prepare(void) {
   if (!s_ready || s_mix == NULL || s_to == NULL) return;
   rotate(s_mix, s_to);
-}
-
-/*
- * Rows of one panel-orientation picture into another, by the engine: a
- * straight block copy, no rotation. A landscape column is a panel row, so a
- * slide frame is two of these. The CPU's memcpy of the same 768 KB went
- * through the cache - every destination line read in before it was written,
- * then written back - and took 15 ms a frame (#248).
- */
-static esp_err_t copy_rows(const uint16_t *src, int src_row, void *dst, int dst_row, int rows) {
-  if (rows <= 0) return ESP_OK;
-  ppa_srm_oper_config_t cfg = {
-      .in =
-          {
-              .buffer = src,
-              .pic_w = DISPLAY_H_RES,
-              .pic_h = DISPLAY_V_RES,
-              .block_w = DISPLAY_H_RES,
-              .block_h = (uint32_t)rows,
-              .block_offset_x = 0,
-              .block_offset_y = (uint32_t)src_row,
-              .srm_cm = PPA_SRM_COLOR_MODE_RGB565,
-          },
-      .out =
-          {
-              .buffer = dst,
-              .buffer_size = PANEL_BYTES,
-              .pic_w = DISPLAY_H_RES,
-              .pic_h = DISPLAY_V_RES,
-              .block_offset_x = 0,
-              .block_offset_y = (uint32_t)dst_row,
-              .srm_cm = PPA_SRM_COLOR_MODE_RGB565,
-          },
-      .rotation_angle = PPA_SRM_ROTATION_ANGLE_0,
-      .scale_x = 1.0f,
-      .scale_y = 1.0f,
-      .mode = PPA_TRANS_MODE_BLOCKING,
-  };
-  return ppa_do_scale_rotate_mirror(s_srm, &cfg);
 }
 
 void gfx_slide_show(int o, int b, bool from_right) {
@@ -781,31 +747,20 @@ void gfx_slide_show(int o, int b, bool from_right) {
   const size_t row = DISPLAY_H_RES; /* one landscape column, in pixels */
   uint16_t *fb = s_fb[s_back];
   const int64_t c0 = esp_timer_get_time();
-  /* By the engine (copy_rows()); by the CPU if it refuses. */
-  esp_err_t err;
   if (from_right) {
     /* Columns [0, UI_W-o) show the leaving screen from column b on; the rest
      * is the arriving screen's first o columns. */
-    err = copy_rows(s_from, b, fb, 0, UI_W - o);
-    if (err == ESP_OK) err = copy_rows(s_to, 0, fb, UI_W - o, o);
+    memcpy(fb, s_from + (size_t)b * row, (size_t)(UI_W - o) * row * sizeof(uint16_t));
+    memcpy(fb + (size_t)(UI_W - o) * row, s_to, (size_t)o * row * sizeof(uint16_t));
   } else {
     /* The arriving screen's last o columns first; the leaving one follows,
      * moved b columns the other way. */
-    err = copy_rows(s_to, UI_W - o, fb, 0, o);
-    if (err == ESP_OK) err = copy_rows(s_from, o - b, fb, o, UI_W - o);
+    memcpy(fb, s_to + (size_t)(UI_W - o) * row, (size_t)o * row * sizeof(uint16_t));
+    memcpy(fb + (size_t)o * row, s_from + (size_t)(o - b) * row,
+           (size_t)(UI_W - o) * row * sizeof(uint16_t));
   }
-  if (err != ESP_OK) {
-    if (from_right) {
-      memcpy(fb, s_from + (size_t)b * row, (size_t)(UI_W - o) * row * sizeof(uint16_t));
-      memcpy(fb + (size_t)(UI_W - o) * row, s_to, (size_t)o * row * sizeof(uint16_t));
-    } else {
-      memcpy(fb, s_to + (size_t)(UI_W - o) * row, (size_t)o * row * sizeof(uint16_t));
-      memcpy(fb + (size_t)o * row, s_from + (size_t)(o - b) * row,
-             (size_t)(UI_W - o) * row * sizeof(uint16_t));
-    }
-    /* The CPU wrote it; the panel reads it by DMA. */
-    esp_cache_msync(fb, PANEL_BYTES, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-  }
+  /* The CPU wrote it; the panel reads it by DMA. */
+  esp_cache_msync(fb, PANEL_BYTES, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
   /* The copy is this frame's writing out, and a move's report says so. */
   s_xpose_us += (uint64_t)(esp_timer_get_time() - c0);
   wait_latched();
