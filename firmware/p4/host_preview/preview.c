@@ -214,6 +214,10 @@ void gfx_pass_split(uint64_t *d, uint64_t *x, uint64_t *v) {
 }
 /* No panel, no refreshes: a move's cadence line reads "no second frame". */
 void gfx_cadence_begin(void) {}
+/* The virtual clock: a frame goes up when it is drawn. One read of it, as
+ * the esp_timer_get_time() call this stands in for was. */
+#include "esp_timer.h"
+int64_t gfx_due_us(void) { return esp_timer_get_time(); }
 void gfx_cadence(gfx_cadence_t *out) {
   if (out != NULL) memset(out, 0, sizeof *out);
 }

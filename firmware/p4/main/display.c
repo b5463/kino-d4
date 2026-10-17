@@ -207,13 +207,13 @@ esp_err_t display_init(void) {
       .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,
       .dpi_clock_freq_mhz = 34,
       .pixel_format = LCD_COLOR_PIXEL_FORMAT_RGB565,
-      /* Two, so a frame can be composed while the panel is still scanning the
-       * previous one. The driver recognises its own buffers in
-       * draw_bitmap and switches the scan source instead of copying, which
-       * turns presenting a frame into a cache write-back and a pointer swap.
-       * With one buffer every frame is a 768 KB copy into memory the display
-       * is reading at the same time. */
-      .num_fbs = 2,
+      /* Three, so a frame can be composed while the panel is still scanning
+       * one and another waits for the refresh end (gfx.c, FB_COUNT). The
+       * driver recognises its own buffers in draw_bitmap and switches the
+       * scan source instead of copying, which turns presenting a frame into a
+       * cache write-back and a pointer swap. With one buffer every frame is a
+       * 768 KB copy into memory the display is reading at the same time. */
+      .num_fbs = 3,
       .video_timing = {
           .h_size = DISPLAY_H_RES,
           .v_size = DISPLAY_V_RES,

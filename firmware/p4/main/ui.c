@@ -2809,10 +2809,18 @@ static void render_open(void *ctx) {
   open_frame(s_anim.row, *p);
 }
 
+/*
+ * A move's clock is the panel's: each frame is drawn at the moment it will be
+ * on the glass (gfx_due_us()), not the moment it is drawn. Read from the draw
+ * time, the picture stepped by however long the last frame happened to take
+ * - 13 ms of motion one frame, 19 the next - on a panel that shows every
+ * frame for exactly one refresh (#248). The ramps (dim, lift, sleep,
+ * landing) read the same clock.
+ */
 static void anim_phase(int phase, int32_t span_ms) {
   s_anim.phase = phase;
   s_anim.span_ms = span_ms;
-  s_anim.t0_us = esp_timer_get_time();
+  s_anim.t0_us = gfx_due_us();
 }
 
 /*
@@ -2953,9 +2961,10 @@ static void cadence_for_move(void) {
   gfx_cadence_begin();
 }
 
-/** ms since the start's first frame, held to what st_seen[] can carry. */
+/** ms since the start's first frame, held to what st_seen[] can carry: on
+ *  the panel's clock, from the moment its first frame went up (anim_phase). */
 static int32_t start_ms(void) {
-  const int64_t ms = (esp_timer_get_time() - s_anim.start_us) / 1000;
+  const int64_t ms = (gfx_due_us() - s_anim.t0_us) / 1000;
   return ms < 0 ? 0 : ms > 30000 ? 30000 : (int32_t)ms;
 }
 
@@ -3242,7 +3251,7 @@ static void anim_start_slide(screen_t to, bool from_right, int ms) {
 /** How far through the current phase, 0..1, clamped. */
 static float anim_t(void) {
   if (s_anim.span_ms <= 0) return 1.0f;
-  const float t = (float)(esp_timer_get_time() - s_anim.t0_us) / ((float)s_anim.span_ms * 1000.0f);
+  const float t = (float)(gfx_due_us() - s_anim.t0_us) / ((float)s_anim.span_ms * 1000.0f);
   return t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
 }
 
@@ -3295,7 +3304,7 @@ static uint32_t anim_tick(void) {
       if (s_anim.scrim0 > 0) {
         int32_t sms = s_anim.scrim_ms;
         if (sms > s_anim.span_ms) sms = s_anim.span_ms;
-        const float te = sms > 0 ? (float)(esp_timer_get_time() - s_anim.start_us) / ((float)sms * 1000.0f) : 1.0f;
+        const float te = sms > 0 ? (float)(gfx_due_us() - s_anim.t0_us) / ((float)sms * 1000.0f) : 1.0f;
         s_anim.scrim_k = s_anim.scrim0 - (int)(motion_ease_out(te) * (float)s_anim.scrim0 + 0.5f);
         if (s_anim.scrim_k < 0) s_anim.scrim_k = 0;
       } else {
@@ -8777,7 +8786,7 @@ static bool land_step(void) {
     s_strip_gap = FM_GAP;
     return false;
   }
-  const int64_t now = esp_timer_get_time();
+  const int64_t now = gfx_due_us();
   if (s_land_us == 0) {
     s_land_us = now;
     ramp_begin(RAMP_LAND);
@@ -10926,7 +10935,7 @@ static void lift_at(int64_t t_us, int32_t span_ms, int k0, int mark0, int *k, in
 
 /* Start a lift from scrim `k0`, and from a sleep mark at `mark0` (0: none). */
 static void lift_start(int k0, int mark0, int32_t span_ms) {
-  s_lift_us = esp_timer_get_time();
+  s_lift_us = gfx_due_us();
   if (s_lift_us == 0) s_lift_us = 1;
   ramp_begin(span_ms == MOTION_UNDIM_MS ? RAMP_UNDIM : RAMP_WAKE);
   s_lift_ms = span_ms;
@@ -10941,7 +10950,7 @@ static void lift_start(int k0, int mark0, int32_t span_ms) {
  * is still running, so the pass comes straight back. */
 static bool lift_step(bool *drew) {
   if (s_lift_us == 0) return false;
-  const int64_t t = esp_timer_get_time() - s_lift_us;
+  const int64_t t = gfx_due_us() - s_lift_us;
   int k, m;
   lift_at(t, s_lift_ms, s_lift_k0, s_lift_mark0, &k, &m);
   if (k != s_dim_k || m != s_lift_mark) {
@@ -11410,7 +11419,7 @@ static uint32_t ui_pass(void) {
     {
       const bool dim_now = dim_drawn(&pst) && !power_sleep_pending() && !asleep_now;
       if (dim_now && s_dim_since_us == 0) {
-        s_dim_since_us = esp_timer_get_time();
+        s_dim_since_us = gfx_due_us();
         ramp_begin(RAMP_DIM);
       }
       if (!dim_now) s_dim_since_us = 0;
@@ -11422,7 +11431,7 @@ static uint32_t ui_pass(void) {
          * rather than stepping down. */
         s_lift_us = 0;
         s_lift_mark = 0;
-        const int64_t up = esp_timer_get_time() - s_dim_since_us;
+        const int64_t up = gfx_due_us() - s_dim_since_us;
         float t = (float)up / (float)(MOTION_DIM_MS * 1000);
         if (t > 1.0f) t = 1.0f;
         const int k = (int)(ease_ui(t) * (float)DIM_SCRIM_K + 0.5f);
@@ -11466,13 +11475,13 @@ static uint32_t ui_pass(void) {
        * is the screen exactly as it was, so nothing jumps. */
       s_sleep_stage = -1;
       s_sleep_dim0 = s_dim_k;
-      s_sleep_mark_us = esp_timer_get_time();
+      s_sleep_mark_us = gfx_due_us();
       power_sleep_shown();
       s_sleep_mark = true;
       klog("P4", "sleep: wind-down from dim %d on screen %d", s_dim_k, (int)s_screen);
       ramp_begin(RAMP_SLEEP_DARK);
     } else if (s_sleep_mark && power_sleep_pending() && !asleep_now) {
-      const int64_t up = esp_timer_get_time() - s_sleep_mark_us;
+      const int64_t up = gfx_due_us() - s_sleep_mark_us;
       /* The wind-down's three parts, each reported (ramp_end() ignores a
        * part already ended); the hold between the last two draws nothing. */
       if (up >= SLEEP_OUT_US && s_ramp.what == RAMP_SLEEP_DARK) {

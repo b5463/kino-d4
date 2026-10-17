@@ -334,6 +334,8 @@ void gfx_pass_split(uint64_t *d, uint64_t *x, uint64_t *v) {
 }
 /* No panel, no refreshes: a move's cadence line reads "no second frame". */
 void gfx_cadence_begin(void) {}
+/* The virtual clock: a frame goes up when it is drawn. */
+int64_t gfx_due_us(void) { return kui_now_us; }
 void gfx_cadence(gfx_cadence_t *out) {
   if (out != NULL) memset(out, 0, sizeof *out);
 }

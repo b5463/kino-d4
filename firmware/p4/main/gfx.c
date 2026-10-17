@@ -27,9 +27,14 @@ static bool on_srm_done(ppa_client_handle_t client, ppa_event_data_t *event, voi
 static SemaphoreHandle_t s_vsync;
 static volatile bool s_swap_pending; /* a hand-over happened; the panel has not yet switched */
 static uint64_t s_vsync_us;          /* time spent waiting for the panel, since boot */
-/* Refresh ends since boot: one word the interrupt writes, so it stays in
- * internal RAM; the cadence kept from it (show()) is in PSRAM. */
+/* Refresh ends since boot, and when the last one was (esp_timer): written by
+ * the interrupt, so in internal RAM. The time is written first, so a reader
+ * that sees the count unchanged across its read of the time has a pair. */
 static volatile uint32_t s_vsync_n;
+static volatile int64_t s_vsync_at_us;
+/* s_vsync_n just after the last hand-over: that frame is on the glass once
+ * the count has moved past it. */
+static uint32_t s_shown_n;
 
 /* The refresh end, in interrupt context. In IRAM because the driver insists
  * (it runs from the DMA's frame-end interrupt). */
@@ -38,24 +43,48 @@ static bool IRAM_ATTR on_refresh_done(esp_lcd_panel_handle_t panel,
   (void)panel;
   (void)edata;
   (void)user_ctx;
+  s_vsync_at_us = esp_timer_get_time();
+  __asm__ __volatile__("" ::: "memory");
   s_vsync_n = s_vsync_n + 1;
   BaseType_t woken = pdFALSE;
   if (s_vsync != NULL) xSemaphoreGiveFromISR(s_vsync, &woken);
   return woken == pdTRUE;
 }
 
-/** Block until the panel has let go of the back framebuffer. */
-static void wait_back_free(void) {
+/**
+ * Block until the frame handed over last is on the glass: the refresh count
+ * has moved past the one show() noted. Called before the next hand-over, not
+ * before drawing: with three buffers the one being drawn into is never the
+ * one being scanned (see FB_COUNT), so only the hand-over has to wait, or it
+ * would replace a frame the panel never showed.
+ */
+static void wait_latched(void) {
   if (!s_swap_pending || s_vsync == NULL) return;
   const int64_t t0 = esp_timer_get_time();
-  if (xSemaphoreTake(s_vsync, pdMS_TO_TICKS(40)) != pdTRUE) {
-    ESP_LOGW(TAG, "no refresh end within 40 ms; writing the back buffer anyway");
+  while (s_vsync_n == s_shown_n) {
+    if (xSemaphoreTake(s_vsync, pdMS_TO_TICKS(40)) != pdTRUE) {
+      ESP_LOGW(TAG, "no refresh end within 40 ms; handing over anyway");
+      break;
+    }
   }
   s_swap_pending = false;
   s_vsync_us += (uint64_t)(esp_timer_get_time() - t0);
 }
 
-#define FB_COUNT 2
+/*
+ * Three framebuffers (#248): one on the glass, one handed over and waiting
+ * for the refresh end, one being drawn.
+ *
+ * With two, a frame could not start until the refresh end freed the buffer
+ * the panel had just stopped scanning, so every frame had to fit in one
+ * refresh by itself: one that took 17 ms was held for two, the next started
+ * a refresh late, and a move whose frames averaged 13-15 ms still missed
+ * one refresh in four. With three, a frame starts as soon as the last one is
+ * handed over and only the hand-over waits for the refresh end, so a frame
+ * can borrow from the next: what has to fit is the average. 768 KB of PSRAM.
+ * display.c asks the driver for three.
+ */
+#define FB_COUNT 3
 #define PANEL_PX ((size_t)DISPLAY_H_RES * DISPLAY_V_RES)
 #define PANEL_BYTES (PANEL_PX * sizeof(uint16_t))
 #define CANVAS_PX ((size_t)UI_W * UI_H)
@@ -85,10 +114,10 @@ static SemaphoreHandle_t s_srm_done;
  * eye is still being shown - a tear. And frames that land whenever they are
  * ready against a fixed 60 Hz scan are shown for one refresh or two at
  * random, which is the judder a 60 fps animation still has. Both are the one
- * rule: nothing writes a framebuffer the panel has not let go of. Whoever is
- * about to write the back buffer waits for the first refresh end after the
- * last hand-over (wait_back_free), which also paces every animation to the
- * refresh - a frame that draws in under 16.7 ms is shown exactly once.
+ * rule: nothing writes a framebuffer the panel has not let go of. With three
+ * buffers (FB_COUNT) the one written next is always free; what waits is the
+ * hand-over, for the refresh end after the last one (wait_latched), which
+ * also paces every animation to the refresh - no frame is replaced unseen.
  */
 /* s_vsync, s_swap_pending and s_vsync_us are declared with the interrupt
  * handler that gives the first of them, at the top of the file. */
@@ -147,7 +176,11 @@ static uint16_t *s_mix;      /* landscape, the two of them side by side */
  */
 static uint16_t *s_layer;
 static void *s_fb[FB_COUNT]; /* the panel driver's own framebuffers */
-static int s_back = 0;
+static int s_back = 0;       /* the one the next frame is written into */
+/* The buffer after `i`, in hand-over order. Buffer i was last handed over
+ * three frames ago; the frame after it was on the glass before the frame
+ * after that was handed over (wait_latched), so the panel let go of i then. */
+static int fb_next(int i) { return i + 1 < FB_COUNT ? i + 1 : 0; }
 static bool s_ready;
 static uint32_t s_frames;
 static uint32_t s_pass; /* drawing passes begun; see gfx_pass_id() */
@@ -183,7 +216,7 @@ esp_err_t gfx_init(void) {
   /* The driver allocated these when the panel was created; they are already
    * aligned for DMA and for the PPA's output requirements, which is a good
    * reason to use them rather than allocating our own and copying. */
-  esp_err_t err = esp_lcd_dpi_panel_get_frame_buffer(panel, FB_COUNT, &s_fb[0], &s_fb[1]);
+  esp_err_t err = esp_lcd_dpi_panel_get_frame_buffer(panel, FB_COUNT, &s_fb[0], &s_fb[1], &s_fb[2]);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "no framebuffers (num_fbs must be %d): %s", FB_COUNT, esp_err_to_name(err));
     return err;
@@ -199,7 +232,7 @@ esp_err_t gfx_init(void) {
     ESP_LOGE(TAG, "PPA SRM client failed: %s", esp_err_to_name(err));
     return err;
   }
-  /* The panel's refresh end, for wait_back_free(). Without it frames are
+  /* The panel's refresh end, for wait_latched(). Without it frames are
    * written whenever they are ready, which tears and judders but shows. */
   s_vsync = xSemaphoreCreateBinary();
   if (s_vsync != NULL) {
@@ -403,13 +436,34 @@ static void show(void *fb) {
   /* Any refresh end that happened before this hand-over is not the one the
    * next writer must wait for. */
   if (s_vsync != NULL) xSemaphoreTake(s_vsync, 0);
-  cadence_note();
   esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, 0, DISPLAY_H_RES, DISPLAY_V_RES, fb);
+  /* Read after the switch: a refresh end that lands inside draw_bitmap then
+   * makes the wait one refresh longer, never one too short. */
+  s_shown_n = s_vsync_n;
+  cadence_note();
   if (err != ESP_OK) ESP_LOGE(TAG, "present failed: %s", esp_err_to_name(err));
   /* The backlight comes on with the first frame there is (FW-08); a bool
    * test on every later one. */
   else display_first_light();
   s_swap_pending = true;
+}
+
+int64_t gfx_due_us(void) {
+  uint32_t n;
+  int64_t at;
+  do {
+    n = s_vsync_n;
+    at = s_vsync_at_us;
+  } while (n != s_vsync_n);
+  const int64_t now = esp_timer_get_time();
+  if (at == 0) return now;
+  const uint32_t n0 = n - s_cad.ref_n;
+  const int64_t per = s_cad.ref_us != 0 && n0 >= 30 ? (at - s_cad.ref_us) / n0 : 16667;
+  /* A frame handed over and not yet latched goes up at the next refresh end;
+   * the frame drawn now follows it one refresh later. */
+  int64_t due = at + ((s_swap_pending && n == s_shown_n) ? 2 : 1) * per;
+  while (due < now) due += per;
+  return due;
 }
 
 void gfx_present(void) {
@@ -420,11 +474,10 @@ void gfx_present(void) {
   const int64_t t0 = esp_timer_get_time();
 
   void *fb = s_fb[s_back];
-  wait_back_free();
   if (rotate_to(fb) != ESP_OK) return;
+  wait_latched();
   show(fb);
-  s_back ^= 1; /* draw into the other one next time, so the panel keeps
-                * scanning the frame it was given until the next is complete */
+  s_back = fb_next(s_back);
 
   s_frames++;
   const int64_t dt = esp_timer_get_time() - t0;
@@ -591,9 +644,7 @@ void gfx_render(gfx_draw_fn draw, void *ctx) {
   if (!s_ready || draw == NULL) return;
   s_pass++;
   const int64_t t0 = esp_timer_get_time();
-  uint16_t *fb = s_fb[s_back];
-  /* Before the first tile lands in it: the panel may still be scanning it. */
-  wait_back_free();
+  uint16_t *fb = s_fb[s_back]; /* free: see fb_next() */
   bool pending = false; /* a tile is on the engine */
   int which = 0;
 
@@ -634,8 +685,9 @@ void gfx_render(gfx_draw_fn draw, void *ctx) {
   }
   s_target = (gfx_target_t){s_canvas, 0, 0, UI_W, UI_H, UI_W};
 
+  wait_latched();
   show(fb);
-  s_back ^= 1;
+  s_back = fb_next(s_back);
   s_frames++;
   const int64_t dt = esp_timer_get_time() - t0;
   s_last_ms = (uint32_t)(dt / 1000);
@@ -673,7 +725,6 @@ void gfx_slide_show(int o, int b, bool from_right) {
   if (b > o) b = o;
   const size_t row = DISPLAY_H_RES; /* one landscape column, in pixels */
   uint16_t *fb = s_fb[s_back];
-  wait_back_free();
   const int64_t c0 = esp_timer_get_time();
   if (from_right) {
     /* Columns [0, UI_W-o) show the leaving screen from column b on; the rest
@@ -691,8 +742,9 @@ void gfx_slide_show(int o, int b, bool from_right) {
   esp_cache_msync(fb, PANEL_BYTES, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
   /* The copy is this frame's writing out, and a move's report says so. */
   s_xpose_us += (uint64_t)(esp_timer_get_time() - c0);
+  wait_latched();
   show(fb);
-  s_back ^= 1;
+  s_back = fb_next(s_back);
   s_frames++;
   const int64_t dt = esp_timer_get_time() - t0;
   s_last_ms = (uint32_t)(dt / 1000);
@@ -802,7 +854,6 @@ void gfx_dissolve(int duration_ms) {
     if (k > 255) k = 255;
 
     void *fb = s_fb[s_back];
-    wait_back_free();
     ppa_blend_oper_config_t cfg = {
         .in_bg =
             {
@@ -839,8 +890,9 @@ void gfx_dissolve(int duration_ms) {
         .mode = PPA_TRANS_MODE_BLOCKING,
     };
     if (ppa_do_blend(s_blend, &cfg) != ESP_OK) break;
+    wait_latched();
     show(fb);
-    s_back ^= 1;
+    s_back = fb_next(s_back);
     s_frames++;
   }
 

@@ -208,4 +208,13 @@ typedef struct {
 void gfx_cadence_begin(void);
 void gfx_cadence(gfx_cadence_t *out);
 
+/**
+ * When a frame drawn now goes up on the glass (esp_timer us): the refresh end
+ * after the frame already handed over, or the next one when none is waiting.
+ * A move's clock reads this rather than the time the frame is drawn, so on a
+ * steady cadence its picture steps by exactly one refresh of motion a frame,
+ * whatever each frame took to draw (#248). Never earlier than now.
+ */
+int64_t gfx_due_us(void);
+
 #endif
