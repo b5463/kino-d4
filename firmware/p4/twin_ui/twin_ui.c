@@ -587,6 +587,12 @@ bool kdp_recipes_capture_block(const char *id, recipe_capture_t *out) {
   out->has_sharpness = true;
   return true;
 }
+/* No card in the Twin: every look is answered without one, so LOOK draws its
+ * numbers on the first frame (#248). */
+bool kdp_recipes_capture_block_ram(const char *id, recipe_capture_t *out, bool *known) {
+  if (known != NULL) *known = true;
+  return kdp_recipes_capture_block(id, out);
+}
 
 static named_t s_clips[8] = {{"snd-air-horn", "Air horn"}, {"snd-polaroid", "Polaroid"}};
 static int s_clips_n = 2;
@@ -1036,6 +1042,8 @@ static char g_storage_error[32];
 void storage_get_status(storage_status_t *out) {
   if (out) *out = g_storage;
 }
+/* The screen's copy (#248): no card to wait on here, so the same record. */
+void storage_get_status_cached(storage_status_t *out) { storage_get_status(out); }
 KUI_EXPORT("kui_set_storage")
 void kui_set_storage(int present, int mounted, double capacity_bytes, double free_bytes, const char *last_error) {
   memset(&g_storage, 0, sizeof g_storage);

@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "board_d4v1.h"
+#include "esp_attr.h"
 #include "upload_store.h"  /* UPLOAD_STORE_RECORD / _TEMP: this firmware's own files in a capture folder */
 #include "driver/sdmmc_host.h"
 #include "esp_heap_caps.h"
@@ -224,6 +225,62 @@ void storage_card_busy_message(char *out, size_t len) {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Free space, remembered (#248)                                       */
+/* ------------------------------------------------------------------ */
+
+/*
+ * esp_vfs_fat_info() is f_getfree() under the FatFs volume lock, and the
+ * upload worker's reconciliation pass and the gallery's walk hold that lock
+ * call after call for up to a second. The screen read it in every frame's
+ * record and its moves dropped to 4-47 fps. So the figure is read here, on
+ * the tasks that may wait, and storage_get_status_cached() hands out the copy.
+ *
+ * In PSRAM: read a few times a frame at most. The two 64-bit figures are
+ * copied under s_wait_mux so a reader never gets half of one. `gen` counts
+ * invalidations, so a read that raced one stays stale.
+ */
+static EXT_RAM_BSS_ATTR struct {
+  uint64_t total, free_bytes;
+  int64_t at_us; /* when they were read; 0 for never */
+  uint32_t gen;  /* bumped by storage_media_count_invalidate() */
+  bool stale;
+} s_info;
+
+static void info_mark_stale(void) {
+  portENTER_CRITICAL(&s_wait_mux);
+  s_info.gen++;
+  s_info.stale = true;
+  portEXIT_CRITICAL(&s_wait_mux);
+}
+
+static uint32_t info_gen(void) {
+  portENTER_CRITICAL(&s_wait_mux);
+  const uint32_t gen = s_info.gen;
+  portEXIT_CRITICAL(&s_wait_mux);
+  return gen;
+}
+
+/* Figures read at generation `gen`: fresh unless an invalidation landed
+ * since. */
+static void info_store(uint64_t total, uint64_t free_bytes, uint32_t gen) {
+  const int64_t now = esp_timer_get_time();
+  portENTER_CRITICAL(&s_wait_mux);
+  s_info.total = total;
+  s_info.free_bytes = free_bytes;
+  s_info.at_us = now;
+  s_info.stale = s_info.gen != gen;
+  portEXIT_CRITICAL(&s_wait_mux);
+}
+
+/* Read the card's figures now. The caller may wait on the volume lock. */
+static void info_read(void) {
+  const uint32_t gen = info_gen();
+  uint64_t total = 0, free_bytes = 0;
+  if (s_card == NULL || esp_vfs_fat_info(MOUNT, &total, &free_bytes) != ESP_OK) return;
+  info_store(total, free_bytes, gen);
+}
+
 /* Mount the card. With format_if_mount_failed a card the filesystem will not
  * read is formatted and mounted - storage_format()'s path for an unreadable
  * card; the boot mount never formats anything on its own. */
@@ -325,6 +382,9 @@ static esp_err_t card_mount(bool format_if_mount_failed) {
    * rather than riding on theirs.
    */
   hwv_mark_validated(HWV_SD_SLOT0, detail);
+  /* Free space for the screen, before anything draws it: a card with no
+   * figure yet would read as full. */
+  info_read();
   return ESP_OK;
 }
 
@@ -354,6 +414,7 @@ esp_err_t storage_format(void) {
     mkdir(MOUNT "/KINO/CAPTURES", 0775);
     set_error("");
     storage_media_count_invalidate();
+    info_read(); /* the empty card's figure, on the caller's task: it already waited seconds */
     klog("SD", "card formatted");
   } else {
     klog("SD", "format failed: %s", esp_err_to_name(err));
@@ -447,7 +508,8 @@ bool storage_card_alive(void) {
   return false;
 }
 
-void storage_get_status(storage_status_t *out) {
+/* Every field but the two figures: flags and strings, no card access. */
+static void status_live(storage_status_t *out) {
   memset(out, 0, sizeof *out);
   out->present = s_card != NULL || (s_card_seen && !s_removed);
   out->mounted = s_card != NULL;
@@ -457,13 +519,38 @@ void storage_get_status(storage_status_t *out) {
   out->write_test = s_write_test;
   out->write_test_ms = s_selftest_ms;
   out->removed = s_removed;
+}
+
+void storage_get_status(storage_status_t *out) {
+  status_live(out);
   if (s_card != NULL) {
+    const uint32_t gen = info_gen();
     uint64_t total = 0, free_bytes = 0;
     if (esp_vfs_fat_info(MOUNT, &total, &free_bytes) == ESP_OK) {
       out->capacity_bytes = total;
       out->free_bytes = free_bytes;
+      info_store(total, free_bytes, gen);
     }
   }
+}
+
+void storage_get_status_cached(storage_status_t *out) {
+  status_live(out);
+  if (s_card == NULL) return; /* unmounted: no figures, as storage_get_status() says */
+  portENTER_CRITICAL(&s_wait_mux);
+  out->capacity_bytes = s_info.total;
+  out->free_bytes = s_info.free_bytes;
+  portEXIT_CRITICAL(&s_wait_mux);
+}
+
+void storage_status_refresh(void) {
+  if (s_card == NULL) return;
+  const int64_t now = esp_timer_get_time();
+  portENTER_CRITICAL(&s_wait_mux);
+  const bool due = s_info.stale || s_info.at_us == 0 ||
+                   now - s_info.at_us >= (int64_t)STORAGE_INFO_MAX_AGE_MS * 1000;
+  portEXIT_CRITICAL(&s_wait_mux);
+  if (due) info_read();
 }
 
 const char *storage_selftest_phase_str(storage_selftest_phase_t phase) {
@@ -1073,11 +1160,13 @@ bool storage_capture_space_ok(int frames, uint32_t width, uint32_t height, uint6
   const uint64_t want = storage_capture_reserve_bytes(frames, width, height);
   if (need != NULL) *need = want;
 
+  const uint32_t gen = info_gen();
   uint64_t total = 0, free_bytes = 0;
   if (s_card == NULL || esp_vfs_fat_info(MOUNT, &total, &free_bytes) != ESP_OK) {
     if (avail != NULL) *avail = 0;
     return false;
   }
+  info_store(total, free_bytes, gen);
   if (avail != NULL) *avail = free_bytes;
   return free_bytes >= want;
 }
@@ -1129,7 +1218,11 @@ bool storage_is_capture_dirname(const char *name) { return pure_is_capture_dirna
 static int s_media_count = -1;
 static bool s_media_count_valid;
 
-void storage_media_count_invalidate(void) { s_media_count_valid = false; }
+void storage_media_count_invalidate(void) {
+  s_media_count_valid = false;
+  /* A capture folder came or went, so free space moved with it. */
+  info_mark_stale();
+}
 
 int storage_media_count(void) {
   if (s_card == NULL) return -1;

@@ -33,6 +33,13 @@ KINO has no published release yet. Changes intended for the first release collec
   opened with. A gallery decode writes only to the page it read.
   Internal SRAM: upload, media, scratch and audio buffers of 4 KB and up and
   every cJSON allocation go to PSRAM first.
+  No draw touches the card (#248). Open and back moves ran at 4-47 fps on
+  the bench because the frame's record called `storage_get_status()`, and
+  `esp_vfs_fat_info()` waited on the FatFs volume lock behind the upload
+  worker's reconciliation pass or the gallery's walk. The screen and the
+  conditions read `storage_get_status_cached()`; the card watcher reads free
+  space again after a capture comes or goes and every 10 s. LOOK's numbers
+  for a custom look and the saved-network count are read outside the draw.
 
 - **Firmware 0.4.62: update safety: Studio can update the camera, the shutter waits for it, and an image with rollback off does not build (#242).**
   Studio's updater opens with ENTER_MAINTENANCE (0x50), which the P4 never

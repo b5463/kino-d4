@@ -9,6 +9,8 @@
 //     put in while the camera runs is ready without a restart;
 //   - a card that has just mounted gets the write self-test once, and its
 //     result (fail, slow) reaches the conditions through storage_get_status;
+//   - free space is read again when a capture came or went, or every 10 s
+//     (storage_status_refresh()), so the screen's copy never needs the card;
 //   - every thirty seconds the log lines since the last flush are appended
 //     to /KINO/LOGS/BOOT-nnnnn.TXT, twenty boots kept.
 // The UI drains the events with storage_watch_take() on its own pass.

@@ -50,7 +50,35 @@ typedef struct {
   bool removed;           /* the card was pulled while running (storage_card_alive) */
 } storage_status_t;
 
+/** The status, with free space read from the card now: esp_vfs_fat_info(),
+ *  under the FatFs volume lock. Never from a draw; see the cached form. */
 void storage_get_status(storage_status_t *out);
+
+/**
+ * The same status without touching the filesystem (#248).
+ *
+ * capacity_bytes and free_bytes are the last figures read from the card; every
+ * other field is read live, as storage_get_status() reads it. No FatFs call and
+ * no lock, one critical section. This is what the screen and the conditions
+ * read. The ui task used to call the full form inside every frame's
+ * display-list record, and waited there on the FatFs volume lock behind the
+ * upload worker's reconciliation pass or the gallery's walk: open and back
+ * moves ran at 4-47 fps instead of 51-58 (bench, 0.4.63).
+ *
+ * The figures are read at mount, after a format, by every storage_get_status()
+ * and storage_capture_space_ok(), and by storage_status_refresh().
+ */
+void storage_get_status_cached(storage_status_t *out);
+
+/**
+ * Read free space again when the cached figure is stale: a capture added or
+ * removed (storage_media_count_invalidate() marks it), or
+ * STORAGE_INFO_MAX_AGE_MS since the last read. Takes the FatFs volume lock and
+ * can wait behind a directory walk, so it runs on the card watcher's task
+ * (storage_watch.c, every two seconds), never on the ui task.
+ */
+void storage_status_refresh(void);
+#define STORAGE_INFO_MAX_AGE_MS 10000
 
 /** SD errors since boot (mount failures, write failures) — GET_RUNTIME_STATS. */
 uint32_t storage_sd_errors(void);
@@ -411,7 +439,8 @@ int storage_media_count(void);
  */
 int storage_media_count_cached(void);
 
-/** The count on the card is no longer what we last measured. */
+/** The count on the card is no longer what we last measured. Also marks the
+ *  cached free space stale, for storage_status_refresh(). */
 void storage_media_count_invalidate(void);
 
 /* ------------------------------------------------------------------ */

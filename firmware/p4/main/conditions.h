@@ -119,8 +119,10 @@ static void conditions_scan(const camlink_info_t *cams, bool lens_grace) {
   memset(found, 0, sizeof found);
   int n = 0;
 
+  /* The cached figures: this runs on the ui task, which must not wait on the
+   * FatFs volume lock (#248). */
   storage_status_t sd;
-  storage_get_status(&sd);
+  storage_get_status_cached(&sd);
 
   if (!sd.mounted) {
     cond_t *c = &found[n++];

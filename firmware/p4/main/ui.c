@@ -466,12 +466,18 @@ static inline uint16_t *cv_ptr(const gfx_target_t *t, int x, int y) {
  * that was most of a 34 ms frame during a move into GALLERY or SETTINGS. The
  * facts do not change inside a frame, so they are fetched on the first call
  * of a pass and handed back from here for the rest of it.
+ *
+ * The card's figures are storage.c's copy, never the card (#248). Once per
+ * pass was still a FatFs call inside the record: f_getfree() waited on the
+ * volume lock while the upload worker's reconciliation pass or the gallery's
+ * walk held it, and open and back moves ran at 4-47 fps. The card watcher
+ * reads free space again (storage_status_refresh()); a draw only copies it.
  */
 static const storage_status_t *sd_status(void) {
   static storage_status_t sd;
   static uint32_t pass = UINT32_MAX;
   if (pass != gfx_pass_id()) {
-    storage_get_status(&sd);
+    storage_get_status_cached(&sd);
     pass = gfx_pass_id();
   }
   return &sd;
@@ -2559,6 +2565,18 @@ static void first_start_note(void);
 static bool s_in_render;
 
 /*
+ * The card, taken from this task. Every take in this file goes through here,
+ * and the assert is cams_refresh()'s for the card: a card lock or a FatFs call
+ * in a draw stalled the record behind the upload worker and the gallery
+ * (#248). calib_task() takes the card on its own task and does not use this:
+ * s_in_render belongs to the ui task.
+ */
+static bool ui_card_take(int timeout_ms) {
+  assert(!s_in_render && "card lock inside a draw");
+  return storage_acquire(STORAGE_USER_UI, timeout_ms);
+}
+
+/*
  * The screen over KDP (#246): what kdp_ui.c asks of this task, and where the
  * answers wait. The KDP task writes the asks, this task writes the answers;
  * every field has one writer, so plain loads and stores with acquire and
@@ -3314,8 +3332,8 @@ static int hd_cluster_w(screen_t s) {
  */
 static int chrome_state(int left, int right, int y, uint16_t ink, const char *first,
                         const char *last) {
-  /* From the pass cache: this bar is on two screens during a move, and each
-   * storage_get_status() is a FatFs free-space query behind its mutex. */
+  /* From the pass cache, which copies storage.c's figures: never a FatFs
+   * call in a draw (#248). */
   const storage_status_t sd = *sd_status();
   const char *const pwr = link_words(usb_attached());
 
@@ -4966,6 +4984,8 @@ static void look_display(char *out, size_t cap) {
   upcase(out);
 }
 
+static bool look_capture_refresh(void);
+
 static void look_step(int delta) {
   const int n = kdp_recipes_count();
   if (n <= 0) {
@@ -4993,6 +5013,8 @@ static void look_step(int delta) {
   char id[KDP_RECIPE_ID_MAX], name[KDP_RECIPE_NAME_MAX];
   if (!kdp_recipes_name(next, id, sizeof id, name, sizeof name)) return;
   look_apply(id);
+  /* The new look's numbers, here on the tap and not in the redraw (#248). */
+  (void)look_capture_refresh();
   upcase(name);
   toast(name);
 }
@@ -5020,20 +5042,46 @@ static void look_step(int delta) {
  * showing its old numbers until the picker steps off it and back. That is the
  * right trade. The alternative is a screen that can stall behind a shutter.
  *
- * `s_lk_have` distinguishes "read it, there is no capture block" from "not read
- * yet", so a look that genuinely sets nothing is not re-read every frame.
+ * The cache was filled from the draw itself, on the first frame that showed a
+ * new id: a move into LOOK on a custom look recorded its first frame behind
+ * the card lock (#248). It is filled outside any draw now, by
+ * look_capture_refresh(): every pass that is not a move (ui_pass()) and every
+ * step of the picker. In PSRAM: read once a frame at most.
  */
-static bool look_capture(const char *id, recipe_capture_t *out) {
-  static char s_lk_id[KDP_RECIPE_ID_MAX];
-  static recipe_capture_t s_lk_cap;
-  static bool s_lk_have;
+static EXT_RAM_BSS_ATTR struct {
+  char id[KDP_RECIPE_ID_MAX];
+  recipe_capture_t cap;
+  bool have; /* the look sets something */
+  bool read; /* `cap` and `have` are the answer for `id` */
+} s_lk;
 
-  if (strcmp(s_lk_id, id) != 0) {
-    snprintf(s_lk_id, sizeof s_lk_id, "%s", id);
-    s_lk_have = kdp_recipes_capture_block(id, &s_lk_cap);
+/** Read the shown look's block if it is not the one held. True when it read.
+ *  May take the card: never in a draw. */
+static bool look_capture_refresh(void) {
+  assert(!s_in_render && "card lock inside a draw");
+  char id[KDP_RECIPE_ID_MAX];
+  if (!look_current_id(id, sizeof id)) return false;
+  if (s_lk.read && strcmp(s_lk.id, id) == 0) return false;
+  s_lk.have = kdp_recipes_capture_block(id, &s_lk.cap);
+  snprintf(s_lk.id, sizeof s_lk.id, "%s", id);
+  s_lk.read = true;
+  return true;
+}
+
+/**
+ * The block for the draw: 1 the look sets something, 0 it sets nothing, -1 a
+ * custom look not read yet. A factory look is answered from RAM
+ * (kdp_recipes_capture_block_ram()); a custom one waits for the next pass's
+ * look_capture_refresh(), which draws the screen again.
+ */
+static int look_capture(const char *id, recipe_capture_t *out) {
+  if (s_lk.read && strcmp(s_lk.id, id) == 0) {
+    *out = s_lk.cap;
+    return s_lk.have ? 1 : 0;
   }
-  *out = s_lk_cap;
-  return s_lk_have;
+  bool known = false;
+  const bool have = kdp_recipes_capture_block_ram(id, out, &known);
+  return !known ? -1 : have ? 1 : 0;
 }
 
 
@@ -5057,7 +5105,9 @@ static void lk_detail_row(int x, int y, int w) {
     return;
   }
   recipe_capture_t cap;
-  if (!look_capture(id, &cap)) {
+  const int got = look_capture(id, &cap);
+  if (got < 0) return; /* a custom look not read yet: the next pass reads it and draws again */
+  if (got == 0) {
     text(K_TYPE_BODY, x, y + K_TYPE_CAPTION->line_h, "Sets nothing on the sensor.", K_INK_QUIET);
     return;
   }
@@ -5578,7 +5628,7 @@ static bool photo_open(const gallery_item_t *it) {
   /* The card first, before any state names the new photograph: a refused
    * acquire must leave the module describing whatever it described before,
    * with nothing allocated for a picture that was never decoded. */
-  if (!storage_acquire(STORAGE_USER_UI, 2000)) return false;
+  if (!ui_card_take(2000)) return false;
 
   photo_release();
   snprintf(s_photo_id, sizeof s_photo_id, "%s", it->id);
@@ -5858,7 +5908,9 @@ static void photo_send_to_roll(void) {
   }
   /* What the card holds for this capture: the thumbnail, and which frames.
    * Asked of the gallery, which owns the card's layout; this file never
-   * touches the filesystem itself. */
+   * touches the filesystem itself. Those are FatFs reads, so never from a
+   * draw: a tap's handler on this task (#248). */
+  assert(!s_in_render && "card read inside a draw");
   bool has_thumb = false;
   uint8_t slots[4];
   const int n = gallery_capture_files(s_photo_id, &has_thumb, slots, 4);
@@ -5888,7 +5940,7 @@ static void photo_send_to_roll(void) {
 
 static void photo_toggle_favourite(void) {
   if (s_photo_id[0] == '\0') return;
-  if (!storage_acquire(STORAGE_USER_UI, 2000)) {
+  if (!ui_card_take(2000)) {
     toast("Card busy. Try again");
     audio_warning();
     return;
@@ -7343,6 +7395,19 @@ static void draw_sound(void) {
 #define CN_NOTE_Y (CN_TZ_Y + CN_TZ_H + GRID)
 #define CN_NOTE_H 24 /* K_TYPE_BODY's line; the renderer's safe-area audit checks the drawn box */
 _Static_assert(CN_NOTE_Y + CN_NOTE_H <= UI_H - PAGE_M, "the CONNECTION note runs off the page");
+
+/*
+ * How many networks are saved, as wifi_saved_refresh() last read it. The count
+ * is NVS reads, and NVS waits behind any other task's NVS write: not in a draw
+ * (#248). Read when CONNECTION is opened and on the conditions' two-second
+ * clock, so a network Studio saves shows within two seconds. PSRAM.
+ */
+static EXT_RAM_BSS_ATTR unsigned s_wifi_saved;
+static void wifi_saved_refresh(void) {
+  assert(!s_in_render && "NVS read inside a draw");
+  s_wifi_saved = (unsigned)wifi_creds_count();
+}
+
 static void draw_connection(void) {
   fill(0, 0, UI_W, UI_H, K_FACE);
   draw_header(SCR_CONNECTION);
@@ -7398,7 +7463,7 @@ static void draw_connection(void) {
   }
 
   char saved[16];
-  snprintf(saved, sizeof saved, "%u", (unsigned)wifi_creds_count());
+  snprintf(saved, sizeof saved, "%u", s_wifi_saved);
 
   /*
    * Six readings at a 42 px pitch.
@@ -9405,6 +9470,7 @@ static void move_takes_scrim(int k, int32_t ms) {
 
 static void go(screen_t s, int ms) {
   if (s == SCR_GALLERY) gallery_refresh();
+  if (s == SCR_CONNECTION) wifi_saved_refresh(); /* before the move draws it */
   /* The panes' settling clock: see SH_SETTLE_US. */
   if (s == SCR_SHOOT && s_screen != SCR_SHOOT) s_shoot_since_us = esp_timer_get_time();
   if (s_screen == SCR_PHOTO && s != SCR_PHOTO) photo_release();
@@ -9775,7 +9841,7 @@ static void dialog_commit(void) {
        * budget as the gallery; on a timeout nothing is deleted and the
        * screen does not move, which is the only safe answer for an
        * irreversible operation. */
-      if (!storage_acquire(STORAGE_USER_UI, 2000)) {
+      if (!ui_card_take(2000)) {
         toast("Card busy. Try again");
         audio_warning();
         break;
@@ -9822,7 +9888,7 @@ static void dialog_commit(void) {
        * and the card is locked for all of them - the gallery, the upload
        * worker and a capture all wait, which is the one correct order for
        * an operation that removes what they would be reading. */
-      if (!storage_acquire(STORAGE_USER_UI, 5000)) {
+      if (!ui_card_take(5000)) {
         toast("Card busy. Try again");
         audio_warning();
         break;
@@ -10417,7 +10483,7 @@ static void first_review_poll(void) {
  * is emptied for good. */
 static void undo_delete(void) {
   if (s_undo_id[0] == '\0' || esp_timer_get_time() > s_undo_until_us) return;
-  if (!storage_acquire(STORAGE_USER_UI, 2000)) {
+  if (!ui_card_take(2000)) {
     toast("Card busy. Try again");
     return;
   }
@@ -10437,7 +10503,7 @@ static void undo_delete(void) {
 }
 static void undo_poll(void) {
   if (s_undo_id[0] == '\0' || esp_timer_get_time() <= s_undo_until_us) return;
-  if (!storage_acquire(STORAGE_USER_UI, 0)) return; /* next pass */
+  if (!ui_card_take(0)) return; /* next pass */
   storage_trash_purge();
   storage_release(STORAGE_USER_UI);
   s_undo_id[0] = '\0';
@@ -10453,8 +10519,10 @@ static bool undo_hit(int x, int y) {
 static void storage_events_poll(void) {
   storage_event_t ev;
   while (storage_watch_take(&ev)) {
+    /* The mount read the figures already (card_mount()); this task does not
+     * wait on the card for them (#248). */
     storage_status_t sd;
-    storage_get_status(&sd);
+    storage_get_status_cached(&sd);
     gallery_refresh();
     if (ev == STORAGE_EV_MOUNTED) {
       /* In a sentence, not the bars' capitals: "Card ready, 4871 SHOTS". */
@@ -11053,6 +11121,7 @@ static uint32_t ui_pass(void) {
       if (scan_us == 0 || now_us - scan_us > 2000000) {
         scan_us = now_us;
         conditions_scan(s_cams, lens_grace());
+        wifi_saved_refresh();
         /* Above the warm line the finder drops to a few frames a second: the
          * four nodes and the PPA are most of the heat. STATUS says why. */
         viewfinder_throttle(conditions_has(COND_WARM));
@@ -11070,6 +11139,10 @@ static uint32_t ui_pass(void) {
      * which own the frame. A change while asleep is drawn by the wake. So
      * does the start's wait running out (lens_grace()): a lens still silent
      * then is called down on that pass, not on the next slow scan.
+     *
+     * The LOOK screen's numbers for a custom look are read here too, off the
+     * card and outside any draw (#248), and a read that changed them repaints
+     * LOOK the same way.
      */
     {
       static uint8_t drawn_on = 0xFF;
@@ -11078,10 +11151,14 @@ static uint32_t ui_pass(void) {
       uint8_t on = 0;
       for (int i = 0; i < 4; i++)
         if (s_cams[i].online) on |= (uint8_t)(1u << i);
-      if (on != drawn_on || grace != drawn_grace) {
+      const bool cams_moved = on != drawn_on || grace != drawn_grace;
+      const bool look_read = !anim_active() && look_capture_refresh() && s_screen == SCR_LOOK;
+      if (cams_moved) {
         drawn_on = on;
         drawn_grace = grace;
         conditions_scan(s_cams, grace);
+      }
+      if (cams_moved || look_read) {
         power_state_t ps;
         power_get(&ps);
         if (s_screen != SCR_SHOOT && held == -1 && !anim_active() && !s_sleep_mark &&

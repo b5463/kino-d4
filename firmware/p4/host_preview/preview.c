@@ -418,6 +418,12 @@ bool kdp_recipes_capture_block(const char *id, recipe_capture_t *out) {
   }
   return true;
 }
+/* No card here, so every look is answered from "RAM" and LOOK draws its
+ * numbers on the first frame, as it does for a factory look on the camera. */
+bool kdp_recipes_capture_block_ram(const char *id, recipe_capture_t *out, bool *known) {
+  if (known != NULL) *known = true;
+  return kdp_recipes_capture_block(id, out);
+}
 
 static const struct {
   const char *id;
@@ -1003,6 +1009,9 @@ void storage_get_status(storage_status_t *out) {
   out->free_bytes = g_free_bytes;
   out->write_test = g_card_write_fail ? "fail" : "pass";
 }
+/* The screen's copy (#248). There is no card to wait on here, so the copy is
+ * the same as the read and every shot sees the state it set. */
+void storage_get_status_cached(storage_status_t *out) { storage_get_status(out); }
 
 /* ---- networking and Roll ----------------------------------------------
  *
@@ -1799,6 +1808,9 @@ static void shot(const char *name) {
 static void scan_conditions(void) {
   cams_refresh();
   conditions_scan(s_cams, false);
+  /* ui_pass() reads the saved-network count on the same clock; draws only
+   * copy it (#248). */
+  wifi_saved_refresh();
 }
 
 /* go() as a tap's release calls it: inside the by-hand bracket, so the move
