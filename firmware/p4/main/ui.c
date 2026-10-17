@@ -3518,25 +3518,22 @@ static void power_down_anim(void) {
    * Out through the ground rather than to black in one step: the panel's
    * backlight is still on for a moment after this returns, and a hard cut
    * leaves it showing an empty lit rectangle. It was seven linear 55 ms
-   * steps, which is a staircase on a dark ground. It is about twenty frames
-   * on motion_smooth now, time-driven: frame i is due at i/N of the span, and
-   * a frame that comes out late is drawn where the clock is, not where the
-   * count is, so a slow panel finishes on time with fewer frames.
+   * steps, which is a staircase on a dark ground. It is on motion_smooth now,
+   * a frame a refresh on the panel's clock (gfx_due_us()): each frame is
+   * drawn where the curve is when it goes up, about 23 over the span. It was
+   * MOTION_POWER_FADE_FRAMES frames each due at i/N of the span, waited for
+   * with a delay on the 10 ms tick, and three of the twenty were held for
+   * two refreshes (#248).
    */
-  const int64_t t0 = esp_timer_get_time();
+  const int64_t t0 = gfx_due_us();
   const int64_t span_us = (int64_t)MOTION_POWER_FADE_MS * 1000;
   ramp_begin(RAMP_FADE);
-  for (int i = 1; i <= MOTION_POWER_FADE_FRAMES; i++) {
-    float t = (float)i / (float)MOTION_POWER_FADE_FRAMES;
-    const float by_clock = (float)(esp_timer_get_time() - t0) / (float)span_us;
-    if (by_clock > t) t = by_clock;
+  for (;;) {
+    float t = (float)(gfx_due_us() - t0) / (float)span_us;
     if (t > 1.0f) t = 1.0f;
     int k = power_fade_k(t);
     ui_render(render_mark_fade, &k);
     if (t >= 1.0f) break;
-    const int64_t due = t0 + span_us * i / MOTION_POWER_FADE_FRAMES;
-    const int64_t wait_ms = (due - esp_timer_get_time()) / 1000;
-    if (wait_ms > 0) vTaskDelay(pdMS_TO_TICKS((uint32_t)wait_ms));
   }
   ramp_end(RAMP_FADE);
   ui_render(render_black, NULL);

@@ -220,8 +220,9 @@ _Static_assert(MOTION_SLEEP_OUT_MS + MOTION_SLEEP_IN_MS + MOTION_SLEEP_HOLD_MS +
 
 /*
  * Switching off and restarting. RESTARTING holds, the mark holds, the screen
- * lets go of it on motion_smooth over about twenty frames, and black holds
- * while the backlight goes. A blocking loop on purpose: it runs only on the
+ * lets go of it on motion_smooth, a frame a refresh (about 23 at 60 Hz), and
+ * black holds while the backlight goes. MOTION_POWER_FADE_FRAMES is the
+ * frames host_preview samples the fade at; the panel is not held to it. A blocking loop on purpose: it runs only on the
  * way to esp_restart() or power-off, where no input is acted on.
  */
 #define MOTION_RESTARTING_MS 420

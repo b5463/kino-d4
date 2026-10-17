@@ -298,7 +298,7 @@ The row's wash follows the card, not the clock. By hand, on an open it is gone w
 | `MOTION_DIM_MS` | 1600 ms | The dim scrim arriving. |
 | `MOTION_UNDIM_MS` | 160 ms | And leaving on a touch, on `motion_ease_out()`. |
 | `MOTION_WAKE_MS` | 240 ms | The screen coming back from sleep. |
-| `MOTION_POWER_FADE_FRAMES` | 20 | The power-down fade, frames on `motion_smooth()`. |
+| `MOTION_POWER_FADE_FRAMES` | 20 | The power-down fade as host_preview samples it. On the panel it is a frame a refresh on `motion_smooth()`. |
 
 The moves:
 
