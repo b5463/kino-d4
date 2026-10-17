@@ -3106,10 +3106,33 @@ static void ramp_end(const char *what) {
   cadence_report(what);
 }
 
+/*
+ * The UI task's priority: UI_PRIO, and UI_MOVE_PRIO while a move runs.
+ *
+ * At 4 the UI task shares the level with the gallery task and the touch
+ * poll, and FreeRTOS does not preempt a running task for one of its own
+ * level that wakes: a frame whose engine copy finished while the gallery
+ * was decoding waited for the next 10 ms tick. Measured on the panel
+ * (#248), the slide into PHOTO and back - with the photograph's frames
+ * being read and decoded behind it - held a frame for 65 ms each way. A
+ * move is under half a second and spends most of it waiting on the panel,
+ * so for its length it runs above them; the capture workers' 5 it only
+ * shares. Every move ends through move_over().
+ */
+#define UI_PRIO 4
+#define UI_MOVE_PRIO 5
+
 /** A move starting: the cadence is the move's from here. */
 static void cadence_for_move(void) {
   s_ramp.what = NULL;
   gfx_cadence_begin();
+  vTaskPrioritySet(NULL, UI_MOVE_PRIO);
+}
+
+/** A move over: its kind cleared and the task back to UI_PRIO. */
+static void move_over(void) {
+  s_anim.kind = ANIM_NONE;
+  vTaskPrioritySet(NULL, UI_PRIO);
 }
 
 /** ms since the start's first frame, held to what st_seen[] can carry: on
@@ -3289,7 +3312,7 @@ static void start_done(uint8_t cams, bool note) {
   klog("P4", "start: lenses answered at %d %d %d %d ms, build at %d ms%s", s_anim.st_seen[0],
        s_anim.st_seen[1], s_anim.st_seen[2], s_anim.st_seen[3], s_anim.st_exit,
        s_anim.st_quick ? ", cut short" : "");
-  s_anim.kind = ANIM_NONE;
+  move_over();
   ui_render(render_screen, NULL);
   boot_bench();
   if (note) first_start_note();
@@ -3467,7 +3490,7 @@ static uint32_t anim_tick(void) {
          * last frame. Going back, the destination has never been drawn at all. */
         ui_render(render_screen, NULL);
         anim_report(s_anim.opening ? "open move" : "back move");
-        s_anim.kind = ANIM_NONE;
+        move_over();
       }
       return 0;
     }
@@ -3482,13 +3505,13 @@ static uint32_t anim_tick(void) {
       if (done) {
         ui_render(render_screen, NULL);
         anim_report(s_anim.from_right ? "slide in" : "slide back");
-        s_anim.kind = ANIM_NONE;
+        move_over();
       }
       return 0;
     }
 
     default:
-      s_anim.kind = ANIM_NONE;
+      move_over();
       return 0;
   }
 }
@@ -12240,7 +12263,7 @@ esp_err_t ui_start(void) {
   /* Checked, like capture.c does. A UI task that was never created leaves a
    * board that boots, logs UI_READY and then stays dark for ever - which
    * reads as a display or touch fault rather than as an out-of-memory. */
-  if (xTaskCreatePinnedToCore(ui_task, "ui", 8192, NULL, 4, &ui_h, 1) != pdPASS) {
+  if (xTaskCreatePinnedToCore(ui_task, "ui", 8192, NULL, UI_PRIO, &ui_h, 1) != pdPASS) {
     ESP_LOGE(TAG, "no room for the ui task");
     return ESP_ERR_NO_MEM;
   }
