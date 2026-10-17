@@ -1343,6 +1343,134 @@ static void well(int x, int y, int w, int h) {
  * repaints at frame rate may call it: 800 x 480 is 384 000 unpack-mix-pack
  * round trips.
  */
+/*
+ * The scrim's eight-pixels-at-a-time path, on the P4's vector unit (PIE).
+ *
+ * mix(a, t, k) per channel is a + ((t - a) * k >> 8), which is exactly
+ * (a * (256 - k) + t * k) >> 8: a times 256 divides by 256, so the floor
+ * moves across it. Both terms fit in 16 bits (63 * 256 at most), so a lane
+ * holds them with no overflow. Eight pixels: split the channels with 32-bit
+ * shifts and a mask (a pixel's neighbour shifts into bits the mask clears),
+ * multiply by 256 - k, add t * k, shift down 8, mask again, shift back into
+ * place, OR. 33 instructions for eight pixels against 17 for one by table.
+ *
+ * Exactness is not taken on trust: ui_boot() runs this against mix() on a
+ * pattern before the first frame and leaves it off on any difference
+ * (s_scrim_pie). Off on host_preview and the Twin, which have no PIE.
+ *
+ * `cst` is six 16-byte aligned vectors of eight lanes: 256 - k, 0x1F, 0x3F,
+ * then the tint's red, green and blue times k. `p` is 16-byte aligned; `n8`
+ * groups of eight are done in place. PIE takes its address and SAR operands
+ * from x8-x15 only, hence the pinned registers.
+ */
+#if defined(__riscv) && defined(CONFIG_IDF_TARGET_ESP32P4)
+#define SCRIM_PIE 1
+static void scrim_pie(uint16_t *p_, int n8, const uint16_t *cst) {
+  register uint16_t *p __asm__("a0") = p_;
+  register int n __asm__("a1") = n8;
+  register const uint16_t *c __asm__("a2") = cst;
+  __asm__ __volatile__(
+      "esp.vld.128.ip q4, %[c], 16\n\t" /* 256 - k */
+      "esp.vld.128.ip q5, %[c], 16\n\t" /* 0x001F */
+      "esp.vld.128.ip q6, %[c], 16\n\t" /* 0x003F */
+      "1:\n\t"
+      "mv a3, %[c]\n\t"
+      "esp.vld.128.ip q0, %[p], 0\n\t"
+      "li a4, 11\n\t"
+      "esp.movx.w.sar a4\n\t"
+      "esp.vsr.u32 q1, q0\n\t"
+      "esp.andq q1, q1, q5\n\t" /* red */
+      "li a4, 5\n\t"
+      "esp.movx.w.sar a4\n\t"
+      "esp.vsr.u32 q2, q0\n\t"
+      "esp.andq q2, q2, q6\n\t" /* green */
+      "esp.andq q3, q0, q5\n\t" /* blue */
+      "li a4, 0\n\t"
+      "esp.movx.w.sar a4\n\t"
+      "esp.vmul.u16 q1, q1, q4\n\t"
+      "esp.vmul.u16 q2, q2, q4\n\t"
+      "esp.vmul.u16 q3, q3, q4\n\t"
+      "esp.vld.128.ip q7, a3, 16\n\t"
+      "esp.vadd.u16 q1, q1, q7\n\t"
+      "esp.vld.128.ip q7, a3, 16\n\t"
+      "esp.vadd.u16 q2, q2, q7\n\t"
+      "esp.vld.128.ip q7, a3, 16\n\t"
+      "esp.vadd.u16 q3, q3, q7\n\t"
+      "li a4, 8\n\t"
+      "esp.movx.w.sar a4\n\t"
+      "esp.vsr.u32 q1, q1\n\t"
+      "esp.andq q1, q1, q5\n\t"
+      "esp.vsr.u32 q2, q2\n\t"
+      "esp.andq q2, q2, q6\n\t"
+      "esp.vsr.u32 q3, q3\n\t"
+      "esp.andq q3, q3, q5\n\t"
+      "li a4, 11\n\t"
+      "esp.movx.w.sar a4\n\t"
+      "esp.vsl.32 q1, q1\n\t"
+      "li a4, 5\n\t"
+      "esp.movx.w.sar a4\n\t"
+      "esp.vsl.32 q2, q2\n\t"
+      "esp.orq q1, q1, q2\n\t"
+      "esp.orq q1, q1, q3\n\t"
+      "esp.vst.128.ip q1, %[p], 16\n\t"
+      "addi %[n], %[n], -1\n\t"
+      "bnez %[n], 1b\n\t"
+      : [p] "+r"(p), [n] "+r"(n), [c] "+r"(c)
+      :
+      : "a3", "a4", "memory");
+}
+/* Set by scrim_pie_check(); read per scrim call. PSRAM, one byte. */
+static EXT_RAM_BSS_ATTR bool s_scrim_pie;
+
+/* The six constant vectors scrim_pie() reads, for `tint` and `k`. */
+static void scrim_pie_cst(uint16_t *cst, uint16_t tint, int k) {
+  const int tr = (tint >> 11) & 0x1F, tg = (tint >> 5) & 0x3F, tb = tint & 0x1F;
+  for (int i = 0; i < 8; i++) {
+    cst[i] = (uint16_t)(256 - k);
+    cst[8 + i] = 0x1F;
+    cst[16 + i] = 0x3F;
+    cst[24 + i] = (uint16_t)(tr * k);
+    cst[32 + i] = (uint16_t)(tg * k);
+    cst[40 + i] = (uint16_t)(tb * k);
+  }
+}
+#else
+#define SCRIM_PIE 0
+#endif
+
+/*
+ * The vector path against mix(), once, on the task that draws: every 16-bit
+ * pattern's channels at their ends and a spread between, under five tints
+ * and the k values the screens use. Any difference leaves the table path on
+ * and says so; the frames are then slower and the same.
+ */
+static void scrim_pie_check(void) {
+#if SCRIM_PIE
+  static const uint16_t TINTS[] = {0x0000, 0xFFFF, 0x18C3, 0xF81F, 0x07E0};
+  static const int KS[] = {0, 1, 37, 128, 200, 255, 256};
+  uint16_t px[64] __attribute__((aligned(16)));
+  uint16_t want[64];
+  uint16_t cst[48] __attribute__((aligned(16)));
+  int bad = 0;
+  for (size_t ti = 0; ti < sizeof TINTS / sizeof TINTS[0]; ti++) {
+    for (size_t ki = 0; ki < sizeof KS / sizeof KS[0]; ki++) {
+      for (int base = 0; base < 65536; base += 64 * 97) {
+        for (int i = 0; i < 64; i++) {
+          px[i] = (uint16_t)(base + i * 1021 + (i & 1 ? 0xF81F : 0x07E0));
+          want[i] = mix(px[i], TINTS[ti], KS[ki]);
+        }
+        scrim_pie_cst(cst, TINTS[ti], KS[ki]);
+        scrim_pie(px, 8, cst);
+        for (int i = 0; i < 64; i++) bad += px[i] != want[i];
+      }
+    }
+  }
+  s_scrim_pie = bad == 0;
+  klog("P4", "scrim: vector path %s (%d of %d pixels differ)", bad == 0 ? "on" : "OFF", bad,
+       (int)(sizeof TINTS / sizeof TINTS[0] * sizeof KS / sizeof KS[0]) * 11 * 64);
+#endif
+}
+
 static void scrim(int x, int y, int w, int h, uint16_t tint, int k) {
   if (s_dl.rec) {
     dl_cmd_t *c = dl_push(DL_SCRIM, x, y, x + w, y + h);
@@ -1371,9 +1499,32 @@ static void scrim(int x, int y, int w, int h, uint16_t tint, int k) {
     lb[i] = (uint16_t)(i + (((bb - i) * k) >> 8));
   }
   for (int i = 0; i < 64; i++) lg[i] = (uint16_t)((i + (((bg - i) * k) >> 8)) << 5);
+#if SCRIM_PIE
+  /* Eight at a time where a row is 16-byte aligned, the table at its ends
+   * (scrim_pie()). Measured on the panel (#248): the dim's 25 ms of drawing
+   * a frame was 19 ms of this loop by table. */
+  uint16_t cst[48] __attribute__((aligned(16)));
+  const bool vec = s_scrim_pie && k >= 0 && k <= 256 && w >= 16;
+  if (vec) scrim_pie_cst(cst, tint, k);
+#endif
   for (int r = 0; r < h; r++) {
     uint16_t *row = cv_ptr(t, x, y + r);
-    for (int c = 0; c < w; c++) {
+    int c = 0, end = w;
+#if SCRIM_PIE
+    if (vec) {
+      while (c < w && ((uintptr_t)(row + c) & 15u) != 0) c++;
+      const int n8 = (w - c) / 8;
+      end = c;
+      if (n8 > 0) scrim_pie(row + c, n8, cst);
+      for (int i = 0; i < end; i++) {
+        const uint16_t p = row[i];
+        row[i] = (uint16_t)(lr[p >> 11] | lg[(p >> 5) & 0x3F] | lb[p & 0x1F]);
+      }
+      c += n8 * 8;
+      end = w;
+    }
+#endif
+    for (; c < end; c++) {
       const uint16_t p = row[c];
       row[c] = (uint16_t)(lr[p >> 11] | lg[(p >> 5) & 0x3F] | lb[p & 0x1F]);
     }
@@ -10568,7 +10719,10 @@ void ui_liveness(uint32_t *passes, uint32_t *age_ms, bool *stalled) {
 }
 
 /* The boot, once: the start, which lands on the menu (anim_tick()). */
-static void ui_boot(void) { anim_start_boot(); }
+static void ui_boot(void) {
+  scrim_pie_check();
+  anim_start_boot();
+}
 
 /*
  * The one thing a fresh body says on its own: what to do first. A camera out
