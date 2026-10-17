@@ -44,7 +44,9 @@ KINO has no published release yet. Changes intended for the first release collec
   admits nothing sleeps until a wake or 1 s, and a full RAM window owes no
   pass for `cardPending` alone (`rq_scan_more(scan, room)`) until a job
   leaves it. With no Roll API base it had run passes back to back, 12 in
-  one 468 ms move.
+  one 468 ms move. A move's log is two lines now, and the second counts the
+  time spent recording the display list beside drawing, writing out and
+  waiting for the panel; the blocked record had been in none of them.
 
 - **Firmware 0.4.62: update safety: Studio can update the camera, the shutter waits for it, and an image with rollback off does not build (#242).**
   Studio's updater opens with ENTER_MAINTENANCE (0x50), which the P4 never

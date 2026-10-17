@@ -409,7 +409,7 @@ On the workstation:
 On the bench, for a change to drawing or memory:
 
 1. Build both images, the plain one and the radio one, and read the radio image size against the CI guard.
-2. Flash, then read a move's frame rate from the log (GET_LOGS): each move logs its frames, fps and the split between drawing, writing out and waiting for the panel.
+2. Flash, then read a move's frame rate from the log (GET_LOGS): each move logs two lines, its frames and fps, then the time per frame spent recording the display list, drawing (the replay through the tiles), writing out and waiting for the panel. A record that waits on a lock shows in the first of the four; no draw may touch the card, the camera link or NVS (#248).
 3. Read internal free and "recovery reserve 2/2" from the runtime stats on the radio image.
 
 ## Earlier documents

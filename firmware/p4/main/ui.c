@@ -2723,6 +2723,15 @@ static bool look_current_id(char *out, size_t cap);
 static EXT_RAM_BSS_ATTR camlink_info_t s_cams[4];
 static void cams_refresh(void);
 
+/*
+ * Time spent recording frames into the display list since boot, in us
+ * (ui_render()). gfx_pass_split() times the replay, the write-out and the
+ * panel wait, and not this: a record that waited on a lock was invisible in
+ * the move report, which said 8-14 ms a frame while the moves ran at 4-47 fps
+ * (#248). anim_report() prints it beside the other three.
+ */
+static uint64_t s_record_us;
+
 typedef enum {
   ANIM_NONE = 0,
   ANIM_START, /* the maker's mark, the cameras answering, the menu building (#245) */
@@ -2737,6 +2746,7 @@ static struct {
   int64_t start_us; /* when the whole move began */
   uint32_t f0;      /* frames the compositor had presented when it began */
   uint64_t draw0_us, xpose0_us, vsync0_us; /* gfx_pass_split() when it began */
+  uint64_t record0_us;                     /* s_record_us when it began */
   int32_t span_ms;
   int row;
   bool opening;
@@ -2795,6 +2805,14 @@ static void anim_phase(int phase, int32_t span_ms) {
  * nobody could read it: the one figure - the boot cascade - went to ESP_LOGI,
  * which does not reach the host. Every move reports here now, so GET_LOGS
  * after a tap says what the eye saw.
+ *
+ * Two lines, because one did not fit: the ring keeps 95 characters a line and
+ * the old single line lost its tail ("... 2 ms wa"). The second line splits a
+ * frame four ways - recording the display list, drawing (the replay through
+ * the tiles), writing out and waiting for the panel - and "recording" is new
+ * (#248): a record that waited on the card lock was in none of the other
+ * three, so the report read 14 ms a frame for a move that ran at 4 fps.
+ * Longest second line, four-digit values: 94 characters.
  */
 static void anim_report(const char *what) {
   uint32_t f1 = 0;
@@ -2803,17 +2821,17 @@ static void anim_report(const char *what) {
   const uint32_t frames = f1 - s_anim.f0;
   uint64_t d1 = 0, x1 = 0, v1 = 0;
   gfx_pass_split(&d1, &x1, &v1);
+  const uint32_t record_ms = (uint32_t)((s_record_us - s_anim.record0_us) / 1000);
   const uint32_t draw_ms = (uint32_t)((d1 - s_anim.draw0_us) / 1000);
   const uint32_t xpose_ms = (uint32_t)((x1 - s_anim.xpose0_us) / 1000);
   const uint32_t vsync_ms = (uint32_t)((v1 - s_anim.vsync0_us) / 1000);
   const char *const card =
       s_anim.kind == ANIM_OPEN || s_anim.kind == ANIM_SLIDE ? SCREEN_NAME[s_anim.card] : NULL;
-  klog("P4",
-       "%s%s%s: %lu frames in %lu ms (%lu fps); per frame %lu ms drawing, %lu ms writing out, %lu ms "
-       "waiting for the panel",
-       what, card ? " " : "", card ? card : "", (unsigned long)frames, (unsigned long)ms, (unsigned long)(ms ? frames * 1000 / ms : 0),
-       (unsigned long)(frames ? draw_ms / frames : 0), (unsigned long)(frames ? xpose_ms / frames : 0),
-       (unsigned long)(frames ? vsync_ms / frames : 0));
+  klog("P4", "%s%s%s: %lu frames in %lu ms (%lu fps)", what, card ? " " : "", card ? card : "",
+       (unsigned long)frames, (unsigned long)ms, (unsigned long)(ms ? frames * 1000 / ms : 0));
+  klog("P4", "%s per frame: %lu ms recording, %lu ms drawing, %lu ms writing out, %lu ms waiting", what,
+       (unsigned long)(frames ? record_ms / frames : 0), (unsigned long)(frames ? draw_ms / frames : 0),
+       (unsigned long)(frames ? xpose_ms / frames : 0), (unsigned long)(frames ? vsync_ms / frames : 0));
 }
 
 /** ms since the start's first frame, held to what st_seen[] can carry. */
@@ -2969,6 +2987,7 @@ static void anim_start_boot(void) {
   s_start_from_us = s_anim.start_us;
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
+  s_anim.record0_us = s_record_us;
   anim_phase(0, 0);
 }
 
@@ -3056,6 +3075,7 @@ static void anim_start_open(int row, bool opening, screen_t card, int ms) {
   s_anim.start_us = esp_timer_get_time();
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
+  s_anim.record0_us = s_record_us;
   anim_phase(0, ms);
 }
 
@@ -3088,6 +3108,7 @@ static void anim_start_slide(screen_t to, bool from_right, int ms) {
   s_anim.start_us = esp_timer_get_time();
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
+  s_anim.record0_us = s_record_us;
   anim_phase(0, ms);
 }
 
@@ -4449,9 +4470,12 @@ static void dl_profile(const char *what, gfx_draw_fn draw, void *ctx) {
 static void ui_render(gfx_draw_fn draw, void *ctx) {
   const bool was = s_in_render;
   s_in_render = true;
+  const int64_t rec0 = esp_timer_get_time();
   dl_begin();
   draw(ctx);
-  if (dl_end()) {
+  const bool listed = dl_end();
+  s_record_us += (uint64_t)(esp_timer_get_time() - rec0);
+  if (listed) {
     gfx_render(dl_replay, NULL);
   } else {
     static uint32_t warned;
