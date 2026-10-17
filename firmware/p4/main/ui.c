@@ -1356,9 +1356,27 @@ static void scrim(int x, int y, int w, int h, uint16_t tint, int k) {
   if (y + h > CV_Y1(t)) h = CV_Y1(t) - y;
   if (w <= 0 || h <= 0) return;
   PX_BLEND((size_t)w * h);
+  /*
+   * mix() per pixel, by table. With the tint and k fixed, each channel of the
+   * result depends on that channel of the pixel alone, so three tables of
+   * 32, 64 and 32 entries - built here, 128 steps of mix()'s own arithmetic -
+   * give the same bits for three lookups and two ORs. Measured on the panel
+   * (#248): a full-screen scrim was 25 ms of a dim frame's 32 ms of drawing,
+   * and the dim ran at 15 fps.
+   */
+  const int br = (tint >> 11) & 0x1F, bg = (tint >> 5) & 0x3F, bb = tint & 0x1F;
+  uint16_t lr[32], lg[64], lb[32];
+  for (int i = 0; i < 32; i++) {
+    lr[i] = (uint16_t)((i + (((br - i) * k) >> 8)) << 11);
+    lb[i] = (uint16_t)(i + (((bb - i) * k) >> 8));
+  }
+  for (int i = 0; i < 64; i++) lg[i] = (uint16_t)((i + (((bg - i) * k) >> 8)) << 5);
   for (int r = 0; r < h; r++) {
     uint16_t *row = cv_ptr(t, x, y + r);
-    for (int c = 0; c < w; c++) row[c] = mix(row[c], tint, k);
+    for (int c = 0; c < w; c++) {
+      const uint16_t p = row[c];
+      row[c] = (uint16_t)(lr[p >> 11] | lg[(p >> 5) & 0x3F] | lb[p & 0x1F]);
+    }
   }
 }
 
@@ -2886,7 +2904,8 @@ static void anim_report(const char *what) {
  * arriving, a lift (undim, wake), the sleep's wind-down in its three parts, a
  * capture's strip landing, the power-down fade. Each runs frame by frame from
  * ui_pass() (the fade from its own loop), so each is begun and ended where it
- * starts and stops, and reports its frames and cadence on two lines. One at a
+ * starts and stops, and reports its frames, their split and the cadence on
+ * three lines, as a move does. One at a
  * time, and a move takes the cadence over: a move starting drops the ramp
  * without a line. The names are compared as pointers.
  */
@@ -2897,12 +2916,15 @@ static EXT_RAM_BSS_ATTR struct {
   const char *what; /* NULL: none running */
   int64_t t0_us;
   uint32_t f0;
+  uint64_t draw0_us, xpose0_us, vsync0_us, record0_us;
 } s_ramp;
 
 static void ramp_begin(const char *what) {
   s_ramp.what = what;
   s_ramp.t0_us = esp_timer_get_time();
   gfx_stats(&s_ramp.f0, NULL);
+  gfx_pass_split(&s_ramp.draw0_us, &s_ramp.xpose0_us, &s_ramp.vsync0_us);
+  s_ramp.record0_us = s_record_us;
   gfx_cadence_begin();
 }
 
@@ -2915,6 +2937,13 @@ static void ramp_end(const char *what) {
   const uint32_t frames = f1 - s_ramp.f0;
   klog("P4", "%s: %lu frames in %lu ms (%lu fps)", what, (unsigned long)frames, (unsigned long)ms,
        (unsigned long)(ms ? frames * 1000 / ms : 0));
+  uint64_t d1 = 0, x1 = 0, v1 = 0;
+  gfx_pass_split(&d1, &x1, &v1);
+  const uint32_t n = frames ? frames : 1;
+  /* Shorter than a move's: a ramp's name is up to 14 characters. */
+  klog("P4", "%s per frame ms: %lu recording, %lu drawing, %lu writing out, %lu waiting", what,
+       (unsigned long)((s_record_us - s_ramp.record0_us) / 1000 / n), (unsigned long)((d1 - s_ramp.draw0_us) / 1000 / n),
+       (unsigned long)((x1 - s_ramp.xpose0_us) / 1000 / n), (unsigned long)((v1 - s_ramp.vsync0_us) / 1000 / n));
   cadence_report(what);
 }
 
@@ -11400,6 +11429,12 @@ static uint32_t ui_pass(void) {
         if (k != s_dim_k) {
           s_dim_k = k;
           ui_render(render_screen, NULL);
+          /* Straight back round, like a lift: on the 20 ms pass a frame
+           * landed every third or fourth refresh (#248). A pass that drew
+           * nothing sleeps as before, so the slow ends of the curve do not
+           * spin the task. */
+          lift_drew = true;
+          lifting = true;
         }
         if (t >= 1.0f) ramp_end(RAMP_DIM);
       } else if (anim_active()) {
@@ -11453,6 +11488,8 @@ static uint32_t ui_pass(void) {
         if (k != s_dim_k) {
           s_dim_k = k;
           ui_render(render_screen, NULL);
+          lift_drew = true; /* paced like the dim, above */
+          lifting = true;
         }
       } else {
         const int64_t u = up - SLEEP_OUT_US;
@@ -11469,6 +11506,8 @@ static uint32_t ui_pass(void) {
         if (k != s_sleep_stage) {
           s_sleep_stage = k;
           ui_render(render_sleep, &s_sleep_stage);
+          lift_drew = true;
+          lifting = true;
         }
       }
     } else if (s_sleep_mark && !power_sleep_pending() && !asleep_now) {
@@ -11851,8 +11890,10 @@ static uint32_t ui_pass(void) {
        */
       const bool wig_pacing = s_screen == SCR_PHOTO && s_wig_play;
       /* And a capture landing: its colour leaves over 180 ms, and at 90 ms a
-       * pass that is two frames, a step and not a fade. */
+       * pass that is two frames, a step and not a fade. With the links idle
+       * it goes straight back round, as on SHOOT. */
       if (lifting) return 0;
+      if (landing && cstage != CAPTURE_TRIGGERING && cstage != CAPTURE_READING) return 0;
       return (busy && !wig_pacing && !landing) ? 90 : 20;
     }
 
@@ -11940,7 +11981,9 @@ static uint32_t ui_pass(void) {
     /* The viewfinder repaints on the link's clock, not the panel's: it is the
      * one screen that presents with nothing having been touched. */
     if (s_screen == SCR_SHOOT && held == -1) {
-      if (!lift_drew) ui_render(render_screen, NULL);
+      /* Not over the sleep's mark: the wind-down draws it, and the finder
+       * drawn after it on the same pass took it off the glass again. */
+      if (!lift_drew && !(s_sleep_mark && s_sleep_stage >= 0)) ui_render(render_screen, NULL);
       /* Paced against the link, not the panel: new frames arrive a few times
        * a second at best. A landing capture is paced against the panel
        * instead, so its 180 ms return is a fade and not three steps, and so
@@ -11958,7 +12001,13 @@ static uint32_t ui_pass(void) {
       const capture_stage_t st = capture_stage();
       const bool links_busy = st == CAPTURE_TRIGGERING || st == CAPTURE_READING;
       const bool ring_paced = s_timer_end_us != 0 && !links_busy;
-      return (landing || (pill_pulsing() && !links_busy) || ring_paced) ? 20 : 60;
+      /* The landing and the pill's pulse are short, so with the links idle
+       * they go straight back round, a frame a refresh: on the 20 ms pass
+       * they were a frame every other one, 33 fps (#248). The countdown's
+       * ring keeps the 20 ms pass: it runs for seconds, and a finder drawn
+       * back to back for that long starves the panes' own decode. */
+      if ((landing || pill_pulsing()) && !links_busy) return 0;
+      return (landing || ring_paced) ? 20 : 60;
     }
     /* A lift (undim, wake, a sleep called off) repaints every pass it runs;
      * at the loop's 20 ms on top of the draw it would be a frame every 40. */
