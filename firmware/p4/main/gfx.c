@@ -85,6 +85,10 @@ static void wait_latched(void) {
  * display.c asks the driver for three.
  */
 #define FB_COUNT 3
+/* Tile buffers in internal SRAM, and how many tiles may be on the engine
+ * while the CPU draws the next (gfx_render()). */
+#define TILE_BUFS 3
+#define TILE_INFLIGHT (TILE_BUFS - 1)
 #define PANEL_PX ((size_t)DISPLAY_H_RES * DISPLAY_V_RES)
 #define PANEL_BYTES (PANEL_PX * sizeof(uint16_t))
 #define CANVAS_PX ((size_t)UI_W * UI_H)
@@ -224,7 +228,7 @@ esp_err_t gfx_init(void) {
 
   ppa_client_config_t srm_cfg = {
       .oper_type = PPA_OPERATION_SRM,
-      .max_pending_trans_num = 1,
+      .max_pending_trans_num = TILE_INFLIGHT,
       .data_burst_length = PPA_DATA_BURST_LENGTH_128,
   };
   err = ppa_register_client(&srm_cfg, &s_srm);
@@ -246,7 +250,7 @@ esp_err_t gfx_init(void) {
 
   /* The tile renderer's completion signal. Without it every tile is written
    * out by the CPU, which is slower and right. */
-  s_srm_done = xSemaphoreCreateBinary();
+  s_srm_done = xSemaphoreCreateCounting(TILE_INFLIGHT, 0);
   if (s_srm_done != NULL) {
     const ppa_event_callbacks_t cbs = {.on_trans_done = on_srm_done};
     if (ppa_client_register_event_callbacks(s_srm, &cbs) != ESP_OK) {
@@ -515,17 +519,24 @@ void gfx_render_canvas(gfx_draw_fn draw, void *ctx) {
  * panel row x, panel column H_RES - 1 - y.
  */
 /*
- * Two tile buffers, so the engine writes one out while the CPU draws the
- * next: 48 x 96 x 2 bytes x 2 = 18 KB of internal SRAM, the scarce pool on
- * this board (#162). 48 x 96 rather than the earlier 128 x 48: a tile's
- * landscape column is a run along a panel row, so TILE_H is the run length
- * written into PSRAM (192 bytes, against 96). A tile is 9 KB rather than 12,
- * because the C6 recovery reserve needs two 16 KB blocks of this pool.
- * Cache-line aligned because the PPA reads them as pictures of their own.
+ * Three tile buffers (TILE_BUFS), so the engine can hold two tiles while the
+ * CPU draws the third: 48 x 96 x 2 bytes x 3 = 27 KB of internal SRAM, the
+ * scarce pool on this board (#162). With two, the CPU waited for the engine
+ * after every tile that drew faster than the last one wrote out, and a
+ * frame cost the sum of the slower of each pair; the third lets a quick tile
+ * run ahead. Measured on the panel (#248): writing out 6-7 ms a frame to 4,
+ * the start with no frame held. Three 32 px wide tiles in the old 18 KB were
+ * tried and lost it all again to the 125 transactions a frame (5-7 ms).
+ * 48 x 96 rather than the earlier 128 x 48: a tile's landscape column is a
+ * run along a panel row, so TILE_H is the run length written into PSRAM
+ * (192 bytes, against 96). A tile is 9 KB rather than 12, because the C6
+ * recovery reserve needs two 16 KB blocks of this pool; it reads 2/2 with
+ * 74 KB free after boot. Cache-line aligned because the PPA reads them as
+ * pictures of their own.
  */
 #define TILE_W 48
 #define TILE_H 96
-static uint16_t s_tiles[2][TILE_W * TILE_H] __attribute__((aligned(64)));
+static uint16_t s_tiles[TILE_BUFS][TILE_W * TILE_H] __attribute__((aligned(64)));
 _Static_assert(TILE_H % 2 == 0 && UI_H % TILE_H == 0 && DISPLAY_H_RES % 2 == 0,
                "tiles must divide the height and the transposed write stores two pixels a word");
 
@@ -645,7 +656,7 @@ void gfx_render(gfx_draw_fn draw, void *ctx) {
   s_pass++;
   const int64_t t0 = esp_timer_get_time();
   uint16_t *fb = s_fb[s_back]; /* free: see fb_next() */
-  bool pending = false; /* a tile is on the engine */
+  int pending = 0; /* tiles on the engine, oldest first */
   int which = 0;
 
   for (int ty = 0; ty < UI_H; ty += TILE_H) {
@@ -653,33 +664,36 @@ void gfx_render(gfx_draw_fn draw, void *ctx) {
     for (int tx = 0; tx < UI_W; tx += TILE_W) {
       const int w = UI_W - tx < TILE_W ? UI_W - tx : TILE_W;
       uint16_t *tile = s_tiles[which];
-      /* This buffer was last read by the engine two tiles ago, and that
-       * read was waited for before the tile in between was submitted. */
+      /* This buffer was last read by the engine TILE_BUFS tiles ago, and
+       * that read was waited for before the next tile was submitted: at most
+       * TILE_INFLIGHT are ever on the engine. */
       s_target = (gfx_target_t){tile, tx, ty, w, h, w};
       const int64_t d0 = esp_timer_get_time();
       draw(ctx);
       const int64_t d1 = esp_timer_get_time();
       s_draw_us += (uint64_t)(d1 - d0);
 
-      if (pending) {
+      if (pending == TILE_INFLIGHT) {
         if (xSemaphoreTake(s_srm_done, pdMS_TO_TICKS(50)) != pdTRUE) {
           ESP_LOGE(TAG, "tile rotate did not complete in 50 ms");
         }
-        pending = false;
+        pending--;
       }
       if (s_srm_done != NULL && rotate_tile_async(tile, w, h, tx, ty, fb) == ESP_OK) {
-        pending = true;
+        pending++;
       } else {
         transpose_tile(tile, w, h, tx, ty, fb);
       }
       s_xpose_us += (uint64_t)(esp_timer_get_time() - d1);
-      which ^= 1;
+      which = which + 1 < TILE_BUFS ? which + 1 : 0;
     }
   }
-  if (pending) {
+  if (pending > 0) {
     const int64_t w0 = esp_timer_get_time();
-    if (xSemaphoreTake(s_srm_done, pdMS_TO_TICKS(50)) != pdTRUE) {
-      ESP_LOGE(TAG, "last tile rotate did not complete in 50 ms");
+    for (; pending > 0; pending--) {
+      if (xSemaphoreTake(s_srm_done, pdMS_TO_TICKS(50)) != pdTRUE) {
+        ESP_LOGE(TAG, "last tile rotate did not complete in 50 ms");
+      }
     }
     s_xpose_us += (uint64_t)(esp_timer_get_time() - w0);
   }

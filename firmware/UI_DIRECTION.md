@@ -376,7 +376,7 @@ Outside `draw_screen()`, whole-panel renders replace it: the start (`render_star
 | Item | Figure |
 |---|---|
 | Tile | `TILE_W` x `TILE_H`, 48 x 96 px: 85 tiles a frame, 17 x 5. |
-| Tile buffers | Two, 18 KB of internal SRAM in all, so one is written out while the next is drawn. |
+| Tile buffers | Three, 27 KB of internal SRAM in all, so two are on the engine being written out while the next is drawn. |
 | Framebuffers | Three, the panel driver's, 768 KB of PSRAM each: one on the glass, one handed over and waiting for the refresh end, one being drawn. Only the hand-over waits for the refresh, so a frame that takes 18 ms borrows from the next and what has to fit in 16.4 ms is the average. |
 | Motion clock | A move or a ramp is drawn at the moment its frame goes up (`gfx_due_us()`), so on a steady cadence the picture steps one refresh of motion a frame. |
 | Display list | `DL_MAX` commands in PSRAM, their 10-byte boxes in internal SRAM (3.75 KB), and a `DL_STR` string arena in PSRAM. |
@@ -394,7 +394,7 @@ The rules a change must keep:
 
 - A frame is recorded once (`dl_begin()`, `dl_push()`) and replayed per tile (`dl_replay()`). A draw callback must be a function of state only: it may run once per tile.
 - No per-pixel float maths in a hot loop. A fixed picture that moves (a slide, a snapshot) moves in panel orientation.
-- Internal SRAM is the scarce pool: about 66 KB free after boot, and the C6 recovery reserve must read 2/2. No new internal `.bss` or `.data` beyond a few hundred bytes. A table goes in flash as `const`, or in PSRAM with EXT_RAM_BSS_ATTR. Nothing goes in IRAM.
+- Internal SRAM is the scarce pool: about 74 KB free after boot, and the C6 recovery reserve must read 2/2. No new internal `.bss` or `.data` beyond a few hundred bytes; the third tile buffer (9 KB, #248) was measured in, and the reserve read 2/2 after it. A table goes in flash as `const`, or in PSRAM with EXT_RAM_BSS_ATTR. Nothing goes in IRAM.
 - No camlink lock inside a draw. Screens read the `s_cams` snapshot `ui_pass()` refreshes; the start reads `camlink_online_mask()` between frames.
 - `ui.c` touches no NVS and no filesystem. A new FreeRTOS, heap or ESP-IDF call in `ui.c` needs a stub in `firmware/p4/host_preview/shim` and `firmware/p4/host_preview/preview.c`, and in `firmware/p4/twin_ui/shim` and `firmware/p4/twin_ui/twin_ui.c`.
 
