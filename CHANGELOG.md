@@ -53,6 +53,12 @@ KINO has no published release yet. Changes intended for the first release collec
   moment their frame is shown, the scrim on PIE, the ramps unthrottled,
   and a stale PPA completion that sent the start's first frames out by
   CPU is gone. Dim 14 -> 44 fps, slides 40-56 -> 60, moves 37-56 -> 55-64.
+  Outlined controls no longer go dark at the corners (#248).
+  `round_outline()` gave its corner ring the coverage of the outer edge
+  only, so a pixel in the middle of the 1 px ring got half the ink the
+  straight edges get, and the face under it showed through. The ring now
+  takes the area between the two circles, sampled at the pixel centre like
+  `round_rect()`.
 
 - **Firmware 0.4.62: update safety: Studio can update the camera, the shutter waits for it, and an image with rollback off does not build (#242).**
   Studio's updater opens with ENTER_MAINTENANCE (0x50), which the P4 never

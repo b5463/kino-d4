@@ -1171,13 +1171,25 @@ static void round_outline(int x, int y, int w, int h, int r, uint16_t c) {
   fill(x + w - 1, y + r, 1, h - 2 * r, c);
   const gfx_target_t *t = TG;
   if (x + w <= t->x0 || y + h <= t->y0 || x >= CV_X1(t) || y >= CV_Y1(t)) return;
+  /*
+   * The corner's 1 px ring: the area between the circle of radius r and the
+   * one of r - 1, sampled at the pixel centre like round_rect() and disc().
+   *
+   * It used to take its coverage from the outer edge alone (r - d), which
+   * gave a pixel in the middle of the ring half the ink the straight edges
+   * get. Every corner's keyline faded to half and the face under it showed
+   * through: a dark bite on the corners of every outlined control.
+   */
   const float rf = (float)r;
   for (int dy = 0; dy < r; dy++) {
     for (int dx = 0; dx < r; dx++) {
       const float ox = (float)(r - dx) - 0.5f, oy = (float)(r - dy) - 0.5f;
       const float d = sqrtf(ox * ox + oy * oy);
-      float cov = 1.0f - (d - rf + 1.0f > 0.0f ? d - rf + 1.0f : 0.0f);
-      if (d > rf || cov <= 0.0f || rf - d > 1.0f) continue;
+      float outer = rf - d + 0.5f, inner = rf - 1.0f - d + 0.5f;
+      outer = outer < 0.0f ? 0.0f : outer > 1.0f ? 1.0f : outer;
+      inner = inner < 0.0f ? 0.0f : inner > 1.0f ? 1.0f : inner;
+      const float cov = outer - inner;
+      if (cov <= 0.0f) continue;
       const int k = (int)(cov * 255.0f + 0.5f);
       const int xs[2] = {x + dx, x + w - 1 - dx};
       const int ys[2] = {y + dy, y + h - 1 - dy};
@@ -1185,7 +1197,8 @@ static void round_outline(int x, int y, int w, int h, int r, uint16_t c) {
         for (int b = 0; b < 2; b++) {
           if (!cv_in(t, xs[a], ys[b])) continue;
           uint16_t *p = cv_ptr(t, xs[a], ys[b]);
-          *p = mix(*p, c, k);
+          /* Full ink exactly, as the straight edges are filled. */
+          *p = k >= 254 ? c : mix(*p, c, k);
         }
     }
   }
