@@ -2798,6 +2798,50 @@ static void anim_phase(int phase, int32_t span_ms) {
 }
 
 /*
+ * The gaps between frames on the glass, from the panel's own refresh count
+ * (gfx_cadence()): min, median, p90 and max in ms, and how many frames were
+ * held past 20 ms and past 34 ms - one refresh missed, two missed. A move at
+ * an average 52 fps can be every frame on time but the first, or one frame in
+ * five held twice, and only the second judders; this line tells them apart
+ * (#248). The longest gap is printed exact, with the moment the frame that
+ * ended it went to the panel (seconds since boot, as the ring's own stamps),
+ * so a stall can be put beside what else the log says happened then. Longest
+ * line, a 14-character name, a four-digit max and three-digit counts: 93
+ * characters. The refresh period is the start's own line.
+ */
+static void cadence_report(const char *what) {
+  gfx_cadence_t c;
+  gfx_cadence(&c);
+  const uint32_t per = c.period_us != 0 ? c.period_us : 16667;
+  uint32_t n = 0;
+  for (int k = 0; k < 8; k++) n += c.hist[k];
+  if (n == 0) {
+    klog("P4", "%s gaps: no second frame", what);
+    return;
+  }
+  int kmin = -1, kmed = 0, k90 = 0;
+  uint32_t run = 0, over20 = 0, over34 = 0;
+  for (int k = 0; k < 8; k++) {
+    if (c.hist[k] == 0) continue;
+    if (kmin < 0) kmin = k;
+    const uint32_t before = run;
+    run += c.hist[k];
+    if (before * 2 < n && run * 2 >= n) kmed = k;
+    if (before * 10 < n * 9 && run * 10 >= n * 9) k90 = k;
+    if ((uint32_t)k * per > 20000) over20 += c.hist[k];
+    if ((uint32_t)k * per > 34000) over34 += c.hist[k];
+  }
+  /* Tenths of a ms. */
+  const unsigned t_min = (unsigned)(((uint32_t)kmin * per + 50) / 100), t_med = (unsigned)(((uint32_t)kmed * per + 50) / 100);
+  const unsigned t_90 = (unsigned)(((uint32_t)k90 * per + 50) / 100);
+  const unsigned t_max = (unsigned)(((uint64_t)c.max_n * per + 50) / 100);
+  const unsigned long at_ms = (unsigned long)(c.max_us / 1000);
+  klog("P4", "%s gaps ms: min %u.%u med %u.%u p90 %u.%u max %u.%u at %lu.%03lu s, >20 %lu, >34 %lu", what,
+       t_min / 10, t_min % 10, t_med / 10, t_med % 10, t_90 / 10, t_90 % 10, t_max / 10, t_max % 10,
+       at_ms / 1000, at_ms % 1000, (unsigned long)over20, (unsigned long)over34);
+}
+
+/*
  * What a move actually ran at, on this panel, in the log ring.
  *
  * The Twin steps one virtual frame per pass and cannot look choppy, so the
@@ -2813,6 +2857,8 @@ static void anim_phase(int phase, int32_t span_ms) {
  * (#248): a record that waited on the card lock was in none of the other
  * three, so the report read 14 ms a frame for a move that ran at 4 fps.
  * Longest second line, four-digit values: 94 characters.
+ *
+ * The third line is the cadence (cadence_report()).
  */
 static void anim_report(const char *what) {
   uint32_t f1 = 0;
@@ -2832,6 +2878,50 @@ static void anim_report(const char *what) {
   klog("P4", "%s per frame: %lu ms recording, %lu ms drawing, %lu ms writing out, %lu ms waiting", what,
        (unsigned long)(frames ? record_ms / frames : 0), (unsigned long)(frames ? draw_ms / frames : 0),
        (unsigned long)(frames ? xpose_ms / frames : 0), (unsigned long)(frames ? vsync_ms / frames : 0));
+  cadence_report(what);
+}
+
+/*
+ * The same report for what moves on the glass without being a move: the dim
+ * arriving, a lift (undim, wake), the sleep's wind-down in its three parts, a
+ * capture's strip landing, the power-down fade. Each runs frame by frame from
+ * ui_pass() (the fade from its own loop), so each is begun and ended where it
+ * starts and stops, and reports its frames and cadence on two lines. One at a
+ * time, and a move takes the cadence over: a move starting drops the ramp
+ * without a line. The names are compared as pointers.
+ */
+static const char RAMP_DIM[] = "dim", RAMP_UNDIM[] = "undim", RAMP_WAKE[] = "wake",
+                  RAMP_SLEEP_DARK[] = "sleep dark", RAMP_SLEEP_IN[] = "sleep mark in",
+                  RAMP_SLEEP_OUT[] = "sleep mark out", RAMP_LAND[] = "land", RAMP_FADE[] = "power fade";
+static EXT_RAM_BSS_ATTR struct {
+  const char *what; /* NULL: none running */
+  int64_t t0_us;
+  uint32_t f0;
+} s_ramp;
+
+static void ramp_begin(const char *what) {
+  s_ramp.what = what;
+  s_ramp.t0_us = esp_timer_get_time();
+  gfx_stats(&s_ramp.f0, NULL);
+  gfx_cadence_begin();
+}
+
+static void ramp_end(const char *what) {
+  if (s_ramp.what != what) return;
+  s_ramp.what = NULL;
+  uint32_t f1 = 0;
+  gfx_stats(&f1, NULL);
+  const uint32_t ms = (uint32_t)((esp_timer_get_time() - s_ramp.t0_us) / 1000);
+  const uint32_t frames = f1 - s_ramp.f0;
+  klog("P4", "%s: %lu frames in %lu ms (%lu fps)", what, (unsigned long)frames, (unsigned long)ms,
+       (unsigned long)(ms ? frames * 1000 / ms : 0));
+  cadence_report(what);
+}
+
+/** A move starting: the cadence is the move's from here. */
+static void cadence_for_move(void) {
+  s_ramp.what = NULL;
+  gfx_cadence_begin();
 }
 
 /** ms since the start's first frame, held to what st_seen[] can carry. */
@@ -2988,6 +3078,7 @@ static void anim_start_boot(void) {
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
   s_anim.record0_us = s_record_us;
+  cadence_for_move();
   anim_phase(0, 0);
 }
 
@@ -3001,6 +3092,11 @@ static void anim_start_boot(void) {
 static void start_done(uint8_t cams, bool note) {
   start_tell(cams);
   anim_report("start");
+  {
+    gfx_cadence_t c;
+    gfx_cadence(&c);
+    klog("P4", "panel refresh %lu us", (unsigned long)c.period_us);
+  }
   klog("P4", "start: lenses answered at %d %d %d %d ms, build at %d ms%s", s_anim.st_seen[0],
        s_anim.st_seen[1], s_anim.st_seen[2], s_anim.st_seen[3], s_anim.st_exit,
        s_anim.st_quick ? ", cut short" : "");
@@ -3076,6 +3172,7 @@ static void anim_start_open(int row, bool opening, screen_t card, int ms) {
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
   s_anim.record0_us = s_record_us;
+  cadence_for_move();
   anim_phase(0, ms);
 }
 
@@ -3109,6 +3206,7 @@ static void anim_start_slide(screen_t to, bool from_right, int ms) {
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
   s_anim.record0_us = s_record_us;
+  cadence_for_move();
   anim_phase(0, ms);
 }
 
@@ -3238,6 +3336,7 @@ static void power_down_anim(void) {
    */
   const int64_t t0 = esp_timer_get_time();
   const int64_t span_us = (int64_t)MOTION_POWER_FADE_MS * 1000;
+  ramp_begin(RAMP_FADE);
   for (int i = 1; i <= MOTION_POWER_FADE_FRAMES; i++) {
     float t = (float)i / (float)MOTION_POWER_FADE_FRAMES;
     const float by_clock = (float)(esp_timer_get_time() - t0) / (float)span_us;
@@ -3250,6 +3349,7 @@ static void power_down_anim(void) {
     const int64_t wait_ms = (due - esp_timer_get_time()) / 1000;
     if (wait_ms > 0) vTaskDelay(pdMS_TO_TICKS((uint32_t)wait_ms));
   }
+  ramp_end(RAMP_FADE);
   ui_render(render_black, NULL);
   vTaskDelay(pdMS_TO_TICKS(MOTION_POWER_BLACK_MS));
 }
@@ -8649,10 +8749,14 @@ static bool land_step(void) {
     return false;
   }
   const int64_t now = esp_timer_get_time();
-  if (s_land_us == 0) s_land_us = now;
+  if (s_land_us == 0) {
+    s_land_us = now;
+    ramp_begin(RAMP_LAND);
+  }
   const int64_t t = now - s_land_us;
   s_land_ink = land_ink(t);
   s_strip_gap = (uint8_t)close_gap((int32_t)(t < (int64_t)MOTION_LAND_MS * 1000 ? t / 1000 : MOTION_LAND_MS));
+  if (t >= (int64_t)MOTION_LAND_MS * 1000) ramp_end(RAMP_LAND);
   return t < (int64_t)MOTION_LAND_MS * 1000;
 }
 
@@ -10795,6 +10899,7 @@ static void lift_at(int64_t t_us, int32_t span_ms, int k0, int mark0, int *k, in
 static void lift_start(int k0, int mark0, int32_t span_ms) {
   s_lift_us = esp_timer_get_time();
   if (s_lift_us == 0) s_lift_us = 1;
+  ramp_begin(span_ms == MOTION_UNDIM_MS ? RAMP_UNDIM : RAMP_WAKE);
   s_lift_ms = span_ms;
   s_lift_k0 = k0;
   s_lift_mark0 = mark0;
@@ -10820,6 +10925,7 @@ static bool lift_step(bool *drew) {
     s_lift_us = 0;
     s_dim_k = 0;
     s_lift_mark = 0;
+    ramp_end(s_lift_ms == MOTION_UNDIM_MS ? RAMP_UNDIM : RAMP_WAKE);
     return false;
   }
   return true;
@@ -11274,7 +11380,10 @@ static uint32_t ui_pass(void) {
     bool lifting = false, lift_drew = false;
     {
       const bool dim_now = dim_drawn(&pst) && !power_sleep_pending() && !asleep_now;
-      if (dim_now && s_dim_since_us == 0) s_dim_since_us = esp_timer_get_time();
+      if (dim_now && s_dim_since_us == 0) {
+        s_dim_since_us = esp_timer_get_time();
+        ramp_begin(RAMP_DIM);
+      }
       if (!dim_now) s_dim_since_us = 0;
       if (power_sleep_pending() || s_sleep_mark) {
         s_lift_us = 0; /* the sleep's wind-down owns the scrim from here */
@@ -11292,6 +11401,7 @@ static uint32_t ui_pass(void) {
           s_dim_k = k;
           ui_render(render_screen, NULL);
         }
+        if (t >= 1.0f) ramp_end(RAMP_DIM);
       } else if (anim_active()) {
         /* A press on this pass started a move: the move takes the undim. */
         move_takes_scrim(s_dim_k, MOTION_UNDIM_MS);
@@ -11325,8 +11435,18 @@ static uint32_t ui_pass(void) {
       power_sleep_shown();
       s_sleep_mark = true;
       klog("P4", "sleep: wind-down from dim %d on screen %d", s_dim_k, (int)s_screen);
+      ramp_begin(RAMP_SLEEP_DARK);
     } else if (s_sleep_mark && power_sleep_pending() && !asleep_now) {
       const int64_t up = esp_timer_get_time() - s_sleep_mark_us;
+      /* The wind-down's three parts, each reported (ramp_end() ignores a
+       * part already ended); the hold between the last two draws nothing. */
+      if (up >= SLEEP_OUT_US && s_ramp.what == RAMP_SLEEP_DARK) {
+        ramp_end(RAMP_SLEEP_DARK);
+        ramp_begin(RAMP_SLEEP_IN);
+      }
+      if (up >= SLEEP_OUT_US + SLEEP_IN_US) ramp_end(RAMP_SLEEP_IN);
+      if (up >= SLEEP_OUT_US + SLEEP_IN_US + SLEEP_HOLD_US + SLEEP_FADE_US) ramp_end(RAMP_SLEEP_OUT);
+      else if (up >= SLEEP_OUT_US + SLEEP_IN_US + SLEEP_HOLD_US && s_ramp.what == NULL) ramp_begin(RAMP_SLEEP_OUT);
       if (up < SLEEP_OUT_US) {
         const float t = (float)up / (float)SLEEP_OUT_US;
         const int k = s_sleep_dim0 + (int)((float)(SLEEP_DARK_K - s_sleep_dim0) * ease_ui(t) + 0.5f);

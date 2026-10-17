@@ -27,6 +27,9 @@ static bool on_srm_done(ppa_client_handle_t client, ppa_event_data_t *event, voi
 static SemaphoreHandle_t s_vsync;
 static volatile bool s_swap_pending; /* a hand-over happened; the panel has not yet switched */
 static uint64_t s_vsync_us;          /* time spent waiting for the panel, since boot */
+/* Refresh ends since boot: one word the interrupt writes, so it stays in
+ * internal RAM; the cadence kept from it (show()) is in PSRAM. */
+static volatile uint32_t s_vsync_n;
 
 /* The refresh end, in interrupt context. In IRAM because the driver insists
  * (it runs from the DMA's frame-end interrupt). */
@@ -35,6 +38,7 @@ static bool IRAM_ATTR on_refresh_done(esp_lcd_panel_handle_t panel,
   (void)panel;
   (void)edata;
   (void)user_ctx;
+  s_vsync_n = s_vsync_n + 1;
   BaseType_t woken = pdFALSE;
   if (s_vsync != NULL) xSemaphoreGiveFromISR(s_vsync, &woken);
   return woken == pdTRUE;
@@ -337,6 +341,60 @@ static void measure_rotate(void) {
   memset(s_canvas, 0, CANVAS_BYTES);
 }
 
+/* The cadence (gfx_cadence()): the refresh count at the last hand-over, the
+ * spread of the gaps since gfx_cadence_begin(), and a reference point for
+ * the refresh period. PSRAM: only show() and the readers touch it. */
+static EXT_RAM_BSS_ATTR struct {
+  bool have;
+  uint32_t last_n;
+  uint16_t hist[8];
+  uint32_t max_d;   /* the longest gap, in refreshes, uncapped */
+  int64_t max_us;   /* when the frame that ended it was handed over */
+  int64_t ref_us;
+  uint32_t ref_n;
+} s_cad;
+
+void gfx_cadence_begin(void) {
+  s_cad.have = false;
+  memset(s_cad.hist, 0, sizeof s_cad.hist);
+  s_cad.max_d = 0;
+  s_cad.max_us = 0;
+}
+
+void gfx_cadence(gfx_cadence_t *out) {
+  if (out == NULL) return;
+  memcpy(out->hist, s_cad.hist, sizeof out->hist);
+  out->max_n = s_cad.max_d;
+  out->max_us = s_cad.max_us;
+  out->period_us = 0;
+  const uint32_t n = s_vsync_n - s_cad.ref_n;
+  if (s_cad.ref_us != 0 && n >= 30) out->period_us = (uint32_t)((esp_timer_get_time() - s_cad.ref_us) / n);
+}
+
+/* A hand-over latches at the next refresh end, so the frame is on the glass
+ * from refresh n + 1, where n is the count now: the gap to the last frame is
+ * the difference of the two counts. A refresh end that lands between this
+ * read and the driver's switch makes one gap a refresh long and the next a
+ * refresh short; rare, and it cannot hide a held frame. */
+static void cadence_note(void) {
+  const uint32_t n = s_vsync_n;
+  if (s_cad.ref_us == 0) {
+    s_cad.ref_us = esp_timer_get_time();
+    s_cad.ref_n = n;
+  }
+  if (s_cad.have) {
+    uint32_t d = n - s_cad.last_n;
+    if (d > s_cad.max_d) {
+      s_cad.max_d = d;
+      s_cad.max_us = esp_timer_get_time();
+    }
+    if (d > 7) d = 7;
+    if (s_cad.hist[d] < UINT16_MAX) s_cad.hist[d]++;
+  }
+  s_cad.last_n = n;
+  s_cad.have = true;
+}
+
 /** Hand a framebuffer to the panel. The driver recognises its own buffer and
  *  only writes the cache back and switches the scan source - no copy. */
 static void show(void *fb) {
@@ -345,6 +403,7 @@ static void show(void *fb) {
   /* Any refresh end that happened before this hand-over is not the one the
    * next writer must wait for. */
   if (s_vsync != NULL) xSemaphoreTake(s_vsync, 0);
+  cadence_note();
   esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, 0, DISPLAY_H_RES, DISPLAY_V_RES, fb);
   if (err != ESP_OK) ESP_LOGE(TAG, "present failed: %s", esp_err_to_name(err));
   /* The backlight comes on with the first frame there is (FW-08); a bool
@@ -598,6 +657,7 @@ void gfx_slide_show(int o, int b, bool from_right) {
   const size_t row = DISPLAY_H_RES; /* one landscape column, in pixels */
   uint16_t *fb = s_fb[s_back];
   wait_back_free();
+  const int64_t c0 = esp_timer_get_time();
   if (from_right) {
     /* Columns [0, UI_W-o) show the leaving screen from column b on; the rest
      * is the arriving screen's first o columns. */
@@ -612,6 +672,8 @@ void gfx_slide_show(int o, int b, bool from_right) {
   }
   /* The CPU wrote it; the panel reads it by DMA. */
   esp_cache_msync(fb, PANEL_BYTES, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+  /* The copy is this frame's writing out, and a move's report says so. */
+  s_xpose_us += (uint64_t)(esp_timer_get_time() - c0);
   show(fb);
   s_back ^= 1;
   s_frames++;

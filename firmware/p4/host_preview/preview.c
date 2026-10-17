@@ -212,6 +212,11 @@ void gfx_pass_split(uint64_t *d, uint64_t *x, uint64_t *v) {
   if (x) *x = 0;
   if (v) *v = 0;
 }
+/* No panel, no refreshes: a move's cadence line reads "no second frame". */
+void gfx_cadence_begin(void) {}
+void gfx_cadence(gfx_cadence_t *out) {
+  if (out != NULL) memset(out, 0, sizeof *out);
+}
 
 /* ui.c registers its tasks so GET_RUNTIME_STATS can report their stack
  * headroom. There are no tasks here - ui.c's are never created - so this

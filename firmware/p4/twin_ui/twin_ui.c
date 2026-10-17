@@ -332,6 +332,11 @@ void gfx_pass_split(uint64_t *d, uint64_t *x, uint64_t *v) {
   if (x) *x = 0;
   if (v) *v = 0;
 }
+/* No panel, no refreshes: a move's cadence line reads "no second frame". */
+void gfx_cadence_begin(void) {}
+void gfx_cadence(gfx_cadence_t *out) {
+  if (out != NULL) memset(out, 0, sizeof *out);
+}
 
 void taskmon_register(const char *name, void *handle) {
   (void)name;

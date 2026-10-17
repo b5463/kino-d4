@@ -185,4 +185,27 @@ uint64_t gfx_present_us_total(void);
  *  refresh end, since boot. */
 void gfx_pass_split(uint64_t *draw_us, uint64_t *xpose_us, uint64_t *vsync_us);
 
+/**
+ * The cadence the eye saw: how many panel refreshes each frame stayed up.
+ *
+ * The panel switches buffers only at a refresh end, so the time between two
+ * frames on the glass is a whole number of refreshes. A move that averages
+ * 50 fps is mostly one-refresh frames with some held for two, and the two are
+ * the judder; an average cannot show them. Counted per hand-over from the
+ * refresh-end interrupt's count, since gfx_cadence_begin(). hist[k] is the
+ * frames that followed the one before by k refreshes (k = 1..6, [7] for 7 or
+ * more; [0] would be a frame replaced before it was shown). period_us is one
+ * refresh, measured against esp_timer since the first frame; 0 until known.
+ * max_n is the longest gap in refreshes, uncapped, and max_us when the frame
+ * that ended it was handed over (esp_timer).
+ */
+typedef struct {
+  uint16_t hist[8];
+  uint32_t period_us;
+  uint32_t max_n;
+  int64_t max_us;
+} gfx_cadence_t;
+void gfx_cadence_begin(void);
+void gfx_cadence(gfx_cadence_t *out);
+
 #endif
