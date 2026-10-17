@@ -486,11 +486,27 @@ void gfx_pass_split(uint64_t *draw_us, uint64_t *xpose_us, uint64_t *vsync_us) {
   if (vsync_us) *vsync_us = s_vsync_us;
 }
 
-/* The engine's completion, in interrupt context: one give, nothing else. */
+/*
+ * The engine's completion, in interrupt context: one give, nothing else, and
+ * only for a tile.
+ *
+ * The driver calls this for every transaction on the client, the blocking
+ * whole-frame rotates too (measure_rotate, the slide's two, a present). Each
+ * of those left a give nobody took, and the next tile pass took it as the
+ * first tile's completion while that tile was still on the engine: the second
+ * tile was refused ("exceed maximum pending transactions"), went out by CPU
+ * with an error line on the 115200 console, and the early give and the late
+ * one kept every other tile of the frame failing the same way. Measured on
+ * the panel (#248): the start's first frame took 513 ms to write out, 42 of
+ * its 85 tiles by CPU, and the second 194 ms. A tile's transaction carries
+ * TILE_TAG as its user data; nothing else gives.
+ */
+static const int s_tile_tag = 1; /* its address is the tag */
+#define TILE_TAG ((void *)&s_tile_tag)
 static bool on_srm_done(ppa_client_handle_t client, ppa_event_data_t *event, void *user_data) {
   (void)client;
   (void)event;
-  (void)user_data;
+  if (user_data != TILE_TAG) return false;
   BaseType_t woken = pdFALSE;
   if (s_srm_done != NULL) xSemaphoreGiveFromISR(s_srm_done, &woken);
   return woken == pdTRUE;
@@ -528,6 +544,7 @@ static esp_err_t rotate_tile_async(const uint16_t *tile, int w, int h, int tx, i
       .scale_x = 1.0f,
       .scale_y = 1.0f,
       .mode = PPA_TRANS_MODE_NON_BLOCKING,
+      .user_data = TILE_TAG,
   };
   return ppa_do_scale_rotate_mirror(s_srm, &cfg);
 }
