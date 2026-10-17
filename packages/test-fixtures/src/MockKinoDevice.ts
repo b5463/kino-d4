@@ -57,6 +57,8 @@ import { sha256Hex } from './sha256';
 import type { ScenarioFlags, CamFault } from './scenarios';
 import { DEFAULT_SCENARIOS } from './scenarios';
 import { MockMediaStore, renderPreviewFrame } from './MockMediaStore';
+import { MockScreen } from './MockScreen';
+import type { ScreenReply } from './MockScreen';
 import type { TwinTelemetry, TwinSnapshot } from './telemetry';
 import { FIRMWARE_PROFILES, PROFILE_FOR_VERSION } from './firmwareProfiles';
 import type { FirmwareProfileId } from './firmwareProfiles';
@@ -519,6 +521,9 @@ export class MockKinoDevice implements MockDeviceLike {
   private sdErrors = 0;
   private captureCounter = 137;
   private readonly media = new MockMediaStore();
+  /** The body's own screen, for the Screen group (#246). Built in the
+   * constructor: it reads the device clock. */
+  private readonly screenUi: MockScreen;
   private configRevision = 3;
   private uartBaud = 921600;
   /** KINO Twin §20 batterySag: end of the transient dip a capture just triggered. */
@@ -618,6 +623,14 @@ export class MockKinoDevice implements MockDeviceLike {
     this.bootedAt = this.now();
     this.lastActivityAt = this.now();
     this.cams = this.freshCams('0.4.56');
+    /* A condition the body's SETTINGS would list under STATUS: the card
+     * missing or full, or a lens not answering (conditions.h). */
+    this.screenUi = new MockScreen(
+      this.now,
+      (msg) => this.log('P4', msg),
+      () =>
+        this.scenarios.sdMissing || this.scenarios.sdFull || CAM_IDS.some((id) => !this.cameraInfo(id).online),
+    );
     this.networks = [
       { ssid: 'kino-bench', password: 'benchwifi2026', security: 'wpa2', autoJoin: true, lastSeen: this.now() - 40_000 },
       { ssid: 'loft-guest', password: 'partytime', security: 'wpa2', autoJoin: false, lastSeen: null },
@@ -1870,6 +1883,24 @@ export class MockKinoDevice implements MockDeviceLike {
     return !this.scenarios.legacyFirmware && !this.scenarios.unsupportedCommands;
   }
 
+  /** The Screen group (#246) — same rule: `screenControl` and the gate agree. */
+  private supportsScreen(): boolean {
+    return !this.scenarios.legacyFirmware && !this.scenarios.unsupportedCommands;
+  }
+
+  private static readonly SCREEN_COMMANDS: number[] = [Cmd.GET_SCREEN, Cmd.SCREEN_PLATE, Cmd.UI_TAP, Cmd.UI_KEY];
+
+  /** What the screen is showing, for tests and the Twin. */
+  screenState(): { screen: string; plate: boolean } {
+    return this.screenUi.current;
+  }
+
+  private respondScreen(frame: Frame, reply: ScreenReply) {
+    if (reply.kind === 'json') this.respond(frame, reply.body);
+    else if (reply.kind === 'bytes') this.respondBytes(frame, reply.bytes);
+    else this.respondError(frame, reply.code, reply.message);
+  }
+
   private static readonly BENCH_COMMANDS: number[] = [
     Cmd.STORAGE_SELF_TEST,
     Cmd.STORAGE_BENCH,
@@ -2457,6 +2488,9 @@ export class MockKinoDevice implements MockDeviceLike {
       // STORAGE_SELF_TEST / CAMERA_LINK_STATS(_RESET) / CAMERA_SOAK_TEST /
       // GET_HW_VALIDATION below.
       benchDiagnostics: this.supportsBench(),
+      // The Screen group (#246): same predicate as the gate on GET_SCREEN,
+      // SCREEN_PLATE, UI_TAP and UI_KEY below.
+      screenControl: this.supportsScreen(),
       // True for the demo device, which is a body whose backlight is on a
       // PWM channel — `body.brightness` is stored and echoed and there is
       // no panel here to darken, so nothing dims either way. It reports
@@ -2563,7 +2597,8 @@ export class MockKinoDevice implements MockDeviceLike {
       (!this.supportsNetworkRoll() &&
         MockKinoDevice.NETWORK_ROLL_COMMANDS.includes(frame.type)) ||
       (!this.supportsBench() && MockKinoDevice.BENCH_COMMANDS.includes(frame.type)) ||
-      (!this.supportsBench() && frame.type === Cmd.SYNC_BENCH);
+      (!this.supportsBench() && frame.type === Cmd.SYNC_BENCH) ||
+      (!this.supportsScreen() && MockKinoDevice.SCREEN_COMMANDS.includes(frame.type));
     if (gated) {
       this.respondError(
         frame,
@@ -2651,6 +2686,21 @@ export class MockKinoDevice implements MockDeviceLike {
         this.respond(frame, { ok: true, retried, queue: this.uploadQueueReport() });
         return;
       }
+      case Cmd.GET_SCREEN:
+        this.respondScreen(frame, this.screenUi.getScreen(decodeJson(frame.payload)));
+        return;
+      case Cmd.SCREEN_PLATE:
+        this.lastActivityAt = this.now();
+        this.respondScreen(frame, this.screenUi.screenPlate(decodeJson(frame.payload)));
+        return;
+      case Cmd.UI_TAP:
+        this.lastActivityAt = this.now();
+        this.respondScreen(frame, this.screenUi.uiTap(decodeJson(frame.payload)));
+        return;
+      case Cmd.UI_KEY:
+        this.lastActivityAt = this.now();
+        this.respondScreen(frame, this.screenUi.uiKey(decodeJson(frame.payload)));
+        return;
       case Cmd.UPLOAD_ENQUEUE: {
         const { captureId } = decodeJson<{ captureId?: string }>(frame.payload);
         if (typeof captureId !== 'string' || captureId.length === 0) {

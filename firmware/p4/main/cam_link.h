@@ -234,6 +234,17 @@ esp_err_t camlink_init(void);
  * legitimately only cares about the one node the M1B harness has.
  */
 void camlink_get_info_ch(int cam, camlink_info_t *out);
+/**
+ * Which cameras answer, bit i for CAM(i+1): the `online` of all four, without
+ * a lock (#245).
+ *
+ * camlink_get_info_ch() waits up to 20 ms per channel for the lock, and
+ * cam_probe holds a dead node's lock across a whole HELLO, so four reads can
+ * stall the caller by about 80 ms. The start animation reads this every frame
+ * instead. One byte, written with the channel lock held wherever `online`
+ * changes, read with one atomic load.
+ */
+uint8_t camlink_online_mask(void);
 void camlink_get_stats_ch(int cam, camlink_stats_t *out);
 void camlink_reset_stats_ch(int cam);
 esp_err_t camlink_hello_ch(int cam);

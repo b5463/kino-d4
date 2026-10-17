@@ -370,6 +370,16 @@ void capture_last(capture_report_t *out);
 uint32_t capture_count(void);
 
 /**
+ * Whether this body has a flash to fire: BOARD_FLASH_EN names a pin.
+ *
+ * False on D4-V1. ECN-0003 gave GPIO28 to the shutter and dropped the built-in
+ * flash; the external module that replaces it has no P4 pin and no interface
+ * yet, so nothing listens. The UI draws no flash control while this is false
+ * (#247). A compile-time fact, so it answers before the first capture.
+ */
+bool capture_has_flash(void);
+
+/**
  * Convert the host-facing quality percentage to the sensor's scale.
  *
  * `jpegQuality` is documented as 60..95 across the contract and Studio's

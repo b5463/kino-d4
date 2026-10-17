@@ -186,6 +186,12 @@ export interface Capabilities {
    * as a general "missing means yes" rule — see D19.
    */
   brightnessControl?: boolean;
+  /**
+   * The body's own screen answers over KDP (#246): GET_SCREEN, SCREEN_PLATE,
+   * UI_TAP and UI_KEY. Absent on firmware older than the group; absence is a
+   * "no" like every other optional flag.
+   */
+  screenControl?: boolean;
 }
 
 /** Focus modes (audit #55). PARTY AUTO: AF then lock then capture. PARTY
@@ -440,6 +446,122 @@ export interface StorageBenchResult {
   sustained?: StorageBenchPass;
   /** A 64 KiB run, directly comparable with STORAGE_SELF_TEST on the same card. */
   small?: StorageBenchPass;
+}
+
+// ---- Screen (#246) ----
+
+/** The logical screen: landscape, the panel's long axis across. */
+export const SCREEN_W = 800;
+export const SCREEN_H = 480;
+/** The most one GET_SCREEN page carries. 250 pages make a screen. */
+export const SCREEN_CHUNK_MAX = 3072;
+
+/**
+ * The screen the body is on, as GET_SCREEN names it. Lower-case names of the
+ * firmware's `screen_t` (firmware/p4/main/ui.c), in its order;
+ * `UI_SCREEN_IDS` in ui.h is the C side of this list.
+ */
+export const SCREEN_IDS = [
+  'menu',
+  'shoot',
+  'look',
+  'gallery',
+  'photo',
+  'roll',
+  'settings',
+  'display',
+  'sound',
+  'connection',
+  'storage',
+  'about',
+  'status',
+  'power',
+] as const;
+export type ScreenId = (typeof SCREEN_IDS)[number];
+
+/**
+ * GET_SCREEN request. Two steps on one command:
+ *
+ * - `{}` renders the screen once into the body's canvas, with no new buffer,
+ *   and answers `ScreenShotInfo`. Refused `BUSY` while a move, the boot
+ *   sequence or the sleep's wind-down owns the panel: ask again.
+ * - `{ shot, offset, length }` answers BINARY: `length` bytes (1..3072;
+ *   absent or 0 is 3072) of that render from `offset`, short at the end, empty at
+ *   exactly `bytes`. Refused `INVALID_STATE` once the canvas was drawn again
+ *   after `shot` (a move started): render again. A host reads every page and
+ *   then asks once more at `offset: bytes` - an empty reply there proves the
+ *   last page was read from the same picture as the first.
+ */
+export interface GetScreenRequest {
+  shot?: number;
+  offset?: number;
+  /** 1..3072; absent or 0 is 3072. */
+  length?: number;
+}
+
+export interface ScreenShotInfo {
+  /** Names this render; pass it back with every page. Never 0. */
+  shot: number;
+  width: number;
+  height: number;
+  /** RGB565, row-major from the top-left, two bytes a pixel, low byte first. */
+  format: 'rgb565le';
+  /** width x height x 2. */
+  bytes: number;
+  /** The largest page the body answers. */
+  chunkMax: number;
+  /** The screen under the render; on a plate, the screen the plate covers. */
+  screen: ScreenId;
+  /** True when the render is the test plate. */
+  plate: boolean;
+}
+
+/** SCREEN_PLATE request. The plate holds the panel awake and ends on a touch,
+ * a key, `{ on: false }` or after 5 minutes. */
+export interface ScreenPlateRequest {
+  on: boolean;
+}
+
+export interface ScreenPlateResponse {
+  ok: true;
+  on: boolean;
+}
+
+/**
+ * UI_TAP request: logical coordinates, x 0..799 across, y 0..479 down, the
+ * same space the host_preview renders are in. The contact is held `holdMs`
+ * (20..4000, default 80) and lifted, through the path a finger takes - the
+ * palm edge, the drift and hold rules, the wake that swallows a press on a
+ * dark screen. Taps queue four deep; a fifth is refused `BUSY`.
+ */
+export interface UiTapRequest {
+  x: number;
+  y: number;
+  holdMs?: number;
+}
+
+export interface UiTapResponse {
+  ok: true;
+  /** Taps waiting on the body, this one included. */
+  queued: number;
+}
+
+export type UiKey = 'shutter' | 'fn';
+
+/**
+ * UI_KEY request: a key press through the queue the physical keys use. The
+ * shutter on SHOOT takes a photograph, exactly as the button does.
+ * `longPress` also sends the hold report the button sends at 600 ms, which
+ * the screen ignores, as it does the button's.
+ */
+export interface UiKeyRequest {
+  key: UiKey;
+  longPress?: boolean;
+}
+
+export interface UiKeyResponse {
+  ok: true;
+  key: UiKey;
 }
 
 /** One STORAGE_BENCH pass as `bench_pass_json` emits it. */

@@ -42,6 +42,7 @@
 #include "kdp_net.h"
 #include "kdp_recipes.h"
 #include "kdp_sounds.h"
+#include "kdp_ui.h"
 #include "kdp/crc32.h"
 #include "kdp/decoder.h"
 #include "kdp/packet.h"
@@ -792,6 +793,10 @@ static void handle_capabilities(uint32_t seq) {
    * nothing to move. Studio reads this to grey its slider out instead of
    * offering a control that does nothing. */
   cJSON_AddBoolToObject(caps, "brightnessControl", false);
+  /* The Screen group (#246, kdp_ui.c): dispatched in every build, so the flag
+   * is a constant like the dispatch. A body whose panel did not come up still
+   * answers, with INVALID_STATE, rather than claiming the group is gone. */
+  cJSON_AddBoolToObject(caps, "screenControl", true);
 
   /*
    * Networking and Roll. Four flags rather than two, for the same reason
@@ -1487,7 +1492,10 @@ static int media_scan(char (*names)[64], int cap, int *on_card) {
    * failure the sort was added to fix. gallery.c solved the same problem the
    * same way.
    */
-  uint64_t *when = calloc((size_t)cap, sizeof *when);
+  /* PSRAM first (#244): 4 KB at MEDIA_MAX_LIST, CPU-only, one task. A NULL
+   * here is already handled below - the sort falls back to names. */
+  uint64_t *when = heap_caps_calloc((size_t)cap, sizeof *when, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (when == NULL) when = calloc((size_t)cap, sizeof *when);
   int count = 0;
   int total = 0;
   struct dirent *e;
@@ -1698,6 +1706,17 @@ static bool media_id_ok(const char *id) { return id != NULL && pure_is_capture_d
  * the frame's own header and CRC have to fit alongside it. */
 #define MEDIA_READ_MAX 8192
 
+/* The reply buffer for MEDIA_READ and MEDIA_THUMB, in PSRAM (#244). Up to
+ * MEDIA_READ_MAX, so a plain malloc put it in internal SRAM for every MEDIA_READ
+ * a client sends. It is filled by fread and copied into the frame by send_raw;
+ * the P4's SDMMC DMA reaches PSRAM when the buffer is cache-line aligned, so
+ * whole-sector reads stay on the direct path. Internal only if PSRAM is
+ * exhausted. Free with free(). */
+static uint8_t *media_buf_alloc(size_t n) {
+  uint8_t *buf = heap_caps_aligned_alloc(64, n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  return buf != NULL ? buf : malloc(n);
+}
+
 /* Upper bound for a read offset. fseek() takes a long, which is 32-bit here,
  * and FAT32 caps a file at 4 GB anyway; 2^31-1 is exactly representable as a
  * double, so clamping to it cannot round past LONG_MAX on the way back. */
@@ -1742,7 +1761,7 @@ static void handle_media_read(uint32_t seq, const cJSON *req) {
     send_nack(KDP_CMD_MEDIA_READ, seq, "BAD_REQUEST", "Offset is past the end of the file");
     return;
   }
-  uint8_t *buf = malloc((size_t)length);
+  uint8_t *buf = media_buf_alloc((size_t)length);
   if (buf == NULL) {
     fclose(f);
     send_nack(KDP_CMD_MEDIA_READ, seq, "BUSY", "Out of memory");
@@ -1785,7 +1804,7 @@ static void handle_media_thumb(uint32_t seq, const cJSON *req) {
     send_nack(KDP_CMD_MEDIA_THUMB, seq, "BAD_REQUEST", "Offset is past the end of the file");
     return;
   }
-  uint8_t *buf = malloc((size_t)length);
+  uint8_t *buf = media_buf_alloc((size_t)length);
   if (buf == NULL) {
     fclose(f);
     send_nack(KDP_CMD_MEDIA_THUMB, seq, "BUSY", "Out of memory");
@@ -3793,6 +3812,13 @@ static void on_frame(const kdp_frame_t *frame, void *ctx) {
     case KDP_CMD_SOUND_DELETE:
       send_module(frame->type, frame->seq,
                   kdp_sounds_handle(frame->type, req, frame->payload, frame->payload_len));
+      break;
+    /* The body's own screen (#246): kdp_ui.c asks the UI task and answers. */
+    case KDP_CMD_GET_SCREEN:
+    case KDP_CMD_SCREEN_PLATE:
+    case KDP_CMD_UI_TAP:
+    case KDP_CMD_UI_KEY:
+      send_module(frame->type, frame->seq, kdp_ui_handle(frame->type, req));
       break;
     case KDP_CMD_SET_MODE: handle_set_mode(frame->seq, req); break;
     case KDP_CMD_GET_CONFIG: handle_get_config(frame->seq); break;

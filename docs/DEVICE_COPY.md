@@ -93,7 +93,7 @@ The rows at the foot of STATUS:
 |---|---|
 | `MENU` | The way out, on the back button beside the picture. |
 | `WIGGLE` / `QUAD` | The mode, on the decisions bar. Tapping the bar opens LOOK. |
-| `AUTO` / `ON` / `OFF` | The flash, beside the bolt on the decisions bar. |
+| `AUTO` / `ON` / `OFF` | The flash, beside the bolt on the decisions bar. Only on a body with a flash fitted (`capture_has_flash()`); D4-V1 has none since ECN-0003, so its bar has no flash panel. |
 | `TIMER OFF` / `TIMER 10 S` | The self-timer's own panel, at the hand's end of the bar. A tap switches it and says nothing. With TIMER 10 S the next shutter press starts the count. Off at boot and at the sleep. |
 | `NO PICTURE` | A finder pane with no pixels: the lens reported an error, its frames stopped, or it is not linked. One word for all three; the pane's place says which lens. Said once the first 1.5 s of SHOOT have passed. |
 | `RESTART THE CAMERAS` | The button under it, on that pane. The same action as the STATUS row, with no confirm. Not offered while a photograph is being taken or the self-timer counts: NO PICTURE alone then, and a tap on the pane during the count cancels it. |
@@ -107,7 +107,8 @@ The rows at the foot of STATUS:
 | `TAKEN. SAVING` | The frames are crossing to the card. Each lens's cell fills as its frame arrives. |
 | `TAKEN. NEXT ONE QUEUED` | The same, after a second shutter press; the next photo fires when this one is saved. |
 | `TAKE THE LENS COVER OFF` | On SHOOT, every pane was lit and then all went dark for a second: the cover went on. A body switched on facing the desk says nothing. |
-| `NO CARD. PUT ONE IN` | On SHOOT, the card pill: the slot was empty from boot. Outranks the lens hint; the self-timer outranks it. |
+| `NO CARD. PUT ONE IN` | On SHOOT, the card pill: the slot was empty from boot. Outranks the first-use hint and the lens hint; the self-timer outranks it. |
+| `PRESS THE SHUTTER ON TOP` | On SHOOT, an ink pill in the same slot until the first photograph exists: the card holds none and none was taken this boot. Below the card pill, above the lens hint. |
 | `CARD OUT. PUT IT BACK` | The card pill: the card was pulled while running. |
 | `CARD CANNOT BE READ` | The card pill: a card is in the slot and did not mount. |
 | `CARD FAILED. CHANGE THE CARD` | The card pill: the card failed its write test. |
@@ -151,6 +152,7 @@ The rows at the foot of STATUS:
 | Restored | UNDO tapped in time. |
 | Could not restore it | The folder would not move back. |
 | Timer cancelled | Either key or a tap that lands on the picture during the self-timer, TIMER turned off during it, or SHOOT left while it counts. |
+| Press the shutter on top. | A tap on a pane with a picture while `PRESS THE SHUTTER ON TOP` is up. The tap presses nothing else. |
 | Deleting photos | DELETE ALL started on the gallery task. |
 | No photos on the card | DELETE ALL with nothing to delete. |
 | No card in the slot | FORMAT with nothing in the slot. |
@@ -170,7 +172,7 @@ The rows at the foot of STATUS:
 | Updating. Keep the camera on. | The shutter, or RESTART THE CAMERAS, while a firmware update runs: a session open or the camera in maintenance. No photograph is taken until the update ends; an abandoned one ends by itself, the session after 60 s without data, maintenance after 600 s without a command. |
 | Cameras did not start. Restart KINO | The shutter, on a body whose capture pipeline failed to come up at boot. Said instead of blaming a capture that is not running. |
 | Favourite / Not favourite | FAVOURITE pressed on PHOTO; the mark went on or came off. |
-| First photo / Last photo | PREV on the first photograph, or NEXT on the last. |
+| First photo / Last photo | PREV or a rightward swipe on the newest photograph on the card, or NEXT or a leftward swipe on the oldest. Anywhere else a step crosses gallery pages and says nothing. |
 | WIGGLE / QUAD | The mode band on LOOK was pressed. |
 | COLOUR / B&W | The colour band on LOOK was pressed. |
 
@@ -178,7 +180,7 @@ The look's own name is also toasted when a look is picked.
 
 ## Dialogs
 
-Every dialog has two rows: the action on top, CANCEL under it, where the thumb reaches first.
+Every dialog has two rows: the action on top, the safe answer under it, where the thumb reaches first. The safe answer is CANCEL, and KEEP on DELETE, which names what it does to the photograph. A sleep closes an open question with its safe answer, the lower row. Nothing is said: the camera wakes without the question. FIRST START and UPDATED stay up over a sleep: they ask nothing and show once, so a note put down unread is still there at the wake.
 
 | Title | Question | Line | Buttons | When |
 |---|---|---|---|---|
@@ -186,9 +188,9 @@ Every dialog has two rows: the action on top, CANCEL under it, where the thumb r
 | UPDATED | KINO has been updated. | Now on <version>. Nothing to do. | OK / CANCEL | The first boot on a new version, once. |
 | RESTART | Restart the camera? | KINO restarts and opens the menu. | RESTART / CANCEL | POWER > RESTART |
 | FACTORY RESET | Reset the camera? | Settings, networks and roll are erased. | RESET / CANCEL | POWER > FACTORY RESET |
-| DELETE | Delete this photo? | N frame(s). Undo for 30 s after. | DELETE / CANCEL | PHOTO > DELETE. The toast after it offers UNDO for those 30 s. |
-| DELETE ALL | Delete every photo? | N photo(s). This cannot be undone. | DELETE ALL / CANCEL | STORAGE > DELETE ALL PHOTOS |
-| FORMAT CARD | Erase the card? | Every photo on it is deleted. | FORMAT / CANCEL | STORAGE > FORMAT CARD |
+| DELETE | Delete this photo? | N frame(s). Undo for 30 s after. | DELETE / KEEP | PHOTO > DELETE. The photograph itself sits between the title and the question, its gallery tile at half size, when that tile is in memory as the question opens. The room is fixed at the open: a tile dropped while it is up leaves an empty grey box. The toast after it offers UNDO for those 30 s. |
+| DELETE ALL | Delete every photo? | This cannot be undone. | DELETE ALL / CANCEL | STORAGE > DELETE ALL PHOTOS. The count it takes, `14 PHOTOS`, large under the title. The room is fixed at the open, and the count line is kept empty until the card is counted. |
+| FORMAT CARD | Erase the card? | Every photo on it is deleted. | FORMAT / CANCEL | STORAGE > FORMAT CARD. The same count large under the title. The room is fixed at the open, and the count line is kept empty until the card is counted. |
 
 ## Screen rows and labels
 
@@ -210,9 +212,9 @@ calls and fails when one of them is not in this table.
 |---|---|
 | `MIXED` | The four lenses carry different looks. |
 | `NONE` | No look is set. |
-| `MODE` / `FLASH` / `COLOUR` | The legends over the three bands. |
+| `MODE` / `FLASH` / `COLOUR` | The legends over the bands: three with a flash fitted, `MODE` and `COLOUR` only on D4-V1. |
 | `WIGGLE` / `QUAD` | The mode band. |
-| `AUTO` / `ON` / `OFF` | The flash band. |
+| `AUTO` / `ON` / `OFF` | The flash band. Not drawn and not pressable with no flash fitted. |
 | `COLOUR` / `B&W` | The colour band. |
 | `TARGET` | The band that picks which lens the next look lands on. QUAD only. |
 | `ALL` | The target band's one word, at the hand's end. The four lenses beside it are the four-mark with that lens's cell lit, no words. |
@@ -243,7 +245,9 @@ calls and fails when one of them is not in this table.
 | `SEND TO ROLL` | The button that queues the photograph for the Roll. |
 | `DELETE` | The button that opens the DELETE dialog. |
 | `SENT` | After the mode, once the Roll holds every frame. |
-| `TODAY 18:01` | When it was taken, in the clock's zone; `21 SEP 18:01` on any other day. |
+| `TODAY 18:01` | The column's first line: when it was taken, in the clock's zone; `21 SEP 18:01` on any other day. |
+| `NO DATE` | The first line instead, for a photograph taken before the clock was ever set. |
+| `PHOTO 37` | The third line, under the mode: its place in the gallery, 1 the newest. Not shown on the review after a shot until the gallery's page holds it. |
 | `JAN` / `FEB` / `MAR` / `APR` / `MAY` / `JUN` / `JUL` / `AUG` / `SEP` / `OCT` / `NOV` / `DEC` | The month in that date. |
 | `2 MISSING` | A photo whose capture lost frames: how many lenses that were asked have no file on the card. The red cells under CAMERAS say which. The card does not record which were asked, so in the gallery every lens counts. |
 | `1 DAMAGED` | A frame is on the card and would not open. Shown when no lens is missing. The red cell under CAMERAS says which. |
@@ -375,10 +379,15 @@ calls and fails when one of them is not in this table.
 | `Factory reset` | The row that opens the confirm. |
 | `Settings, networks, roll` | Under it: what a reset erases. Photographs are not on the list. |
 
+## The start
+
+The start says nothing in words. The ODD JOBS mark comes up from black with four outlines under it, one per lens in position, the top-left lens first. A cell fills when its lens answers. A cell that stays an outline at about 1.6 s is the lens in that position not answering: its outline turns solid and stays hollow. The cells then become the SHOOT card's four-mark, and the card says the rest in words: `A LENS IS NOT ANSWERING` under PROBLEM, with the same cell hollow. A tap shortens the start and presses nothing. After a tap the card can land before every lens is up: a lens still starting is an outline with no PROBLEM line, and its cell fills when it answers. Only a lens still silent at about 1.6 s gets `A LENS IS NOT ANSWERING`.
+
 ## Dim and sleep
 
 At the dim time the screen darkens under a scrim on an eased ramp over 1.6 s and stays readable; a touch lifts it. On SHOOT the scrim waits until 10 s before the sleep time, or the dim time if that is later, and never comes with sleep off: the finder keeps its contrast while you frame. 
-At the sleep time the dimmed picture darkens to the ground over half a second, the mark and `GOING TO SLEEP.  TAP TO WAKE` fade in from the dark, hold half a second, fade out, and then the backlight drops: two seconds, no cut. DISPLAY says the same under BRIGHTNESS AND POWER: on or off, not dimmable; tap the screen to wake; hold the slide to switch off.
+At the sleep time the dimmed picture darkens to the ground over half a second, the ODD JOBS mark and `GOING TO SLEEP.  TAP TO WAKE` fade in from the dark, hold half a second, fade out, and then the backlight drops: two seconds, no cut. DISPLAY says the same under BRIGHTNESS AND POWER: on or off, not dimmable; tap the screen to wake; hold the slide to switch off.
+The camera wakes somewhere safe: an open dialog is gone, answered with its safe answer, and SETTINGS and everything under it, POWER and LOOK wake on the menu. SHOOT, the menu, GALLERY, a photograph and ROLL wake where they were. No line says so.
 
 ## After a shot
 

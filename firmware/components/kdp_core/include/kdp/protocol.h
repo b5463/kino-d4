@@ -113,6 +113,13 @@ typedef enum {
   KDP_CMD_UPLOAD_QUEUE_STATUS = 0xa8,
   KDP_CMD_UPLOAD_QUEUE_RETRY = 0xa9,
   KDP_CMD_UPLOAD_ENQUEUE = 0xaa,
+
+  // Screen (#246), capability `screenControl`: the body's own screen seen and
+  // driven from the host. Handled in firmware/p4/main/kdp_ui.c.
+  KDP_CMD_GET_SCREEN = 0xb0,
+  KDP_CMD_SCREEN_PLATE = 0xb1,
+  KDP_CMD_UI_TAP = 0xb2,
+  KDP_CMD_UI_KEY = 0xb3,
 } kdp_cmd_t;
 
 // Events (device -> host, unsolicited, KDP_FLAG_EVENT set, sequence 0).

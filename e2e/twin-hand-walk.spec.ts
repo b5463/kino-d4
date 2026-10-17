@@ -102,10 +102,11 @@ test('Twin hand walk: the device UI for the hand on the shutter', async ({ page 
     });
   };
 
-  // The splash ends on its own; the menu is the first screen.
+  // The start (#245) ends on its own in 1.8-2.8 s; the menu is the first
+  // screen. The card covers both probes about 0.2 s before the rows are down,
+  // and a tap during the start would cut it short and press nothing, so the
+  // walk waits the build out before its first tap.
   await reach('menu after boot', isMenu, 15_000);
-  // The card lands first and the rows follow over the cascade's 700 ms; a tap
-  // during the cascade is ignored, as it is on the camera.
   await sleep(900);
   // A fresh body shows its first-start note once, and its scrim hides the
   // card; GOT IT is the top row of the note.
@@ -118,6 +119,30 @@ test('Twin hand walk: the device UI for the hand on the shutter', async ({ page 
   await step('back to SHOOT', () => tap(752, 31), isShoot);
   await step('menu from the finder', () => tap(726, 31), isMenu);
   await step('GALLERY row', () => tap(190, 149), isDetail);
+  // The gallery's page is 0-based in ui.c and 1-based in the page script
+  // (#247): the Twin opened on the second page's arrows. The demo card holds
+  // 22 captures, four pages. On the first, PREV is dead and NEXT live: the
+  // brightest pixel of the live arrow is K_INK, the dead one's is not.
+  const peak = (x: number, y: number, w: number, h: number): Promise<number> =>
+    page.evaluate(([x, y, w, h]) => {
+      const c = document.querySelector('canvas.twin-screenview-canvas') as HTMLCanvasElement;
+      const d = c.getContext('2d')!.getImageData(x, y, w, h).data;
+      let m = 0;
+      for (let i = 0; i < d.length; i += 4) m = Math.max(m, d[i], d[i + 1], d[i + 2]);
+      return m;
+    }, [x, y, w, h]);
+  // The header pair: PREV 616..668, NEXT 672..724, y 5..57 (hd_prev_x()).
+  const firstOf = async (px: number, nx: number, y: number, w: number, h: number): Promise<boolean> =>
+    (await peak(nx, y, w, h)) - (await peak(px, y, w, h)) > 40;
+  const galleryFirst = async (): Promise<boolean> => (await hasHeader()) && firstOf(616, 672, 5, 52, 52);
+  await test.step('the gallery opens on its first page', () =>
+    reach('PREV dead and NEXT live on the first page', galleryFirst));
+  // The newest photograph, the first tile: PREV dead on PHOTO's pair
+  // (622..699 and 707..784, y 232..284; PH_PN_Y), NEXT live. PHOTO draws no
+  // header hairline.
+  await step('the newest photograph', () => tap(142, 172), async () =>
+    !(await hasHeader()) && firstOf(622, 707, 232, 77, 52));
+  await step('back to the gallery', () => tap(752, 31), galleryFirst);
   await step('back from GALLERY', () => tap(752, 31), isMenu);
   await step('SETTINGS row', () => tap(190, 331), isDetail);
   await step('back from SETTINGS', () => tap(752, 31), isMenu);

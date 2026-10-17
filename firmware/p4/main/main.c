@@ -5,6 +5,7 @@
 
 #include "audio.h"
 #include "buttons.h"
+#include "cJSON.h"
 #include "cam_link.h"
 #include "node_link/node_link.h"
 #include "capture.h"
@@ -72,6 +73,14 @@ static void gallery_on_capture(const capture_report_t *r) {
 
 /** HELLO timeout for a channel that answered nothing last time. */
 #define OFFLINE_PROBE_MS 300u
+
+/* Bench only: the five colour bands on the panel before the UI starts, which
+ * prove the scan-out, the pixel format and row zero (display.h). A product
+ * boot shows nothing until the start's first frame (#245, FW-08). Build with
+ * -DKINO_BOOT_TEST_PATTERN=1 to see them. */
+#ifndef KINO_BOOT_TEST_PATTERN
+#define KINO_BOOT_TEST_PATTERN 0
+#endif
 
 static uint32_t next_boot_count(void) {
   nvs_handle_t nvs;
@@ -307,7 +316,40 @@ static void log_last_panic(void) {
   free(s);
 }
 
+/*
+ * cJSON allocates from PSRAM first (#244).
+ *
+ * cJSON calls plain malloc, and every node is far under
+ * CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL, so each KDP reply, each GET_CONFIG copy
+ * of the settings document (#242) and the two documents kept for the life of
+ * the boot - the settings and the factory looks - were small allocations out of
+ * internal SRAM, the pool the C6 recovery reserve and every DMA buffer come from.
+ *
+ * Safe because no cJSON call needs internal memory:
+ *   - every cJSON call is in task context. The firmware's own ISRs - gfx.c's
+ *     on_refresh_done and on_srm_done, and isr_watch.c's on_alarm - never
+ *     touch cJSON, and nothing calls cJSON with the cache disabled. Grep
+ *     cJSON_ before adding one to an ISR or an esp_timer ISR callback;
+ *   - NVS writes take a finished string, and esp_flash_write copies a source
+ *     outside DRAM through its own bounce buffer before the cache goes off;
+ *   - a printed string reaches USB, UART or a socket through a copy (send_raw
+ *     encodes into s_tx, itself in PSRAM), and the card through SDMMC DMA,
+ *     which reaches PSRAM on the P4 or bounces an unaligned buffer.
+ * Internal RAM only when PSRAM is full. Everything cJSON hands out may be
+ * released with free() or cJSON_free(), as before.
+ *
+ * Installed before the first cJSON call of the boot: config_init() below.
+ * With hooks other than malloc/free cJSON grows a print buffer by
+ * allocate-copy-free instead of realloc; the extra copy is in PSRAM.
+ */
+static void *json_alloc(size_t size) {
+  return heap_caps_malloc_prefer(size, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT, MALLOC_CAP_DEFAULT);
+}
+
 void app_main(void) {
+  cJSON_Hooks json_hooks = {.malloc_fn = json_alloc, .free_fn = free};
+  cJSON_InitHooks(&json_hooks);
+
   esp_err_t err = nvs_flash_init();
   if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
     /* These were the last two ESP_ERROR_CHECKs in the firmware, on the first
@@ -373,9 +415,16 @@ void app_main(void) {
    * ahead of kdp_server_start() and of the display, so its cost is dead time
    * with nothing on the screen and no host able to connect. A card carrying
    * 520 captures spent about a minute here. The sweep now stops at its budget
-   * and reports what it left for the next boot. */
+   * and reports what it left for the next boot.
+   *
+   * The budget is 800 ms (FW-39): the screen is dark for all of it, and the
+   * cursor carries the rest to the next boot. It stays here, before KDP and
+   * the display, because its safety rests on nothing else writing the card
+   * yet. */
   storage_sweep_t sweep;
+  const int64_t sweep_us = esp_timer_get_time();
   storage_sweep_orphans(&sweep);
+  klog("P4", "orphan sweep %lu ms", (unsigned long)((esp_timer_get_time() - sweep_us) / 1000));
 
   /* The camera link, and its failure is reported like every other line here.
    *
@@ -454,7 +503,9 @@ void app_main(void) {
     ESP_LOGE(TAG, "display unavailable: %s — KDP and storage are unaffected",
              esp_err_to_name(lcd_err));
   } else {
+#if KINO_BOOT_TEST_PATTERN
     display_test_pattern();
+#endif
     /* Audio BEFORE touch, and the order is load-bearing.
      *
      * The ES8311 shares one I2C bus with the GT911, and the touch driver
@@ -498,9 +549,9 @@ void app_main(void) {
     esp_err_t vf_err = viewfinder_init();
     if (vf_err != ESP_OK) ESP_LOGE(TAG, "viewfinder unavailable: %s", esp_err_to_name(vf_err));
 
-    /* The UI replaces the test pattern once both are up. It runs without
-     * touch too - a screen that shows the camera's state is worth having
-     * even if nothing can be pressed. */
+    /* The UI's first frame is the panel's first light (display_first_light).
+     * It runs without touch too - a screen that shows the camera's state is
+     * worth having even if nothing can be pressed. */
     /* The pink shifts a step toward lavender on each start: ui.c holds no
      * NVS, so the count it picks the shade by comes from here. */
     ui_set_launch_index(boots);

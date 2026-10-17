@@ -20,11 +20,20 @@
 #define DISPLAY_V_RES 800
 
 /**
- * Power the DSI PHY, reset the panel, start the DSI bus, run the ST7701
- * initialisation and raise the backlight. Safe to call once, after the KDP
- * server is serving.
+ * Power the DSI PHY, reset the panel, start the DSI bus and run the ST7701
+ * initialisation. Safe to call once, after the KDP server is serving.
+ *
+ * The backlight stays off (#245, FW-08): a product boot shows nothing until
+ * its first real frame, never a lit black panel or the test bars.
  */
 esp_err_t display_init(void);
+
+/**
+ * The backlight on for the first presented frame, once, with the time since
+ * start in the log ring. gfx.c calls it on every hand-over; every call after
+ * the first returns at once. power.c owns the backlight from then on.
+ */
+void display_first_light(void);
 
 /** True once the panel is initialised and drawable. */
 bool display_ready(void);
@@ -39,7 +48,8 @@ esp_lcd_panel_handle_t display_panel(void);
 
 /**
  * Five full-width colour bands, top to bottom in the panel's own
- * orientation: red, green, blue, white, black.
+ * orientation: red, green, blue, white, black. Bench only: main.c draws them
+ * when built with KINO_BOOT_TEST_PATTERN=1, and they light the panel.
  *
  * A single flat fill would only prove the backlight works. The band order
  * reports three things at once from one look: whether the panel scans out at

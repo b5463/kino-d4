@@ -96,6 +96,9 @@ int64_t prev_vclock_step_us = 16000;
 int64_t prev_idle_clock_us = 8040LL * 1000000;
 static const char *g_anim;
 static int g_anim_n;
+/* An animation run as a check, not a picture: frames are counted, not
+ * written, so the PPM count stays put. */
+static bool g_anim_quiet;
 
 /* Called on every presented frame and every stash render while set:
  * check_wake_into_move() reads the scrim each frame was drawn under. */
@@ -103,7 +106,9 @@ static void (*g_frame_hook)(bool stash);
 
 void gfx_present(void) {
   if (g_frame_hook != NULL) g_frame_hook(false);
-  if (g_anim != NULL) {
+  if (g_anim != NULL && g_anim_quiet) {
+    g_anim_n++;
+  } else if (g_anim != NULL) {
     char path[600];
     snprintf(path, sizeof path, "%s/%s_%02d.ppm", g_out, g_anim, g_anim_n++);
     write_ppm(path, g_canvas, UI_W, UI_H);
@@ -155,6 +160,9 @@ void gfx_render(gfx_draw_fn draw, void *ctx) {
   draw(ctx);
   gfx_present();
 }
+/* GET_SCREEN's canvas generation (#246): the pass count, which moves whenever
+ * anything is drawn here. Never 0. */
+uint32_t gfx_canvas_gen(void) { return s_pass + 1; }
 void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (g_stash == NULL) return;
   if (dx < 0) { w += dx; sx -= dx; dx = 0; }
@@ -203,6 +211,15 @@ void gfx_pass_split(uint64_t *d, uint64_t *x, uint64_t *v) {
   if (d) *d = 0;
   if (x) *x = 0;
   if (v) *v = 0;
+}
+/* No panel, no refreshes: a move's cadence line reads "no second frame". */
+void gfx_cadence_begin(void) {}
+/* The virtual clock: a frame goes up when it is drawn. One read of it, as
+ * the esp_timer_get_time() call this stands in for was. */
+#include "esp_timer.h"
+int64_t gfx_due_us(void) { return esp_timer_get_time(); }
+void gfx_cadence(gfx_cadence_t *out) {
+  if (out != NULL) memset(out, 0, sizeof *out);
 }
 
 /* ui.c registers its tasks so GET_RUNTIME_STATS can report their stack
@@ -272,7 +289,11 @@ int config_int(const char *path, int fallback) {
  * toast would cover the one it checks. Every other flag is its default. */
 static bool g_sounds_ui = true;
 static bool g_calibrated = false;
+/* A body that has seen the first-start note and runs the version it last
+ * ran: the start runs that land on the menu, not on a note. */
+static bool g_first_seen;
 bool config_bool(const char *path, bool fallback) {
+  if (g_first_seen && strcmp(path, "body.firstRunSeen") == 0) return true;
   if (!g_sounds_ui && strcmp(path, "body.sounds.ui") == 0) return false;
   if (g_calibrated && strcmp(path, "body.calibration.done") == 0) return true;
   return fallback;
@@ -299,6 +320,7 @@ static const char *g_hand = "right";
 static const char *g_resolution = "1600x1200";
 
 const char *config_str(const char *path, const char *fallback) {
+  if (g_first_seen && strcmp(path, "body.lastVersion") == 0) return KINO_FW_VERSION;
   if (strcmp(path, "body.name") == 0) return g_body_name;
   if (strcmp(path, "wiggle.resolution") == 0) return g_resolution;
   if (strcmp(path, "body.hand") == 0) return g_hand;
@@ -405,6 +427,12 @@ bool kdp_recipes_capture_block(const char *id, recipe_capture_t *out) {
   }
   return true;
 }
+/* No card here, so every look is answered from "RAM" and LOOK draws its
+ * numbers on the first frame, as it does for a factory look on the camera. */
+bool kdp_recipes_capture_block_ram(const char *id, recipe_capture_t *out, bool *known) {
+  if (known != NULL) *known = true;
+  return kdp_recipes_capture_block(id, out);
+}
 
 static const struct {
   const char *id;
@@ -424,7 +452,13 @@ bool kdp_sounds_info(int index, char *id, size_t id_cap, char *name, size_t name
  * mutated a config file would be a surprising side effect of looking. The
  * cJSON stubs exist so ui.c's real write path compiles; main() drives the
  * globals above directly, so none of this is reached. */
-esp_err_t config_merge(const cJSON *patch) { (void)patch; return ESP_OK; }
+/* Writes asked for, so a check can see that a press wrote nothing. */
+static int g_merge_n;
+esp_err_t config_merge(const cJSON *patch) {
+  (void)patch;
+  g_merge_n++;
+  return ESP_OK;
+}
 esp_err_t config_save(void) { return ESP_OK; }
 
 /* meta.c is not linked here - it needs the real cJSON, which lives in
@@ -576,6 +610,11 @@ static void report_cams(uint32_t asked, uint32_t ok) {
   }
 }
 uint32_t capture_count(void) { return 0; }
+/* D4-V1 has no flash (ECN-0003), so the scenes draw the body as it is. The
+ * flash-fitted scenes set this to keep the layout with a FLASH control
+ * reviewed for the external module (#247). */
+static bool g_flash_fitted;
+bool capture_has_flash(void) { return g_flash_fitted; }
 
 /* An update session, driven by the preview so the banner and the refused
  * shutter can be looked at (#242). Closed unless a scene opens it. */
@@ -648,9 +687,25 @@ int gallery_capture_files(const char *id, bool *has_thumb, uint8_t *slots, int c
   for (int i = 0; i < 4 && n < cap; i++) slots[n++] = (uint8_t)(i + 1);
   return n;
 }
-int gallery_page(void) { return 1; }
+/* Page 2 of 3 in every render. A turn moves it so check_photo_steps() can
+ * cross a page edge, and empties the six slots as gallery.c's does: the new
+ * page's are PENDING until the check plays the gallery task (fake_gallery()
+ * and a slot set READY). The check puts the page and the slots back before
+ * anything else draws. */
+static int g_page = 1;
+int gallery_page(void) { return g_page; }
 int gallery_pages(void) { return 3; }
-void gallery_turn(int delta) { (void)delta; }
+void gallery_turn(int delta) {
+  int want = g_page + delta;
+  if (want < 0) want = 0;
+  if (want > 2) want = 2;
+  if (want == g_page) return;
+  g_page = want;
+  for (int i = 0; i < GALLERY_PAGE; i++) {
+    memset(&g_slot[i], 0, sizeof g_slot[i]);
+    if (g_page * GALLERY_PAGE + i < g_fake_total) g_slot[i].state = TILE_PENDING;
+  }
+}
 const gallery_item_t *gallery_slots(void) { return g_slot; }
 bool gallery_loading(void) { return false; }
 void gallery_note_added(const char *id, uint64_t when) {
@@ -857,7 +912,9 @@ bool media_favorite_get(const char *id) {
  * check_idle_dim(). */
 static power_stage_t g_power_stage = POWER_AWAKE;
 static uint32_t g_idle_s = 12;
-void power_activity(void) {}
+/* As power.c: activity wakes a dark or dim body on the spot. Only the KDP
+ * paths (a host tap, key or plate) call it from ui.c. */
+void power_activity(void) { g_power_stage = POWER_AWAKE; }
 void power_wake(void) {}
 bool power_sleep_pending(void) { return false; }
 void power_sleep_shown(void) {}
@@ -912,6 +969,9 @@ void camlink_get_info_ch(int cam, camlink_info_t *out) {
   out->temp_c = 31;
   out->latency_ms = 4;
 }
+/* The same set as one byte, the way cam_link keeps it for the start (#245).
+ * The start scenes set g_cam_online frame by frame to have cameras answer. */
+uint8_t camlink_online_mask(void) { return (uint8_t)(g_cam_online & 0xFu); }
 
 /* Driven from main() so the STORAGE screen's two states both get a picture:
  * the new band under the list is a capacity bar when the card is mounted and
@@ -958,6 +1018,9 @@ void storage_get_status(storage_status_t *out) {
   out->free_bytes = g_free_bytes;
   out->write_test = g_card_write_fail ? "fail" : "pass";
 }
+/* The screen's copy (#248). There is no card to wait on here, so the copy is
+ * the same as the read and every shot sees the state it set. */
+void storage_get_status_cached(storage_status_t *out) { storage_get_status(out); }
 
 /* ---- networking and Roll ----------------------------------------------
  *
@@ -1615,7 +1678,7 @@ static int g_ppm_n;
  * reviewer approves, the way the golden hashes are (make check). CI checks
  * the files on disk against `preview --ppms`, which is twice this.
  */
-#define PPMS_PER_HAND 272
+#define PPMS_PER_HAND 267
 /* Set when the capture landing under the review move is not in the shade
  * when it should be (scenes(), capture_review_stash). Fails the run. */
 static bool g_land_failed;
@@ -1624,6 +1687,9 @@ static bool g_land_failed;
  * power-down and the lifts). Each fails the run. */
 static bool g_sound_failed;
 static bool g_motion_failed;
+/* Set when a start run does not land on the menu it hands over to, opens the
+ * wrong note, or a start fade leans green (start_run(), bench()). */
+static bool g_start_failed;
 /* Set when the self-timer breaks one of its rules (check_self_timer). */
 static bool g_timer_failed;
 
@@ -1691,7 +1757,7 @@ static const struct {
   int max;
   const char *why;
 } EDGE_ALLOW[] = {
-    {SCR_LOOK, 5, "the title, the card's type, and three control columns, each with a caption"},
+    {SCR_LOOK, 5, "the title, the card's type, and two or three control columns, each with a caption"},
 };
 
 static void edges_judge(const char *name) {
@@ -1750,7 +1816,10 @@ static void shot(const char *name) {
  * exist to catch. */
 static void scan_conditions(void) {
   cams_refresh();
-  conditions_scan(s_cams);
+  conditions_scan(s_cams, false);
+  /* ui_pass() reads the saved-network count on the same clock; draws only
+   * copy it (#248). */
+  wifi_saved_refresh();
 }
 
 /* go() as a tap's release calls it: inside the by-hand bracket, so the move
@@ -2383,6 +2452,187 @@ static bool tap_fires(int hold_ms, int *paint_at_lift) {
 }
 
 /*
+ * The screen over KDP (#246), driven as kdp_ui.c drives it, through
+ * ui_pass(): a tap posted with ui_tap_post() opens LOOK from the menu with no
+ * touch panel at all; a render asked during the move is BUSY and one asked
+ * after it renders LOOK; a fifth tap is refused; the plate covers the screen
+ * and a key ends it without acting.
+ */
+static void check_kdp_screen(void) {
+  const screen_t scr0 = s_screen;
+  g_audit_off = true;
+  s_screen = SCR_MENU;
+  s_pressed = -1;
+  held = -1;
+  swallow_touch = false;
+  s_anim.kind = ANIM_NONE;
+  s_dim_k = 0;
+  s_lift_us = 0;
+  s_sleep_mark = false;
+  g_power_stage = POWER_AWAKE;
+  g_touch_ready = false;
+  g_touch_down = false;
+  s_btn_q = xQueueCreate(4, sizeof(btn_event_t));
+  scan_conditions();
+  draw_screen();
+  int lx, ly;
+  const int look = 1; /* MENU_DEST[1] */
+  if (MENU_DEST[look] != SCR_LOOK || !point_on(look, &lx, &ly)) {
+    fprintf(stderr, "kdp screen: no point on the LOOK row\n");
+    g_motion_failed = true;
+    g_audit_off = false;
+    return;
+  }
+  prev_vclock_us = 1000000;
+  if (ui_tap_post(lx, ly, PURE_SCREEN_TAP_HOLD_MS) != 1) {
+    fprintf(stderr, "kdp screen: the first tap was not queued alone\n");
+    g_motion_failed = true;
+  }
+  bool moving = false;
+  for (int i = 0; i < 40 && !moving; i++) {
+    ui_pass();
+    moving = anim_active();
+    prev_vclock_us += 20000;
+  }
+  if (!moving) {
+    fprintf(stderr, "kdp screen: a host tap on LOOK started no move\n");
+    g_motion_failed = true;
+  }
+  uint32_t t = ui_shot_ask();
+  ui_shot_t shot;
+  ui_pass();
+  if (moving && ui_shot_poll(t, &shot) != UI_SHOT_BUSY) {
+    fprintf(stderr, "kdp screen: a render asked during the move was not BUSY\n");
+    g_motion_failed = true;
+  }
+  for (int guard = 0; guard < 2000 && anim_active(); guard++) ui_pass();
+  prev_vclock_us += 20000;
+  t = ui_shot_ask();
+  if (ui_shot_poll(t, &shot) != UI_SHOT_WAITING) {
+    fprintf(stderr, "kdp screen: a render was answered before a pass\n");
+    g_motion_failed = true;
+  }
+  ui_pass();
+  if (ui_shot_poll(t, &shot) != UI_SHOT_DONE || shot.screen != SCR_LOOK || shot.plate || shot.gen == 0) {
+    fprintf(stderr, "kdp screen: the render after the move is not LOOK (screen %d)\n", shot.screen);
+    g_motion_failed = true;
+  }
+  printf("kdp screen: host tap opened %s, render gen %u\n", s_screen == SCR_LOOK ? "LOOK" : "something else",
+         (unsigned)shot.gen);
+
+  /* Four deep: the fifth is refused, and nothing is left behind. */
+  int queued = 0;
+  for (int i = 0; i < 4; i++) queued = ui_tap_post(10, 470, PURE_SCREEN_TAP_HOLD_MS);
+  if (queued != 4 || ui_tap_post(10, 470, PURE_SCREEN_TAP_HOLD_MS) != 0) {
+    fprintf(stderr, "kdp screen: the tap queue is not four deep (%d)\n", queued);
+    g_motion_failed = true;
+  }
+  s_kdp.tap_tail = s_kdp.tap_head;
+
+  /* The plate: up on the next pass, rendered as the plate, and dropped by a
+   * key that does nothing else. */
+  ui_plate_post(true);
+  ui_pass();
+  t = ui_shot_ask();
+  ui_pass();
+  if (!s_kdp.plate_on || ui_shot_poll(t, &shot) != UI_SHOT_DONE || !shot.plate) {
+    fprintf(stderr, "kdp screen: the plate did not come up, or did not render\n");
+    g_motion_failed = true;
+  }
+  if (!ui_key_post(false, false)) {
+    fprintf(stderr, "kdp screen: the FN key was not queued\n");
+    g_motion_failed = true;
+  }
+  prev_vclock_us += 20000;
+  ui_pass();
+  if (s_kdp.plate_on || anim_active() || s_screen != SCR_LOOK) {
+    fprintf(stderr, "kdp screen: a key did not end the plate cleanly\n");
+    g_motion_failed = true;
+  }
+
+  /* A sleep asked for under the plate: power_sleep_now() ages the idle clock
+   * past body.sleepS, and the plate lets go of the panel instead of
+   * refreshing the clock. */
+  ui_plate_post(true);
+  prev_vclock_us += 20000;
+  ui_pass();
+  if (!s_kdp.plate_on) {
+    fprintf(stderr, "kdp screen: the plate did not come up a second time\n");
+    g_motion_failed = true;
+  }
+  g_idle_s = 120;
+  prev_vclock_us += 20000;
+  ui_pass();
+  if (s_kdp.plate_on) {
+    fprintf(stderr, "kdp screen: the plate held the panel through a sleep asked for\n");
+    g_motion_failed = true;
+  }
+  g_idle_s = 12;
+  for (int guard = 0; guard < 400 && ui_screen_moving(); guard++) {
+    prev_vclock_us += 20000;
+    ui_pass();
+  }
+  s_dim_k = 0;
+  printf("kdp screen: the plate let go on a sleep asked for\n");
+
+  /* A body asleep, its wind-down over: the mark is still set until a wake
+   * clears it, and that is not a move. A render is answered, and the plate
+   * wakes the body and goes up on the next pass; when it drops, the wake's
+   * lift runs and ends. */
+  s_dim_k = SLEEP_DARK_K;
+  s_sleep_mark = true;
+  g_power_stage = POWER_ASLEEP;
+  prev_vclock_us += 20000;
+  ui_pass();
+  t = ui_shot_ask();
+  ui_pass();
+  if (ui_screen_moving() || ui_shot_poll(t, &shot) != UI_SHOT_DONE || shot.plate) {
+    fprintf(stderr, "kdp screen: a render of a sleeping body was not answered\n");
+    g_motion_failed = true;
+  }
+  ui_plate_post(true);
+  prev_vclock_us += 20000;
+  ui_pass();
+  if (!s_kdp.plate_on || g_power_stage != POWER_AWAKE) {
+    fprintf(stderr, "kdp screen: the plate did not wake a sleeping body\n");
+    g_motion_failed = true;
+  }
+  t = ui_shot_ask();
+  ui_pass();
+  if (ui_shot_poll(t, &shot) != UI_SHOT_DONE || !shot.plate) {
+    fprintf(stderr, "kdp screen: the plate on a woken body did not render\n");
+    g_motion_failed = true;
+  }
+  ui_plate_post(false);
+  prev_vclock_us += 20000;
+  ui_pass();
+  for (int guard = 0; guard < 400 && ui_screen_moving(); guard++) {
+    prev_vclock_us += 20000;
+    ui_pass();
+  }
+  if (s_kdp.plate_on || s_sleep_mark || ui_screen_moving() || s_dim_k != 0) {
+    fprintf(stderr, "kdp screen: the plate's drop did not wake the screen (mark %d, scrim %d)\n", s_sleep_mark,
+            s_dim_k);
+    g_motion_failed = true;
+  }
+  printf("kdp screen: asleep, render answered and the plate woke the body\n");
+
+  s_anim.kind = ANIM_NONE;
+  s_dim_k = 0;
+  s_lift_us = 0;
+  s_sleep_mark = false;
+  g_power_stage = POWER_AWAKE;
+  s_screen = scr0;
+  s_pressed = -1;
+  held = -1;
+  swallow_touch = false;
+  s_kdp.tap_until_us = 0;
+  s_kdp.tap_up_us = 0;
+  prev_vclock_us = 0;
+  g_audit_off = false;
+}
+
+/*
  * A press held past PURE_TAP_MAX_MS is released while the finger is still
  * down and fires nothing on the lift. One just inside it still fires.
  */
@@ -2539,6 +2789,16 @@ static void review_expect(bool ok, const char *what) {
   g_review_failed = true;
 }
 
+/* Honest glass (#247): no flash control without a flash, the first-use
+ * hint, and the safe state after a sleep. A broken rule fails the run. */
+static bool g_honest_failed;
+
+static void honest_expect(bool ok, const char *what) {
+  if (ok) return;
+  fprintf(stderr, "honest glass (%s hand): %s\n", g_hand, what);
+  g_honest_failed = true;
+}
+
 static void review_run_move(void) {
   for (int guard = 0; anim_active() && guard < 4000; guard++) {
     const uint32_t wait = anim_tick();
@@ -2557,6 +2817,8 @@ static void review_open_cams(uint32_t asked, uint32_t ok) {
   memset(&g_report, 0, sizeof g_report);
   g_report.ok = true;
   snprintf(g_report.id, sizeof g_report.id, "CAP_000042");
+  /* capture.c always names the mode; the review's column says it. */
+  snprintf(g_report.mode, sizeof g_report.mode, "wiggle");
   g_report.stored = __builtin_popcount(ok & asked);
   g_report.online = __builtin_popcount(asked);
   report_cams(asked, ok & asked);
@@ -2669,8 +2931,7 @@ static void review_scenes(void) {
    * photograph takes the undo toast with it. */
   review_open();
   s_first_review_us = 0; /* the finger that pressed DELETE (ui_pass, touch down) */
-  s_dialog = DLG_DELETE;
-  s_dlg_focus = 0;
+  dialog_open(DLG_DELETE);
   dialog_commit();
   review_expect(s_screen == SCR_SHOOT && review_slid_back() && s_toast_long,
                 "DELETE on the review did not end on SHOOT with the undo toast");
@@ -2693,8 +2954,7 @@ static void review_scenes(void) {
 
   /* The clock runs out under the DELETE question: the question stays. */
   review_open();
-  s_dialog = DLG_DELETE;
-  s_dlg_focus = 0;
+  dialog_open(DLG_DELETE);
   prev_vclock_us += s_review_span_us + 1000;
   first_review_poll();
   review_expect(s_screen == SCR_PHOTO && s_dialog == DLG_DELETE, "the review's clock carried the DELETE question off");
@@ -3097,6 +3357,710 @@ static void check_self_timer(void) {
   g_audit_off = false;
 }
 
+/* The loop's state for a run of ui_pass() on `scr`, as check_self_timer
+ * sets it: awake, no move, no scrim, nothing held. */
+static void pass_rig(screen_t scr) {
+  s_screen = scr;
+  s_dialog = DLG_NONE;
+  s_toast[0] = '\0';
+  s_btn_q = xQueueCreate(4, sizeof(btn_event_t));
+  g_power_stage = POWER_AWAKE;
+  s_anim.kind = ANIM_NONE;
+  s_dim_k = 0;
+  s_dim_since_us = 0;
+  s_lift_us = 0;
+  s_sleep_mark = false;
+  s_sleep_stage = -1;
+  was_asleep = false;
+  s_pressed = -1;
+  held = -1;
+  swallow_touch = false;
+  s_touch_was_down = false;
+  g_calibrated = true;
+}
+
+static void pass_unrig(screen_t scr0) {
+  s_btn_q = NULL;
+  s_anim.kind = ANIM_NONE;
+  s_anim.scrim0 = s_anim.scrim_k = 0;
+  s_dim_k = 0;
+  s_lift_us = 0;
+  s_lift_mark = 0;
+  s_sleep_mark = false;
+  was_asleep = false;
+  held = -1;
+  swallow_touch = false;
+  s_pressed = -1;
+  s_toast[0] = '\0';
+  s_dialog = DLG_NONE;
+  g_power_stage = POWER_AWAKE;
+  g_calibrated = false;
+  prev_vclock_us = 0;
+  s_screen = scr0;
+  g_screen_drawn = false;
+}
+
+/* A tap that lands at (x, y) and lifts, through ui_pass(). */
+static void pass_tap(int x, int y) {
+  finger_at(x, y);
+  g_touch_ready = true;
+  g_touch_down = true;
+  timer_passes(3);
+  g_touch_down = false;
+  timer_passes(3);
+  g_touch_ready = false;
+}
+
+/*
+ * First use (#247), through ui_pass: a tap on a live pane before the first
+ * photograph toasts where the shutter is and presses nothing; after one, or
+ * under the card pill, the same tap says nothing.
+ */
+static void check_first_use(void) {
+  const screen_t scr0 = s_screen;
+  g_audit_off = true;
+  pass_rig(SCR_SHOOT);
+  g_fake_total = 0;
+  timer_passes(2);
+  honest_expect(s_sh_live == 0xF, "SHOOT drew no live panes to tap");
+  const int tx = SH_PANE_W / 2, ty = SH_PANE_H / 2;
+  honest_expect(hit_test(tx, ty) < 0 && !at_hand_edge(tx), "the tap point is on a target");
+  pass_tap(tx, ty);
+  honest_expect(s_screen == SCR_SHOOT && strcmp(s_toast, "Press the shutter on top.") == 0,
+                "a tap on a live pane before the first photograph did not say where the shutter is");
+
+  s_toast[0] = '\0';
+  g_card_mounted = false;
+  g_card_present = false;
+  timer_passes(2);
+  pass_tap(tx, ty);
+  honest_expect(s_toast[0] == '\0', "the tap toasted the shutter under the card pill");
+  g_card_mounted = true;
+  g_card_present = true;
+
+  g_fake_total = 1;
+  timer_passes(2);
+  pass_tap(tx, ty);
+  honest_expect(s_toast[0] == '\0', "the tap toasted the shutter with a photograph on the card");
+  g_fake_total = 14;
+
+  pass_unrig(scr0);
+  g_audit_off = false;
+}
+
+/* A finger that lands at (x0, y0), travels to (x1, y1) in eight passes and
+ * lifts, through ui_pass(). */
+static void pass_swipe(int x0, int y0, int x1, int y1) {
+  finger_at(x0, y0);
+  g_touch_ready = true;
+  g_touch_down = true;
+  timer_passes(2);
+  for (int k = 1; k <= 8; k++) {
+    finger_at(x0 + (x1 - x0) * k / 8, y0 + (y1 - y0) * k / 8);
+    timer_passes(1);
+  }
+  g_touch_down = false;
+  timer_passes(3);
+  g_touch_ready = false;
+}
+
+/* The photograph open on PHOTO, by the preview's slot names. */
+static bool photo_is(const char *id) { return s_screen == SCR_PHOTO && strcmp(s_photo_id, id) == 0; }
+
+/*
+ * Review and gallery (#247), through ui_pass: a swipe across the well steps
+ * the photograph, leftwards to the next; a short, a diagonal and a still
+ * contact step nothing; a swipe that ends on the column presses none of its
+ * buttons. PREV on a page's first photograph opens the last of the page
+ * before, NEXT on a page's last the first of the next; NEXT at the roll's end
+ * toasts. A page that is never read falls back to the grid.
+ */
+static void check_photo_steps(void) {
+  const screen_t scr0 = s_screen;
+  g_audit_off = true;
+  pass_rig(SCR_PHOTO);
+  s_review_from_shot = false;
+  s_first_review_us = 0;
+  const gallery_item_t *slots = gallery_slots();
+  g_page = 1;
+  photo_open(&slots[1]);
+  timer_passes(2);
+
+  const int wx = ph_well_x() + PH_W / 2, wy = PH_TOP + PH_H / 2;
+  pass_swipe(wx + 100, wy, wx - 100, wy + 10);
+  review_expect(photo_is("preview-2"), "a left swipe on the well did not open the next photograph");
+  pass_swipe(wx - 100, wy, wx + 100, wy - 10);
+  review_expect(photo_is("preview-1"), "a right swipe on the well did not open the previous photograph");
+  pass_swipe(wx + 50, wy, wx - 50, wy);
+  review_expect(photo_is("preview-1"), "a 100 px drag stepped the photograph");
+  pass_swipe(wx + 100, wy, wx - 100, wy + 80);
+  review_expect(photo_is("preview-1"), "a diagonal drag stepped the photograph");
+  s_toast[0] = '\0';
+  pass_tap(wx, wy);
+  review_expect(photo_is("preview-1") && s_toast[0] == '\0' && s_pressed == -1,
+                "a tap on the well did something");
+
+  /* From the well's edge onto DELETE: a swipe, and never the button. */
+  const int cx = ph_col_x() + PH_BTN_W / 2, dy = PH_BTN_Y(0) + PH_BTN_H / 2;
+  const int ex = s_right_hand ? ph_well_x() + PH_W - 60 : ph_well_x() + 60;
+  pass_swipe(ex, dy, cx, dy);
+  review_expect(s_dialog == DLG_NONE && s_screen == SCR_PHOTO, "a swipe that ended on DELETE pressed it");
+  review_expect(photo_is(s_right_hand ? "preview-0" : "preview-2"), "a swipe onto the column did not step");
+
+  /* PREV on the page's first photograph: the page before, its last slot,
+   * opened once the gallery task has read it. */
+  const int px = ph_col_x() + PH_PN_W / 2, nx = ph_col_x() + PH_PN_W + PH_BTN_GAP + PH_PN_W / 2;
+  const int py = PH_PN_Y + PH_PN_H / 2;
+  photo_open(&slots[0]);
+  pass_tap(px, py);
+  review_expect(gallery_page() == 0 && s_photo_seek < 0 && photo_is("preview-0"),
+                "PREV on a page's first photograph did not turn the page and wait for it");
+  /* The gallery task reads the page: the slots come back, the last READY. */
+  fake_gallery();
+  g_slot[5].state = TILE_READY;
+  g_slot[5].pixels = g_tile[5];
+  timer_passes(2);
+  review_expect(photo_is("preview-5") && s_photo_seek == 0,
+                "PREV across the page did not open the last photograph of the page before");
+  g_slot[5].state = TILE_PENDING;
+  g_slot[5].pixels = NULL;
+
+  /* NEXT on the page's last: the first of the next page, once it is read. */
+  g_page = 1;
+  photo_open(&slots[5]);
+  pass_tap(nx, py);
+  review_expect(gallery_page() == 2 && s_photo_seek > 0 && photo_is("preview-5"),
+                "NEXT on a page's last photograph did not turn the page and wait for it");
+  fake_gallery();
+  timer_passes(2);
+  review_expect(gallery_page() == 2 && photo_is("preview-0"),
+                "NEXT on a page's last photograph did not open the first of the next page");
+
+  /* The roll's end is the one dead end. */
+  photo_open(&slots[5]);
+  s_toast[0] = '\0';
+  pass_tap(nx, py);
+  review_expect(gallery_page() == 2 && photo_is("preview-5") && strcmp(s_toast, "Last photo") == 0,
+                "NEXT on the last photograph of the roll did not say so");
+
+  /* A page that is never read: the grid after PHOTO_SEEK_MAX_US. */
+  g_page = 1;
+  photo_open(&slots[0]);
+  pass_tap(px, py);
+  prev_vclock_us += PHOTO_SEEK_MAX_US + 1000;
+  timer_passes(2);
+  review_expect(s_screen == SCR_GALLERY && s_photo_seek == 0, "a page never read did not fall back to the grid");
+
+  g_page = 1;
+  fake_gallery();
+  photo_release();
+  pass_unrig(scr0);
+  g_audit_off = false;
+}
+
+/* The two rows of the open question, and what a press at the top of each
+ * hits. They must stay where the open drew them. */
+static void dlg_rows_expect(int y0, int y1, const char *what) {
+  char msg[128];
+  dlg_spec_t d;
+  dialog_spec(&d);
+  const bool sub = d.sub != NULL;
+  snprintf(msg, sizeof msg, "%s: the rows moved (%d,%d to %d,%d)", what, y0, y1, DLG_ROW_Y(sub, 0),
+           DLG_ROW_Y(sub, 1));
+  review_expect(DLG_ROW_Y(sub, 0) == y0 && DLG_ROW_Y(sub, 1) == y1, msg);
+  snprintf(msg, sizeof msg, "%s: a press at the top of a drawn row hit the other one", what);
+  review_expect(hit_test(DLG_ROW_X + DLG_ROW_W / 2, y0 + 2) == dlg_item_at(0) &&
+                    hit_test(DLG_ROW_X + DLG_ROW_W / 2, y1 + 2) == dlg_item_at(1),
+                msg);
+}
+
+/* Canvas pixels in a box of the open question that are not `k`. */
+static int dlg_box_not(int x, int y, int w, int h, uint16_t k) {
+  int n = 0;
+  for (int r = y; r < y + h; r++)
+    for (int c = x; c < x + w; c++) n += g_canvas[r * UI_W + c] != k;
+  return n;
+}
+
+/*
+ * PHOTO's facts lines fit PH_FACT_W uncut (#247): every date date_words()
+ * can print, NO DATE, and the place up to PHOTO 9999. The text fit would
+ * cut a wider one silently, so measure them all.
+ */
+static void check_photo_facts_fit(void) {
+  static const char *const MON[12] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                                      "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+  int widest = 0;
+  char w[32], line[32];
+  for (int h = 0; h < 24; h++) {
+    for (int m = 0; m < 60; m++) {
+      snprintf(line, sizeof line, "TODAY %02d:%02d", h, m);
+      if (text_w(K_TYPE_CAPTION, line) > widest) { widest = text_w(K_TYPE_CAPTION, line); snprintf(w, sizeof w, "%s", line); }
+      for (int mo = 0; mo < 12; mo++) {
+        for (int d = 1; d <= 31; d++) {
+          snprintf(line, sizeof line, "%d %s %02d:%02d", d, MON[mo], h, m);
+          const int tw = text_w(K_TYPE_CAPTION, line);
+          if (tw > widest) { widest = tw; snprintf(w, sizeof w, "%s", line); }
+        }
+      }
+    }
+  }
+  char msg[96];
+  snprintf(msg, sizeof msg, "the widest date %s is %d px, over PH_FACT_W %d", w, widest, PH_FACT_W);
+  review_expect(widest <= PH_FACT_W, msg);
+  review_expect(text_w(K_TYPE_CAPTION, "NO DATE") <= PH_FACT_W, "NO DATE is wider than PH_FACT_W");
+  review_expect(text_w(K_TYPE_CAPTION, "PHOTO 9999") <= PH_FACT_W, "PHOTO 9999 is wider than PH_FACT_W");
+  review_expect(text_w(K_TYPE_CAPTION, "WIGGLE SENT") <= PH_FACT_W, "WIGGLE SENT is wider than PH_FACT_W");
+  review_expect(text_w(K_TYPE_CAPTION, "QUAD SENT") <= PH_FACT_W, "QUAD SENT is wider than PH_FACT_W");
+  review_expect(text_w(K_TYPE_CAPTION, "SINGLE SENT") <= PH_FACT_W, "SINGLE SENT is wider than PH_FACT_W");
+  printf("photo facts (%s hand): widest date %s %d px, NO DATE %d px, WIGGLE SENT %d px, fit %d px\n", g_hand, w,
+         widest, text_w(K_TYPE_CAPTION, "NO DATE"), text_w(K_TYPE_CAPTION, "WIGGLE SENT"), PH_FACT_W);
+}
+
+/*
+ * A question's room is fixed when it opens (#247), through ui_pass: what
+ * arrives later - a count, a tile decoded or dropped - is drawn into it and
+ * moves no row. FORMAT opened before the card is counted keeps an empty line
+ * and fills it; DELETE opened before its tile decoded has no picture and
+ * gets none; DELETE whose tile is dropped keeps the box in the waiting tone.
+ */
+static void check_dialog_room(void) {
+  const screen_t scr0 = s_screen;
+  g_audit_off = true;
+
+  /* FORMAT, the count not in yet. */
+  pass_rig(SCR_STORAGE);
+  g_fake_total = -1;
+  dialog_open(DLG_FORMAT);
+  draw_screen();
+  timer_passes(2);
+  dlg_spec_t d;
+  dialog_spec(&d);
+  bool sub = d.sub != NULL;
+  const int f0 = DLG_ROW_Y(sub, 0), f1 = DLG_ROW_Y(sub, 1);
+  const int cx = dlg_x() + DLG_PAD, cw = DLG_W - 2 * DLG_PAD;
+  const int cy = DLG_Y(sub) + DLG_TOP + K_TYPE_CAPTION->line_h + GRID, ch = K_TYPE_TITLE->line_h;
+  review_expect(dlg_box_not(cx, cy, cw, ch, K_SURFACE) == 0, "FORMAT drew a count before the card was counted");
+  g_fake_total = 14;
+  timer_passes(2);
+  dlg_rows_expect(f0, f1, "FORMAT, the count arriving");
+  review_expect(dlg_box_not(cx, cy, cw, ch, K_SURFACE) > 0, "FORMAT's count arrived and was not drawn");
+  pass_unrig(scr0);
+
+  /* DELETE, the tile not decoded at the open: no room, and none later. */
+  const gallery_item_t *slots = gallery_slots();
+  photo_open(&slots[0]);
+  pass_rig(SCR_PHOTO);
+  s_review_from_shot = false;
+  s_first_review_us = 0;
+  g_slot[0].state = TILE_PENDING;
+  g_slot[0].pixels = NULL;
+  dialog_open(DLG_DELETE);
+  draw_screen();
+  timer_passes(2);
+  dialog_spec(&d);
+  sub = d.sub != NULL;
+  int y0 = DLG_ROW_Y(sub, 0), y1 = DLG_ROW_Y(sub, 1);
+  g_slot[0].state = TILE_READY;
+  g_slot[0].pixels = g_tile[0];
+  timer_passes(2);
+  dlg_rows_expect(y0, y1, "DELETE, the tile decoding");
+  s_dialog = DLG_NONE;
+
+  /* DELETE, the tile dropped while it is up: the box stays, waiting tone. */
+  dialog_open(DLG_DELETE);
+  draw_screen();
+  timer_passes(2);
+  y0 = DLG_ROW_Y(sub, 0);
+  y1 = DLG_ROW_Y(sub, 1);
+  const int tx = dlg_x() + DLG_PAD, ty = DLG_Y(sub) + DLG_TOP + K_TYPE_CAPTION->line_h + GRID;
+  review_expect(dlg_box_not(tx, ty, DLG_THUMB_W, DLG_THUMB_H, K_OFF) > 0, "DELETE did not show the photograph");
+  g_slot[0].state = TILE_PENDING;
+  g_slot[0].pixels = NULL;
+  timer_passes(2);
+  dlg_rows_expect(y0, y1, "DELETE, the tile dropped");
+  review_expect(dlg_box_not(tx, ty, DLG_THUMB_W, DLG_THUMB_H, K_OFF) == 0,
+                "DELETE's dropped tile did not leave the waiting tone");
+  g_slot[0].state = TILE_READY;
+  g_slot[0].pixels = g_tile[0];
+  photo_release();
+  pass_unrig(scr0);
+  g_audit_off = false;
+}
+
+/* A real sleep through ui_pass: the panel goes dark, then a touch brings it
+ * back and the wake's lift (MOTION_WAKE_MS) runs out. */
+static void sleep_through(void) {
+  g_power_stage = POWER_ASLEEP;
+  timer_passes(2);
+  g_power_stage = POWER_AWAKE;
+  timer_passes(24);
+}
+
+/*
+ * After a sleep (#247): every screen with FORMAT's question open, its commit
+ * row focused, slept and woken through ui_pass. The question closes with
+ * its safe answer and nothing is formatted; the SETTINGS subtree, POWER and
+ * LOOK land on the menu with the row that led there focused; SHOOT, MENU,
+ * GALLERY and ROLL stay. PHOTO is the review scene's (scenes()). The two
+ * notes stay open over a sleep.
+ */
+static void check_sleep_safe(void) {
+  const screen_t scr0 = s_screen;
+  const bool focus0 = s_focus_shown;
+  g_audit_off = true;
+  static const struct {
+    screen_t s, want;
+    int row;
+  } T[] = {
+      {SCR_MENU, SCR_MENU, -1},       {SCR_SHOOT, SCR_SHOOT, -1},  {SCR_GALLERY, SCR_GALLERY, -1},
+      {SCR_ROLL, SCR_ROLL, -1},       {SCR_LOOK, SCR_MENU, 1},     {SCR_SETTINGS, SCR_MENU, 4},
+      {SCR_DISPLAY, SCR_MENU, 4},     {SCR_SOUND, SCR_MENU, 4},    {SCR_CONNECTION, SCR_MENU, 4},
+      {SCR_STORAGE, SCR_MENU, 4},     {SCR_ABOUT, SCR_MENU, 4},    {SCR_STATUS, SCR_MENU, 4},
+      {SCR_POWER, SCR_MENU, 5},
+  };
+  for (size_t i = 0; i < sizeof T / sizeof T[0]; i++) {
+    char what[96];
+    pass_rig(T[i].s);
+    s_focus[SCR_MENU] = 0;
+    dialog_open(DLG_FORMAT);
+    s_dlg_focus = 1;
+    s_look_from_shoot = T[i].s == SCR_LOOK;
+    sleep_through();
+    snprintf(what, sizeof what, "screen %d: the question was answered, or not closed, over a sleep", (int)T[i].s);
+    honest_expect(s_dialog == DLG_NONE && s_toast[0] == '\0', what);
+    snprintf(what, sizeof what, "screen %d woke on screen %d, expected %d", (int)T[i].s, (int)s_screen,
+             (int)T[i].want);
+    honest_expect(s_screen == T[i].want, what);
+    if (T[i].row >= 0) {
+      snprintf(what, sizeof what, "screen %d woke with menu focus %d, expected %d", (int)T[i].s,
+               s_focus[SCR_MENU], T[i].row);
+      honest_expect(s_focus[SCR_MENU] == T[i].row && !s_look_from_shoot, what);
+    }
+  }
+  /* The two notes ask nothing and are marked seen when they open: a sleep
+   * leaves them up, or a fresh camera put down unread loses its first step.
+   * One over a screen that moves stays over the menu. */
+  static const struct {
+    screen_t s;
+    dialog_t d;
+  } N[] = {{SCR_MENU, DLG_WELCOME}, {SCR_MENU, DLG_UPDATED}, {SCR_DISPLAY, DLG_WELCOME}};
+  for (size_t i = 0; i < sizeof N / sizeof N[0]; i++) {
+    char what[96];
+    pass_rig(N[i].s);
+    s_dialog = N[i].d;
+    s_dlg_focus = 0;
+    sleep_through();
+    snprintf(what, sizeof what, "note %d on screen %d was closed by a sleep", (int)N[i].d, (int)N[i].s);
+    honest_expect(s_dialog == N[i].d && s_toast[0] == '\0', what);
+    snprintf(what, sizeof what, "note %d on screen %d woke on screen %d", (int)N[i].d, (int)N[i].s, (int)s_screen);
+    honest_expect(s_screen == SCR_MENU, what);
+  }
+  s_dialog = DLG_NONE;
+  s_dlg_focus = 0;
+  s_focus[SCR_MENU] = 0;
+  s_focus_shown = focus0;
+  pass_unrig(scr0);
+  g_audit_off = false;
+}
+
+/*
+ * The start (#245), frame by frame through the real driver, on the
+ * renderer's clock. A case says when each camera first answers (-1 never),
+ * when a finger lands or a key goes down (-1 never), both through
+ * start_input() the way ui_pass() sends them, and where the loop stalls (the
+ * Twin in a hidden tab, a held UI task). Prints when the build began and the
+ * menu landed, the display list per frame and the canvas traffic, and fails
+ * the run when:
+ *   - the start does not end within START_TICKS_MAX ticks of the stall, or
+ *     with no stall, of the ceiling and a build;
+ *   - the start's last frame is not the menu it hands over to, pixel for
+ *     pixel (not on a cut: a key or a stall lands the menu at once);
+ *   - the card shows a camera as answering that was not heard, or as silent
+ *     one that was: the last frame draws the card's cells, so this is the
+ *     last frame's filled cells against the cameras heard by then;
+ *   - a case with `ceiling` lands the menu after it.
+ *
+ * The committed runs step 100 ms of virtual time a frame, to keep the PPM
+ * count near the boot field's; START_ONLY=1 renders them alone at 30 fps for
+ * the review GIFs and checks no count. The quiet cases are checks, not
+ * pictures: they write no PPMs and run on their own step.
+ */
+static int64_t g_start_step_us = 100000;
+#define START_TICKS_MAX 200
+/* The latest a start can land the menu, with a silent or late camera. */
+#define START_CEILING_MS \
+  (MOTION_START_WAIT_MS + MOTION_START_MISSING_MS + MOTION_START_SETTLE_MS + MOTION_START_BUILD_MS)
+/* The three newest presents, for the landing check. */
+static uint16_t *g_start_ring[3];
+static int g_start_ring_n;
+static void start_hook(bool stash) {
+  if (stash) return;
+  uint16_t *f = g_start_ring[g_start_ring_n % 3];
+  if (f != NULL) memcpy(f, g_canvas, (size_t)UI_W * UI_H * sizeof(uint16_t));
+  g_start_ring_n++;
+}
+
+typedef struct {
+  const char *name;
+  int answer_ms[4];
+  int tap_ms, key_ms;
+  bool first_seen;
+  int stall_at_ms, stall_ms; /* the loop stalls stall_ms before the frame at stall_at_ms; -1 none */
+  int ceiling_ms;            /* the menu lands by this, 0 for no check */
+  bool quiet;                /* no PPMs */
+  int step_ms;               /* 0 for g_start_step_us */
+  /* After the start, ui_pass() on the menu until this ms with the cameras
+   * still answering on their times; 0 for none. The card must never say a
+   * lens is down while each answers on time, and shows all heard at the end. */
+  int menu_ms;
+} start_case_t;
+
+static void start_run(const start_case_t *c) {
+  static const char *const OPN[] = {"fill", "rrect", "routl", "cut", "disc", "scrim", "text",
+                                    "shblit", "blit", "bits", "focus", "mask", "half"};
+  _Static_assert(sizeof OPN / sizeof OPN[0] == DL_OPS, "one name per display-list op");
+  for (int i = 0; i < 3; i++)
+    if (g_start_ring[i] == NULL) g_start_ring[i] = calloc((size_t)UI_W * UI_H, sizeof(uint16_t));
+  camlink_info_t keep[4];
+  memcpy(keep, s_cams, sizeof keep);
+  const unsigned online0 = g_cam_online;
+  const int64_t step_us = c->step_ms > 0 ? (int64_t)c->step_ms * 1000 : g_start_step_us;
+  g_first_seen = c->first_seen;
+  g_anim = c->name;
+  g_anim_quiet = c->quiet;
+  g_anim_n = 0;
+  g_start_ring_n = 0;
+  g_frame_hook = start_hook;
+  prev_vclock_us = 1000000;
+  prev_vclock_step_us = step_us;
+  s_screen = SCR_MENU;
+  s_dialog = DLG_NONE;
+  s_pressed = -1;
+  /* A body at power-on: no camera has said anything yet. */
+  g_cam_online = 0;
+  memset(s_cams, 0, sizeof s_cams);
+  anim_start_boot();
+  const int64_t t0 = s_anim.start_us;
+  int frames = 0, ops_max = 0, ops_sum = 0, peak_f = 0, end_ms = -1, since_stall = 0;
+  int hist[DL_OPS] = {0};
+  double px_max = 0, px_sum = 0;
+  bool tapped = false, keyed = false, stalled = false, cut = false;
+  /* A stalled run lands within START_TICKS_MAX ticks of the stall, any
+   * other within that many past the ceiling and a build. */
+  const int max_ticks =
+      c->stall_at_ms >= 0 ? START_TICKS_MAX : (int)((int64_t)(START_CEILING_MS + 1000) * 1000 / step_us) + START_TICKS_MAX;
+  for (; anim_active() && since_stall < max_ticks; since_stall++) {
+    if (c->stall_at_ms >= 0 && !stalled && (prev_vclock_us - t0) / 1000 >= c->stall_at_ms) {
+      stalled = true;
+      cut = true;
+      since_stall = 0;
+      prev_vclock_us += (int64_t)c->stall_ms * 1000;
+    }
+    const int32_t ms = (int32_t)((prev_vclock_us - t0) / 1000);
+    unsigned now = 0;
+    for (int i = 0; i < 4; i++)
+      if (c->answer_ms[i] >= 0 && ms >= c->answer_ms[i]) now |= 1u << i;
+    g_cam_online = now;
+    const bool tap = c->tap_ms >= 0 && !tapped && ms >= c->tap_ms;
+    const bool key = c->key_ms >= 0 && !keyed && ms >= c->key_ms;
+    tapped |= tap;
+    keyed |= key;
+    if (key) cut = true;
+    bench_reset();
+    uint32_t wait = 0;
+    if (tap || key) {
+      if (start_input(tap, key)) {
+        end_ms = ms;
+        frames++;
+        break;
+      }
+    }
+    wait = anim_tick();
+    const double px = bench_screens();
+    if (s_dl.n > ops_max) {
+      ops_max = s_dl.n;
+      peak_f = frames;
+      memset(hist, 0, sizeof hist);
+      for (int k = 0; k < s_dl.n; k++) hist[s_dl.cmd[k].op]++;
+    }
+    ops_sum += s_dl.n;
+    if (px > px_max) px_max = px;
+    px_sum += px;
+    if (!anim_active()) end_ms = ms;
+    frames++;
+    if (wait > 0) prev_vclock_us += (int64_t)wait * 1000;
+  }
+  g_frame_hook = NULL;
+  const bool note = s_dialog != DLG_NONE;
+  printf("\n  start %s: answers %d/%d/%d/%d ms, tap %d, key %d, stall %d ms at %d: build at %d ms, menu at %d ms, "
+         "%d frames, %s\n",
+         c->name, c->answer_ms[0], c->answer_ms[1], c->answer_ms[2], c->answer_ms[3], c->tap_ms, c->key_ms,
+         c->stall_ms, c->stall_at_ms, s_anim.st_exit, end_ms, g_anim_n, note ? "then the note" : "no note");
+  printf("    display list per frame: max %d (frame %d), mean %.1f;", ops_max, peak_f,
+         frames ? (double)ops_sum / frames : 0.0);
+  for (int o = 0; o < DL_OPS; o++)
+    if (hist[o]) printf(" %s %d", OPN[o], hist[o]);
+  printf("\n    canvas traffic per frame: max %.2f, mean %.2f screens\n", px_max, frames ? px_sum / frames : 0.0);
+
+  if (anim_active()) {
+    fprintf(stderr, "start %s (%s hand): still running %d ticks %s\n", c->name, g_hand, max_ticks,
+            stalled ? "after the stall" : "in");
+    g_start_failed = true;
+  } else if (!cut) {
+    /* The landing: the start's last frame against the menu presented after it. */
+    const int menu_i = g_start_ring_n - (note ? 2 : 1), last_i = menu_i - 1;
+    if (last_i < 0) {
+      fprintf(stderr, "start %s: did not land (%d presents)\n", c->name, g_start_ring_n);
+      g_start_failed = true;
+    } else {
+      const uint16_t *a = g_start_ring[last_i % 3], *m = g_start_ring[menu_i % 3];
+      int diff = 0, fx = -1, fy = -1;
+      for (int i = 0; i < UI_W * UI_H; i++) {
+        if (a[i] == m[i]) continue;
+        if (diff++ == 0) {
+          fx = i % UI_W;
+          fy = i / UI_W;
+        }
+      }
+      printf("    landing: the last frame and the menu differ in %d pixels\n", diff);
+      if (diff != 0) {
+        fprintf(stderr, "start %s (%s hand): the last frame is not the menu: %d pixels differ, first at %d,%d\n",
+                c->name, g_hand, diff, fx, fy);
+        g_start_failed = true;
+      }
+    }
+  }
+  /* The card's cells against the cameras heard. */
+  unsigned card = 0, heard = 0;
+  for (int i = 0; i < 4; i++) {
+    if (s_cams[i].online) card |= 1u << i;
+    if (s_anim.st_seen[i] >= 0) heard |= 1u << i;
+  }
+  printf("    cameras heard 0x%x, on the card 0x%x\n", heard, card);
+  if (!anim_active() && card != heard) {
+    fprintf(stderr, "start %s (%s hand): the card shows cameras 0x%x, heard 0x%x\n", c->name, g_hand, card, heard);
+    g_start_failed = true;
+  }
+  if (c->ceiling_ms > 0 && (end_ms < 0 || end_ms > c->ceiling_ms)) {
+    fprintf(stderr, "start %s (%s hand): the menu landed at %d ms, past %d ms\n", c->name, g_hand, end_ms,
+            c->ceiling_ms);
+    g_start_failed = true;
+  }
+  if (c->first_seen == note) {
+    fprintf(stderr, "start %s: the first-start note %s\n", c->name,
+            note ? "opened on a body that has seen it" : "did not open");
+    g_start_failed = true;
+  }
+  if (c->menu_ms > 0 && !anim_active()) {
+    /* The menu after the start, through the real loop. */
+    const int64_t clock = prev_vclock_us;
+    pass_rig(SCR_MENU);
+    prev_vclock_us = clock;
+    int down_ms = -1, passes = 0;
+    for (; passes < 4000; passes++) {
+      const int32_t ms = (int32_t)((prev_vclock_us - t0) / 1000);
+      if (ms > c->menu_ms) break;
+      unsigned now = 0;
+      for (int i = 0; i < 4; i++)
+        if (c->answer_ms[i] >= 0 && ms >= c->answer_ms[i]) now |= 1u << i;
+      g_cam_online = now;
+      const int64_t before = prev_vclock_us;
+      const uint32_t wait = ui_pass();
+      if (down_ms < 0 && conditions_has(COND_CAMERA_DOWN)) down_ms = ms;
+      if (prev_vclock_us == before) prev_vclock_us += (int64_t)(wait > 0 ? wait : 10) * 1000;
+    }
+    unsigned shown = 0;
+    for (int i = 0; i < 4; i++)
+      if (s_cams[i].online) shown |= 1u << i;
+    printf("    menu to %d ms over %d passes: a lens called down at %d ms, the card shows 0x%x\n", c->menu_ms,
+           passes, down_ms, shown);
+    /* A lens that never answers is called down when the wait runs out, on
+     * that pass; one that answers on time never is. */
+    bool silent = false;
+    for (int i = 0; i < 4; i++) silent |= c->answer_ms[i] < 0;
+    if (!silent && down_ms >= 0) {
+      fprintf(stderr, "start %s (%s hand): the menu called a lens down at %d ms on a body whose lenses answer on time\n",
+              c->name, g_hand, down_ms);
+      g_start_failed = true;
+    }
+    if (silent && (down_ms < MOTION_START_WAIT_MS || down_ms > MOTION_START_WAIT_MS + 100)) {
+      fprintf(stderr, "start %s (%s hand): a silent lens was called down at %d ms, not as the wait ran out at %d ms\n",
+              c->name, g_hand, down_ms, MOTION_START_WAIT_MS);
+      g_start_failed = true;
+    }
+    if (shown != g_cam_online) {
+      fprintf(stderr, "start %s (%s hand): at %d ms the card shows cameras 0x%x, 0x%x answer\n", c->name, g_hand,
+              c->menu_ms, shown, g_cam_online);
+      g_start_failed = true;
+    }
+    pass_unrig(SCR_MENU);
+  }
+  s_start_from_us = 0; /* the next scene's clock starts again at 0 */
+  prev_vclock_step_us = 16000;
+  prev_vclock_us = 0;
+  g_anim = NULL;
+  g_anim_quiet = false;
+  s_dialog = DLG_NONE;
+  s_dlg_focus = 0;
+  g_first_seen = false;
+  g_cam_online = online0;
+  memcpy(s_cams, keep, sizeof keep);
+  conditions_scan(s_cams, false);
+  s_anim.kind = ANIM_NONE;
+}
+
+static void start_scenes(void) {
+  static const start_case_t PICTURES[] = {
+      /* All four answering as they come up; a fresh body, so the note follows. */
+      {"start_all4", {400, 700, 900, 1100}, -1, -1, false, -1, 0, 0, false, 0},
+      /* The third never answers: its outline hardens and lands on the card.
+       * The ceiling is two of this run's 100 ms steps late at most. */
+      {"start_three", {400, 700, -1, 1100}, -1, -1, true, -1, 0, START_CEILING_MS + 200, false, 0},
+      /* A finger at 600 ms: the rest of the build, quickly, the truth then. */
+      {"start_tap", {400, 700, 900, 1100}, 600, -1, true, -1, 0, 0, false, 0},
+  };
+  for (size_t i = 0; i < sizeof PICTURES / sizeof PICTURES[0]; i++) start_run(&PICTURES[i]);
+  if (getenv("START_ONLY") != NULL) {
+    /* Media only: the nodes already up when the UI starts, which is the
+     * likely body, and two that come up late. */
+    static const start_case_t MEDIA[] = {
+        {"start_ready", {0, 0, 0, 0}, -1, -1, true, -1, 0, 0, false, 0},
+        {"start_slow", {1300, 1700, 2400, 2900}, -1, -1, true, -1, 0, 0, false, 0},
+    };
+    for (size_t i = 0; i < sizeof MEDIA / sizeof MEDIA[0]; i++) start_run(&MEDIA[i]);
+  }
+  /* Checks, no pictures. 10 ms steps put a frame on every beat, so the
+   * ceiling is exact. */
+  static const start_case_t CHECKS[] = {
+      /* All four up at power-on and a finger at 300 ms, before any cell's
+       * turn: all four land filled, none drawn dead. */
+      {"start_tap_early", {0, 0, 0, 0}, 300, -1, true, -1, 0, 0, true, 10},
+      /* A key at 300 ms: the menu at once, with the four that answered. */
+      {"start_key_early", {0, 0, 0, 0}, -1, 300, true, -1, 0, 0, true, 10},
+      /* A finger at 600 ms with two lenses still booting: the menu then never
+       * says a lens is down, and fills each cell as its lens answers. */
+      {"start_tap_menu", {400, 700, 900, 1100}, 600, -1, true, -1, 0, 0, true, 10, 2500},
+      /* The same with the third lens dead: PROBLEM as the wait runs out. */
+      {"start_tap_three", {400, 700, -1, 1100}, 600, -1, true, -1, 0, 0, true, 10, 2500},
+      /* A camera that answers just before the wait ends does not hold the
+       * build: the menu still lands by the ceiling. */
+      {"start_late_one", {400, 700, 900, 1900}, -1, -1, true, -1, 0, START_CEILING_MS, true, 10},
+      {"start_late_two", {400, 700, 1880, 1940}, -1, -1, true, -1, 0, START_CEILING_MS, true, 10},
+      /* CAM3 silent until the build is under way: it still opens and lands
+       * filled. CAM4 later still, inside the last late fill: an outline on
+       * the card, never a cell that pops in on the last frame. */
+      {"start_late_build", {400, 700, 2300, -1}, -1, -1, true, -1, 0, START_CEILING_MS, true, 10},
+      {"start_too_late", {400, 700, 900, 2700}, -1, -1, true, -1, 0, START_CEILING_MS, true, 10},
+      /* The loop stalls 31 s before the first frame, 31 s at 500 ms with
+       * CAM3 silent, and 40 s before a finger: each lands at once. */
+      {"start_stall", {400, 700, 900, 1100}, -1, -1, true, 0, 31000, 0, true, 33},
+      {"start_stall_three", {400, 700, -1, 1100}, -1, -1, true, 500, 31000, 0, true, 33},
+      {"start_stall_tap", {400, 700, 900, 1100}, 40000, -1, true, 0, 40000, 0, true, 33},
+  };
+  for (size_t i = 0; i < sizeof CHECKS / sizeof CHECKS[0]; i++) start_run(&CHECKS[i]);
+}
+
 /* Every scene, in the order they have always been drawn. Run once per hand,
  * each time in a fresh forked process (main). */
 static void scenes(void) {
@@ -3136,13 +4100,13 @@ static void scenes(void) {
    * its own two-second clock. */
   g_cam_online = 0xBu;
   for (int i = 0; i < 4; i++) camlink_get_info_ch(i, &s_cams[i]);
-  conditions_scan(s_cams);
+  conditions_scan(s_cams, false);
   s_screen = SCR_MENU;
   draw_screen();
   shot("menu_cams_3of4");
   g_cam_online = 0x5u;
   for (int i = 0; i < 4; i++) camlink_get_info_ch(i, &s_cams[i]);
-  conditions_scan(s_cams);
+  conditions_scan(s_cams, false);
 
   /* The launch shades: the menu in each of the eight a start can wear, for
    * the review strip. main.c picks boot_count % 8; every other picture here
@@ -3155,32 +4119,8 @@ static void scenes(void) {
   }
   ui_set_launch_index(0);
 
-  /* The boot rings, frame by frame. */
-  {
-    g_anim = "anim_boot";
-    g_anim_n = 0;
-    /* The real sequence, through the real driver, on the renderer's clock -
-     * so the frames reviewed here are the frames the camera presents. The
-     * step is coarse (16 ms of virtual time per present) to keep the dump to
-     * a readable number of pictures. */
-    prev_vclock_us = 1000000;
-    prev_vclock_step_us = 60000;
-    s_screen = SCR_MENU;
-    splash();
-    /* The clock here only advances when a frame is presented, so a hold - a
-     * phase that returns a delay and draws nothing - has to move it by hand.
-     * On the camera and in the Twin the clock is real and this is free. */
-    for (int guard = 0; anim_active() && guard < 4000; guard++) {
-      const uint32_t wait = anim_tick();
-      if (wait > 0) prev_vclock_us += (int64_t)wait * 1000;
-    }
-    prev_vclock_step_us = 16000;
-    prev_vclock_us = 0;
-    g_anim = NULL;
-    /* The first-start note the cascade raises stays up until dismissed; the
-     * scenes after this one are of a body that has seen it. */
-    s_dialog = DLG_NONE;
-  }
+  /* The start, frame by frame (#245). */
+  start_scenes();
 
   /* The menu's two moves, frame by frame. */
   shot_anim("anim_open", SCR_MENU, SCR_GALLERY, 2);
@@ -3205,6 +4145,10 @@ static void scenes(void) {
    */
   s_focus[SCR_SHOOT] = 3; /* the shutter, where focus lands on entry */
   SHOT(SCR_SHOOT, "shoot");
+  /* The two flash shots are a body with a flash fitted: the external module
+   * ECN-0003 left open. D4-V1 has none, and "shoot" above has no flash
+   * panel (#247). */
+  g_flash_fitted = true;
   g_flash_mode = "on";
   SHOT(SCR_SHOOT, "shoot_flash_on");
   /* QUAD, flash off, and the third lens not answering: the strip's count on
@@ -3214,6 +4158,7 @@ static void scenes(void) {
   g_mode = "quad";
   g_vf_dead = 1u << 2;
   SHOT(SCR_SHOOT, "shoot_quad_flash_off");
+  g_flash_fitted = false;
   /* The button held, and the same pane inside the boot grace after a
    * restart: STARTING and no button. */
   s_pressed = SH_IT_PANE0 + 2;
@@ -3306,6 +4251,31 @@ static void scenes(void) {
   }
   g_resolution = "1600x1200";
   g_free_bytes = PV_FREE_BYTES;
+
+  /* First use (#247): no photograph on the card and none this boot. The hint
+   * pill in ink, in the card pill's slot; the lens hint, still set, yields to
+   * it. Then a tap on a live pane, and the toast that answers it. */
+  g_fake_total = 0;
+  snprintf(s_lens_hint, sizeof s_lens_hint, "CHECK THE SECOND LENS");
+  SHOT(SCR_SHOOT, "shoot_first_use");
+  s_lens_hint[0] = '\0';
+  toast("Press the shutter on top.");
+  SHOT(SCR_SHOOT, "shoot_first_use_tap");
+  s_toast[0] = '\0';
+  {
+    /* The card pill outranks it, and a photograph on the card ends it. */
+    storage_status_t sd_now;
+    g_card_mounted = false;
+    g_card_present = false;
+    storage_get_status(&sd_now);
+    honest_expect(sh_card_pill(&sd_now) != NULL, "no card pill with the slot empty");
+    g_card_mounted = true;
+    g_card_present = true;
+    honest_expect(sh_first_use(), "an empty card and no capture this boot is not first use");
+    g_fake_total = 1;
+    honest_expect(!sh_first_use(), "a photograph on the card is still first use");
+  }
+  g_fake_total = 14;
 
   /* The self-timer (#237): its panel on, and held; then the count as a press
    * starts it, and with 2.6 s left, the eighth dot caught mid-fade. On the
@@ -3597,12 +4567,45 @@ static void scenes(void) {
    * the picker buttons and a group box's top edge all meet: the dotted
    * rectangle has to read inside a 40 px button that is itself inside an etched
    * frame, and at 1 px that is only judgeable as a picture. */
+  /* With a flash fitted, so the three-column row and its FLASH band stay
+   * reviewed for the external module; every other LOOK shot is D4-V1's two
+   * columns (#247). */
+  g_flash_fitted = true;
   s_focus_shown = true;
   s_focus[SCR_LOOK] = LK_IT_NEXT;
   s_pressed = LK_IT_FLASH + 1; /* FLASH / ON, held */
   SHOT(SCR_LOOK, "look_focus_pressed");
   s_pressed = -1;
   s_focus_shown = false;
+  g_flash_fitted = false;
+  /* D4-V1: the same press on the two-column row. MODE / QUAD held. */
+  s_focus_shown = true;
+  s_pressed = LK_IT_MODE + 1;
+  SHOT(SCR_LOOK, "look_no_flash_pressed");
+  s_pressed = -1;
+  s_focus_shown = false;
+  {
+    /* No point on LOOK presses a FLASH item when no flash is fitted, and FN
+     * steps nothing. Audit off: activate() repaints, and no shot follows. */
+    g_audit_off = true;
+    s_screen = SCR_LOOK;
+    bool hit = false;
+    for (int y = 0; y < UI_H && !hit; y += 2)
+      for (int x = 0; x < UI_W && !hit; x += 2) {
+        const int it = hit_test(x, y);
+        hit = it >= LK_IT_FLASH && it < LK_IT_PREV;
+      }
+    honest_expect(!hit, "a point on LOOK hits a FLASH item with no flash fitted");
+    const int merges0 = g_merge_n;
+    flash_cycle();
+    activate(LK_IT_FLASH + 1);
+    honest_expect(g_merge_n == merges0, "FN or a FLASH item wrote the flash mode with no flash fitted");
+    g_flash_fitted = true;
+    flash_cycle();
+    honest_expect(g_merge_n == merges0 + 1, "FN did not step the flash with a flash fitted");
+    g_flash_fitted = false;
+    g_audit_off = false;
+  }
 
   s_focus[SCR_GALLERY] = 0;
   SHOT(SCR_GALLERY, "gallery");
@@ -3865,10 +4868,13 @@ static void scenes(void) {
   shot("power_factory_confirm");
   s_dialog = DLG_NONE;
   s_screen = SCR_STORAGE;
-  s_dialog = DLG_FORMAT;
-  s_dlg_focus = 0;
+  dialog_open(DLG_FORMAT);
   draw_screen();
   shot("settings_storage_format_confirm");
+  /* DELETE ALL, with the count it takes set large (#247). */
+  dialog_open(DLG_DELETE_ALL);
+  draw_screen();
+  shot("settings_storage_delete_all_confirm");
   s_dialog = DLG_NONE;
 
   /* ---- a single photograph, and the delete confirmation over it ---- */
@@ -3887,12 +4893,16 @@ static void scenes(void) {
     SHOT(SCR_PHOTO, "photo_favourite");
     s_photo_fav = false;
     s_focus[SCR_PHOTO] = P_IT_DELETE;
+    /* The Roll holds every frame: WIGGLE SENT, the widest mode line. Set
+     * directly; the fixture gallery has no sent capture. */
+    s_photo_sent = true;
+    SHOT(SCR_PHOTO, "photo_sent");
+    s_photo_sent = false;
     /* DELETE held: the pressed destructive face, one of #176's pairs. */
     s_pressed = P_IT_DELETE;
     SHOT(SCR_PHOTO, "photo_delete_pressed");
     s_pressed = -1;
-    s_dialog = DLG_DELETE;
-    s_dlg_focus = 0;
+    dialog_open(DLG_DELETE);
     scan_conditions();
   draw_screen();
     shot("photo_delete_confirm");
@@ -4035,31 +5045,13 @@ static void scenes(void) {
     g_slot[0].cal_present = false;
   }
 
-  /* The boot field at full reach, in the two states that matter: every camera
-   * answered, and two of them not. The second is the whole reason the field
-   * is drawn from the cameras rather than from a clock - a body with a dead
-   * node says so on the screen it shows first. */
+  /* What the camera shows while it is going away: the ODD JOBS mark where the
+   * start puts it, and then the screen letting go of it (#245). Same picture
+   * for a restart. The fade at four of its MOTION_POWER_FADE_FRAMES frames,
+   * drawn from power_fade_k() the way power_down_anim() draws them, and every
+   * frame's step checked to only ever darken, from the mark to black. */
   {
-    for (int q = 0; q < 4; q++) s_bf_cam[q] = 1.0f;
-    fill(0, 0, UI_W, UI_H, K_GROUND);
-    boot_field(BF_REACH, 900, 0, 1.0f);
-    shot("boot_field_all_four");
-
-    s_bf_cam[1] = s_bf_cam[3] = BF_DARK;
-    fill(0, 0, UI_W, UI_H, K_GROUND);
-    boot_field(BF_REACH, 900, 0, 1.0f);
-    shot("boot_field_two_silent");
-    for (int q = 0; q < 4; q++) s_bf_cam[q] = 1.0f;
-  }
-
-  /* What the camera shows while it is going away: its own mark, centred,
-   * and then the screen letting go of it. Same picture for a restart. The
-   * fade at four of its MOTION_POWER_FADE_FRAMES frames, drawn from
-   * power_fade_k() the way power_down_anim() draws them, and every frame's
-   * scrim checked to only ever darken, from the mark to black. */
-  {
-    fill(0, 0, UI_W, UI_H, K_GROUND);
-    boot_mark();
+    render_mark(NULL);
     shot("power_down");
     int prev = 0;
     for (int i = 0; i <= MOTION_POWER_FADE_FRAMES; i++) {
@@ -4076,6 +5068,17 @@ static void scenes(void) {
         shot(name);
       }
     }
+    /* Going to sleep: the same mark and the line under it, full and half
+     * way through their fade (#245). */
+    int full = 255, half = 128;
+    ui_render(render_sleep, &full);
+    shot("sleep_mark");
+    /* A frame of a fade: its line is under the floor on the way, as every
+     * fade's is, so the audit judges the full one only. */
+    g_audit_off = true;
+    ui_render(render_sleep, &half);
+    shot("sleep_mark_half");
+    g_audit_off = false;
   }
 
   /*
@@ -4112,6 +5115,45 @@ static void scenes(void) {
       lift_at((int64_t)(MOTION_UNDIM_MS / 2) * 1000, MOTION_UNDIM_MS, DIM_SCRIM_K, 0, &k, &m);
       lift_frame(SCR_MENU, k, m, "undim_080");
     }
+  }
+
+  /* ---- after a sleep (#247) ----
+   * Two places the camera went dark, driven through ui_pass, and the wake's
+   * frame 60 ms into MOTION_WAKE_MS: STORAGE with FORMAT's question open
+   * wakes on the menu, the question gone; PHOTO with DELETE's question open
+   * stays on the photograph, the question gone. check_sleep_safe() holds the
+   * rule for every screen. */
+  {
+    int k, m;
+    lift_at(60 * 1000, MOTION_WAKE_MS, 255, 0, &k, &m);
+
+    pass_rig(SCR_STORAGE);
+    dialog_open(DLG_FORMAT);
+    g_audit_off = true;
+    g_power_stage = POWER_ASLEEP;
+    timer_passes(2);
+    g_audit_off = false;
+    honest_expect(s_screen == SCR_MENU && s_dialog == DLG_NONE && s_focus[SCR_MENU] == 4,
+                  "STORAGE under FORMAT did not go to the menu, SETTINGS row, at the sleep");
+    lift_frame(SCR_MENU, k, m, "sleep_woke_from_format");
+    pass_unrig(SCR_MENU);
+    s_focus[SCR_MENU] = 0;
+
+    const gallery_item_t *slots = gallery_slots();
+    photo_open(&slots[0]);
+    s_focus[SCR_PHOTO] = P_IT_DELETE;
+    pass_rig(SCR_PHOTO);
+    dialog_open(DLG_DELETE);
+    s_first_review_us = 0;
+    g_audit_off = true;
+    g_power_stage = POWER_ASLEEP;
+    timer_passes(2);
+    g_audit_off = false;
+    honest_expect(s_screen == SCR_PHOTO && s_dialog == DLG_NONE && s_toast[0] == '\0',
+                  "PHOTO under DELETE did not stay on the photograph with the question closed");
+    lift_frame(SCR_PHOTO, k, m, "sleep_woke_on_photo");
+    pass_unrig(SCR_MENU);
+    photo_release();
   }
 
   /* ---- a toast, which every screen can raise ---- */
@@ -4166,17 +5208,31 @@ static void scenes(void) {
     s_toast_long = toast_long0;
   }
 
+  /* The test plate SCREEN_PLATE puts up for photographs of the panel (#246):
+   * fills only, no targets, the same for both hands. */
+  s_screen = SCR_MENU;
+  s_kdp.plate_on = true;
+  render_screen(NULL);
+  shot("screen_plate");
+  s_kdp.plate_on = false;
+
   review_scenes();
 
   /* Last, so nothing it touches reaches a picture. */
   check_shutter_sound();
   check_self_timer();
+  check_first_use();
+  check_sleep_safe();
   check_move_takes_lift();
   check_wake_into_move();
   check_idle_dim();
   check_tap_limit();
+  check_kdp_screen();
   check_dead_send();
   check_review_loop();
+  check_photo_steps();
+  check_photo_facts_fit();
+  check_dialog_room();
 }
 
 /* ---- what a frame costs ---- */
@@ -4235,29 +5291,30 @@ static void bench(void) {
            hi / (lo > 0.01 ? lo : 0.01));
   }
 
-  /* The splash, which is the one the eye judges first and the one whose cost
-   * grows fastest: each ring out adds a whole ring of cells. */
+  /* The start's fades, level by level: the mark's ink from the ground to
+   * K_INK (#245). A straight mix() leans green where green's sixth bit rounds
+   * up, and its dark half is khaki; fade_in() keeps the dark half grey. */
   {
-    printf("\n  the boot field, frame by frame\n");
-    double lo = 1e9, hi = 0, sum = 0;
-    for (int f = 0; f <= 16; f++) {
-      const float reach = ease_ui((float)f / 16.0f) * BF_REACH;
-      bench_reset();
-      fill(0, 0, UI_W, UI_H, K_GROUND);
-      for (int q = 0; q < 4; q++) s_bf_cam[q] = 1.0f;
-      boot_field(reach, 0, 0, 1.0f);
-      const double c = bench_screens();
-      if (f == 0 || f == 8 || f == 16) {
-        char lbl[32];
-        snprintf(lbl, sizeof lbl, "reach %.0f px", (double)reach);
-        bench_line(lbl, c);
+    int lean_mix = 0, lean_fade = 0, chroma_dark = 0;
+    for (int k = 1; k < 255; k++) {
+      const uint16_t a = mix(K_GROUND, K_INK, k), f = fade_in(K_INK, k);
+      const int ar = ((a >> 11) & 31) * 255 / 31, ag = ((a >> 5) & 63) * 255 / 63;
+      const int fr = ((f >> 11) & 31) * 255 / 31, fg = ((f >> 5) & 63) * 255 / 63, fb = (f & 31) * 255 / 31;
+      if (ag > ar + 1) lean_mix++;
+      if (fg > fr + 1) lean_fade++;
+      if (k <= 128) {
+        const int hi = fr > fg ? (fr > fb ? fr : fb) : (fg > fb ? fg : fb);
+        const int lo = fr < fg ? (fr < fb ? fr : fb) : (fg < fb ? fg : fb);
+        if (hi - lo > chroma_dark) chroma_dark = hi - lo;
       }
-      if (c < lo) lo = c;
-      if (c > hi) hi = c;
-      sum += c;
     }
-    printf("    -> min %.2f  max %.2f  mean %.2f  spread %.1fx\n", lo, hi, sum / 17.0,
-           hi / (lo > 0.01 ? lo : 0.01));
+    printf("\n  the mark's fade, ground to ink: %d of 254 levels lean green with mix(), %d with fade_in(); "
+           "the dark half's chroma is at most %d\n",
+           lean_mix, lean_fade, chroma_dark);
+    if (lean_fade > 0 || chroma_dark > 3) {
+      fprintf(stderr, "the mark's fade leans green on %d levels, dark-half chroma %d\n", lean_fade, chroma_dark);
+      g_start_failed = true;
+    }
   }
 }
 
@@ -4292,12 +5349,18 @@ static int run_hand(bool right, const char *out) {
   /* Row 0, the MAO pink: the camera's pick is boot_count % 8, and a picture
    * that depended on a counter would be a different picture every run. */
   ui_set_launch_index(0);
+  if (getenv("START_ONLY") != NULL) {
+    g_start_step_us = 33333;
+    fake_gallery();
+    start_scenes();
+    fprintf(stderr, "\n==== %s hand: start runs only, %d PPMs in %s ====\n", g_hand, g_ppm_n, g_out);
+    return g_write_failed || g_start_failed ? PASS_HARD : PASS_CLEAN;
+  }
   scenes();
   /* The frame-cost figures are the same for both hands; print them once. */
   if (right) {
     g_audit_off = true;
     bench();
-    check_mask_tiles("the wordmark", KINO_D4_LOGO, KINO_D4_LOGO_W, KINO_D4_LOGO_H);
     check_mask_tiles("the ODD JOBS mark", UI_MARK_ODD_JOBS_40, UI_MARK_ODD_JOBS_40_W,
                      UI_MARK_ODD_JOBS_40_H);
     check_mask_tiles("the ODD JOBS mark at 128", UI_MARK_ODD_JOBS_128, UI_MARK_ODD_JOBS_128_W,
@@ -4334,12 +5397,20 @@ static int run_hand(bool right, const char *out) {
     fprintf(stderr, "a fade or a lift steps back or does not end where it should\n");
     hard = true;
   }
+  if (g_start_failed) {
+    fprintf(stderr, "the start does not land on the menu it hands over to\n");
+    hard = true;
+  }
   if (g_timer_failed) {
     fprintf(stderr, "the self-timer broke one of its rules\n");
     hard = true;
   }
   if (g_review_failed) {
     fprintf(stderr, "the review after a shot broke one of its rules\n");
+    hard = true;
+  }
+  if (g_honest_failed) {
+    fprintf(stderr, "the glass offered something the camera cannot do, or kept an unsafe state\n");
     hard = true;
   }
   if (audit_report() > 0) hard = true;

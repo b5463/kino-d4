@@ -1334,6 +1334,29 @@ static void test_tap(void) {
 }
 
 /* ------------------------------------------------------------------ */
+/* pure_swipe_dir                                                      */
+/* ------------------------------------------------------------------ */
+
+static void test_swipe(void) {
+  const int T = PURE_SWIPE_TRAVEL_PX, O = PURE_SWIPE_OFF_AXIS_PX;
+  /* A tap, a rock and a short drag are not swipes. */
+  CHECK(pure_swipe_dir(0, 0, T, O) == 0, "a tap read as a swipe");
+  CHECK(pure_swipe_dir(40, 3, T, O) == 0, "a 40 px drag read as a swipe");
+  CHECK(pure_swipe_dir(T - 1, 0, T, O) == 0, "%d px read as a swipe", T - 1);
+  CHECK(pure_swipe_dir(-(T - 1), 0, T, O) == 0, "-%d px read as a swipe", T - 1);
+  /* The travel limit is inclusive, both ways. */
+  CHECK(pure_swipe_dir(T, 0, T, O) == 1, "exactly %d px right is not a swipe", T);
+  CHECK(pure_swipe_dir(-T, 0, T, O) == -1, "exactly %d px left is not a swipe", T);
+  CHECK(pure_swipe_dir(400, -20, T, O) == 1, "a long right swipe is not one");
+  CHECK(pure_swipe_dir(-400, 20, T, O) == -1, "a long left swipe is not one");
+  /* The off-axis limit is exclusive: a diagonal is not a step. */
+  CHECK(pure_swipe_dir(200, O - 1, T, O) == 1, "%d px off axis cancelled the swipe", O - 1);
+  CHECK(pure_swipe_dir(200, O, T, O) == 0, "%d px off axis still swiped", O);
+  CHECK(pure_swipe_dir(-200, -O, T, O) == 0, "-%d px off axis still swiped", O);
+  CHECK(pure_swipe_dir(0, 300, T, O) == 0, "a vertical drag swiped");
+}
+
+/* ------------------------------------------------------------------ */
 /* pure_still_step                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -1449,6 +1472,70 @@ static void test_maint_deadline(void) {
   CHECK((int64_t)PURE_FW_IDLE_MS < (int64_t)PURE_MAINT_HOLD_MS, "the session idle is not shorter than the hold");
 }
 
+/* ------------------------------------------------------------------ */
+/* pure_screen_page, pure_screen_tap_ok (#246)                          */
+/* ------------------------------------------------------------------ */
+
+static void test_screen_page(void) {
+  const uint32_t total = 800u * 480u * 2u;
+  uint32_t s = 99, n = 99;
+  CHECK(PURE_SCREEN_CHUNK_MAX == 3072, "a page is %d bytes, the contract says 3072", PURE_SCREEN_CHUNK_MAX);
+  CHECK(total % PURE_SCREEN_CHUNK_MAX == 0 && total / PURE_SCREEN_CHUNK_MAX == 250,
+        "a screen is not 250 whole pages");
+
+  CHECK(pure_screen_page(7, 7, total, 0, 0, &s, &n) == PURE_SCREEN_PAGE_OK && s == 0 && n == 3072,
+        "a default page read %u at %u", n, s);
+  CHECK(pure_screen_page(7, 7, total, 3072, 9000, &s, &n) == PURE_SCREEN_PAGE_OK && s == 3072 && n == 3072,
+        "an oversized page was not clamped: %u", n);
+  CHECK(pure_screen_page(7, 7, total, 100, 2, &s, &n) == PURE_SCREEN_PAGE_OK && s == 100 && n == 2,
+        "a two-byte page read %u", n);
+  CHECK(pure_screen_page(7, 7, total, total - 10, 3072, &s, &n) == PURE_SCREEN_PAGE_OK && n == 10,
+        "the last page is not short: %u", n);
+  CHECK(pure_screen_page(7, 7, total, total, 3072, &s, &n) == PURE_SCREEN_PAGE_OK && s == total && n == 0,
+        "a page at the end is not empty: %u", n);
+  CHECK(pure_screen_page(7, 7, total, total + 1, 3072, &s, &n) == PURE_SCREEN_PAGE_RANGE && n == 0,
+        "a page past the end was answered");
+  CHECK(pure_screen_page(7, 7, total, -1, 3072, &s, &n) == PURE_SCREEN_PAGE_RANGE, "a negative offset was answered");
+
+  /* The refusal that keeps a picture whole: a page of a render the canvas no
+   * longer holds is refused, whatever its range. */
+  CHECK(pure_screen_page(7, 8, total, 0, 3072, &s, &n) == PURE_SCREEN_PAGE_STALE && n == 0,
+        "a page of a stale render was answered");
+  CHECK(pure_screen_page(7, 8, total, total, 3072, &s, &n) == PURE_SCREEN_PAGE_STALE,
+        "the end check of a stale render passed");
+  CHECK(pure_screen_page(0, 0, total, 0, 3072, &s, &n) == PURE_SCREEN_PAGE_STALE,
+        "shot 0 on a canvas never rendered was answered");
+  CHECK(pure_screen_page(0, 5, total, 0, 3072, &s, &n) == PURE_SCREEN_PAGE_STALE, "shot 0 was answered");
+  CHECK(pure_screen_page(7, 7, total, 0, 3072, NULL, NULL) == PURE_SCREEN_PAGE_OK, "NULL outputs refused");
+
+  /* Every page of one render, in order, covers it exactly once. */
+  uint32_t at = 0;
+  int pages = 0;
+  while (pure_screen_page(3, 3, total, at, 3072, &s, &n) == PURE_SCREEN_PAGE_OK && n > 0) {
+    if (s != at) break;
+    at += n;
+    pages++;
+  }
+  CHECK(at == total && pages == 250, "the pages covered %u bytes in %d pages", at, pages);
+}
+
+static void test_screen_tap(void) {
+  CHECK(pure_screen_tap_ok(0, 0, 80, 800, 480), "the top-left corner refused");
+  CHECK(pure_screen_tap_ok(799, 479, 80, 800, 480), "the bottom-right corner refused");
+  CHECK(pure_screen_tap_ok(400, 240, PURE_SCREEN_TAP_HOLD_MIN_MS, 800, 480), "the shortest hold refused");
+  CHECK(pure_screen_tap_ok(400, 240, PURE_SCREEN_TAP_HOLD_MAX_MS, 800, 480), "the longest hold refused");
+  CHECK(!pure_screen_tap_ok(800, 10, 80, 800, 480), "x 800 accepted");
+  CHECK(!pure_screen_tap_ok(10, 480, 80, 800, 480), "y 480 accepted");
+  CHECK(!pure_screen_tap_ok(-1, 10, 80, 800, 480), "x -1 accepted");
+  CHECK(!pure_screen_tap_ok(10.5, 10, 80, 800, 480), "a fractional x accepted");
+  CHECK(!pure_screen_tap_ok(10, 10, 19, 800, 480), "a 19 ms hold accepted");
+  CHECK(!pure_screen_tap_ok(10, 10, 4001, 800, 480), "a 4001 ms hold accepted");
+  const double nan = 0.0 / 0.0;
+  CHECK(!pure_screen_tap_ok(nan, 10, 80, 800, 480), "NaN accepted");
+  CHECK(!pure_screen_tap_ok(1e300, 10, 80, 800, 480), "1e300 accepted");
+  CHECK(PURE_SCREEN_TAP_HOLD_MS < PURE_TAP_MAX_MS, "the default hold is not a tap");
+}
+
 int main(void) {
   test_sync_classify();
   test_quality();
@@ -1477,9 +1564,12 @@ int main(void) {
   test_lid();
   test_shoot_dim();
   test_tap();
+  test_swipe();
   test_still();
   test_fw_session();
   test_maint_deadline();
+  test_screen_page();
+  test_screen_tap();
 
   if (failures != 0) {
     printf("p4 host tests: %d of %d checks FAILED\n", failures, checks);

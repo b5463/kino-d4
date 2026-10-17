@@ -43,7 +43,6 @@
 #include "klog.h"
 #include "lid.h"
 #include "taskmon.h"
-#include "logo_kino_d4.h"
 #include "meta.h"
 #include "net_link.h"
 #include "power.h"
@@ -77,17 +76,15 @@ static const char *TAG = "ui";
  * ui_start() sets row 0 if main.c did not.
  */
 static uint16_t s_accent, s_accent_down;
-static uint8_t s_launch;
 static bool s_launch_set;
 
 void ui_set_launch_index(uint32_t boot_count) {
-  s_launch = (uint8_t)(boot_count % K_LAUNCH_N);
-  s_accent = K_LAUNCH[s_launch];
-  s_accent_down = K_LAUNCH_DOWN[s_launch];
+  const uint32_t i = boot_count % K_LAUNCH_N;
+  s_accent = K_LAUNCH[i];
+  s_accent_down = K_LAUNCH_DOWN[i];
   s_launch_set = true;
 }
-_Static_assert(K_LAUNCH_N == K_LAUNCH_DOWN_N && K_LAUNCH_N == K_BF_WARM_N,
-               "one pressed shade and one boot-field row per launch shade");
+_Static_assert(K_LAUNCH_N == K_LAUNCH_DOWN_N, "one pressed shade per launch shade");
 
 
 /* ------------------------------------------------------------------ */
@@ -317,6 +314,9 @@ static int ph_well_x(void) { return s_right_hand ? PAGE_M : UI_W - PAGE_M - PH_W
  * Its type is inset instead. */
 #define PH_FPAD INSET_TEXT
 #define PH_BLK_PAD 12 /* the well's padding above and below its type */
+/* What a facts line may span: INSET_TEXT on the left, the well's own
+ * padding on the right, so no line runs into the well's edge. */
+#define PH_FACT_W (PH_COL_W - PH_FPAD - PH_BLK_PAD)
 /* The first caption line, under the back button: the well starts where the
  * button ends, because its tallest state needs every pixel (below). */
 #define PH_CAP_Y (HD_BTN_Y + HD_BTN + PH_BLK_PAD)
@@ -325,7 +325,7 @@ static int ph_well_x(void) { return s_right_hand ? PAGE_M : UI_W - PAGE_M - PH_W
  * standing between the caption and the buttons was measuring a column a third
  * shorter than the one being drawn. */
 #define PH_LINE 24
-#define PH_CAP_LINES 4    /* label, mode, frame count, and the short-wiggle note */
+#define PH_CAP_LINES 4    /* date, mode, place, and the short-wiggle note */
 /* Three buttons, full column width, top to bottom: DELETE, SEND TO ROLL,
  * FAVOURITE - the harmless one nearest the thumb's rest at the foot of the
  * column and the one that deletes a photograph furthest from it. Written as
@@ -351,10 +351,10 @@ _Static_assert(PH_TOP >= 2 && PH_TOP + PH_H + 2 <= UI_H, "the photo well's bevel
 _Static_assert(2 * PAGE_M + PH_W + 6 + PH_COL_W <= UI_W, "the control column runs into the well");
 _Static_assert(PH_CAP_Y + PH_CAP_LINES * PH_LINE + 8 <= PH_PN_Y,
                "the caption runs into the page buttons");
-/* The facts well at its tallest - number (LABEL, 27), mode, date, the
- * MISSING line, CAMERAS and the mark (CAPTION lines of 18) - a grid step
- * clear of the page buttons. draw_photo() sizes the well the same way. */
-#define PH_WELL_MAX_H (2 * PH_BLK_PAD + 27 + 18 + 18 + (6 + 18) + (18 + 18 + 6 + 14))
+/* The facts well at its tallest - date, mode, place, the MISSING line,
+ * CAMERAS and the mark (CAPTION lines of 18) - a grid step clear of the page
+ * buttons. draw_photo() sizes the well the same way. */
+#define PH_WELL_MAX_H (2 * PH_BLK_PAD + 18 + 18 + 18 + (6 + 18) + (18 + 18 + 6 + 14))
 _Static_assert(PH_CAP_Y - PH_BLK_PAD + PH_WELL_MAX_H + GRID <= PH_PN_Y,
                "the photo facts well runs into the page buttons");
 _Static_assert(PH_BTN_Y(0) < PH_BTN_Y(1) && PH_BTN_Y(1) < PH_BTN_Y(2) &&
@@ -466,12 +466,18 @@ static inline uint16_t *cv_ptr(const gfx_target_t *t, int x, int y) {
  * that was most of a 34 ms frame during a move into GALLERY or SETTINGS. The
  * facts do not change inside a frame, so they are fetched on the first call
  * of a pass and handed back from here for the rest of it.
+ *
+ * The card's figures are storage.c's copy, never the card (#248). Once per
+ * pass was still a FatFs call inside the record: f_getfree() waited on the
+ * volume lock while the upload worker's reconciliation pass or the gallery's
+ * walk held it, and open and back moves ran at 4-47 fps. The card watcher
+ * reads free space again (storage_status_refresh()); a draw only copies it.
  */
 static const storage_status_t *sd_status(void) {
   static storage_status_t sd;
   static uint32_t pass = UINT32_MAX;
   if (pass != gfx_pass_id()) {
-    storage_get_status(&sd);
+    storage_get_status_cached(&sd);
     pass = gfx_pass_id();
   }
   return &sd;
@@ -569,9 +575,9 @@ static void date_words(char *out, size_t cap, int64_t ms) {
 #endif
 enum {
   DL_FILL, DL_RRECT, DL_ROUTLINE, DL_CUT, DL_DISC, DL_SCRIM, DL_TEXT,
-  DL_FIELD, DL_SHBLIT, DL_BLIT, DL_BITS, DL_FOCUS, DL_MASK,
+  DL_SHBLIT, DL_BLIT, DL_BITS, DL_FOCUS, DL_MASK, DL_HALF,
 };
-#define DL_OPS (DL_MASK + 1)
+#define DL_OPS (DL_HALF + 1)
 /* What the per-tile pass needs about a command without touching PSRAM:
  * its box, and whether it paints every pixel of that box (a fill, a blit)
  * or every pixel but its corners (a rounded rectangle, radius r). */
@@ -654,7 +660,7 @@ static dl_cmd_t *dl_push(uint8_t op, int x0, int y0, int x1, int y1) {
   b->x1 = (int16_t)x1;
   b->y1 = (int16_t)y1;
   b->r = 0;
-  b->opaque = op == DL_FILL || op == DL_BLIT || op == DL_SHBLIT;
+  b->opaque = op == DL_FILL || op == DL_BLIT || op == DL_SHBLIT || op == DL_HALF;
   s_dl.n++;
   c->op = op;
   c->sx = s_dl.sx; c->sy = s_dl.sy;
@@ -691,6 +697,9 @@ static bool foc(screen_t sc, int i) { return s_focus_shown && s_focus[sc] == i; 
 static int s_pressed = -1;      /* held item index, -1 for none */
 static dialog_t s_dialog = DLG_NONE;
 static int s_dlg_focus;          /* 0 = safe action, 1 = the other one */
+/* DELETE's question was opened with the photograph's tile in memory, so its
+ * room is kept until it closes (dialog_open()). */
+static bool s_dlg_thumb;
 static int64_t s_shot_seen_us;
 /* shoot.displayAfterShotS = -1: the report is up and waiting to be dismissed
  * by a touch or a key rather than by a timer. See shot_hold_ack(). */
@@ -721,7 +730,6 @@ static int64_t s_undo_until_us;
 static uint16_t *s_photo;        /* PH_W * PH_H, decoded on entering SCR_PHOTO */
 static bool s_photo_ok;
 static char s_photo_id[40];
-static char s_photo_label[16];
 static char s_photo_mode[12];
 static int s_photo_frames;
 /* Which lenses the open photograph has on the card (bit i for C(i+1)), and
@@ -739,6 +747,18 @@ static uint8_t s_photo_asked = 0xF;
 static bool s_photo_fav;
 static int64_t s_photo_ms;
 static bool s_photo_sent;
+/* Its place in the gallery when it was opened, 1 for the newest; 0 when it
+ * was not opened from a gallery slot (the review after a shot). */
+static int16_t s_photo_pos;
+/*
+ * A step past the page's edge (#247): the page has turned and the photograph
+ * at its near end opens once the gallery task has read it. +1 opens the first
+ * slot, -1 the last; 0 when nothing is owed. s_photo_seek_us is when it was
+ * asked, so a card that never answers falls back to the grid.
+ */
+static int8_t s_photo_seek;
+static int64_t s_photo_seek_us;
+#define PHOTO_SEEK_MAX_US 4000000
 
 /*
  * The wigglegram player (#160).
@@ -1151,13 +1171,25 @@ static void round_outline(int x, int y, int w, int h, int r, uint16_t c) {
   fill(x + w - 1, y + r, 1, h - 2 * r, c);
   const gfx_target_t *t = TG;
   if (x + w <= t->x0 || y + h <= t->y0 || x >= CV_X1(t) || y >= CV_Y1(t)) return;
+  /*
+   * The corner's 1 px ring: the area between the circle of radius r and the
+   * one of r - 1, sampled at the pixel centre like round_rect() and disc().
+   *
+   * It used to take its coverage from the outer edge alone (r - d), which
+   * gave a pixel in the middle of the ring half the ink the straight edges
+   * get. Every corner's keyline faded to half and the face under it showed
+   * through: a dark bite on the corners of every outlined control.
+   */
   const float rf = (float)r;
   for (int dy = 0; dy < r; dy++) {
     for (int dx = 0; dx < r; dx++) {
       const float ox = (float)(r - dx) - 0.5f, oy = (float)(r - dy) - 0.5f;
       const float d = sqrtf(ox * ox + oy * oy);
-      float cov = 1.0f - (d - rf + 1.0f > 0.0f ? d - rf + 1.0f : 0.0f);
-      if (d > rf || cov <= 0.0f || rf - d > 1.0f) continue;
+      float outer = rf - d + 0.5f, inner = rf - 1.0f - d + 0.5f;
+      outer = outer < 0.0f ? 0.0f : outer > 1.0f ? 1.0f : outer;
+      inner = inner < 0.0f ? 0.0f : inner > 1.0f ? 1.0f : inner;
+      const float cov = outer - inner;
+      if (cov <= 0.0f) continue;
       const int k = (int)(cov * 255.0f + 0.5f);
       const int xs[2] = {x + dx, x + w - 1 - dx};
       const int ys[2] = {y + dy, y + h - 1 - dy};
@@ -1165,7 +1197,8 @@ static void round_outline(int x, int y, int w, int h, int r, uint16_t c) {
         for (int b = 0; b < 2; b++) {
           if (!cv_in(t, xs[a], ys[b])) continue;
           uint16_t *p = cv_ptr(t, xs[a], ys[b]);
-          *p = mix(*p, c, k);
+          /* Full ink exactly, as the straight edges are filled. */
+          *p = k >= 254 ? c : mix(*p, c, k);
         }
     }
   }
@@ -1323,6 +1356,134 @@ static void well(int x, int y, int w, int h) {
  * repaints at frame rate may call it: 800 x 480 is 384 000 unpack-mix-pack
  * round trips.
  */
+/*
+ * The scrim's eight-pixels-at-a-time path, on the P4's vector unit (PIE).
+ *
+ * mix(a, t, k) per channel is a + ((t - a) * k >> 8), which is exactly
+ * (a * (256 - k) + t * k) >> 8: a times 256 divides by 256, so the floor
+ * moves across it. Both terms fit in 16 bits (63 * 256 at most), so a lane
+ * holds them with no overflow. Eight pixels: split the channels with 32-bit
+ * shifts and a mask (a pixel's neighbour shifts into bits the mask clears),
+ * multiply by 256 - k, add t * k, shift down 8, mask again, shift back into
+ * place, OR. 33 instructions for eight pixels against 17 for one by table.
+ *
+ * Exactness is not taken on trust: ui_boot() runs this against mix() on a
+ * pattern before the first frame and leaves it off on any difference
+ * (s_scrim_pie). Off on host_preview and the Twin, which have no PIE.
+ *
+ * `cst` is six 16-byte aligned vectors of eight lanes: 256 - k, 0x1F, 0x3F,
+ * then the tint's red, green and blue times k. `p` is 16-byte aligned; `n8`
+ * groups of eight are done in place. PIE takes its address and SAR operands
+ * from x8-x15 only, hence the pinned registers.
+ */
+#if defined(__riscv) && defined(CONFIG_IDF_TARGET_ESP32P4)
+#define SCRIM_PIE 1
+static void scrim_pie(uint16_t *p_, int n8, const uint16_t *cst) {
+  register uint16_t *p __asm__("a0") = p_;
+  register int n __asm__("a1") = n8;
+  register const uint16_t *c __asm__("a2") = cst;
+  __asm__ __volatile__(
+      "esp.vld.128.ip q4, %[c], 16\n\t" /* 256 - k */
+      "esp.vld.128.ip q5, %[c], 16\n\t" /* 0x001F */
+      "esp.vld.128.ip q6, %[c], 16\n\t" /* 0x003F */
+      "1:\n\t"
+      "mv a3, %[c]\n\t"
+      "esp.vld.128.ip q0, %[p], 0\n\t"
+      "li a4, 11\n\t"
+      "esp.movx.w.sar a4\n\t"
+      "esp.vsr.u32 q1, q0\n\t"
+      "esp.andq q1, q1, q5\n\t" /* red */
+      "li a4, 5\n\t"
+      "esp.movx.w.sar a4\n\t"
+      "esp.vsr.u32 q2, q0\n\t"
+      "esp.andq q2, q2, q6\n\t" /* green */
+      "esp.andq q3, q0, q5\n\t" /* blue */
+      "li a4, 0\n\t"
+      "esp.movx.w.sar a4\n\t"
+      "esp.vmul.u16 q1, q1, q4\n\t"
+      "esp.vmul.u16 q2, q2, q4\n\t"
+      "esp.vmul.u16 q3, q3, q4\n\t"
+      "esp.vld.128.ip q7, a3, 16\n\t"
+      "esp.vadd.u16 q1, q1, q7\n\t"
+      "esp.vld.128.ip q7, a3, 16\n\t"
+      "esp.vadd.u16 q2, q2, q7\n\t"
+      "esp.vld.128.ip q7, a3, 16\n\t"
+      "esp.vadd.u16 q3, q3, q7\n\t"
+      "li a4, 8\n\t"
+      "esp.movx.w.sar a4\n\t"
+      "esp.vsr.u32 q1, q1\n\t"
+      "esp.andq q1, q1, q5\n\t"
+      "esp.vsr.u32 q2, q2\n\t"
+      "esp.andq q2, q2, q6\n\t"
+      "esp.vsr.u32 q3, q3\n\t"
+      "esp.andq q3, q3, q5\n\t"
+      "li a4, 11\n\t"
+      "esp.movx.w.sar a4\n\t"
+      "esp.vsl.32 q1, q1\n\t"
+      "li a4, 5\n\t"
+      "esp.movx.w.sar a4\n\t"
+      "esp.vsl.32 q2, q2\n\t"
+      "esp.orq q1, q1, q2\n\t"
+      "esp.orq q1, q1, q3\n\t"
+      "esp.vst.128.ip q1, %[p], 16\n\t"
+      "addi %[n], %[n], -1\n\t"
+      "bnez %[n], 1b\n\t"
+      : [p] "+r"(p), [n] "+r"(n), [c] "+r"(c)
+      :
+      : "a3", "a4", "memory");
+}
+/* Set by scrim_pie_check(); read per scrim call. PSRAM, one byte. */
+static EXT_RAM_BSS_ATTR bool s_scrim_pie;
+
+/* The six constant vectors scrim_pie() reads, for `tint` and `k`. */
+static void scrim_pie_cst(uint16_t *cst, uint16_t tint, int k) {
+  const int tr = (tint >> 11) & 0x1F, tg = (tint >> 5) & 0x3F, tb = tint & 0x1F;
+  for (int i = 0; i < 8; i++) {
+    cst[i] = (uint16_t)(256 - k);
+    cst[8 + i] = 0x1F;
+    cst[16 + i] = 0x3F;
+    cst[24 + i] = (uint16_t)(tr * k);
+    cst[32 + i] = (uint16_t)(tg * k);
+    cst[40 + i] = (uint16_t)(tb * k);
+  }
+}
+#else
+#define SCRIM_PIE 0
+#endif
+
+/*
+ * The vector path against mix(), once, on the task that draws: every 16-bit
+ * pattern's channels at their ends and a spread between, under five tints
+ * and the k values the screens use. Any difference leaves the table path on
+ * and says so; the frames are then slower and the same.
+ */
+static void scrim_pie_check(void) {
+#if SCRIM_PIE
+  static const uint16_t TINTS[] = {0x0000, 0xFFFF, 0x18C3, 0xF81F, 0x07E0};
+  static const int KS[] = {0, 1, 37, 128, 200, 255, 256};
+  uint16_t px[64] __attribute__((aligned(16)));
+  uint16_t want[64];
+  uint16_t cst[48] __attribute__((aligned(16)));
+  int bad = 0;
+  for (size_t ti = 0; ti < sizeof TINTS / sizeof TINTS[0]; ti++) {
+    for (size_t ki = 0; ki < sizeof KS / sizeof KS[0]; ki++) {
+      for (int base = 0; base < 65536; base += 64 * 97) {
+        for (int i = 0; i < 64; i++) {
+          px[i] = (uint16_t)(base + i * 1021 + (i & 1 ? 0xF81F : 0x07E0));
+          want[i] = mix(px[i], TINTS[ti], KS[ki]);
+        }
+        scrim_pie_cst(cst, TINTS[ti], KS[ki]);
+        scrim_pie(px, 8, cst);
+        for (int i = 0; i < 64; i++) bad += px[i] != want[i];
+      }
+    }
+  }
+  s_scrim_pie = bad == 0;
+  klog("P4", "scrim: vector path %s (%d of %d pixels differ)", bad == 0 ? "on" : "OFF", bad,
+       (int)(sizeof TINTS / sizeof TINTS[0] * sizeof KS / sizeof KS[0]) * 11 * 64);
+#endif
+}
+
 static void scrim(int x, int y, int w, int h, uint16_t tint, int k) {
   if (s_dl.rec) {
     dl_cmd_t *c = dl_push(DL_SCRIM, x, y, x + w, y + h);
@@ -1336,9 +1497,50 @@ static void scrim(int x, int y, int w, int h, uint16_t tint, int k) {
   if (y + h > CV_Y1(t)) h = CV_Y1(t) - y;
   if (w <= 0 || h <= 0) return;
   PX_BLEND((size_t)w * h);
+  /*
+   * mix() per pixel, by table. With the tint and k fixed, each channel of the
+   * result depends on that channel of the pixel alone, so three tables of
+   * 32, 64 and 32 entries - built here, 128 steps of mix()'s own arithmetic -
+   * give the same bits for three lookups and two ORs. Measured on the panel
+   * (#248): a full-screen scrim was 25 ms of a dim frame's 32 ms of drawing,
+   * and the dim ran at 15 fps.
+   */
+  const int br = (tint >> 11) & 0x1F, bg = (tint >> 5) & 0x3F, bb = tint & 0x1F;
+  uint16_t lr[32], lg[64], lb[32];
+  for (int i = 0; i < 32; i++) {
+    lr[i] = (uint16_t)((i + (((br - i) * k) >> 8)) << 11);
+    lb[i] = (uint16_t)(i + (((bb - i) * k) >> 8));
+  }
+  for (int i = 0; i < 64; i++) lg[i] = (uint16_t)((i + (((bg - i) * k) >> 8)) << 5);
+#if SCRIM_PIE
+  /* Eight at a time where a row is 16-byte aligned, the table at its ends
+   * (scrim_pie()). Measured on the panel (#248): the dim's 25 ms of drawing
+   * a frame was 19 ms of this loop by table. */
+  uint16_t cst[48] __attribute__((aligned(16)));
+  const bool vec = s_scrim_pie && k >= 0 && k <= 256 && w >= 16;
+  if (vec) scrim_pie_cst(cst, tint, k);
+#endif
   for (int r = 0; r < h; r++) {
     uint16_t *row = cv_ptr(t, x, y + r);
-    for (int c = 0; c < w; c++) row[c] = mix(row[c], tint, k);
+    int c = 0, end = w;
+#if SCRIM_PIE
+    if (vec) {
+      while (c < w && ((uintptr_t)(row + c) & 15u) != 0) c++;
+      const int n8 = (w - c) / 8;
+      end = c;
+      if (n8 > 0) scrim_pie(row + c, n8, cst);
+      for (int i = 0; i < end; i++) {
+        const uint16_t p = row[i];
+        row[i] = (uint16_t)(lr[p >> 11] | lg[(p >> 5) & 0x3F] | lb[p & 0x1F]);
+      }
+      c += n8 * 8;
+      end = w;
+    }
+#endif
+    for (; c < end; c++) {
+      const uint16_t p = row[c];
+      row[c] = (uint16_t)(lr[p >> 11] | lg[(p >> 5) & 0x3F] | lb[p & 0x1F]);
+    }
   }
 }
 
@@ -2362,8 +2564,12 @@ static int flash_index(void) {
  * in 0.4.15, where the pressed segment says the same thing permanently and the
  * finder is not even on screen - so the timestamp had no reader left and the
  * burn had nothing to burn on. Both are gone. The SHOOT strip states the flash
- * mode instead of flashing about it, which is what a status bar is for. */
+ * mode instead of flashing about it, which is what a status bar is for.
+ * A body with no flash (capture_has_flash(), D4-V1 since ECN-0003) steps
+ * nothing: no screen shows the mode, so a change would be a setting nobody
+ * can see (#247). */
 static void flash_cycle(void) {
+  if (!capture_has_flash()) return;
   const int next = (flash_index() + 1) % 3;
   cfg_set_str("shoot.flashMode", FLASH_ORDER[next]);
 }
@@ -2394,387 +2600,96 @@ static int lerpi(int a, int b, float e) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Boot                                                                */
+/* The start                                                           */
 /* ------------------------------------------------------------------ */
 
 /*
- * The camera waking up: rings of cells radiating out of the maker's mark.
+ * The start (#245): the ODD JOBS mark, the four cameras answering under it,
+ * and the four becoming the SHOOT card's mark as the menu builds round them.
  *
- * The first attempt at this was a square grid of ASCII-ish glyphs blooming
- * outward, and it was wrong in the way a misread reference usually is - it
- * copied the texture and missed the structure. The reference is not a grid.
- * It is CONCENTRIC RINGS: a warm disc at the centre with an aim mark in it,
- * and around it band after band of cells, each band with its own shape and
- * its own size, large and warm near the middle, finer and cooler as they go
- * out, thinning to specks at the rim.
+ * It replaced the boot field, a lattice of 900 glyphs that grew over 3.8 s
+ * and coloured a quadrant per camera, and the menu cascade after it. The
+ * field said which camera answered in colour alone and ended on a menu that
+ * cut in. This says it with the four cells the menu card already uses, and
+ * the cells it ends on are the card's own.
  *
- * Which is a much better thing for a camera to open with, because the centre
- * of that composition is a lens: the studio's mark has a hole through the
- * middle of it and sits exactly where the aim disc does.
+ * Monochrome until the build: the mark and the cells are K_INK on K_GROUND,
+ * a slot not yet answered is a K_INK_QUIET outline, a camera given up on is
+ * that outline in K_INK. The launch shade arrives once, as the card growing
+ * out of the cells' own box: the start's one colour event.
  *
- * Every ring's cells are evenly spaced around it, offset from the ring inside
- * so nothing lines up radially, and a few are dropped on a hash so the bands
- * are not perfect. The whole thing grows ring by ring and then retreats the
- * same way, uncovering the wordmark as it goes.
+ * The mark is the 128 px bake, centred on its coverage centroid, because the
+ * symbol is heavier on its right than its box. The cells sit ST_MARK_GAP
+ * under its box, 2 x 2, CAM1 top left, in the card's order.
  */
-/*
- * The field.
- *
- * Traced off the reference clip frame by frame, and it is not the concentric
- * bloom the round device shows - it is a square lattice of small glyphs that
- * grows out of a seed at the centre, fills the screen, and draws back in.
- * What makes it read the way it does, in the order the eye notices:
- *
- *   - a SQUARE grid. Cells sit on a regular pitch, rows and columns, not on
- *     rings at angle steps. The diagonals you see are the lattice, not
- *     something drawn diagonally.
- *   - an ALPHABET, not a dot. Each cell holds one of a handful of small
- *     marks, and the mix is what stops a field of 900 cells reading as noise
- *     or as wallpaper.
- *   - WEIGHT falls with distance. The middle is solid glyphs - hashes, discs,
- *     squares - and the rim is single dots and short runs. That gradient is
- *     the whole reason it looks like something radiating rather than a
- *     texture someone tiled.
- *   - colour is per CELL, not per band: the ink, the launch shade, its
- *     light mix and its dark mix, mixed all through, with the shade and its
- *     mixes commoner further out.
- *
- * The glyphs are the reference's own, read off the sharpest frame in the clip
- * (a 5x5 bitmap drawn three pixels to the bit). The hash, the discs, the
- * solid square, the plus, the double bar and the dotted run are unambiguous
- * at that resolution. The ring-with-a-dot is the one I am reading through
- * video compression rather than seeing exactly: a square ring broken at one
- * corner with a dot inside it, which is what it resolves to on every instance
- * in the frame, and it is the glyph to check first against the real artwork.
- */
-#define BF_PITCH 20 /* between cell centres */
-#define BF_BIT 3    /* pixels per bit of a glyph's 5x5 */
-#define BF_CX (UI_W / 2)
-/* The middle of the panel. It sat at 208 to leave room for a wordmark that
- * is no longer on this screen, and 32 px off centre is exactly the kind of
- * thing that reads as unfinished without anyone being able to say why. */
-#define BF_CY (UI_H / 2)
-/*
- * The radius the field STARTS at, so its first frame is a handful of cells
- * rather than nothing.
- *
- * smootherstep is very flat at its start - a fifth of the way through the
- * growth it has moved six per cent - so beginning at zero meant four hundred
- * milliseconds of black before anything was visible at all. The reference's
- * first frame already has cells in it; this is that cluster.
- */
-#define BF_SEED 52.0f
-/*
- * The frontier is soft and it is not a circle.
- *
- * A cell either was or was not inside `reach`, which made the edge of the
- * field a perfect expanding circle with a hard rim - and a hard geometric
- * edge sweeping across a screen is the single thing that made this read as a
- * loading bar rather than as something growing. Two changes fix it, and both
- * are per cell so they cost nothing:
- *
- *   BF_JITTER  each cell arrives at its own radius, up to this much late, so
- *              the frontier is ragged the way a spreading thing is
- *   BF_FADE    and it arrives over this many pixels of travel rather than at
- *              once, coming up out of the ground instead of appearing
- */
-#define BF_JITTER 74.0f
-#define BF_FADE 66.0f
-#define BF_REACH 590.0f /* past the corner, and past the jitter, so the field fills */
+#define ST_MARK_W UI_MARK_ODD_JOBS_128_W
+#define ST_MARK_H UI_MARK_ODD_JOBS_128_H
+#define ST_MARK_X (UI_W / 2 - (UI_MARK_ODD_JOBS_128_CX_Q8 + 128) / 256)
+#define ST_MARK_Y (UI_H / 2 - (UI_MARK_ODD_JOBS_128_CY_Q8 + 128) / 256)
+#define ST_CELL0 24    /* a cell under the mark */
+#define ST_GAP0 6      /* between two of them */
+#define ST_KEY0 2      /* a cell's outline at that size */
+#define ST_MARK_GAP 40 /* the mark's box foot to the cells' top */
+_Static_assert(ST_MARK_Y + ST_MARK_H + ST_MARK_GAP + 2 * ST_CELL0 + ST_GAP0 <= UI_H - 24,
+               "the cells under the mark run off the panel");
 
 /*
- * The alphabet, 5x5, one byte per row, bit 4 is the left-hand column.
+ * a to b at k (0..255), each channel rounded to nearest.
  *
- * Nine marks, and they are the reference's nine. The first read of it had a
- * plus and a pair of HORIZONTAL bars in place of the reference's vertical
- * ones - a glyph turned ninety degrees is a different glyph - and folded the
- * asterisk into the hash, which are the two commonest marks on the screen and
- * are not the same shape: the hash has a dark centre and dark corners, the
- * asterisk is solid through the middle with its four diagonal points detached.
- * The pair of short vertical bars is what most of the rim is made of.
+ * mix() truncates each channel, so every level sits a step toward `a`, and
+ * red and blue (5 bits) lose more than green (6 bits). The start's fades pass
+ * through every level and must land exactly on their ends, so they round.
  */
-enum {
-  GL_HASH = 0, /* #   the commonest mark, and the one that carries the field */
-  GL_STAR,     /* ✳   solid centre, four detached diagonal points */
-  GL_NOTCH,    /* ▣   a square ring, broken at one corner, a dot inside */
-  GL_DISC,     /* ●   a stepped circle: corners off, nothing else */
-  GL_SQUARE,   /* ■   and the same block with its corners on */
-  GL_BAR2,     /* ‖   two short uprights - most of the rim */
-  GL_BAR1,     /* |   one upright */
-  GL_RUN,      /* ⋯   a short run of dots */
-  GL_DOT,      /* ·   and a single dot */
-  GL_N,
-};
-
-/*
- * Every mark is a bitmap. There is no drawn shape in this field.
- *
- * The disc and the square were going through disc() and round_rect(), which
- * put the one antialiased curve in the whole picture - a smooth circle among
- * nine pixel forms, which is exactly as wrong as a smooth letter in a bitmap
- * font. Blown up twenty times, the reference's own circles step: a flat top a
- * few pixels wide, out one, out again. It is drawing a pixel circle, so this
- * draws a pixel circle, and the two differ only by whether the corners are
- * set - which at three pixels to the bit is the whole difference between a
- * round thing and a square one.
- */
-static const uint8_t BF_GLYPH[GL_N][5] = {
-    {0x0A, 0x1F, 0x0A, 0x1F, 0x0A}, /* # */
-    {0x15, 0x0E, 0x1F, 0x0E, 0x15}, /* ✳ */
-    {0x0F, 0x11, 0x15, 0x11, 0x1F}, /* ▣ */
-    {0x0E, 0x1F, 0x1F, 0x1F, 0x0E}, /* ● */
-    {0x1F, 0x1F, 0x1F, 0x1F, 0x1F}, /* ■ */
-    {0x00, 0x0A, 0x0A, 0x0A, 0x00}, /* ‖ */
-    {0x00, 0x04, 0x04, 0x04, 0x00}, /* | */
-    {0x00, 0x00, 0x15, 0x00, 0x00}, /* ⋯ */
-    {0x00, 0x00, 0x04, 0x00, 0x00}, /* · */
-};
-
-/*
- * The colours, and what they mean here.
- *
- * The reference is a light remote, and both quantities in its display are
- * facts about a lamp: the field's size is how bright the light is, and its
- * colour is the colour the light is being set to under your finger. It is not
- * decoration - it is the instrument's read-out, and that is why it holds
- * attention.
- *
- * A D4 is the opposite instrument. It does not emit light, it gathers it,
- * through four lenses. So the two quantities carry the two facts that are
- * actually true about this machine while it wakes up:
- *
- *   how far the field reaches   the boot's own clock: it fills the panel
- *   what colour it is           per quadrant, whether that camera answered
- *
- * The colour is read off the real device state, not animated on a timer. A
- * body whose third camera never answers boots with a cold grey quadrant where
- * that camera's pictures would come from, and says so without a word of type
- * on the screen - in the product's own mark, which is four. (The reach used
- * to carry that fact and was changed: see boot_field().)
- *
- * The palette is the camera's one colour, not the lamp's: the launch shade
- * this start wears (ui_set_launch_index), with the ink and two mixes of the
- * shade, so the field and the SHOOT card it gives way to are the same pink.
- * It used to be picked per look by hashing the look's id, from four rows
- * that carried amber and green; one colour per product leaves nothing to
- * pick. The inks are K_BF_WARM (row = the launch index) and K_BF_COLD, from
- * kino-device-palette.json.
- */
-/** Slot `i` of the palette, `warm` of the way from cold to the shade's own. */
-static uint16_t bf_ink(int i, int pal, float warm) {
-  const int k = warm <= 0.0f ? 0 : (warm >= 1.0f ? 255 : (int)(warm * 255.0f));
-  return mix(K_BF_COLD[i], K_BF_WARM[pal][i], k);
+static uint16_t mix_even(uint16_t a, uint16_t b, int k) {
+  if (k <= 0) return a;
+  if (k >= 255) return b;
+  const int ar = (a >> 11) & 0x1F, ag = (a >> 5) & 0x3F, ab = a & 0x1F;
+  const int br = (b >> 11) & 0x1F, bg = (b >> 5) & 0x3F, bb = b & 0x1F;
+  const int r = ar + (((br - ar) * k + 128) >> 8);
+  const int g = ag + (((bg - ag) * k + 128) >> 8);
+  const int bl = ab + (((bb - ab) * k + 128) >> 8);
+  return (uint16_t)((r << 11) | (g << 5) | bl);
 }
 
-static uint32_t br_hash(int a, int b) {
-  uint32_t h = ((uint32_t)a * 374761393u) ^ ((uint32_t)b * 668265263u);
-  h = (h ^ (h >> 13)) * 1274126177u;
-  return h ^ (h >> 16);
-}
-
-/** One glyph, its top-left at (x, y), three pixels to the bit. */
-static void bf_glyph(int x, int y, int g, uint16_t ink) {
-  const uint8_t *rows = BF_GLYPH[g];
-  for (int r = 0; r < 5; r++) {
-    const uint8_t bits = rows[r];
-    /* A run of set bits is one fill, not one per bit: a full row of the
-     * glyph is a 15 px span rather than five 3 px squares, and at ~900 cells
-     * a frame the call count and the partial cache lines were most of what
-     * the splash spent drawing. */
-    int c = 0;
-    while (c < 5) {
-      if ((bits & (0x10u >> c)) == 0) {
-        c++;
-        continue;
-      }
-      int n = 1;
-      while (c + n < 5 && (bits & (0x10u >> (c + n))) != 0) n++;
-      fill(x + c * BF_BIT, y + r * BF_BIT, n * BF_BIT, BF_BIT, ink);
-      c += n;
-    }
-  }
-}
-
-/**
- * The field out to `reach` pixels from the middle.
- *
- * Every cell is decided by a hash of its own coordinates, so a cell looks the
- * same on every frame and the field grows rather than churns - which is the
- * difference between something arriving and something flickering.
- */
 /*
- * How far the field has come up in each quadrant, one per camera.
+ * K_GROUND to `ink` at visibility k (0..255), through neutral greys.
  *
- * Cam 1 is top left and they run across then down, which is how the four sit
- * on the viewfinder, in the gallery's mark and on the body. A camera that has
- * not answered holds its quarter at BF_DARK, which boot_field() reads as
- * cold: the quarter keeps the greys the field came up in while the others
- * warm to the launch shade. The shape is the whole field either way.
+ * The inks are warm, and a straight mix to a warm cream passes through
+ * khaki: at a fifth of the way K_INK on the ground is 4A4841, which reads as
+ * olive on the dark panel, and where green's sixth bit rounds up it leans
+ * green outright. So the dark half is code-neutral grey of the same
+ * lightness, and the warmth comes in with the light, on k squared.
  */
-#define BF_DARK 0.42f
-static float s_bf_cam[4];
-
-static void boot_field(float reach, int32_t ms, int pal, float warm) {
-  if (reach <= 0.0f) return;
-  if (s_dl.rec) {
-    dl_cmd_t *k = dl_push(DL_FIELD, 0, 0, UI_W, UI_H);
-    if (k) { k->f0 = reach; k->a = ms; k->b = pal; k->f1 = warm; }
-    return;
-  }
-
-  /* The furthest a cell can be and still be on the panel. */
-  const float far = 470.0f;
-  const int half = (5 * BF_BIT) / 2;
-  const gfx_target_t *tg = TG;
-
-  for (int gy = -(UI_H / 2) / BF_PITCH - 1; gy <= (UI_H / 2) / BF_PITCH + 1; gy++) {
-    for (int gx = -(UI_W / 2) / BF_PITCH - 1; gx <= (UI_W / 2) / BF_PITCH + 1; gx++) {
-      const int cx = BF_CX + gx * BF_PITCH;
-      const int cy = BF_CY + gy * BF_PITCH;
-      /* A cell whose glyph box misses the target's window costs nothing:
-       * in a tile pass the field is drawn once per tile and most of its 900
-       * cells land in other tiles. */
-      if (cx + half < tg->x0 || cy + half < tg->y0 || cx - half >= CV_X1(tg) ||
-          cy - half >= CV_Y1(tg)) {
-        continue;
-      }
-      const float dx = (float)(cx - BF_CX), dy = (float)(cy - BF_CY);
-      const float dist = sqrtf(dx * dx + dy * dy);
-
-      /*
-       * When this cell's turn comes, and how far through it is.
-       *
-       * The jitter grows with distance rather than being full strength
-       * everywhere. At the middle that meant the few cells nearest the centre
-       * could each be held back by up to 74 px of travel, so the seed could
-       * not form and the first half-second was an empty screen. It is also
-       * simply truer: a thing spreading out is tight at its origin and ragged
-       * at its edge, not equally ragged all through.
-       */
-      /*
-       * Which cameras this cell belongs to, and how far up they are.
-       *
-       * Blended across the two axes rather than snapped to a quadrant: a hard
-       * quarter boundary draws a cross through the middle of the field, and
-       * the field has no cross in it. Within a cell of an axis a cell reads
-       * from both sides of it.
-       */
-      const float bx = dx < -(float)BF_PITCH   ? 0.0f
-                       : dx > (float)BF_PITCH  ? 1.0f
-                                               : (dx + (float)BF_PITCH) / (2.0f * (float)BF_PITCH);
-      const float by = dy < -(float)BF_PITCH   ? 0.0f
-                       : dy > (float)BF_PITCH  ? 1.0f
-                                               : (dy + (float)BF_PITCH) / (2.0f * (float)BF_PITCH);
-      const float cam = (s_bf_cam[0] * (1.0f - bx) + s_bf_cam[1] * bx) * (1.0f - by) +
-                        (s_bf_cam[2] * (1.0f - bx) + s_bf_cam[3] * bx) * by;
-
-      const float jit = (float)(br_hash(gx + 31, gy - 17) % 1024u) / 1024.0f;
-      const float spread = BF_JITTER * (0.18f + 0.82f * (dist / far));
-      /*
-       * The reach is the clock's; the camera is the colour.
-       *
-       * The reach used to be scaled by `cam`, so a body whose cameras had not
-       * answered booted with a field that stopped at 42 percent of the panel
-       * - which is what the first bench with four silent nodes showed, and it
-       * read as a boot that had failed, not as four cameras that were quiet.
-       * The field fills the screen now whatever the cameras are doing, and a
-       * quadrant whose camera has not answered stays in the cold greys while
-       * the others take the launch shade's inks. Same fact, said with the one
-       * quantity that cannot be mistaken for a fault in the drawing.
-       */
-      const float k = (reach - (dist + jit * spread)) / BF_FADE;
-      if (k <= 0.0f) continue;
-      const float grow = k < 1.0f ? k : 1.0f;
-      float cam_w = (cam - BF_DARK) / (1.0f - BF_DARK);
-      if (cam_w < 0.0f) cam_w = 0.0f;
-      if (cam_w > 1.0f) cam_w = 1.0f;
-
-      /*
-       * The cell re-rolls over time, and the cells do not re-roll together.
-       *
-       * In the reference a cell holds a mark for a moment and then is a
-       * different mark - the field shimmers rather than sits. Rolling every
-       * cell off one global counter makes the whole screen blink at once,
-       * which reads as a glitch; so each cell's clock is offset by a hash of
-       * its own position, and the changes scatter.
-       *
-       * Position is still in the hash, so a cell keeps its own character
-       * across a re-roll and the field grows rather than boils.
-       */
-      const uint32_t phase = br_hash(gx + 977, gy - 613) % (uint32_t)MOTION_FIELD_CELL_MS;
-      const uint32_t gen = (uint32_t)(ms + (int32_t)phase) / (uint32_t)MOTION_FIELD_CELL_MS;
-      const uint32_t h = br_hash(gx, (int)((uint32_t)gy + gen * 7919u));
-      const float d = dist / far; /* 0 in the middle, 1 at the corner */
-
-      /* Thinning outward. The rim is mostly empty, which is what lets the
-       * middle read as dense without the whole screen filling in. */
-      /* Whether a cell is lit at all is fixed by position, NOT re-rolled:
-       * a field whose cells appear and vanish twinkles, and the reference's
-       * does not - its cells stay put and change what they are. */
-      const uint32_t here = br_hash(gx, gy);
-      const uint32_t drop = (uint32_t)(6.0f + 74.0f * d * d);
-      if ((here >> 3) % 100u < drop) continue;
-
-      /*
-       * Weight falls with distance, and the alphabet sorts itself by weight:
-       * hashes, asterisks, discs and squares hold the middle, the notched
-       * ring sits between, and the rim is uprights, short runs and dots. That
-       * is the reference's own distribution - its centre is solid marks and
-       * its edge is almost entirely pairs of short vertical bars.
-       */
-      int g;
-      const uint32_t pick = (h >> 11) % 100u;
-      if (d < 0.30f) {
-        g = pick < 34 ? GL_HASH : pick < 52 ? GL_STAR : pick < 66 ? GL_DISC
-            : pick < 78 ? GL_NOTCH : pick < 88 ? GL_SQUARE : pick < 95 ? GL_BAR2 : GL_DOT;
-      } else if (d < 0.62f) {
-        g = pick < 28 ? GL_HASH : pick < 42 ? GL_STAR : pick < 54 ? GL_NOTCH
-            : pick < 63 ? GL_DISC : pick < 70 ? GL_SQUARE : pick < 86 ? GL_BAR2
-            : pick < 94 ? GL_BAR1 : GL_DOT;
-      } else {
-        g = pick < 38 ? GL_BAR2 : pick < 56 ? GL_DOT : pick < 72 ? GL_RUN
-            : pick < 86 ? GL_BAR1 : pick < 94 ? GL_HASH : GL_STAR;
-      }
-
-      /* Cream leads in every band: most of the panel's AREA is the outer
-       * band, so a mix that only favours cream in the middle comes out the
-       * colour of the rim. */
-      const uint32_t ci = (h >> 19) % 100u;
-      int ink;
-      if (d < 0.34f) ink = ci < 54 ? 0 : ci < 76 ? 1 : ci < 94 ? 2 : 3;
-      else if (d < 0.66f) ink = ci < 48 ? 0 : ci < 66 ? 1 : ci < 88 ? 2 : 3;
-      else ink = ci < 36 ? 0 : ci < 50 ? 1 : ci < 76 ? 2 : 3;
-
-      /* Up out of the ground, not switched on: at 900 cells the difference
-       * between a fade and a pop is the whole character of the thing. */
-      const uint16_t base = bf_ink(ink, pal, warm * cam_w);
-      const uint16_t lit =
-          grow >= 0.995f ? base : mix(K_GROUND, base, (int)(grow * 255.0f));
-      bf_glyph(cx - half, cy - half, g, lit);
-    }
-  }
+static uint16_t fade_in(uint16_t ink, int k) {
+  if (k <= 0) return K_GROUND;
+  if (k >= 255) return ink;
+  const uint16_t base = mix_even(K_GROUND, ink, k);
+  const int r = (base >> 11) & 0x1F, g = (base >> 5) & 0x3F, b = base & 0x1F;
+  const int y6 = (2 * r * 30 + g * 59 + 2 * b * 11 + 50) / 100; /* lightness, in green's 6 bits */
+  const int y5 = (y6 + 1) / 2;
+  const uint16_t grey = (uint16_t)((y5 << 11) | ((2 * y5) << 5) | y5);
+  return mix_even(grey, base, k);
 }
 
-/**
- * The camera's own mark, in the middle of the screen.
- *
- * Not part of the boot any more - the boot is the field and nothing else.
- * This is what the camera shows while it is going away: shutting down or
- * restarting, one mark, centred, until the screen does. A machine that is
- * leaving should say which machine is leaving and nothing else.
- *
- * Coverage, not bits: logo_kino_d4.h is the white-on-dark brand raster box-
- * filtered to 374 x 52 by tools/mkmask.mjs, the size the 1-bit bake had on
- * the glass, and every edge of the italic is a ramp instead of a staircase.
- * Centred on its box, not its centroid: the D4 badge is open and light, and
- * the word reads as centred when the box is.
- */
-static void boot_mark_ink(uint16_t ink) {
-  const int lx = (UI_W - KINO_D4_LOGO_W) / 2;
-  const int ly = (UI_H - KINO_D4_LOGO_H) / 2;
-  mask_blit(KINO_D4_LOGO, KINO_D4_LOGO_W, KINO_D4_LOGO_H, KINO_D4_LOGO_W, lx, ly, ink);
+/** The ODD JOBS mark at its place, `dy` px down, in `ink`. Coverage, never
+ *  stepped, never redrawn: a fade moves the ink, not the pixels. */
+static void odd_mark(int dy, uint16_t ink) {
+  mask_blit(UI_MARK_ODD_JOBS_128, ST_MARK_W, ST_MARK_H, ST_MARK_W, ST_MARK_X, ST_MARK_Y + dy, ink);
 }
-static void boot_mark(void) { boot_mark_ink(K_MARK); }
+
+/*
+ * The maker's mark while the camera goes away (#245): going to sleep,
+ * restarting and switching off show the ODD JOBS mark the start opens on, at
+ * the same place, so a camera opens and closes on one picture. It was the
+ * KINO D4 wordmark (logo_kino_d4.h); that bake is not drawn any more, which
+ * gives back the flash the 128 px mark costs.
+ *
+ * `k` is its visibility, 0 the ground alone, 255 full: through the neutral
+ * greys (fade_in()), like the start.
+ */
+static void leave_mark(int k) {
+  if (k > 0) odd_mark(0, fade_in(K_MARK, k));
+}
 
 /* ------------------------------------------------------------------ */
 /* The animation driver                                                */
@@ -2817,7 +2732,7 @@ static void go(screen_t s, int ms);
  * the marks.
  */
 static void ui_render(gfx_draw_fn draw, void *ctx);
-static void render_cascade(void *ctx);
+static void render_start(void *ctx);
 static void boot_bench(void);
 static void first_start_note(void);
 
@@ -2831,42 +2746,114 @@ static void first_start_note(void);
  */
 static bool s_in_render;
 
+/*
+ * The card, taken from this task. Every take in this file goes through here,
+ * and the assert is cams_refresh()'s for the card: a card lock or a FatFs call
+ * in a draw stalled the record behind the upload worker and the gallery
+ * (#248). calib_task() takes the card on its own task and does not use this:
+ * s_in_render belongs to the ui task.
+ */
+static bool ui_card_take(int timeout_ms) {
+  assert(!s_in_render && "card lock inside a draw");
+  return storage_acquire(STORAGE_USER_UI, timeout_ms);
+}
+
+/*
+ * The screen over KDP (#246): what kdp_ui.c asks of this task, and where the
+ * answers wait. The KDP task writes the asks, this task writes the answers;
+ * every field has one writer, so plain loads and stores with acquire and
+ * release order carry it, with no lock and no read-modify-write shared
+ * between the cores. In PSRAM: nothing here is touched more than once a
+ * pass, and internal SRAM is the scarce pool.
+ */
+typedef struct {
+  int16_t x, y;      /* logical */
+  uint16_t hold_ms;
+} ui_tap_t;
+#define UI_TAP_Q 4
+#define UI_PLATE_MAX_US (300LL * 1000000) /* the plate lets go by itself after 5 minutes */
+#define UI_TAP_GAP_US 40000               /* up between two taps, so each lands as its own */
+static EXT_RAM_BSS_ATTR struct {
+  /* Written by the KDP task. */
+  uint32_t shot_asked;
+  uint32_t plate_asked;
+  uint8_t plate_want;
+  uint32_t tap_head;
+  ui_tap_t taps[UI_TAP_Q];
+  /* Written by the UI task. */
+  uint32_t shot_done;
+  uint8_t shot_state;
+  ui_shot_t shot;
+  uint32_t plate_seen;
+  uint32_t tap_tail;
+  ui_tap_t tap_now;     /* the host's contact on the glass */
+  int64_t tap_until_us; /* when it lifts; 0 for none down */
+  int64_t tap_up_us;    /* when the last one lifted */
+  bool plate_on;
+  int64_t plate_since_us;
+} s_kdp;
+_Static_assert(sizeof((const char *const[]){UI_SCREEN_IDS}) / sizeof(const char *) == SCR_COUNT &&
+                   UI_SCREEN_COUNT == SCR_COUNT,
+               "UI_SCREEN_IDS names every screen_t, in order");
+
+/*
+ * The test plate, for photographs of the panel: a 32-step grey ramp, every
+ * palette colour in K_COLOURS order, the eight launch shades over their
+ * pressed steps, and a 1 px grid at a 20 px pitch with its last line on the
+ * panel's last row and column. Fills only, no words: it is a picture to
+ * measure, not a screen to read. MockScreen.ts in packages/test-fixtures
+ * draws the same layout.
+ */
+static void draw_plate(void) {
+  fill(0, 0, UI_W, UI_H, K_SCRIM);
+  for (int i = 0; i < 32; i++) {
+    const int v = (i * 255 + 15) / 31;
+    fill(i * 25, 0, 25, 80, RGB(v, v, v));
+  }
+#define PLATE_COLOUR(c) c,
+  static const uint16_t COLOURS[] = {K_COLOURS(PLATE_COLOUR)};
+#undef PLATE_COLOUR
+  const int n = (int)(sizeof COLOURS / sizeof COLOURS[0]);
+  const int cw = UI_W / n;
+  for (int i = 0; i < n; i++) fill(i * cw, 80, i == n - 1 ? UI_W - i * cw : cw, 80, COLOURS[i]);
+  for (int i = 0; i < K_LAUNCH_N; i++) {
+    fill(i * (UI_W / K_LAUNCH_N), 160, UI_W / K_LAUNCH_N, 40, K_LAUNCH[i]);
+    fill(i * (UI_W / K_LAUNCH_N), 200, UI_W / K_LAUNCH_N, 40, K_LAUNCH_DOWN[i]);
+  }
+  for (int x = 0; x < UI_W; x += 20) fill(x, 240, 1, UI_H - 240, K_INK);
+  fill(UI_W - 1, 240, 1, UI_H - 240, K_INK);
+  for (int y = 240; y < UI_H; y += 20) fill(0, y, UI_W, 1, K_INK);
+  fill(0, UI_H - 1, UI_W, 1, K_INK);
+}
+
 static void render_screen(void *ctx) {
   (void)ctx;
   const bool was = s_in_render;
   s_in_render = true;
-  draw_screen();
+  if (s_kdp.plate_on) draw_plate();
+  else draw_screen();
   s_in_render = was;
-}
-
-typedef struct {
-  float reach;
-  int32_t ms;
-  int pal;
-  float warm;
-} field_frame_t;
-
-static void render_field(void *ctx) {
-  const field_frame_t *f = ctx;
-  fill(0, 0, UI_W, UI_H, K_GROUND);
-  boot_field(f->reach, f->ms, f->pal, f->warm);
 }
 
 /* render_open() is with the animation state it reads, below. */
 
-/* The camera's mark on the ground, and the same mark fading to black. */
+/* The maker's mark on the ground, and the same mark going to black: `*ctx`
+ * is how far, 0 the mark, 255 black. The ground darkens to K_SCRIM and the
+ * mark's ink goes down through the greys, never through khaki. */
 static void render_mark(void *ctx) {
   (void)ctx;
   fill(0, 0, UI_W, UI_H, K_GROUND);
-  boot_mark();
+  leave_mark(255);
 }
 static void render_sleep(void *ctx);
 
 static void render_mark_fade(void *ctx) {
-  const int *k = ctx;
-  fill(0, 0, UI_W, UI_H, K_GROUND);
-  boot_mark();
-  scrim(0, 0, UI_W, UI_H, K_SCRIM, *k);
+  const int k = *(const int *)ctx;
+  /* K_GROUND is one code step above black in each channel; any level between
+   * the two is tinted (green truncated, magenta rounded), so the ground takes
+   * its one step at the middle, which no eye sees at that depth. */
+  fill(0, 0, UI_W, UI_H, k < 128 ? K_GROUND : K_SCRIM);
+  leave_mark(255 - k);
 }
 
 static void render_black(void *ctx) {
@@ -2895,10 +2882,9 @@ static void render_restarting(void *ctx) {
  * direction - it is where you are arriving - and a return trip that takes as
  * long as the outbound one feels like being made to sit through it.
  *
- * The three are MOTION_OPEN_MS, MOTION_BACK_MS and MOTION_CASCADE_MS, in
- * ui_motion.h with every other length the screen moves for.
+ * The two are MOTION_OPEN_MS and MOTION_BACK_MS, in ui_motion.h with every
+ * other length the screen moves for.
  */
-static void boot_handoff(void);
 static bool look_current_id(char *out, size_t cap);
 
 /*
@@ -2908,8 +2894,9 @@ static bool look_current_id(char *out, size_t cap);
  * waits up to 20 ms per channel for the lock request() holds across a whole
  * round trip, and a capture runs under any screen, so a draw that asked the
  * link directly could stall a frame behind a capture. ui_pass() refreshes the
- * copy outside any draw (cams_refresh()); ABOUT, the boot field and the
- * conditions all read the same four structs.
+ * copy outside any draw (cams_refresh()); ABOUT, the menu card and the
+ * conditions all read the same four structs. The start reads
+ * camlink_online_mask() instead, and tells this copy what it drew.
  *
  * Four camlink_info_t is about 512 bytes. Internal SRAM is the pool this
  * board runs out of first (#162), so the copy lives in PSRAM; it is read a
@@ -2918,42 +2905,21 @@ static bool look_current_id(char *out, size_t cap);
 static EXT_RAM_BSS_ATTR camlink_info_t s_cams[4];
 static void cams_refresh(void);
 
+/*
+ * Time spent recording frames into the display list since boot, in us
+ * (ui_render()). gfx_pass_split() times the replay, the write-out and the
+ * panel wait, and not this: a record that waited on a lock was invisible in
+ * the move report, which said 8-14 ms a frame while the moves ran at 4-47 fps
+ * (#248). anim_report() prints it beside the other three.
+ */
+static uint64_t s_record_us;
+
 typedef enum {
   ANIM_NONE = 0,
-  ANIM_SPLASH,
+  ANIM_START, /* the maker's mark, the cameras answering, the menu building (#245) */
   ANIM_OPEN,
-  ANIM_CASCADE, /* the menu's rows arriving, after the splash */
-  ANIM_SLIDE,   /* a detail screen pushing its parent aside, both from stashes */
+  ANIM_SLIDE, /* a detail screen pushing its parent aside, both from stashes */
 } anim_kind_t;
-
-/*
- * The splash, as the beats it is made of - and there are three, not five.
- *
- * It had the growth split in two, a seed beat easing out to a stop at 132 px
- * and a bloom beat easing back in from rest to carry on. Both curves are
- * smootherstep, which has zero velocity at each end, so the field visibly
- * stalled a third of the way out and then set off again. Two eases glued
- * end to end are not one motion however well each is chosen.
- *
- * And it ended on a beat of black before the menu arrived, which is the
- * second place it snapped: the field left, nothing was there, and then the
- * menu cut in. The retreat runs straight into the handover now.
- */
-enum {
-  SPL_GROW = 0, /* out of nothing to the whole panel, one motion */
-  SPL_HELD,     /* full, and alive: the cells go on re-rolling */
-  SPL_BACK,     /* and away again */
-};
-/*
- * Slower, and weighted toward the two beats that are worth watching.
- *
- * It ran 2.14 s and most of that was the field arriving and leaving at a
- * speed that read as a progress bar being filled. The bloom and the retreat
- * are where the motion is, so they get the time; the hold is long enough for
- * the cells to re-roll twice, which is the beat that says the field is alive
- * rather than a picture.
- */
-static const int32_t SPL_MS[] = {MOTION_SPLASH_GROW_MS, MOTION_SPLASH_HOLD_MS, MOTION_SPLASH_BACK_MS};
 
 static struct {
   anim_kind_t kind;
@@ -2962,9 +2928,9 @@ static struct {
   int64_t start_us; /* when the whole move began */
   uint32_t f0;      /* frames the compositor had presented when it began */
   uint64_t draw0_us, xpose0_us, vsync0_us; /* gfx_pass_split() when it began */
+  uint64_t record0_us;                     /* s_record_us when it began */
   int32_t span_ms;
   int row;
-  int pal;          /* the boot field's row of K_BF_WARM: the launch index */
   bool opening;
   screen_t card;    /* the screen drawn inside the card: arriving when opening, leaving when not */
   bool snap;        /* the card is blitted from the stash, drawn there once at the start */
@@ -2977,14 +2943,25 @@ static struct {
   /* A person started this move: it runs on motion_by_hand() (move_ease()).
    * Taken from s_by_hand when the move starts. */
   bool by_hand;
+  /* ANIM_START, all in ms from its first frame, -1 for not yet: when each
+   * camera was first seen answering, when its cell starts filling, when the
+   * build began. st_missing is the cameras drawn missing at
+   * MOTION_START_WAIT_MS, st_told the cells s_cams was last given (0xFF for
+   * none yet), st_quick a build a finger shortened. 21 bytes. */
+  int16_t st_seen[4];
+  int16_t st_fill[4];
+  int16_t st_exit;
+  uint8_t st_missing;
+  uint8_t st_told;
+  bool st_quick;
 } s_anim;
 
 /*
  * True while a tap's release or a key is being acted on, and only then: the
  * touch path brackets activate() with it and handle_button() brackets the
  * key. A move started inside the bracket is by hand. The review opening after
- * a shot and closing on its clock, the cascade and the splash start outside
- * it and stay on motion_smooth().
+ * a shot and closing on its clock, and the start, run outside it and stay on
+ * motion_smooth().
  */
 static bool s_by_hand;
 
@@ -2996,10 +2973,62 @@ static void render_open(void *ctx) {
   open_frame(s_anim.row, *p);
 }
 
+/*
+ * A move's clock is the panel's: each frame is drawn at the moment it will be
+ * on the glass (gfx_due_us()), not the moment it is drawn. Read from the draw
+ * time, the picture stepped by however long the last frame happened to take
+ * - 13 ms of motion one frame, 19 the next - on a panel that shows every
+ * frame for exactly one refresh (#248). The ramps (dim, lift, sleep,
+ * landing) read the same clock.
+ */
 static void anim_phase(int phase, int32_t span_ms) {
   s_anim.phase = phase;
   s_anim.span_ms = span_ms;
-  s_anim.t0_us = esp_timer_get_time();
+  s_anim.t0_us = gfx_due_us();
+}
+
+/*
+ * The gaps between frames on the glass, from the panel's own refresh count
+ * (gfx_cadence()): min, median, p90 and max in ms, and how many frames were
+ * held past 20 ms and past 34 ms - one refresh missed, two missed. A move at
+ * an average 52 fps can be every frame on time but the first, or one frame in
+ * five held twice, and only the second judders; this line tells them apart
+ * (#248). The longest gap is printed exact, with the moment the frame that
+ * ended it went to the panel (seconds since boot, as the ring's own stamps),
+ * so a stall can be put beside what else the log says happened then. Longest
+ * line, a 14-character name, a four-digit max and three-digit counts: 93
+ * characters. The refresh period is the start's own line.
+ */
+static void cadence_report(const char *what) {
+  gfx_cadence_t c;
+  gfx_cadence(&c);
+  const uint32_t per = c.period_us != 0 ? c.period_us : 16667;
+  uint32_t n = 0;
+  for (int k = 0; k < 8; k++) n += c.hist[k];
+  if (n == 0) {
+    klog("P4", "%s gaps: no second frame", what);
+    return;
+  }
+  int kmin = -1, kmed = 0, k90 = 0;
+  uint32_t run = 0, over20 = 0, over34 = 0;
+  for (int k = 0; k < 8; k++) {
+    if (c.hist[k] == 0) continue;
+    if (kmin < 0) kmin = k;
+    const uint32_t before = run;
+    run += c.hist[k];
+    if (before * 2 < n && run * 2 >= n) kmed = k;
+    if (before * 10 < n * 9 && run * 10 >= n * 9) k90 = k;
+    if ((uint32_t)k * per > 20000) over20 += c.hist[k];
+    if ((uint32_t)k * per > 34000) over34 += c.hist[k];
+  }
+  /* Tenths of a ms. */
+  const unsigned t_min = (unsigned)(((uint32_t)kmin * per + 50) / 100), t_med = (unsigned)(((uint32_t)kmed * per + 50) / 100);
+  const unsigned t_90 = (unsigned)(((uint32_t)k90 * per + 50) / 100);
+  const unsigned t_max = (unsigned)(((uint64_t)c.max_n * per + 50) / 100);
+  const unsigned long at_ms = (unsigned long)(c.max_us / 1000);
+  klog("P4", "%s gaps ms: min %u.%u med %u.%u p90 %u.%u max %u.%u at %lu.%03lu s, >20 %lu, >34 %lu", what,
+       t_min / 10, t_min % 10, t_med / 10, t_med % 10, t_90 / 10, t_90 % 10, t_max / 10, t_max % 10,
+       at_ms / 1000, at_ms % 1000, (unsigned long)over20, (unsigned long)over34);
 }
 
 /*
@@ -3010,6 +3039,16 @@ static void anim_phase(int phase, int32_t span_ms) {
  * nobody could read it: the one figure - the boot cascade - went to ESP_LOGI,
  * which does not reach the host. Every move reports here now, so GET_LOGS
  * after a tap says what the eye saw.
+ *
+ * Two lines, because one did not fit: the ring keeps 95 characters a line and
+ * the old single line lost its tail ("... 2 ms wa"). The second line splits a
+ * frame four ways - recording the display list, drawing (the replay through
+ * the tiles), writing out and waiting for the panel - and "recording" is new
+ * (#248): a record that waited on the card lock was in none of the other
+ * three, so the report read 14 ms a frame for a move that ran at 4 fps.
+ * Longest second line, four-digit values: 94 characters.
+ *
+ * The third line is the cadence (cadence_report()).
  */
 static void anim_report(const char *what) {
   uint32_t f1 = 0;
@@ -3018,34 +3057,317 @@ static void anim_report(const char *what) {
   const uint32_t frames = f1 - s_anim.f0;
   uint64_t d1 = 0, x1 = 0, v1 = 0;
   gfx_pass_split(&d1, &x1, &v1);
+  const uint32_t record_ms = (uint32_t)((s_record_us - s_anim.record0_us) / 1000);
   const uint32_t draw_ms = (uint32_t)((d1 - s_anim.draw0_us) / 1000);
   const uint32_t xpose_ms = (uint32_t)((x1 - s_anim.xpose0_us) / 1000);
   const uint32_t vsync_ms = (uint32_t)((v1 - s_anim.vsync0_us) / 1000);
   const char *const card =
       s_anim.kind == ANIM_OPEN || s_anim.kind == ANIM_SLIDE ? SCREEN_NAME[s_anim.card] : NULL;
-  klog("P4",
-       "%s%s%s: %lu frames in %lu ms (%lu fps); per frame %lu ms drawing, %lu ms writing out, %lu ms "
-       "waiting for the panel",
-       what, card ? " " : "", card ? card : "", (unsigned long)frames, (unsigned long)ms, (unsigned long)(ms ? frames * 1000 / ms : 0),
-       (unsigned long)(frames ? draw_ms / frames : 0), (unsigned long)(frames ? xpose_ms / frames : 0),
-       (unsigned long)(frames ? vsync_ms / frames : 0));
+  klog("P4", "%s%s%s: %lu frames in %lu ms (%lu fps)", what, card ? " " : "", card ? card : "",
+       (unsigned long)frames, (unsigned long)ms, (unsigned long)(ms ? frames * 1000 / ms : 0));
+  klog("P4", "%s per frame: %lu ms recording, %lu ms drawing, %lu ms writing out, %lu ms waiting", what,
+       (unsigned long)(frames ? record_ms / frames : 0), (unsigned long)(frames ? draw_ms / frames : 0),
+       (unsigned long)(frames ? xpose_ms / frames : 0), (unsigned long)(frames ? vsync_ms / frames : 0));
+  cadence_report(what);
 }
 
-static void anim_start_splash(void) {
-  s_anim.kind = ANIM_SPLASH;
+/*
+ * The same report for what moves on the glass without being a move: the dim
+ * arriving, a lift (undim, wake), the sleep's wind-down in its three parts, a
+ * capture's strip landing, the power-down fade. Each runs frame by frame from
+ * ui_pass() (the fade from its own loop), so each is begun and ended where it
+ * starts and stops, and reports its frames, their split and the cadence on
+ * three lines, as a move does. One at a
+ * time, and a move takes the cadence over: a move starting drops the ramp
+ * without a line. The names are compared as pointers.
+ */
+static const char RAMP_DIM[] = "dim", RAMP_UNDIM[] = "undim", RAMP_WAKE[] = "wake",
+                  RAMP_SLEEP_DARK[] = "sleep dark", RAMP_SLEEP_IN[] = "sleep mark in",
+                  RAMP_SLEEP_OUT[] = "sleep mark out", RAMP_LAND[] = "land", RAMP_FADE[] = "power fade";
+static EXT_RAM_BSS_ATTR struct {
+  const char *what; /* NULL: none running */
+  int64_t t0_us;
+  uint32_t f0;
+  uint64_t draw0_us, xpose0_us, vsync0_us, record0_us;
+} s_ramp;
+
+static void ramp_begin(const char *what) {
+  s_ramp.what = what;
+  s_ramp.t0_us = esp_timer_get_time();
+  gfx_stats(&s_ramp.f0, NULL);
+  gfx_pass_split(&s_ramp.draw0_us, &s_ramp.xpose0_us, &s_ramp.vsync0_us);
+  s_ramp.record0_us = s_record_us;
+  gfx_cadence_begin();
+}
+
+static void ramp_end(const char *what) {
+  if (s_ramp.what != what) return;
+  s_ramp.what = NULL;
+  uint32_t f1 = 0;
+  gfx_stats(&f1, NULL);
+  const uint32_t ms = (uint32_t)((esp_timer_get_time() - s_ramp.t0_us) / 1000);
+  const uint32_t frames = f1 - s_ramp.f0;
+  klog("P4", "%s: %lu frames in %lu ms (%lu fps)", what, (unsigned long)frames, (unsigned long)ms,
+       (unsigned long)(ms ? frames * 1000 / ms : 0));
+  uint64_t d1 = 0, x1 = 0, v1 = 0;
+  gfx_pass_split(&d1, &x1, &v1);
+  const uint32_t n = frames ? frames : 1;
+  /* Shorter than a move's: a ramp's name is up to 14 characters. */
+  klog("P4", "%s per frame ms: %lu recording, %lu drawing, %lu writing out, %lu waiting", what,
+       (unsigned long)((s_record_us - s_ramp.record0_us) / 1000 / n), (unsigned long)((d1 - s_ramp.draw0_us) / 1000 / n),
+       (unsigned long)((x1 - s_ramp.xpose0_us) / 1000 / n), (unsigned long)((v1 - s_ramp.vsync0_us) / 1000 / n));
+  cadence_report(what);
+}
+
+/*
+ * The UI task's priority: UI_PRIO, and UI_MOVE_PRIO while a move runs.
+ *
+ * At 4 the UI task shares the level with the gallery task and the touch
+ * poll, and FreeRTOS does not preempt a running task for one of its own
+ * level that wakes: a frame whose engine copy finished while the gallery
+ * was decoding waited for the next 10 ms tick. Measured on the panel
+ * (#248), the slide into PHOTO and back - with the photograph's frames
+ * being read and decoded behind it - held a frame for 65 ms each way. A
+ * move is under half a second and spends most of it waiting on the panel,
+ * so for its length it runs above them; the capture workers' 5 it only
+ * shares. Every move ends through move_over().
+ */
+#define UI_PRIO 4
+#define UI_MOVE_PRIO 5
+
+/** A move starting: the cadence is the move's from here. */
+static void cadence_for_move(void) {
+  s_ramp.what = NULL;
+  gfx_cadence_begin();
+  vTaskPrioritySet(NULL, UI_MOVE_PRIO);
+}
+
+/** A move over: its kind cleared and the task back to UI_PRIO. */
+static void move_over(void) {
+  s_anim.kind = ANIM_NONE;
+  vTaskPrioritySet(NULL, UI_PRIO);
+}
+
+/** ms since the start's first frame, held to what st_seen[] can carry: on
+ *  the panel's clock, from the moment its first frame went up (anim_phase). */
+static int32_t start_ms(void) {
+  const int64_t ms = (gfx_due_us() - s_anim.t0_us) / 1000;
+  return ms < 0 ? 0 : ms > 30000 ? 30000 : (int32_t)ms;
+}
+
+/* How long this build runs: the whole of it, or what a finger left. */
+static int32_t start_build_ms(void) { return s_anim.st_quick ? MOTION_START_CUT_MS : MOTION_START_BUILD_MS; }
+
+/* When the build ends, from the first frame; INT32_MAX before it starts. */
+static int32_t start_end_ms(void) {
+  return s_anim.st_exit < 0 ? INT32_MAX : s_anim.st_exit + start_build_ms();
+}
+
+/**
+ * How far cell k is filled at `ms`, 0..1: from its turn, over
+ * MOTION_START_CELL_IN_MS, or faster when less of the build is left, never
+ * under MOTION_START_LATE_FILL_MS for a camera heard during the build. No
+ * heard camera's turn falls on or after the build's last frame:
+ * start_hear() and start_input() pull it inside.
+ */
+static float start_cell_k(int k, int32_t ms) {
+  const int32_t at = s_anim.st_fill[k];
+  if (at < 0 || ms <= at) return 0.0f;
+  const int32_t left = start_end_ms() - at;
+  const int32_t dur = left < MOTION_START_CELL_IN_MS ? left : MOTION_START_CELL_IN_MS;
+  if (dur <= 0) return 0.0f;
+  return span01((float)ms, (float)at, (float)(at + dur));
+}
+
+/** The cells drawn filled at `ms`, bit k for CAM(k+1). */
+static uint8_t start_shown(int32_t ms) {
+  uint8_t m = 0;
+  for (int k = 0; k < 4; k++)
+    if (start_cell_k(k, ms) > 0.0f) m |= (uint8_t)(1u << k);
+  return m;
+}
+
+/*
+ * The start's wait, MOTION_START_WAIT_MS from its first frame. Inside it a
+ * lens that has not answered is still booting, not down: the conditions do
+ * not call it down (conditions_scan()). A full start ends after the wait and
+ * never sees this; a start cut by a finger or a key lands the menu inside it,
+ * and the card says nothing wrong until a lens is late. Its own clock, not
+ * s_anim.start_us, which the next move overwrites. 8 bytes.
+ */
+static int64_t s_start_from_us;
+static bool lens_grace(void) {
+  if (s_start_from_us == 0) return false;
+  const int64_t d = esp_timer_get_time() - s_start_from_us;
+  return d >= 0 && d < (int64_t)MOTION_START_WAIT_MS * 1000;
+}
+
+/*
+ * The menu card reads s_cams and the conditions, and the start lands on the
+ * card, so they have to say what the start drew: a camera filled on the
+ * glass is online on the card and in its status line, one left an outline is
+ * not. Only `online` is written. The rest of each struct waits for the first
+ * cams_refresh() after the start, which conditions_scan() does not need: it
+ * reads `online`, and the firmware only from a camera with one.
+ */
+static void start_tell(uint8_t shown) {
+  if (shown == s_anim.st_told) return;
+  s_anim.st_told = shown;
+  for (int i = 0; i < 4; i++) s_cams[i].online = (shown >> i) & 1u;
+  conditions_scan(s_cams, lens_grace());
+}
+
+/*
+ * What the cameras said, read before the frame and never in it.
+ *
+ * camlink_online_mask() is one atomic byte: no channel lock, so a dead node
+ * whose HELLO holds its lock cannot stall the frame. A camera seen for the
+ * first time gets its turn to fill: when it answered, but not before
+ * MOTION_START_CELL_FROM_MS and not within MOTION_START_CELL_GAP_MS of a
+ * turn already given, so four that answer at once still fill one by one,
+ * slot order breaking the tie.
+ */
+static void start_hear(int32_t ms) {
+  const uint8_t on = camlink_online_mask();
+  for (int i = 0; i < 4; i++) {
+    if (s_anim.st_seen[i] >= 0 || !(on & (1u << i))) continue;
+    int32_t at = ms > MOTION_START_CELL_FROM_MS ? ms : MOTION_START_CELL_FROM_MS;
+    for (int j = 0; j < 4; j++)
+      if (s_anim.st_fill[j] >= 0 && s_anim.st_fill[j] + MOTION_START_CELL_GAP_MS > at)
+        at = s_anim.st_fill[j] + MOTION_START_CELL_GAP_MS;
+    /* Heard during the build: the cell still opens, and lands filled. Its
+     * turn comes at least MOTION_START_LATE_FILL_MS before the build ends
+     * and never before the frame it was heard on. Heard later than that, it
+     * is not heard by the start: it lands an outline and the menu's next
+     * cams_refresh() fills it, rather than a cell that pops in one frame. */
+    if (s_anim.st_exit >= 0) {
+      const int32_t last = start_end_ms() - MOTION_START_LATE_FILL_MS;
+      if (ms > last) continue;
+      if (at > last) at = last;
+    }
+    s_anim.st_seen[i] = (int16_t)ms;
+    s_anim.st_fill[i] = (int16_t)(at < 30000 ? at : 30000);
+  }
+}
+
+/* The cameras heard so far, bit i for CAM(i+1). */
+static uint8_t start_heard(void) {
+  uint8_t m = 0;
+  for (int i = 0; i < 4; i++)
+    if (s_anim.st_seen[i] >= 0) m |= (uint8_t)(1u << i);
+  return m;
+}
+
+/*
+ * When the build begins: the last cell in and settled, or the wait over. A
+ * camera heard just before the wait ends does not push the build past it:
+ * the build starts by WAIT + MISSING + SETTLE whatever is still filling, and
+ * a cell still filling finishes inside the travel.
+ */
+static void start_decide(int32_t ms) {
+  if (s_anim.st_exit >= 0) return;
+  uint8_t unseen = 0;
+  int32_t last = 0;
+  for (int i = 0; i < 4; i++) {
+    if (s_anim.st_fill[i] < 0) unseen |= (uint8_t)(1u << i);
+    else if (s_anim.st_fill[i] + MOTION_START_CELL_IN_MS > last) last = s_anim.st_fill[i] + MOTION_START_CELL_IN_MS;
+  }
+  int32_t go_at = -1;
+  if (unseen == 0) {
+    go_at = last + MOTION_START_SETTLE_MS;
+    if (go_at < MOTION_START_MIN_HOLD_MS) go_at = MOTION_START_MIN_HOLD_MS;
+  } else if (ms >= MOTION_START_WAIT_MS) {
+    if (s_anim.st_missing == 0) s_anim.st_missing = unseen;
+    go_at = MOTION_START_WAIT_MS + MOTION_START_MISSING_MS + MOTION_START_SETTLE_MS;
+  }
+  const int32_t cap = MOTION_START_WAIT_MS + MOTION_START_MISSING_MS + MOTION_START_SETTLE_MS;
+  if (go_at > cap) go_at = cap;
+  if (go_at >= 0 && ms >= go_at) s_anim.st_exit = (int16_t)ms;
+}
+
+static void anim_start_boot(void) {
+  s_anim.kind = ANIM_START;
   s_anim.by_hand = false;
   s_anim.scrim0 = s_anim.scrim_k = 0;
+  /* The hand before the first frame. draw_screen() sets it, and the start
+   * draws the menu's rows and card without it: a left-handed body built its
+   * card on the right and snapped it across when the menu landed. */
+  s_right_hand = strcmp(config_str("body.hand", "right"), "left") != 0;
+  for (int i = 0; i < 4; i++) s_anim.st_seen[i] = s_anim.st_fill[i] = -1;
+  s_anim.st_exit = -1;
+  s_anim.st_missing = 0;
+  s_anim.st_told = 0xFF;
+  s_anim.st_quick = false;
   s_anim.start_us = esp_timer_get_time();
+  s_start_from_us = s_anim.start_us;
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
+  s_anim.record0_us = s_record_us;
+  cadence_for_move();
+  anim_phase(0, 0);
+}
 
-  /* The launch shade's row: the field comes up in the pink the card wears. */
-  s_anim.pal = (int)s_launch;
+/*
+ * The start is over: the menu as itself, then the bench lines and the
+ * first-start note when it is due. `cams` is the cameras the card shows as
+ * answering: what the last frame drew, or on a cut, what was heard. A key
+ * skips the note: it fires on this same pass, and the note stays due for
+ * the next start.
+ */
+static void start_done(uint8_t cams, bool note) {
+  start_tell(cams);
+  anim_report("start");
+  {
+    gfx_cadence_t c;
+    gfx_cadence(&c);
+    klog("P4", "panel refresh %lu us", (unsigned long)c.period_us);
+  }
+  klog("P4", "start: lenses answered at %d %d %d %d ms, build at %d ms%s", s_anim.st_seen[0],
+       s_anim.st_seen[1], s_anim.st_seen[2], s_anim.st_seen[3], s_anim.st_exit,
+       s_anim.st_quick ? ", cut short" : "");
+  move_over();
+  ui_render(render_screen, NULL);
+  boot_bench();
+  if (note) first_start_note();
+}
 
-  /* The four start cold and come up with their cameras. */
-  for (int i = 0; i < 4; i++) s_bf_cam[i] = 0.0f;
-
-  anim_phase(SPL_GROW, SPL_MS[SPL_GROW]);
+/*
+ * A finger or a key during the start, from ui_pass(). A key lands the menu
+ * now, with the cameras heard so far, and the key fires on this pass. A
+ * finger runs what is left of the build in MOTION_START_CUT_MS, every beat in
+ * step: every camera heard so far lands filled (a cell whose turn had not
+ * come yet fills now, 20 ms apart in slot order), the rest as outlines, the
+ * truth at that moment. Returns true when the start is over.
+ */
+static bool start_input(bool finger, bool key) {
+  if (key) {
+    klog("P4", "start cut by key");
+    start_done(start_heard(), false);
+    return true;
+  }
+  if (finger && !s_anim.st_quick) {
+    klog("P4", "start cut by touch");
+    const int32_t ms = start_ms();
+    if (s_anim.st_exit < 0) {
+      s_anim.st_exit = (int16_t)ms;
+    } else {
+      /* Already building: keep the build's own clock where it is and run
+       * the rest at the quicker rate, so nothing on the glass jumps. */
+      const int32_t b = ms - s_anim.st_exit;
+      s_anim.st_exit = (int16_t)(ms - b * MOTION_START_CUT_MS / MOTION_START_BUILD_MS);
+    }
+    s_anim.st_quick = true;
+    /* Pull every heard camera's turn into what is left of the build, a
+     * late fill's length before its end where there is room for one. */
+    const int32_t last = start_end_ms() - MOTION_START_LATE_FILL_MS;
+    for (int i = 0; i < 4; i++) {
+      if (s_anim.st_seen[i] < 0 || s_anim.st_fill[i] <= ms) continue;
+      int32_t at = ms + i * 20;
+      if (at > last) at = last > ms ? last : ms;
+      s_anim.st_fill[i] = (int16_t)at;
+    }
+  }
+  return false;
 }
 
 static void anim_start_open(int row, bool opening, screen_t card, int ms) {
@@ -3074,6 +3396,8 @@ static void anim_start_open(int row, bool opening, screen_t card, int ms) {
   s_anim.start_us = esp_timer_get_time();
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
+  s_anim.record0_us = s_record_us;
+  cadence_for_move();
   anim_phase(0, ms);
 }
 
@@ -3106,33 +3430,15 @@ static void anim_start_slide(screen_t to, bool from_right, int ms) {
   s_anim.start_us = esp_timer_get_time();
   gfx_stats(&s_anim.f0, NULL);
   gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
+  s_anim.record0_us = s_record_us;
+  cadence_for_move();
   anim_phase(0, ms);
-}
-
-/* The menu arriving after the splash, on the same clock and the same report
- * as a move. It was a compositor loop of its own (gfx_cascade) at 40 fps; it
- * is drawn from the menu now like everything else, and it is the last thing
- * that went to the panel any other way. */
-static void anim_start_cascade(int ms) {
-  s_anim.kind = ANIM_CASCADE;
-  s_anim.by_hand = false;
-  s_anim.scrim0 = s_anim.scrim_k = 0;
-  s_anim.start_us = esp_timer_get_time();
-  gfx_stats(&s_anim.f0, NULL);
-  gfx_pass_split(&s_anim.draw0_us, &s_anim.xpose0_us, &s_anim.vsync0_us);
-  anim_phase(0, ms);
-}
-
-/** How far through the whole move, in seconds - the colour travels on this
- *  rather than on the phase, for the reason the re-roll clock does. */
-static float t_all(void) {
-  return (float)(esp_timer_get_time() - s_anim.start_us) / 1000000.0f;
 }
 
 /** How far through the current phase, 0..1, clamped. */
 static float anim_t(void) {
   if (s_anim.span_ms <= 0) return 1.0f;
-  const float t = (float)(esp_timer_get_time() - s_anim.t0_us) / ((float)s_anim.span_ms * 1000.0f);
+  const float t = (float)(gfx_due_us() - s_anim.t0_us) / ((float)s_anim.span_ms * 1000.0f);
   return t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
 }
 
@@ -3149,106 +3455,32 @@ static uint32_t anim_tick(void) {
   const bool done = t >= 1.0f;
 
   switch (s_anim.kind) {
-    case ANIM_SPLASH: {
-      /*
-       * The field, and nothing else on the screen.
-       *
-       * It carried the studio's disc at its middle and the camera's wordmark
-       * under it, and the reference's startup carries neither - it is one
-       * thing happening, which is why it holds attention for two seconds.
-       * Both marks have a place on this camera: the studio signs the ABOUT
-       * screen, and the wordmark is what the camera shows when it is going
-       * away. Neither of them is the boot screen.
-       */
-      /*
-       * The re-roll clock runs from the START of the splash, not from the
-       * start of the current phase.
-       *
-       * This was the two snaps. Every cell picks its mark from a generation
-       * counter derived from this number, staggered by a per-cell offset so
-       * the changes scatter - but anim_phase() resets the phase clock, so at
-       * each of the two phase boundaries the counter went back to zero and
-       * EVERY cell re-rolled on the same frame. Three phases, two internal
-       * boundaries, two whole-field flashes, in exactly the places the
-       * geometry was provably continuous. The motion was never the problem.
-       */
-      const int32_t ms = (int32_t)((esp_timer_get_time() - s_anim.start_us) / 1000);
-
-      /*
-       * The two facts the field is drawing, read off the camera each frame.
-       *
-       * s_cams is the snapshot ui_pass() refreshes every two seconds, so this
-       * is a struct read however often it runs - and two seconds is the right
-       * grain anyway: a node either answered or it has not, and it does not
-       * change between two frames.
-       *
-       * Each quadrant EASES toward its camera's state rather than snapping to
-       * it, so a node answering part-way through the boot opens its quarter
-       * out instead of making it appear. That is the moment worth having on
-       * this screen: the camera assembling itself while you watch.
-       */
-      {
-        for (int i = 0; i < 4; i++) {
-          const float want = s_cams[i].online ? 1.0f : BF_DARK;
-          s_bf_cam[i] += (want - s_bf_cam[i]) * MOTION_FIELD_CAM_FOLLOW;
-        }
+    case ANIM_START: {
+      /* A loop that stalled past MOTION_START_LATE_MS (a Twin in a hidden
+       * tab, a UI task held) would find start_ms() held at its 30 s cap
+       * short of a build end it can no longer reach. Land the menu now with
+       * the cameras that answer: a cut, the same as a key. */
+      const int64_t raw = (esp_timer_get_time() - s_anim.start_us) / 1000;
+      if (raw >= MOTION_START_LATE_MS) {
+        const uint8_t on = camlink_online_mask() & 0xFu;
+        for (int i = 0; i < 4; i++)
+          if (s_anim.st_seen[i] < 0 && (on & (1u << i))) s_anim.st_seen[i] = (int16_t)start_ms();
+        klog("P4", "start cut: the loop stalled, %ld ms in", (long)raw);
+        start_done(on, true);
+        return 0;
       }
-      /* The colour travels over most of the growth, not the first half
-       * second of it: the camera is finding its look while it wakes, and
-       * arriving at it before the field is half out wastes the journey. */
-      const float warm = span01(t_all(), MOTION_SPLASH_WARM_FROM_MS / 1000.0f, MOTION_SPLASH_WARM_TO_MS / 1000.0f);
-      switch (s_anim.phase) {
-        case SPL_GROW:
-          /* One motion, nothing to nearly the corner. smootherstep starts
-           * from rest, so the opening cells still creep out of the middle
-           * the way the reference's do - that beat was never a separate
-           * phase, it is just the front of this curve. */
-          {
-            field_frame_t f = {BF_SEED + ease_ui(t) * (BF_REACH - BF_SEED), ms, s_anim.pal, warm};
-            ui_render(render_field, &f);
-          }
-          if (done) anim_phase(SPL_HELD, SPL_MS[SPL_HELD]);
-          return 0;
-
-        case SPL_HELD:
-          /* Full, and still changing: the cells go on re-rolling, which is
-           * the beat that says the field is alive rather than a picture. */
-          {
-            field_frame_t f = {BF_REACH, ms, s_anim.pal, warm};
-            ui_render(render_field, &f);
-          }
-          if (done) anim_phase(SPL_BACK, SPL_MS[SPL_BACK]);
-          return 0;
-
-        case SPL_BACK:
-          /*
-           * Accelerating away, not easing to a stop.
-           *
-           * `1 - smootherstep` flattens as it finishes, so the last of the
-           * field crept off over a third of a second and then the panel sat
-           * empty waiting for the phase to end - a dead beat, and then the
-           * menu cut into it. Something leaving should gather speed and be
-           * gone: this hits zero exactly as the phase does, and the menu
-           * arrives on the frame after.
-           */
-          {
-            field_frame_t f = {(1.0f - motion_accel(t)) * BF_REACH, ms, s_anim.pal, warm};
-            ui_render(render_field, &f);
-          }
-          if (done) {
-            anim_report("splash");
-            s_anim.kind = ANIM_NONE;
-            /* Straight into the menu. The retreat's own tail is the pause -
-             * the last cells are already fading as the first rows land, so
-             * there is no moment where the panel is holding nothing. */
-            boot_handoff();
-          }
-          return 0;
-
-        default:
-          s_anim.kind = ANIM_NONE;
-          return 0;
-      }
+      const int32_t ms = start_ms();
+      /* Nothing new is heard on the frame the build ends: every camera heard
+       * before it has filled by then (start_hear(), start_input()), so the
+       * card says what the last frame drew. */
+      if (s_anim.st_exit < 0 || ms < start_end_ms()) start_hear(ms);
+      start_decide(ms);
+      if (s_anim.st_exit >= 0) start_tell(start_shown(ms));
+      int32_t at = ms;
+      ui_render(render_start, &at);
+      const int32_t end = start_end_ms();
+      if (ms >= end) start_done(start_shown(end), true);
+      return 0;
     }
 
     case ANIM_OPEN: {
@@ -3259,7 +3491,7 @@ static uint32_t anim_tick(void) {
       if (s_anim.scrim0 > 0) {
         int32_t sms = s_anim.scrim_ms;
         if (sms > s_anim.span_ms) sms = s_anim.span_ms;
-        const float te = sms > 0 ? (float)(esp_timer_get_time() - s_anim.start_us) / ((float)sms * 1000.0f) : 1.0f;
+        const float te = sms > 0 ? (float)(gfx_due_us() - s_anim.t0_us) / ((float)sms * 1000.0f) : 1.0f;
         s_anim.scrim_k = s_anim.scrim0 - (int)(motion_ease_out(te) * (float)s_anim.scrim0 + 0.5f);
         if (s_anim.scrim_k < 0) s_anim.scrim_k = 0;
       } else {
@@ -3271,7 +3503,7 @@ static uint32_t anim_tick(void) {
          * last frame. Going back, the destination has never been drawn at all. */
         ui_render(render_screen, NULL);
         anim_report(s_anim.opening ? "open move" : "back move");
-        s_anim.kind = ANIM_NONE;
+        move_over();
       }
       return 0;
     }
@@ -3286,38 +3518,16 @@ static uint32_t anim_tick(void) {
       if (done) {
         ui_render(render_screen, NULL);
         anim_report(s_anim.from_right ? "slide in" : "slide back");
-        s_anim.kind = ANIM_NONE;
-      }
-      return 0;
-    }
-
-    case ANIM_CASCADE: {
-      float p = t;
-      ui_render(render_cascade, &p);
-      if (done) {
-        ui_render(render_screen, NULL);
-        anim_report("menu cascade");
-        s_anim.kind = ANIM_NONE;
-        boot_bench();
-        first_start_note();
+        move_over();
       }
       return 0;
     }
 
     default:
-      s_anim.kind = ANIM_NONE;
+      move_over();
       return 0;
   }
 }
-
-/**
- * The boot sequence: the disc, the bloom, the name.
- *
- * Starts it; anim_tick() runs it. It used to run here, in three loops that
- * owned the UI task for 2.1 seconds and presented 119 frames into a Twin that
- * can hold 40 of them.
- */
-static void splash(void) { anim_start_splash(); }
 
 /* The power-down scrim at `t` (0..1) through its fade: 0 is the mark on the
  * ground, 255 is black. Pure; host_preview draws frames from it. */
@@ -3329,8 +3539,8 @@ static int power_fade_k(float t) { return (int)(motion_smooth(t) * 255.0f + 0.5f
  * It used to put the four-cell mark up and take the cells out one at a time,
  * which is a sentence about the four cameras - the right thing to say while a
  * capture is happening and the wrong thing to say while the camera is
- * switching off. What is leaving is the camera, so the camera's own mark is
- * what is on the screen, and then it is not.
+ * switching off. What is leaving is the camera, so its maker's mark is what
+ * is on the screen, where the start put it, and then it is not (#245).
  *
  * A blocking loop, and it stays one (UI-09): it runs only on the way to
  * esp_restart() or power-off, where no input is acted on, and an animation
@@ -3344,25 +3554,24 @@ static void power_down_anim(void) {
    * Out through the ground rather than to black in one step: the panel's
    * backlight is still on for a moment after this returns, and a hard cut
    * leaves it showing an empty lit rectangle. It was seven linear 55 ms
-   * steps, which is a staircase on a dark ground. It is about twenty frames
-   * on motion_smooth now, time-driven: frame i is due at i/N of the span, and
-   * a frame that comes out late is drawn where the clock is, not where the
-   * count is, so a slow panel finishes on time with fewer frames.
+   * steps, which is a staircase on a dark ground. It is on motion_smooth now,
+   * a frame a refresh on the panel's clock (gfx_due_us()): each frame is
+   * drawn where the curve is when it goes up, about 23 over the span. It was
+   * MOTION_POWER_FADE_FRAMES frames each due at i/N of the span, waited for
+   * with a delay on the 10 ms tick, and three of the twenty were held for
+   * two refreshes (#248).
    */
-  const int64_t t0 = esp_timer_get_time();
+  const int64_t t0 = gfx_due_us();
   const int64_t span_us = (int64_t)MOTION_POWER_FADE_MS * 1000;
-  for (int i = 1; i <= MOTION_POWER_FADE_FRAMES; i++) {
-    float t = (float)i / (float)MOTION_POWER_FADE_FRAMES;
-    const float by_clock = (float)(esp_timer_get_time() - t0) / (float)span_us;
-    if (by_clock > t) t = by_clock;
+  ramp_begin(RAMP_FADE);
+  for (;;) {
+    float t = (float)(gfx_due_us() - t0) / (float)span_us;
     if (t > 1.0f) t = 1.0f;
     int k = power_fade_k(t);
     ui_render(render_mark_fade, &k);
     if (t >= 1.0f) break;
-    const int64_t due = t0 + span_us * i / MOTION_POWER_FADE_FRAMES;
-    const int64_t wait_ms = (due - esp_timer_get_time()) / 1000;
-    if (wait_ms > 0) vTaskDelay(pdMS_TO_TICKS((uint32_t)wait_ms));
   }
+  ramp_end(RAMP_FADE);
   ui_render(render_black, NULL);
   vTaskDelay(pdMS_TO_TICKS(MOTION_POWER_BLACK_MS));
 }
@@ -3466,8 +3675,8 @@ static int hd_cluster_w(screen_t s) {
  */
 static int chrome_state(int left, int right, int y, uint16_t ink, const char *first,
                         const char *last) {
-  /* From the pass cache: this bar is on two screens during a move, and each
-   * storage_get_status() is a FatFs free-space query behind its mutex. */
+  /* From the pass cache, which copies storage.c's figures: never a FatFs
+   * call in a draw (#248). */
   const storage_status_t sd = *sd_status();
   const char *const pwr = link_words(usb_attached());
 
@@ -3980,21 +4189,6 @@ static void menu_rect(int i, int *x, int *y, int *w, int *h) {
 }
 
 /**
- * The menu arriving.
- *
- * Six rows landing one after another, over a ground that is already there.
- * The difference between this and a fade is that a fade shows you a picture
- * of a menu and this shows you six things being put down, which is what they
- * are - the card is not a heading and the rows are not a texture.
- *
- * Only used where the menu turns up with nothing behind it: after the splash.
- * Coming back from a screen it folds into the row you left from instead, and
- * two answers to the same question would be one too many.
- */
-
-
-
-/**
  * Six targets on a light screen, and a strip that says where the power is.
  *
  * They were six loose objects: artwork and a word, floating on face grey, with
@@ -4070,6 +4264,16 @@ static void menu_icon(int i, int cx, int cy, uint16_t ink) {
   icon(ROW_ICON[i >= 0 && i < 6 ? i : 5], cx, cy, ink);
 }
 
+/* The card's four-mark: four MZ_MARK_CELL cells MZ_MARK_GAP apart in the
+ * card's upper middle, an offline camera an MZ_MARK_KEY outline. One place,
+ * because the start's cells land on it (#245). */
+#define MZ_MARK_CELL 56
+#define MZ_MARK_GAP 12
+#define MZ_MARK_KEY 3
+static void card_mark_at(int x, int y, int w, int *mx, int *my) {
+  *mx = x + (w - (2 * MZ_MARK_CELL + MZ_MARK_GAP)) / 2;
+  *my = y + 18 + K_TYPE_CAPTION->line_h + 52;
+}
 /**
  * Everything on a menu item but its face, in one ink.
  *
@@ -4077,7 +4281,9 @@ static void menu_icon(int i, int cx, int cy, uint16_t ink) {
  * growing card in an ink that fades with the wash: the label dissolves into
  * the screen arriving under it instead of vanishing on the first frame.
  */
-static void menu_words(int i, int x, int y, int w, int h, uint16_t ink, bool with_word) {
+/* with_mark false draws the card's words without its four-mark: the start
+ * (render_start()) draws the four itself as they arrive. */
+static void menu_words(int i, int x, int y, int w, int h, uint16_t ink, bool with_word, bool with_mark) {
   /* One left rule and one right rule for everything on this screen. Three
    * left edges and two right ones is what it had, and a 10 px disagreement
    * between the card's type and the rows' type is visible at arm's length as
@@ -4111,22 +4317,25 @@ static void menu_words(int i, int x, int y, int w, int h, uint16_t ink, bool wit
      *
      * Each cell is a camera, CAM1 to CAM4 in reading order, and says whether
      * it answers: filled when it does, a 3 px outline when it does not. Read
-     * from s_cams, the snapshot ui_pass() refreshes every two seconds - never
-     * from camlink inside a draw - in the card's own ink, so no new colour.
+     * from s_cams, the snapshot ui_pass() refreshes (every 2 s, or within
+     * 100 ms of a camera answering or dropping; the start writes it through
+     * start_tell()) - never from camlink inside a draw - in the card's own
+     * ink, so no new colour.
      * Four filled cells was a picture of a camera that might not be there. */
-    const int cell = 56, gap = 12, keyline = 3;
-    const int mw = 2 * cell + gap;
-    const int mx = x + (w - mw) / 2;
-    const int my = y + 18 + K_TYPE_CAPTION->line_h + 52;
-    for (int k = 0; k < 4; k++) {
-      const int cx = mx + (k % 2) * (cell + gap), cy = my + (k / 2) * (cell + gap);
-      if (s_cams[k].online) {
-        fill(cx, cy, cell, cell, ink);
-      } else {
-        fill(cx, cy, cell, keyline, ink);
-        fill(cx, cy + cell - keyline, cell, keyline, ink);
-        fill(cx, cy + keyline, keyline, cell - 2 * keyline, ink);
-        fill(cx + cell - keyline, cy + keyline, keyline, cell - 2 * keyline, ink);
+    if (with_mark) {
+      const int cell = MZ_MARK_CELL, gap = MZ_MARK_GAP, keyline = MZ_MARK_KEY;
+      int mx, my;
+      card_mark_at(x, y, w, &mx, &my);
+      for (int k = 0; k < 4; k++) {
+        const int cx = mx + (k % 2) * (cell + gap), cy = my + (k / 2) * (cell + gap);
+        if (s_cams[k].online) {
+          fill(cx, cy, cell, cell, ink);
+        } else {
+          fill(cx, cy, cell, keyline, ink);
+          fill(cx, cy + cell - keyline, cell, keyline, ink);
+          fill(cx, cy + keyline, keyline, cell - 2 * keyline, ink);
+          fill(cx + cell - keyline, cy + keyline, keyline, cell - 2 * keyline, ink);
+        }
       }
     }
 
@@ -4177,7 +4386,7 @@ static uint16_t menu_ink(int i, bool down) {
 
 static void menu_item(int i, int x, int y, int w, int h, bool down, bool with_word) {
   round_rect(x, y, w, h, UI_R, menu_face(i, down));
-  menu_words(i, x, y, w, h, menu_ink(i, down), with_word);
+  menu_words(i, x, y, w, h, menu_ink(i, down), with_word, true);
 }
 
 static void draw_menu(void) {
@@ -4205,6 +4414,9 @@ static void draw_menu(void) {
 /* The panes whose button the last draw put up, one bit each. Set by the draw
  * and read by the hit test, the same rule as s_sh_set_x0. */
 static uint8_t s_sh_dead;
+/* The panes the last draw put a picture on, one bit each: where a tap
+ * before the first photograph is told to use the shutter (#247). */
+static uint8_t s_sh_live;
 /* A photograph between the press and the card, queued shot included. */
 static bool capture_in_flight(void);
 /* The self-timer is counting. */
@@ -4342,6 +4554,8 @@ static void sh_pane_rect(int cam, int *x, int *y) {
   *x = (cam % 2) * SH_PANE_W;
   *y = (cam / 2) * SH_PANE_H;
 }
+/* The pane under logical (x, y): sh_pane_rect() read backwards. */
+static int sh_pane_at(int x, int y) { return (y >= SH_PANE_H ? 2 : 0) + (x >= SH_PANE_W ? 1 : 0); }
 
 /* A dead pane's two pieces, centred in the part of the pane the status bar
  * leaves: the bottom two lose SH_BAR_H to it. One function for the draw and
@@ -4422,6 +4636,44 @@ static void blit_rows(const uint16_t *src, int src_stride, int x, int y, int w, 
   }
 }
 
+/*
+ * A picture at half its size into the target: each pixel the mean of a 2 x 2
+ * block of `src`, so a 252 x 189 gallery tile lands as 126 x 94 without the
+ * stair-steps every other pixel would leave. `w` x `h` is the size drawn;
+ * `src` holds at least 2w x 2h at `src_stride`. Integer only: the four are
+ * summed with each channel spread apart in one word, two bits of headroom
+ * per channel, then rounded and folded back.
+ */
+static void blit_half(const uint16_t *src, int src_stride, int x, int y, int w, int h) {
+  if (s_dl.rec) {
+    dl_cmd_t *k = dl_push(DL_HALF, x, y, x + w, y + h);
+    if (k) { k->p = src; k->a = src_stride; k->b = x; k->c = y; k->d = w; k->e = h; }
+    return;
+  }
+  AUDIT_IMAGE(x, y, w, h);
+  const gfx_target_t *t = TG;
+  int sx = 0, sy = 0;
+  if (x < t->x0) { sx = t->x0 - x; w -= sx; x = t->x0; }
+  if (y < t->y0) { sy = t->y0 - y; h -= sy; y = t->y0; }
+  if (x + w > CV_X1(t)) w = CV_X1(t) - x;
+  if (y + h > CV_Y1(t)) h = CV_Y1(t) - y;
+  if (w <= 0 || h <= 0) return;
+  for (int r = 0; r < h; r++) {
+    const uint16_t *s0 = src + (size_t)(2 * (sy + r)) * (size_t)src_stride + 2 * sx;
+    const uint16_t *s1 = s0 + src_stride;
+    uint16_t *dst = cv_ptr(t, x, y + r);
+    for (int c = 0; c < w; c++) {
+      uint32_t sum = 0x00401002u; /* +2 in each channel: round to nearest */
+      sum += ((uint32_t)s0[2 * c] | ((uint32_t)s0[2 * c] << 16)) & 0x07E0F81Fu;
+      sum += ((uint32_t)s0[2 * c + 1] | ((uint32_t)s0[2 * c + 1] << 16)) & 0x07E0F81Fu;
+      sum += ((uint32_t)s1[2 * c] | ((uint32_t)s1[2 * c] << 16)) & 0x07E0F81Fu;
+      sum += ((uint32_t)s1[2 * c + 1] | ((uint32_t)s1[2 * c + 1] << 16)) & 0x07E0F81Fu;
+      sum = (sum >> 2) & 0x07E0F81Fu;
+      dst[c] = (uint16_t)(sum | (sum >> 16));
+    }
+  }
+}
+
 /* One recorded command, drawn for real through whatever the target is now. */
 static void dl_exec(const dl_cmd_t *c) {
   switch (c->op) {
@@ -4432,12 +4684,12 @@ static void dl_exec(const dl_cmd_t *c) {
     case DL_DISC: disc(c->a, c->b, c->f0, c->col); break;
     case DL_SCRIM: scrim(c->a, c->b, c->c, c->d, c->col, c->e); break;
     case DL_TEXT: text((const ui_font_t *)c->p, c->a, c->b, s_dl.str + c->g, c->col); break;
-    case DL_FIELD: boot_field(c->f0, c->a, c->b, c->f1); break;
     case DL_SHBLIT: sh_blit((const uint16_t *)c->p, c->a, c->b); break;
     case DL_BLIT: blit_rows((const uint16_t *)c->p, c->a, c->b, c->c, c->d, c->e); break;
     case DL_BITS: draw_bits((const uint8_t *)c->p, c->a, c->b, c->c, c->d, c->e, c->g, c->col); break;
     case DL_FOCUS: focus_ring(c->a, c->b, c->c, c->d, c->e, c->col); break;
     case DL_MASK: mask_blit((const uint8_t *)c->p, c->a, c->b, c->c, c->d, c->e, c->col); break;
+    case DL_HALF: blit_half((const uint16_t *)c->p, c->a, c->b, c->c, c->d, c->e); break;
     default: break;
   }
 }
@@ -4513,7 +4765,7 @@ static void dl_profile(const char *what, gfx_draw_fn draw, void *ctx) {
    * dropped: a stale "odd" sat between "text" and "field" here and every op
    * after it printed under its neighbour's name. */
   static const char *const OP[] = {"fill", "rrect", "routl", "cut", "disc", "scrim", "text",
-                                   "field", "shblit", "blit", "bits", "focus", "mask"};
+                                   "shblit", "blit", "bits", "focus", "mask", "half"};
   _Static_assert(sizeof OP / sizeof OP[0] == DL_OPS, "one name per display-list op, in enum order");
   dl_begin();
   draw(ctx);
@@ -4540,9 +4792,12 @@ static void dl_profile(const char *what, gfx_draw_fn draw, void *ctx) {
 static void ui_render(gfx_draw_fn draw, void *ctx) {
   const bool was = s_in_render;
   s_in_render = true;
+  const int64_t rec0 = esp_timer_get_time();
   dl_begin();
   draw(ctx);
-  if (dl_end()) {
+  const bool listed = dl_end();
+  s_record_us += (uint64_t)(esp_timer_get_time() - rec0);
+  if (listed) {
     gfx_render(dl_replay, NULL);
   } else {
     static uint32_t warned;
@@ -4620,6 +4875,7 @@ static int sh_panel(int x, int w, const char *s, bool down) {
  */
 static void draw_shoot(void) {
   s_sh_dead = 0;
+  s_sh_live = 0;
   const bool starting = cams_starting();
   const bool in_flight = capture_in_flight();
   /* Which of the four are on screen, as the mark rather than as a sentence.
@@ -4642,6 +4898,7 @@ static void draw_shoot(void) {
        * camera that answered, whatever the status word says a moment later. */
       live++;
       cams_st[i] = FM_ON;
+      s_sh_live |= (uint8_t)(1u << i);
       continue;
     }
 
@@ -4695,6 +4952,10 @@ static void draw_shoot(void) {
 
   /* ---- how it will shoot ---- */
 
+  /* No flash fitted, no flash panel (#247): D4-V1 has had nothing to fire
+   * since ECN-0003, and AUTO on the bar promised light that does not exist.
+   * The panel and its gap go; the look's panel takes the room. */
+  const bool flash_fitted = capture_has_flash();
   const char *const flash = FLASH_NAMES[flash_index()];
   /* `live` counts the four panes, so this is nine characters. The buffer is
    * sized for a full int anyway: the compiler cannot see the bound and
@@ -4710,7 +4971,8 @@ static void draw_shoot(void) {
   const int bolt_w = 10, bolt_gap = 6;
   const char *const mode = mode_is_quad() ? "QUAD" : "WIGGLE";
   const int w_mode = text_w(K_TYPE_CAPTION, mode) + 2 * SH_PN_PAD;
-  const int w_flash = bolt_w + bolt_gap + text_w(K_TYPE_CAPTION, flash) + 2 * SH_PN_PAD;
+  const int w_flash = flash_fitted ? bolt_w + bolt_gap + text_w(K_TYPE_CAPTION, flash) + 2 * SH_PN_PAD : 0;
+  const int g_flash = flash_fitted ? SH_PN_GAP : 0;
   /* The mark, then the count. Four 8 px cells and three 6 px gaps. */
 #define SH_FM_CELL 8
 #define SH_FM_W (4 * SH_FM_CELL + 3 * FM_GAP)
@@ -4787,7 +5049,7 @@ static void draw_shoot(void) {
 
   /* The decisions, mode outermost, look nearest the readings. */
   int mode_x, flash_x, look_x;
-  const int w_look = (set_x1 - set_x0) - w_mode - w_flash - 2 * SH_PN_GAP;
+  const int w_look = (set_x1 - set_x0) - w_mode - SH_PN_GAP - w_flash - g_flash;
   if (s_right_hand) {
     mode_x = set_x1 - w_mode;
     flash_x = mode_x - SH_PN_GAP - w_flash;
@@ -4795,10 +5057,10 @@ static void draw_shoot(void) {
   } else {
     mode_x = set_x0;
     flash_x = mode_x + w_mode + SH_PN_GAP;
-    look_x = flash_x + w_flash + SH_PN_GAP;
+    look_x = flash_x + w_flash + g_flash;
   }
   sh_panel(mode_x, w_mode, mode, set_down);
-  {
+  if (flash_fitted) {
     /* The flash panel by hand, because it is the one with a glyph in it. */
     const uint16_t ink = set_down ? K_PRESS_INK : K_INK;
     round_rect(flash_x, SH_PN_Y, w_flash, SH_PN_H, UI_R, set_down ? K_PRESS : K_SURFACE);
@@ -4906,7 +5168,6 @@ static void look_set_mono(bool mono) {
 #define LK_GAP (2 * GRID)
 #define LK_COL_GAP (2 * GRID)
 #define LK_W (UI_W - 2 * PAGE_M)
-#define LK_COL_W ((LK_W - 2 * LK_COL_GAP) / 3)
 #define LK_PICK_BTN BTN_SQ
 
 /*
@@ -4932,11 +5193,20 @@ static int lk_text_x1(void) { return s_right_hand ? lk_pair_outer_x() - 3 * GRID
  * MODE, the one changed least, sat at the far left. The visual column `c`
  * maps to a group through this, so the near column is FLASH whichever hand
  * holds the body.
+ *
+ * With no flash fitted (capture_has_flash()) there is no FLASH column at all
+ * (#247): two columns share the row, MODE nearer the hand, and nothing drawn
+ * or hit-tested offers AUTO / ON / OFF for light that does not exist.
  */
 enum { LK_G_MODE = 0, LK_G_FLASH, LK_G_COLOR };
+static int lk_cols(void) { return capture_has_flash() ? 3 : 2; }
+static int lk_col_w(void) { return (LK_W - (lk_cols() - 1) * LK_COL_GAP) / lk_cols(); }
 static int lk_group_of_col(int c) {
   static const int RIGHT[3] = {LK_G_COLOR, LK_G_MODE, LK_G_FLASH};
   static const int LEFT[3] = {LK_G_FLASH, LK_G_MODE, LK_G_COLOR};
+  static const int RIGHT_DARK[2] = {LK_G_COLOR, LK_G_MODE};
+  static const int LEFT_DARK[2] = {LK_G_MODE, LK_G_COLOR};
+  if (!capture_has_flash()) return s_right_hand ? RIGHT_DARK[c] : LEFT_DARK[c];
   return s_right_hand ? RIGHT[c] : LEFT[c];
 }
 
@@ -4967,8 +5237,8 @@ static int lk_trio_y(bool quad) { return lk_hero_y(quad) + lk_hero_h(quad) + LK_
  * twice, and both times it was this row. */
 static int lk_pick_y(bool quad) { return lk_hero_y(quad) + lk_hero_h(quad) - 2 * GRID - LK_PICK_BTN; }
 static int lk_tgt_y(bool quad) { return lk_trio_y(quad) + LK_CAP_H + LK_CTL_H + LK_GAP; }
-/** Column `i` of the three-up row. */
-static int lk_col_x(int i) { return PAGE_M + i * (LK_COL_W + LK_COL_GAP); }
+/** Column `i` of the row under the card: three up, or two with no flash. */
+static int lk_col_x(int i) { return PAGE_M + i * (lk_col_w() + LK_COL_GAP); }
 
 /* Item ranges. The target row is last so the item indices below it are the
  * same in both modes, which is what lets item_count() simply drop it. */
@@ -5060,6 +5330,8 @@ static void look_display(char *out, size_t cap) {
   upcase(out);
 }
 
+static bool look_capture_refresh(void);
+
 static void look_step(int delta) {
   const int n = kdp_recipes_count();
   if (n <= 0) {
@@ -5087,6 +5359,8 @@ static void look_step(int delta) {
   char id[KDP_RECIPE_ID_MAX], name[KDP_RECIPE_NAME_MAX];
   if (!kdp_recipes_name(next, id, sizeof id, name, sizeof name)) return;
   look_apply(id);
+  /* The new look's numbers, here on the tap and not in the redraw (#248). */
+  (void)look_capture_refresh();
   upcase(name);
   toast(name);
 }
@@ -5114,20 +5388,46 @@ static void look_step(int delta) {
  * showing its old numbers until the picker steps off it and back. That is the
  * right trade. The alternative is a screen that can stall behind a shutter.
  *
- * `s_lk_have` distinguishes "read it, there is no capture block" from "not read
- * yet", so a look that genuinely sets nothing is not re-read every frame.
+ * The cache was filled from the draw itself, on the first frame that showed a
+ * new id: a move into LOOK on a custom look recorded its first frame behind
+ * the card lock (#248). It is filled outside any draw now, by
+ * look_capture_refresh(): every pass that is not a move (ui_pass()) and every
+ * step of the picker. In PSRAM: read once a frame at most.
  */
-static bool look_capture(const char *id, recipe_capture_t *out) {
-  static char s_lk_id[KDP_RECIPE_ID_MAX];
-  static recipe_capture_t s_lk_cap;
-  static bool s_lk_have;
+static EXT_RAM_BSS_ATTR struct {
+  char id[KDP_RECIPE_ID_MAX];
+  recipe_capture_t cap;
+  bool have; /* the look sets something */
+  bool read; /* `cap` and `have` are the answer for `id` */
+} s_lk;
 
-  if (strcmp(s_lk_id, id) != 0) {
-    snprintf(s_lk_id, sizeof s_lk_id, "%s", id);
-    s_lk_have = kdp_recipes_capture_block(id, &s_lk_cap);
+/** Read the shown look's block if it is not the one held. True when it read.
+ *  May take the card: never in a draw. */
+static bool look_capture_refresh(void) {
+  assert(!s_in_render && "card lock inside a draw");
+  char id[KDP_RECIPE_ID_MAX];
+  if (!look_current_id(id, sizeof id)) return false;
+  if (s_lk.read && strcmp(s_lk.id, id) == 0) return false;
+  s_lk.have = kdp_recipes_capture_block(id, &s_lk.cap);
+  snprintf(s_lk.id, sizeof s_lk.id, "%s", id);
+  s_lk.read = true;
+  return true;
+}
+
+/**
+ * The block for the draw: 1 the look sets something, 0 it sets nothing, -1 a
+ * custom look not read yet. A factory look is answered from RAM
+ * (kdp_recipes_capture_block_ram()); a custom one waits for the next pass's
+ * look_capture_refresh(), which draws the screen again.
+ */
+static int look_capture(const char *id, recipe_capture_t *out) {
+  if (s_lk.read && strcmp(s_lk.id, id) == 0) {
+    *out = s_lk.cap;
+    return s_lk.have ? 1 : 0;
   }
-  *out = s_lk_cap;
-  return s_lk_have;
+  bool known = false;
+  const bool have = kdp_recipes_capture_block_ram(id, out, &known);
+  return !known ? -1 : have ? 1 : 0;
 }
 
 
@@ -5151,7 +5451,9 @@ static void lk_detail_row(int x, int y, int w) {
     return;
   }
   recipe_capture_t cap;
-  if (!look_capture(id, &cap)) {
+  const int got = look_capture(id, &cap);
+  if (got < 0) return; /* a custom look not read yet: the next pass reads it and draws again */
+  if (got == 0) {
     text(K_TYPE_BODY, x, y + K_TYPE_CAPTION->line_h, "Sets nothing on the sensor.", K_INK_QUIET);
     return;
   }
@@ -5278,20 +5580,21 @@ static void draw_look(void) {
   /* ---- the three that modify it ---- */
   const int ty = lk_trio_y(quad);
   static const char *const CAPS[3] = {"MODE", "FLASH", "COLOUR"};
-  for (int c = 0; c < 3; c++) {
+  const int cw = lk_col_w();
+  for (int c = 0; c < lk_cols(); c++) {
     const int g = lk_group_of_col(c);
     text(K_TYPE_CAPTION, lk_col_x(c), ty, CAPS[g], K_INK_QUIET);
     switch (g) {
       case LK_G_MODE:
-        draw_segments(lk_col_x(c), ty + LK_CAP_H, LK_COL_W, LK_CTL_H, MODE_NAMES, 2, quad ? 1 : 0,
+        draw_segments(lk_col_x(c), ty + LK_CAP_H, cw, LK_CTL_H, MODE_NAMES, 2, quad ? 1 : 0,
                       band_rel(p0, LK_IT_MODE, 2), band_rel(f0, LK_IT_MODE, 2));
         break;
       case LK_G_FLASH:
-        draw_segments(lk_col_x(c), ty + LK_CAP_H, LK_COL_W, LK_CTL_H, FLASH_NAMES, 3,
+        draw_segments(lk_col_x(c), ty + LK_CAP_H, cw, LK_CTL_H, FLASH_NAMES, 3,
                       flash_index(), band_rel(p0, LK_IT_FLASH, 3), band_rel(f0, LK_IT_FLASH, 3));
         break;
       default:
-        draw_segments(lk_col_x(c), ty + LK_CAP_H, LK_COL_W, LK_CTL_H, COLOR_NAMES, 2,
+        draw_segments(lk_col_x(c), ty + LK_CAP_H, cw, LK_CTL_H, COLOR_NAMES, 2,
                       look_is_mono() ? 1 : 0, band_rel(p0, LK_IT_COLOR, 2),
                       band_rel(f0, LK_IT_COLOR, 2));
         break;
@@ -5648,6 +5951,7 @@ static void photo_release(void) {
   if (s_photo) { free(s_photo); s_photo = NULL; }
   s_photo_ok = false;
   s_photo_fav = false;
+  s_photo_seek = 0; /* leaving PHOTO, or opening another: nothing is owed */
 }
 
 /* Decoded at PH_W x PH_H rather than by scaling the 252 px gallery tile:
@@ -5670,11 +5974,10 @@ static bool photo_open(const gallery_item_t *it) {
   /* The card first, before any state names the new photograph: a refused
    * acquire must leave the module describing whatever it described before,
    * with nothing allocated for a picture that was never decoded. */
-  if (!storage_acquire(STORAGE_USER_UI, 2000)) return false;
+  if (!ui_card_take(2000)) return false;
 
   photo_release();
   snprintf(s_photo_id, sizeof s_photo_id, "%s", it->id);
-  snprintf(s_photo_label, sizeof s_photo_label, "%s", it->label);
   snprintf(s_photo_mode, sizeof s_photo_mode, "%s", it->mode);
   s_photo_frames = it->frames;
   s_photo_have = it->have;
@@ -5687,6 +5990,13 @@ static bool photo_open(const gallery_item_t *it) {
   s_photo_fav = it->favorite;
   s_photo_ms = it->captured_ms;
   s_photo_sent = it->sent;
+  s_photo_pos = 0;
+  {
+    const gallery_item_t *slots = gallery_slots();
+    for (int i = 0; i < GALLERY_PAGE; i++) {
+      if (it == &slots[i]) s_photo_pos = (int16_t)(gallery_page() * GALLERY_PAGE + i + 1);
+    }
+  }
 
   /* 64-byte aligned, because this is a PPA destination and the PPA is a DMA
    * engine: a plain heap_caps_malloc gave 4-byte alignment and every scale
@@ -5944,7 +6254,9 @@ static void photo_send_to_roll(void) {
   }
   /* What the card holds for this capture: the thumbnail, and which frames.
    * Asked of the gallery, which owns the card's layout; this file never
-   * touches the filesystem itself. */
+   * touches the filesystem itself. Those are FatFs reads, so never from a
+   * draw: a tap's handler on this task (#248). */
+  assert(!s_in_render && "card read inside a draw");
   bool has_thumb = false;
   uint8_t slots[4];
   const int n = gallery_capture_files(s_photo_id, &has_thumb, slots, 4);
@@ -5974,7 +6286,7 @@ static void photo_send_to_roll(void) {
 
 static void photo_toggle_favourite(void) {
   if (s_photo_id[0] == '\0') return;
-  if (!storage_acquire(STORAGE_USER_UI, 2000)) {
+  if (!ui_card_take(2000)) {
     toast("Card busy. Try again");
     audio_warning();
     return;
@@ -6035,35 +6347,95 @@ static bool photo_neighbour(int delta, int *slot) {
 }
 
 /*
+ * PHOTO 37: the open photograph's place in the gallery, 1 the newest. From its
+ * slot while its page is the one in RAM, else the place it was opened at, so
+ * the line holds while a step turns the page under it. 0 when neither knows:
+ * the review after a shot, before the gallery's page holds it.
+ */
+static int photo_pos(void) {
+  const int at = photo_slot();
+  if (at >= 0) return gallery_page() * GALLERY_PAGE + at + 1;
+  return s_photo_pos;
+}
+
+/*
  * Step to the previous or next photograph.
  *
  * Within the page it opens the neighbour in place, on this screen. Past the
- * page's end it turns the page and returns to the grid: the six new slots
- * are ids the gallery task has not filled yet, so there is nothing here to
- * open, and the grid is where the decoding is shown. Returns true when it
- * navigated, so the caller does not present over a move it started.
+ * page's end it turns the page and stays (#247): the six new slots are ids
+ * the gallery task has not read yet, so the photograph on the glass stays up
+ * until the near end of the new page has been read, and photo_seek_poll()
+ * opens it - NEXT the first, PREV the last. The roll's two ends are the only
+ * dead ends. It never starts a move: whatever it opens is a repaint.
  */
-static bool photo_step(int delta) {
+static void photo_step(int delta) {
+  /* A step already turning the page: the next photograph opens by itself,
+   * and a second press would turn a second page under it. */
+  if (s_photo_seek != 0) return;
   int slot;
   if (!photo_neighbour(delta, &slot)) {
     toast(photo_slot() < 0 ? "Still reading the card" : (delta < 0 ? "First photo" : "Last photo"));
-    return false;
+    return;
   }
   if (slot < 0) {
     gallery_turn(delta);
-    go(SCR_GALLERY, MOTION_BACK_MS);
-    return true;
+    s_photo_seek = (int8_t)(delta < 0 ? -1 : 1);
+    s_photo_seek_us = esp_timer_get_time();
+    return;
   }
   const gallery_item_t *it = &gallery_slots()[slot];
   if (it->id[0] == '\0') {
     toast("Still reading the card");
-    return false;
+    return;
   }
   if (!photo_open(it)) {
     toast("Card busy. Try again");
     audio_warning();
   }
-  return false;
+}
+
+/*
+ * The photograph a step across the page's edge owes, opened once the gallery
+ * task has read its slot: the first of the new page after NEXT, the last
+ * after PREV. ui_pass() only, never a draw. It waits under a question, which
+ * is about the photograph still on the glass. A card that has not answered in
+ * PHOTO_SEEK_MAX_US, or a page that came back empty, gets the grid, which is
+ * where the reading is shown.
+ */
+static void photo_seek_poll(void) {
+  if (s_photo_seek == 0) return;
+  if (s_screen != SCR_PHOTO) {
+    s_photo_seek = 0;
+    return;
+  }
+  if (s_dialog != DLG_NONE || anim_active()) return;
+  const gallery_item_t *slots = gallery_slots();
+  int want = 0;
+  if (s_photo_seek < 0) {
+    want = -1;
+    for (int i = GALLERY_PAGE - 1; i >= 0 && want < 0; i--) {
+      if (slots[i].state != TILE_EMPTY) want = i;
+    }
+  }
+  const bool empty = want < 0 || slots[want].state == TILE_EMPTY;
+  if (!empty && (slots[want].state == TILE_PENDING || slots[want].id[0] == '\0')) {
+    if (esp_timer_get_time() - s_photo_seek_us <= PHOTO_SEEK_MAX_US) return;
+  }
+  if (empty || slots[want].state == TILE_PENDING || slots[want].id[0] == '\0') {
+    s_photo_seek = 0;
+    go(SCR_GALLERY, MOTION_BACK_MS);
+    return;
+  }
+  s_photo_seek = 0;
+  if (!photo_open(&slots[want])) {
+    /* The page under the glass has turned, so the photograph still up has no
+     * neighbours here any more: the grid, with the reason. */
+    toast("Card busy. Try again");
+    audio_warning();
+    go(SCR_GALLERY, MOTION_BACK_MS);
+    return;
+  }
+  ui_render(render_screen, NULL);
 }
 
 static void draw_photo(void) {
@@ -6138,9 +6510,9 @@ static void draw_photo(void) {
     if (foc(SCR_PHOTO, IT_BACK)) focus_inset(bx0, HD_BTN_Y, HD_BTN_W, HD_BTN, K_INK);
   }
 
-  /* The caption, one fact per line down the column: what it is called and
-   * what kind of capture it is. The frame count was a third line - "4 frames"
-   * - and it is the mark below instead: the gallery already says this with
+  /* The caption, one fact per line down the column: when, what kind, and
+   * where in the gallery. The frame count was a line too - "4 frames" - and
+   * it is the mark below instead: the gallery already says this with
    * four cells and saying it twice in two grammars is how an interface stops
    * having one. */
   /*
@@ -6169,12 +6541,27 @@ static void draw_photo(void) {
     for (int k = 0; k < 4; k++) damaged += (s_photo_have & (1u << k)) && !(s_wig_have & (1u << k));
   }
   const bool short_wiggle = missing > 0 || damaged > 0;
+  /*
+   * The facts, top to bottom (#247): when it was taken, what kind of capture
+   * it is, and where it is in the gallery - PHOTO 37. The raw capture number
+   * led here and said nothing a person can use: CAP_000039 is a folder name,
+   * the same prefix on every capture, and the number in it is not the
+   * gallery's count. The date leads in ink; the mode and the place are
+   * quiet, the mode in ink once the Roll has it.
+   *
+   * All three in the caption face. The date does not fit the column in the
+   * label face - 170 px for 14 OCT 18:02 against PH_FACT_W - and a date cut
+   * to fit is no date. A photograph from before the clock was set reads NO
+   * DATE: DATE NOT SET ran to 6 px from the well's right edge.
+   */
+  char mode[24];
+  snprintf(mode, sizeof mode, "%s", s_photo_mode);
+  upcase(mode);
+  const int pos = photo_pos();
   const int blk_pad = PH_BLK_PAD;
-  int blk_h = blk_pad + K_TYPE_LABEL->line_h + K_TYPE_CAPTION->line_h;
-  /* The date line. It was left out, so on a dated photograph - every one the
-   * camera takes once the clock is set - the four-mark hung 18 px out of the
-   * bottom of its well. */
-  if (s_photo_ms > 0) blk_h += K_TYPE_CAPTION->line_h;
+  int blk_h = blk_pad + K_TYPE_CAPTION->line_h;
+  if (mode[0] != '\0') blk_h += K_TYPE_CAPTION->line_h;
+  if (pos > 0) blk_h += K_TYPE_CAPTION->line_h;
   if (short_wiggle) blk_h += 6 + K_TYPE_CAPTION->line_h;
   blk_h += 18 + K_TYPE_CAPTION->line_h + 6 + 14; /* CAMERAS, then the mark */
   blk_h += blk_pad;
@@ -6182,48 +6569,34 @@ static void draw_photo(void) {
 
   int cy = PH_CAP_Y;
   {
-    /*
-     * The number, and then what kind of thing it is.
-     *
-     * A capture is called CAP_000039 and the whole string will not fit the
-     * column at a size worth reading - measured, it is about 165 px in a 158
-     * px column at either face. Cutting it to fit produced "CAP_0000...",
-     * which throws away the only part that identifies anything: the prefix is
-     * the same on every capture this camera has ever taken.
-     *
-     * So the number gets the billing and the prefix goes on the line below
-     * with the mode, where it costs nothing and can still be read back to
-     * reconstruct the folder name on the card.
-     */
-    char raw[32], mode[24];
-    snprintf(raw, sizeof raw, "%s", s_photo_label);
-    snprintf(mode, sizeof mode, "%s", s_photo_mode);
-    upcase(raw);
-    upcase(mode);
-
-    char *tail = strrchr(raw, '_');
-    const char *num = tail != NULL ? tail + 1 : raw;
-    if (tail != NULL) *tail = '\0';
-
+    /* A date the clock never set is 1970 plus the uptime: said as such, not
+     * printed as 1 JAN. */
+    char when[24];
+    if (pure_epoch_plausible(s_photo_ms)) date_words(when, sizeof when, s_photo_ms);
+    else snprintf(when, sizeof when, "NO DATE");
     char fitted[32];
-    text_fit(fitted, sizeof fitted, K_TYPE_LABEL, num, PH_COL_W - 2 * PH_FPAD - 4);
-    text(K_TYPE_LABEL, fx, cy, fitted, K_INK);
-    cy += K_TYPE_LABEL->line_h;
-
-    /* Sized for both inputs whole. The compiler cannot see that a capture id
-     * is ten characters and is right to insist. */
-    /* The mode, and whether the Roll has it. The "CAP" prefix said nothing a
-     * person needed; the date that replaced it on the next line does. */
-    char sub[64];
-    snprintf(sub, sizeof sub, "%s%s", mode[0] != '\0' ? mode : raw, s_photo_sent ? "  SENT" : "");
-    text(K_TYPE_CAPTION, fx, cy, sub, s_photo_sent ? K_INK : K_INK_QUIET);
-    if (s_photo_ms > 0) {
-      cy += K_TYPE_CAPTION->line_h;
-      char when[24];
-      date_words(when, sizeof when, s_photo_ms);
-      text(K_TYPE_CAPTION, fx, cy, when, K_INK_QUIET);
-    }
+    text_fit(fitted, sizeof fitted, K_TYPE_CAPTION, when, PH_FACT_W);
+    text(K_TYPE_CAPTION, fx, cy, fitted, K_INK);
     cy += K_TYPE_CAPTION->line_h;
+
+    /* The mode, and whether the Roll has it. One space: WIGGLE  SENT with
+     * two ran 136 px, over PH_FACT_W. The mode comes from the card's manifest,
+     * so it is fitted first and the suffix always shows. */
+    if (mode[0] != '\0') {
+      char fitmode[24], sub[48];
+      text_fit(fitmode, sizeof fitmode, K_TYPE_CAPTION, mode,
+               PH_FACT_W - (s_photo_sent ? text_w(K_TYPE_CAPTION, " SENT") : 0));
+      snprintf(sub, sizeof sub, "%s%s", fitmode, s_photo_sent ? " SENT" : "");
+      text(K_TYPE_CAPTION, fx, cy, sub, s_photo_sent ? K_INK : K_INK_QUIET);
+      cy += K_TYPE_CAPTION->line_h;
+    }
+
+    if (pos > 0) {
+      char place[24];
+      snprintf(place, sizeof place, "PHOTO %d", pos);
+      text(K_TYPE_CAPTION, fx, cy, place, K_INK_QUIET);
+      cy += K_TYPE_CAPTION->line_h;
+    }
   }
 
   /*
@@ -6292,13 +6665,15 @@ static void draw_photo(void) {
    * at the roll's two ends rather than hidden, the way the gallery's page
    * buttons are: a control that disappears moves the other one. Within the
    * page a step opens the neighbour here; at the page's edge it turns the
-   * page and returns to the grid, which is where the six new tiles decode.
+   * page and opens the near end of the next one (photo_seek_poll()). While
+   * that page is read both stay live: they were live a moment ago, and a
+   * pair that greys for a few hundred milliseconds reads as a fault.
    */
   const int bh = PH_BTN_H, bx = col_x, bw = PH_BTN_W;
   {
     int ignored;
-    const bool has_prev = photo_neighbour(-1, &ignored);
-    const bool has_next = photo_neighbour(1, &ignored);
+    const bool has_prev = s_photo_seek != 0 || photo_neighbour(-1, &ignored);
+    const bool has_next = s_photo_seek != 0 || photo_neighbour(1, &ignored);
     /* Half the column each, not 52 px squares: the pair is one row of the
      * column, on the same two edges as the three buttons under it. */
     const int nx0 = bx + PH_PN_W + PH_BTN_GAP;
@@ -7366,6 +7741,19 @@ static void draw_sound(void) {
 #define CN_NOTE_Y (CN_TZ_Y + CN_TZ_H + GRID)
 #define CN_NOTE_H 24 /* K_TYPE_BODY's line; the renderer's safe-area audit checks the drawn box */
 _Static_assert(CN_NOTE_Y + CN_NOTE_H <= UI_H - PAGE_M, "the CONNECTION note runs off the page");
+
+/*
+ * How many networks are saved, as wifi_saved_refresh() last read it. The count
+ * is NVS reads, and NVS waits behind any other task's NVS write: not in a draw
+ * (#248). Read when CONNECTION is opened and on the conditions' two-second
+ * clock, so a network Studio saves shows within two seconds. PSRAM.
+ */
+static EXT_RAM_BSS_ATTR unsigned s_wifi_saved;
+static void wifi_saved_refresh(void) {
+  assert(!s_in_render && "NVS read inside a draw");
+  s_wifi_saved = (unsigned)wifi_creds_count();
+}
+
 static void draw_connection(void) {
   fill(0, 0, UI_W, UI_H, K_FACE);
   draw_header(SCR_CONNECTION);
@@ -7421,7 +7809,7 @@ static void draw_connection(void) {
   }
 
   char saved[16];
-  snprintf(saved, sizeof saved, "%u", (unsigned)wifi_creds_count());
+  snprintf(saved, sizeof saved, "%u", s_wifi_saved);
 
   /*
    * Six readings at a 42 px pitch.
@@ -7733,7 +8121,8 @@ _Static_assert(LIST_TOP_DEFAULT + AB_ROW + 4 * AB_CAM_ROW + GRID + AB_QR_MIN + 1
                "the ABOUT help QR has no room for 3 px modules under the cameras");
 
 /**
- * Refill s_cams, at most every two seconds. ui_pass() only, never a draw.
+ * Refill s_cams, at most every two seconds, or within 100 ms of a camera
+ * answering or dropping. ui_pass() only, never a draw.
  *
  * camlink_get_info_ch() bounds its wait at 20 ms per channel and then reads
  * unlocked anyway (cam_link.c), so four channels is up to 80 ms of contention
@@ -7745,12 +8134,24 @@ _Static_assert(LIST_TOP_DEFAULT + AB_ROW + 4 * AB_CAM_ROW + GRID + AB_QR_MIN + 1
  * firmware and the sensor model do not change while someone reads a screen,
  * and `online` going stale by two seconds is still news by the time it is
  * shown.
+ *
+ * Except when `online` itself has changed. camlink_online_mask() is one
+ * atomic byte and costs nothing to ask every pass. When it disagrees with
+ * the copy, the copy is read again now: a start cut by a finger lands the
+ * menu with the lenses heard so far, and the rest must fill as they answer,
+ * not two seconds later. Held to once per 100 ms so a link that flaps cannot
+ * put the channel-lock waits on every pass.
  */
 static void cams_refresh(void) {
   assert(!s_in_render && "camlink lock inside a draw");
   static int64_t s_when_us;
   const int64_t now = esp_timer_get_time();
-  if (s_when_us != 0 && now - s_when_us <= 2000000) return;
+  uint8_t had = 0;
+  for (int i = 0; i < 4; i++)
+    if (s_cams[i].online) had |= (uint8_t)(1u << i);
+  const int64_t gap_us = (camlink_online_mask() & 0xFu) != had ? 100000 : 2000000;
+  /* A clock behind the last read is host_preview starting a scene at 0. */
+  if (s_when_us != 0 && now >= s_when_us && now - s_when_us <= gap_us) return;
   s_when_us = now;
   for (int i = 0; i < 4; i++) camlink_get_info_ch(i, &s_cams[i]);
 }
@@ -7964,6 +8365,18 @@ typedef struct {
 
 _Static_assert(MOTION_UNDO_MS == 30000, "the DELETE dialog says the undo lasts 30 s");
 
+/*
+ * The open photograph's gallery tile, or NULL when its page is not the one in
+ * RAM or the tile has not decoded. The DELETE question shows it, and nothing
+ * is decoded for it: no tile, no picture, and the question as it was.
+ */
+static const uint16_t *photo_thumb(void) {
+  const int at = photo_slot();
+  if (at < 0) return NULL;
+  const gallery_item_t *it = &gallery_slots()[at];
+  return it->state == TILE_READY ? it->pixels : NULL;
+}
+
 static void dialog_spec(dlg_spec_t *d) {
   static char sub[64];
   switch (s_dialog) {
@@ -7975,24 +8388,26 @@ static void dialog_spec(dlg_spec_t *d) {
     case DLG_DELETE:
       /* The delete goes to the trash and the toast offers UNDO for
        * MOTION_UNDO_MS. "This cannot be undone" above a thirty-second undo
-       * was a warning the next screen contradicted. */
+       * was a warning the next screen contradicted. The photograph itself is
+       * on the question (dlg_thumb_on(), #247), and the safe answer says what
+       * it does to it (dlg_safe_word()). */
       count_words(sub, sizeof sub, s_photo_frames, "frame", "frames", ". Undo for 30 s after.");
       *d = (dlg_spec_t){"DELETE", "Delete this photo?", sub, "DELETE", true};
       break;
     case DLG_DELETE_ALL:
-      count_words(sub, sizeof sub, gallery_media_count() < 0 ? 0 : gallery_media_count(), "photo", "photos",
-                  ". This cannot be undone.");
-      /* "photos", and the sub line says how many, because that is the number a
-       * person checks before pressing this. It says nothing about sounds,
-       * looks or settings on purpose: they are not touched, and listing what
-       * survives a destructive action reads as a warning about them. */
-      *d = (dlg_spec_t){"DELETE ALL", "Delete every photo?", sub, "DELETE ALL", true};
+      /* How many, large (dlg_count()), because that is the number a person
+       * checks before pressing this (#247). It says nothing about sounds, looks or
+       * settings on purpose: they are not touched, and listing what survives
+       * a destructive action reads as a warning about them. */
+      *d = (dlg_spec_t){"DELETE ALL", "Delete every photo?", "This cannot be undone.", "DELETE ALL", true};
       break;
     case DLG_UPDATED:
       snprintf(sub, sizeof sub, "Now on %s. Nothing to do.", KINO_FW_VERSION);
       *d = (dlg_spec_t){"UPDATED", "KINO has been updated.", sub, "OK", false};
       break;
     case DLG_FORMAT:
+      /* The count is large here too (dlg_count()): a format takes every
+       * photograph DELETE ALL would. */
       *d = (dlg_spec_t){"FORMAT CARD", "Erase the card?", "Every photo on it is deleted.", "FORMAT", true};
       break;
     case DLG_FACTORY:
@@ -8015,6 +8430,43 @@ static void dialog_spec(dlg_spec_t *d) {
       *d = (dlg_spec_t){"", "", NULL, "OK", false};
       break;
   }
+}
+
+/* The safe answer, the lower row. On DELETE it says what it does to the
+ * photograph on the question: KEEP, not a CANCEL that names nothing. */
+static const char *dlg_safe_word(void) {
+  if (s_dialog == DLG_DELETE) return "Keep";
+  return "Cancel";
+}
+
+/*
+ * Open a question. Its shape is decided here, once, and not again until it
+ * closes: draw and hit test both read it, and the gallery state behind it
+ * moves while it is up - a tile decodes or is dropped, the card's count
+ * arrives. A question that grew under a resting thumb moved its rows about
+ * half the growth down in the hit test while the glass still showed the old
+ * frame, so the top of KEEP or CANCEL pressed DELETE or FORMAT.
+ */
+static void dialog_open(dialog_t d) {
+  s_dialog = d;
+  s_dlg_focus = 0;
+  s_dlg_thumb = d == DLG_DELETE && photo_thumb() != NULL;
+}
+
+/* DELETE's room for the photograph: kept from the open (dialog_open()). */
+static bool dlg_thumb_on(void) { return s_dialog == DLG_DELETE && s_dlg_thumb; }
+
+/* The two erasures, which keep a line for the count they take. */
+static bool dlg_erasure(void) { return s_dialog == DLG_DELETE_ALL || s_dialog == DLG_FORMAT; }
+
+/* The count an erase takes, set large under the title (#247): DELETE ALL and
+ * FORMAT CARD. False on every other question, and while the gallery has no
+ * answer yet - a guessed number is worse than none. Its line is kept either
+ * way (dlg_extra_h()), so a count that arrives fills it and moves nothing. */
+static bool dlg_count(int *n) {
+  if (!dlg_erasure()) return false;
+  *n = gallery_media_count();
+  return *n >= 0;
 }
 
 /*
@@ -8041,10 +8493,23 @@ static int dlg_x(void) { return (UI_W - DLG_W) / 2; }
 #define DLG_ROW_H (ROW_H - ROW_GAP)
 #define DLG_ROW_GAP 8
 #define DLG_TOP (3 * GRID)
-/* Title, question, optional line, then the two rows and the bottom pad. */
-#define DLG_H(sub) (DLG_TOP + K_TYPE_CAPTION->line_h + GRID + K_TYPE_BODY_L->line_h + \
+/* The photograph on DELETE: its gallery tile at half size. */
+#define DLG_THUMB_W (GALLERY_TILE_W / 2)
+#define DLG_THUMB_H (GALLERY_TILE_H / 2)
+/* What a question carries between its title and its sentence: the
+ * photograph (dlg_thumb_on()), or the count (dlg_erasure()), or nothing.
+ * Fixed while the question is up: it reads no live gallery state. */
+static int dlg_extra_h(void) {
+  if (dlg_thumb_on()) return DLG_THUMB_H + GRID;
+  if (dlg_erasure()) return K_TYPE_TITLE->line_h;
+  return 0;
+}
+/* Title, the extra, question, optional line, then the two rows and the
+ * bottom pad. */
+#define DLG_H(sub) (DLG_TOP + K_TYPE_CAPTION->line_h + GRID + dlg_extra_h() + K_TYPE_BODY_L->line_h + \
                     ((sub) ? K_TYPE_BODY->line_h + GRID : 0) + 3 * GRID + 2 * DLG_ROW_H + DLG_ROW_GAP + \
                     DLG_PAD)
+_Static_assert(GALLERY_TILE_W / 2 <= DLG_W - 2 * DLG_PAD, "the photograph is wider than the question");
 #define DLG_Y(sub) ((UI_H - DLG_H(sub)) / 2)
 #define DLG_ROW_X (dlg_x() + DLG_PAD)
 #define DLG_ROW_W (DLG_W - 2 * DLG_PAD)
@@ -8079,6 +8544,26 @@ static void draw_dialog(void) {
   int ty = y0 + DLG_TOP;
   text(K_TYPE_CAPTION, dx + DLG_PAD, ty, d.title, d.destructive ? K_FAULT_INK : K_TITLE);
   ty += K_TYPE_CAPTION->line_h + GRID;
+  /* What the question is about, before the question (#247): DELETE shows
+   * the photograph, the two erasures how many photographs they take, in the
+   * TITLE face, because that number is the one a person checks. The room
+   * is fixed at the open (dialog_open()): a tile dropped since leaves the
+   * gallery's waiting tone in it, a count not in yet leaves its line empty,
+   * and dlg_content_poll() repaints when either changes. */
+  int n;
+  if (dlg_thumb_on()) {
+    const uint16_t *thumb = photo_thumb();
+    if (thumb != NULL) blit_half(thumb, GALLERY_TILE_W, dx + DLG_PAD, ty, DLG_THUMB_W, DLG_THUMB_H);
+    else fill(dx + DLG_PAD, ty, DLG_THUMB_W, DLG_THUMB_H, K_OFF);
+    ty += DLG_THUMB_H + GRID;
+  } else if (dlg_erasure()) {
+    if (dlg_count(&n)) {
+      char big[24];
+      count_words(big, sizeof big, n, "PHOTO", "PHOTOS", "");
+      text(K_TYPE_TITLE, dx + DLG_PAD, ty, big, K_INK);
+    }
+    ty += K_TYPE_TITLE->line_h;
+  }
   text(K_TYPE_BODY_L, dx + DLG_PAD, ty, d.body, K_INK);
   ty += K_TYPE_BODY_L->line_h;
   if (sub) text(K_TYPE_BODY, dx + DLG_PAD, ty + GRID, d.sub, K_INK_QUIET);
@@ -8097,9 +8582,9 @@ static void draw_dialog(void) {
   draw_row_face(DLG_ROW_X, DLG_ROW_W, DLG_ROW_Y(sub, 0), DLG_ROW_H, 1, false, s_dlg_focus == 1,
                 s_pressed == 1, true, d.go, NULL, true, d.destructive ? ROW_DANGER : ROW_PLAIN);
   /* One step lighter than a list row: the dialog's own face is close to the
-   * row tone, and Cancel has to read as a row on it. */
+   * row tone, and Cancel has to read as a row on it. KEEP on DELETE. */
   draw_row_face(DLG_ROW_X, DLG_ROW_W, DLG_ROW_Y(sub, 1), DLG_ROW_H, 0, false, s_dlg_focus == 0,
-                s_pressed == 0, true, "Cancel", NULL, false, ROW_CANCEL);
+                s_pressed == 0, true, dlg_safe_word(), NULL, false, ROW_CANCEL);
 }
 
 /* ------------------------------------------------------------------ */
@@ -8281,6 +8766,23 @@ static const char *sh_card_pill(const storage_status_t *sd) {
   if (sd->free_bytes < pure_capture_reserve_bytes(4, w, h)) return "CARD FULL. DELETE PHOTOS IN GALLERY";
   return NULL;
 }
+
+/*
+ * First use (#247): nobody has found the shutter yet. True while the card
+ * holds no photograph (gallery_media_count() is 0, not "not counted yet")
+ * and none was taken this boot, and nothing is being taken now. The hint
+ * pill says where the shutter is; it yields to the self-timer and the card
+ * pill, and outranks the lens hint, because a covered lens costs one
+ * picture and a person who cannot find the shutter takes none.
+ */
+static bool sh_first_use(void) {
+  return gallery_media_count() == 0 && capture_count() == 0 && capture_stage() == CAPTURE_IDLE;
+}
+/* The hint is on the glass: first use, and the slot is not taken above it. */
+static bool sh_first_use_shown(void) {
+  return s_screen == SCR_SHOOT && !timer_counting() && sh_card_pill(sd_status()) == NULL &&
+         sh_first_use();
+}
 /* When a refusal for the card last landed on SHOOT; 0 for none. */
 static int64_t s_pill_pulse_us;
 /* How far the pill stands out at this moment of its pulse, in px a side. One
@@ -8356,9 +8858,9 @@ static void timer_cancel(const char *why) {
  * picture while a called-off sleep's mark leaves.
  */
 static void draw_sleep_mark(int k) {
-  boot_mark_ink(mix(K_GROUND, K_MARK, k));
+  leave_mark(k);
   text_mid(K_TYPE_CAPTION, UI_W / 2, UI_H - PAGE_M - K_TYPE_CAPTION->line_h, "GOING TO SLEEP.  TAP TO WAKE",
-           mix(K_GROUND, K_INK_QUIET, k));
+           fade_in(K_INK_QUIET, k));
 }
 
 /* One frame of the sleep's fade-in and fade-out: `ctx` is the visibility. */
@@ -8468,11 +8970,15 @@ static bool land_step(void) {
     s_strip_gap = FM_GAP;
     return false;
   }
-  const int64_t now = esp_timer_get_time();
-  if (s_land_us == 0) s_land_us = now;
+  const int64_t now = gfx_due_us();
+  if (s_land_us == 0) {
+    s_land_us = now;
+    ramp_begin(RAMP_LAND);
+  }
   const int64_t t = now - s_land_us;
   s_land_ink = land_ink(t);
   s_strip_gap = (uint8_t)close_gap((int32_t)(t < (int64_t)MOTION_LAND_MS * 1000 ? t / 1000 : MOTION_LAND_MS));
+  if (t >= (int64_t)MOTION_LAND_MS * 1000) ramp_end(RAMP_LAND);
   return t < (int64_t)MOTION_LAND_MS * 1000;
 }
 
@@ -8849,17 +9355,24 @@ static void draw_screen(void) {
     text_mid(K_TYPE_TITLE, cx, cy - K_TYPE_TITLE->line_h / 2, n, K_INK);
     text_mid(K_TYPE_CAPTION, cx, cy + cap_dy, cap, K_INK);
   } else if (s_screen == SCR_SHOOT) {
-    /* One slot, three claimants: the self-timer above, then the card, then
-     * the lens hint. A covered lens costs one picture; the card costs all of
-     * them. */
+    /* One slot, four claimants: the self-timer above, then the card, then
+     * the first-use hint, then the lens hint. A covered lens costs one
+     * picture; the card costs all of them. */
     const char *pill = sh_card_pill(sd_status());
     const int g = pill != NULL ? pill_pulse_px() : 0;
+    /* Until the first photograph exists, where the shutter is (#247). In
+     * ink, not red: nothing is wrong, the person has not found it yet. */
+    bool teach = false;
+    if (pill == NULL && sh_first_use()) {
+      pill = "PRESS THE SHUTTER ON TOP";
+      teach = true;
+    }
     if (pill == NULL && s_lens_hint[0] != '\0') pill = s_lens_hint;
     if (pill != NULL) {
       const int w = text_w(K_TYPE_CAPTION, pill) + 32, h = 30;
       /* The ground's ink on the red, 5.1:1; K_INK on it is 3.4:1 (#176).
        * The pulse grows the pill round its words, which stay put. */
-      round_rect((UI_W - w) / 2 - g, 12 - g, w + 2 * g, h + 2 * g, UI_R + g, K_FAULT);
+      round_rect((UI_W - w) / 2 - g, 12 - g, w + 2 * g, h + 2 * g, UI_R + g, teach ? K_INK : K_FAULT);
       text_mid(K_TYPE_CAPTION, UI_W / 2, 12 + (h - K_TYPE_CAPTION->line_h) / 2, pill, K_GROUND);
     }
   }
@@ -8885,9 +9398,9 @@ static void draw_screen(void) {
 static void fire_shutter(void);
 static void shutter_now(void);
 
-/* MOTION_OPEN_MS, MOTION_BACK_MS and MOTION_CASCADE_MS are in ui_motion.h,
- * included at the top: the photograph screen's page step starts a move and
- * is declared long before this section. */
+/* MOTION_OPEN_MS and MOTION_BACK_MS are in ui_motion.h, included at the
+ * top: the photograph screen's page step starts a move and is declared long
+ * before this section. */
 
 
 /**
@@ -8989,29 +9502,125 @@ static void draw_stash_copy(void) { blit_rows(gfx_stash_px(), UI_W, 0, 0, UI_W, 
  * back, nothing is prepared, and a frame costs what its pixels cost to draw.
  */
 /*
- * The menu's rows arriving, each from its right, staggered.
+ * One frame of the start (#245), at `*ctx` ms from its first frame.
  *
- * Every row travels the same distance at the same speed and they start at
- * different moments, which is what makes a list that cascades read as a set
- * of objects rather than as a picture of a list fading in. Each row is the
- * menu drawn through a view moved by how far the row still has to come, and
- * clipped to where the row will sit - the same mechanism as a move.
+ * Two clocks: ms from the first frame for the mark and the cells, and the
+ * build's own `b` from the frame it began, in the full build's ms however
+ * long this one runs (a finger shortens it, every beat in step). Pure:
+ * everything it reads anim_tick() wrote before the frame, and a cell is
+ * filled from st_fill[], never from the link.
+ *
+ * The last frame of the build is the menu, pixel for pixel: the rows at
+ * rest, the card's face, its words in K_ACCENT_INK and the cells where
+ * menu_words() puts the four-mark. host_preview checks it on both hands.
  */
-static void render_cascade(void *ctx) {
-  const float t = *(const float *)ctx;
+static void render_start(void *ctx) {
+  const int32_t ms = *(const int32_t *)ctx;
+  const float b = s_anim.st_exit < 0 ? -1.0f
+                                     : (float)(ms - s_anim.st_exit) * (float)MOTION_START_BUILD_MS /
+                                           (float)start_build_ms();
   fill(0, 0, UI_W, UI_H, K_GROUND);
-  const float travel = 0.5f;
-  const float step = (1.0f - travel) / 5.0f;
-  for (int i = 0; i < 6; i++) {
-    float local = (t - step * (float)i) / travel;
-    if (local < 0.0f) continue; /* not started: still ground */
-    if (local > 1.0f) local = 1.0f;
-    int x, y, w, h;
-    menu_rect(i, &x, &y, &w, &h);
-    int o = (int)((1.0f - ease_ui(local)) * (float)(UI_W - x));
-    if (o < 0) o = 0;
-    if (o >= w) continue; /* wholly off the panel still */
-    draw_placed(draw_menu, o, 0, x + o, y, w - o, h);
+
+  int cx, cy, cw, ch;
+  menu_rect(0, &cx, &cy, &cw, &ch);
+
+  /* The five rows, each from the panel's right edge, staggered: half the
+   * span to travel, the starts spread over the other half. */
+  if (b > (float)MOTION_START_ROWS_FROM_MS) {
+    float t = (b - (float)MOTION_START_ROWS_FROM_MS) / (float)MOTION_START_ROWS_MS;
+    if (t > 1.0f) t = 1.0f;
+    const float travel = 0.5f, step = (1.0f - travel) / 4.0f;
+    for (int i = 1; i < 6; i++) {
+      float local = (t - step * (float)(i - 1)) / travel;
+      if (local <= 0.0f) continue;
+      if (local > 1.0f) local = 1.0f;
+      int x, y, w, h;
+      menu_rect(i, &x, &y, &w, &h);
+      int o = (int)((1.0f - ease_ui(local)) * (float)(UI_W - x));
+      if (o < 0) o = 0;
+      if (o >= w) continue;
+      draw_placed(draw_menu, o, 0, x + o, y, w - o, h);
+    }
+  }
+
+  /* The mark: up out of the ground, and away again, lifting, as the build
+   * starts. */
+  float mk = span01((float)ms, 0.0f, (float)MOTION_START_MARK_IN_MS);
+  int rise = 0;
+  if (b >= 0.0f) {
+    const float r = span01(b, 0.0f, (float)MOTION_START_RECEDE_MS);
+    mk *= 1.0f - r;
+    rise = lerpi(0, MOTION_START_RISE_PX, r);
+  }
+  const int mk8 = (int)(mk * 255.0f + 0.5f);
+  if (mk8 > 0) odd_mark(-rise, fade_in(K_INK, mk8));
+
+  /* Where the four are under the mark, and where the card's four-mark is. */
+  const int g0 = 2 * ST_CELL0 + ST_GAP0;
+  const int gx0 = UI_W / 2 - g0 / 2, gy0 = ST_MARK_Y + ST_MARK_H + ST_MARK_GAP;
+  int gx1, gy1;
+  card_mark_at(cx, cy, cw, &gx1, &gy1);
+
+  /* The colour event, in two halves so the cells always stand out from what
+   * is under them. First their box turns from the ground to the shade and
+   * grows a gap's width out past the grid, while the cells stay cream: cream
+   * on a pink frame. Then, on full pink, the cells turn to the card's ink.
+   * The two never run at once, so cells and gaps never meet in one mauve.
+   * Then the box travels out to the card and the cells to its four-mark. */
+  const float gk = b >= 0.0f ? span01(b, 0.0f, (float)MOTION_START_INK_MS * 0.5f) : 0.0f;
+  const float ck = b >= 0.0f ? span01(b, (float)MOTION_START_INK_MS * 0.5f, (float)MOTION_START_INK_MS) : 0.0f;
+  const int gk8 = (int)(gk * 255.0f + 0.5f), ck8 = (int)(ck * 255.0f + 0.5f);
+  const float tv = b >= 0.0f ? span01(b, (float)MOTION_START_TRAVEL_FROM_MS,
+                                       (float)(MOTION_START_TRAVEL_FROM_MS + MOTION_START_TRAVEL_MS))
+                             : 0.0f;
+  const uint16_t gnd = mix_even(K_GROUND, K_ACCENT, gk8);
+  if (gk8 > 0) {
+    /* The frame is whole before the travel starts (ui_motion.h), so the
+     * travel always leaves from the padded box. */
+    const int pad = lerpi(0, ST_GAP0, gk);
+    const int fx = lerpi(gx0 - pad, cx, tv), fy = lerpi(gy0 - pad, cy, tv);
+    const int fw = lerpi(g0 + 2 * pad, cw, tv), fh = lerpi(g0 + 2 * pad, ch, tv);
+    int r = UI_R;
+    if (r > fw / 2) r = fw / 2;
+    if (r > fh / 2) r = fh / 2;
+    round_rect(fx, fy, fw, fh, r, gnd);
+  }
+  const float wk = b >= 0.0f ? span01(b, (float)MOTION_START_WORDS_FROM_MS,
+                                       (float)(MOTION_START_WORDS_FROM_MS + MOTION_START_WORDS_MS))
+                             : 0.0f;
+  if (wk > 0.0f) {
+    menu_words(0, cx, cy, cw, ch, mix_even(K_ACCENT, K_ACCENT_INK, (int)(wk * 255.0f + 0.5f)), true, false);
+  }
+
+  /* The four, CAM1 top left. A filled cell is a camera that answered; an
+   * outline in K_INK_QUIET one not yet heard; an outline in K_INK one given
+   * up on at MOTION_START_WAIT_MS. Outlines land as the card's 3 px outline
+   * cells, filled cells as its filled ones. */
+  const int cell = lerpi(ST_CELL0, MZ_MARK_CELL, tv), gap = lerpi(ST_GAP0, MZ_MARK_GAP, tv);
+  const int gx = lerpi(gx0, gx1, tv), gy = lerpi(gy0, gy1, tv);
+  const int kl = lerpi(ST_KEY0, MZ_MARK_KEY, tv);
+  const uint16_t ink = mix_even(K_INK, K_ACCENT_INK, ck8);
+  const uint16_t quiet = mix_even(K_INK_QUIET, K_ACCENT_INK, ck8);
+  const float slots = span01((float)ms, (float)MOTION_START_SLOTS_FROM_MS,
+                             (float)(MOTION_START_SLOTS_FROM_MS + MOTION_START_SLOTS_IN_MS));
+  const int slots8 = (int)(slots * 255.0f + 0.5f);
+  const float lost_k = span01((float)ms, (float)MOTION_START_WAIT_MS,
+                              (float)(MOTION_START_WAIT_MS + MOTION_START_MISSING_MS));
+  for (int k = 0; k < 4; k++) {
+    const float fk = start_cell_k(k, ms);
+    if (fk <= 0.0f && slots8 <= 0) continue;
+    const int x = gx + (k % 2) * (cell + gap), y = gy + (k / 2) * (cell + gap);
+    const float lost = (s_anim.st_missing >> k) & 1u ? lost_k : 0.0f;
+    const float edge = fk > lost ? fk : lost;
+    /* On the ground, up through the greys; on the card's box, straight. */
+    const int fk8 = (int)(fk * 255.0f + 0.5f);
+    if (fk8 > 0) fill(x, y, cell, cell, gk8 == 0 ? fade_in(ink, fk8) : mix_even(gnd, ink, fk8));
+    const uint16_t edge_ink = mix_even(quiet, ink, (int)(edge * 255.0f + 0.5f));
+    const uint16_t line = gk8 == 0 ? fade_in(edge_ink, slots8) : mix_even(gnd, edge_ink, slots8);
+    fill(x, y, cell, kl, line);
+    fill(x, y + cell - kl, cell, kl, line);
+    fill(x, y + kl, kl, cell - 2 * kl, line);
+    fill(x + cell - kl, y + kl, kl, cell - 2 * kl, line);
   }
 }
 
@@ -9137,7 +9746,7 @@ static void open_frame(int row, float t) {
   if (wash > 0.01f) {
     const int k = (int)(wash * 255.0f);
     scrim(ox, oy, ow, oh, tint, k);
-    menu_words(row, rx, ry, rw, rh, mix(tint, menu_ink(row, s_anim.opening), k), true);
+    menu_words(row, rx, ry, rw, rh, mix(tint, menu_ink(row, s_anim.opening), k), true, true);
   }
 
   cut_corners(ox, oy, ow, oh, (float)UI_R * (1.0f - e), K_GROUND);
@@ -9211,6 +9820,7 @@ static void move_takes_scrim(int k, int32_t ms) {
 
 static void go(screen_t s, int ms) {
   if (s == SCR_GALLERY) gallery_refresh();
+  if (s == SCR_CONNECTION) wifi_saved_refresh(); /* before the move draws it */
   /* The panes' settling clock: see SH_SETTLE_US. */
   if (s == SCR_SHOOT && s_screen != SCR_SHOOT) s_shoot_since_us = esp_timer_get_time();
   if (s_screen == SCR_PHOTO && s != SCR_PHOTO) photo_release();
@@ -9448,15 +10058,16 @@ static int hit_test(int x, int y) {
       if (in(x, y, lk_prev_x(), by, LK_PICK_BTN, LK_PICK_BTN)) return LK_IT_PREV;
       if (in(x, y, lk_next_x(), by, LK_PICK_BTN, LK_PICK_BTN)) return LK_IT_NEXT;
 
-      /* The three columns under it, in the order the draw put them. */
+      /* The columns under it, in the order the draw put them. With no flash
+       * there are two and no FLASH item can be hit. */
       const int ty = lk_trio_y(quad) + LK_CAP_H;
       static const int BASE[3] = {LK_IT_MODE, LK_IT_FLASH, LK_IT_COLOR};
       static const int COUNT[3] = {2, 3, 2};
       if (y >= ty && y < ty + LK_CTL_H) {
-        for (int c = 0; c < 3; c++) {
+        for (int c = 0; c < lk_cols(); c++) {
           const int g = lk_group_of_col(c);
           const int cx = lk_col_x(c);
-          const int cw = LK_COL_W / COUNT[g];
+          const int cw = lk_col_w() / COUNT[g];
           for (int i = 0; i < COUNT[g]; i++) {
             if (in(x, y, cx + i * cw, ty, cw, LK_CTL_H)) return BASE[g] + i;
           }
@@ -9580,7 +10191,7 @@ static void dialog_commit(void) {
        * budget as the gallery; on a timeout nothing is deleted and the
        * screen does not move, which is the only safe answer for an
        * irreversible operation. */
-      if (!storage_acquire(STORAGE_USER_UI, 2000)) {
+      if (!ui_card_take(2000)) {
         toast("Card busy. Try again");
         audio_warning();
         break;
@@ -9627,7 +10238,7 @@ static void dialog_commit(void) {
        * and the card is locked for all of them - the gallery, the upload
        * worker and a capture all wait, which is the one correct order for
        * an operation that removes what they would be reading. */
-      if (!storage_acquire(STORAGE_USER_UI, 5000)) {
+      if (!ui_card_take(5000)) {
         toast("Card busy. Try again");
         audio_warning();
         break;
@@ -9723,7 +10334,8 @@ static void activate(int item) {
          * next key press acts on nothing. */
         if (s_focus[SCR_LOOK] >= item_count(SCR_LOOK)) s_focus[SCR_LOOK] = 0;
       } else if (item < LK_IT_PREV) {
-        cfg_set_str("shoot.flashMode", FLASH_ORDER_BY_INDEX[item - LK_IT_FLASH]);
+        /* Never reached with no flash: the column is not drawn or hit. */
+        if (capture_has_flash()) cfg_set_str("shoot.flashMode", FLASH_ORDER_BY_INDEX[item - LK_IT_FLASH]);
       } else if (item <= LK_IT_NEXT) {
         look_step(item == LK_IT_NEXT ? 1 : -1);
       } else if (item < LK_IT_TARGET) {
@@ -9760,16 +10372,13 @@ static void activate(int item) {
 
     case SCR_PHOTO:
       if (item == P_IT_DELETE) {
-        s_dialog = DLG_DELETE;
-        s_dlg_focus = 0;
+        dialog_open(DLG_DELETE);
       } else if (item == P_IT_FAV) {
         photo_toggle_favourite();
       } else if (item == P_IT_ROLL) {
         photo_send_to_roll();
       } else if (item == P_IT_PREV || item == P_IT_NEXT) {
-        /* True when the step turned the page and started a move: nothing
-         * below may present over it. */
-        if (photo_step(item == P_IT_NEXT ? 1 : -1)) return;
+        photo_step(item == P_IT_NEXT ? 1 : -1);
       }
       break;
 
@@ -9814,16 +10423,14 @@ static void activate(int item) {
           toast("No photos on the card");
           break;
         }
-        s_dialog = DLG_DELETE_ALL;
-        s_dlg_focus = 0;
+        dialog_open(DLG_DELETE_ALL);
       }
       if (item == ST_IT_FORMAT) {
         if (!sd_status()->present) {
           toast("No card in the slot");
           break;
         }
-        s_dialog = DLG_FORMAT;
-        s_dlg_focus = 0;
+        dialog_open(DLG_FORMAT);
       }
       break;
 
@@ -10144,23 +10751,10 @@ void ui_liveness(uint32_t *passes, uint32_t *age_ms, bool *stalled) {
   }
 }
 
-/* The boot sequence, once: the splash, then the menu arriving. Nothing to
- * wait for any more - there is no artwork to build before the first frame. */
-static void ui_boot(void) { splash(); }
-
-/* The first screen, arriving out of the boot sequence. */
-static void boot_handoff(void) {
-  /* The menu is a list and this is the one time it arrives out of nothing:
-   * the cascade runs on the animation clock and reports like a move, and
-   * boot_bench() follows it. Any other first screen dissolves in. */
-  if (s_screen == SCR_MENU) {
-    anim_start_cascade(MOTION_CASCADE_MS);
-    return;
-  }
-  gfx_snapshot();
-  gfx_render_canvas(render_screen, NULL);
-  gfx_dissolve(MOTION_HANDOFF_MS);
-  boot_bench();
+/* The boot, once: the start, which lands on the menu (anim_tick()). */
+static void ui_boot(void) {
+  scrim_pie_check();
+  anim_start_boot();
 }
 
 /*
@@ -10242,7 +10836,7 @@ static void first_review_poll(void) {
  * is emptied for good. */
 static void undo_delete(void) {
   if (s_undo_id[0] == '\0' || esp_timer_get_time() > s_undo_until_us) return;
-  if (!storage_acquire(STORAGE_USER_UI, 2000)) {
+  if (!ui_card_take(2000)) {
     toast("Card busy. Try again");
     return;
   }
@@ -10262,7 +10856,7 @@ static void undo_delete(void) {
 }
 static void undo_poll(void) {
   if (s_undo_id[0] == '\0' || esp_timer_get_time() <= s_undo_until_us) return;
-  if (!storage_acquire(STORAGE_USER_UI, 0)) return; /* next pass */
+  if (!ui_card_take(0)) return; /* next pass */
   storage_trash_purge();
   storage_release(STORAGE_USER_UI);
   s_undo_id[0] = '\0';
@@ -10278,8 +10872,10 @@ static bool undo_hit(int x, int y) {
 static void storage_events_poll(void) {
   storage_event_t ev;
   while (storage_watch_take(&ev)) {
+    /* The mount read the figures already (card_mount()); this task does not
+     * wait on the card for them (#248). */
     storage_status_t sd;
-    storage_get_status(&sd);
+    storage_get_status_cached(&sd);
     gallery_refresh();
     if (ev == STORAGE_EV_MOUNTED) {
       /* In a sentence, not the bars' capitals: "Card ready, 4871 SHOTS". */
@@ -10293,7 +10889,7 @@ static void storage_events_poll(void) {
       toast("Card taken out. Photos cannot be saved");
       audio_warning();
     }
-    conditions_scan(s_cams);
+    conditions_scan(s_cams, lens_grace());
     ui_render(render_screen, NULL);
   }
 }
@@ -10364,6 +10960,34 @@ static void boot_bench(void) {
     float t15 = 0.15f;
     dl_profile("open t=0.15", render_open, &t15);
 #endif
+    /* The start, from the state it left: a frame of the hold under the mark
+     * and one half way through the build, the busiest the start draws. */
+    {
+      const int16_t keep_exit = s_anim.st_exit;
+      const bool keep_quick = s_anim.st_quick;
+      if (s_anim.st_exit < 0) s_anim.st_exit = 1500;
+      s_anim.st_quick = false;
+      int32_t at[2] = {s_anim.st_exit - 300, s_anim.st_exit + 600};
+      n = 0;
+      for (int i = 0; i < 2; i++) {
+        const int64_t r0 = esp_timer_get_time();
+        dl_begin();
+        render_start(&at[i]);
+        const bool ok = dl_end();
+        const uint32_t rec = (uint32_t)(esp_timer_get_time() - r0);
+        const uint32_t us = ok ? gfx_measure_draw_us(dl_replay, NULL) : gfx_measure_draw_us(render_start, &at[i]);
+        n += snprintf(line + n, sizeof line - (size_t)n, "%s%s %lu.%lu+%lu.%lu/%d", i ? ", " : "",
+                      i ? "build" : "hold", (unsigned long)(rec / 1000), (unsigned long)(rec / 100 % 10),
+                      (unsigned long)(us / 1000), (unsigned long)(us / 100 % 10), s_dl.n);
+      }
+      klog("P4", "start frame draw ms: %s", line);
+#if UI_DRAW_PROFILE
+      dl_profile("start hold", render_start, &at[0]);
+      dl_profile("start build", render_start, &at[1]);
+#endif
+      s_anim.st_exit = keep_exit;
+      s_anim.st_quick = keep_quick;
+    }
     /* SETTINGS -> STORAGE, the slide, reported like a move. On 2026-09-21 the
      * compositor loop it replaced measured 28 fps here and the same frames
      * drawn through the tiles 41. */
@@ -10378,6 +11002,45 @@ static void boot_bench(void) {
     }
   }
 #endif
+}
+
+/*
+ * After a sleep, a safe place to wake to (#247).
+ *
+ * A camera that went to sleep in a bag on FORMAT's question, or on LOOK with a
+ * thumb near QUAD, woke on the same question under a thumb that only meant to
+ * wake it. So when the panel goes dark: an open dialog closes with its safe
+ * answer - the cancel row, never dialog_commit() - and the SETTINGS subtree,
+ * POWER and LOOK go back to the menu, with the menu's focus on the row that
+ * led there. SHOOT, MENU, GALLERY, PHOTO and ROLL stay: they are where a
+ * person picks up from. The two notes stay open: they ask nothing, the wake
+ * touch presses nothing (power_wake_gesture()), and first_start_note() has
+ * already marked them seen, so a note closed here would never come back - a
+ * fresh camera put down unread would lose its first step. A note over a
+ * screen that moves stays over the menu. Done while the panel is dark, so
+ * the wake's lift is the first frame of the new place and nothing moves on
+ * the glass.
+ */
+static void sleep_safe_state(void) {
+  const dialog_t d = s_dialog;
+  const bool note = d == DLG_WELCOME || d == DLG_UPDATED;
+  if (!note) {
+    s_dialog = DLG_NONE;
+    s_dlg_focus = 0;
+  }
+  const screen_t from = s_screen;
+  screen_t top = from;
+  while (SCREEN_PARENT[top] != SCR_MENU && SCREEN_PARENT[top] != top) top = SCREEN_PARENT[top];
+  const bool home = top == SCR_SETTINGS || top == SCR_POWER || top == SCR_LOOK;
+  if (home) {
+    const int row = menu_item_of(top);
+    if (row >= 0) s_focus[SCR_MENU] = row;
+    s_look_from_shoot = false;
+    s_screen = SCR_MENU;
+  }
+  s_pressed = -1;
+  if ((d != DLG_NONE && !note) || home)
+    klog("P4", "sleep: dialog %d closed, screen %d -> %d", (int)(note ? DLG_NONE : d), (int)from, (int)s_screen);
 }
 
 /*
@@ -10410,6 +11073,13 @@ static bool s_touch_was_down = false;
 static int s_down_x, s_down_y;
 static int64_t s_down_us;
 #define TOUCH_DRIFT 40
+/* A contact that landed on PHOTO's well, watched as a swipe until it lifts
+ * (#247): where it landed and where it was last seen. While it is down it
+ * presses nothing, so a swipe that ends over a button fires no tap. */
+static struct {
+  bool on;
+  int16_t x0, y0, x, y;
+} s_swipe;
 /* The camera's mark is on the panel because sleep is coming (power.c asked).
  * Touches are swallowed while it is, and the screen is redrawn when the sleep
  * is called off or over. */
@@ -10452,8 +11122,9 @@ static void lift_at(int64_t t_us, int32_t span_ms, int k0, int mark0, int *k, in
 
 /* Start a lift from scrim `k0`, and from a sleep mark at `mark0` (0: none). */
 static void lift_start(int k0, int mark0, int32_t span_ms) {
-  s_lift_us = esp_timer_get_time();
+  s_lift_us = gfx_due_us();
   if (s_lift_us == 0) s_lift_us = 1;
+  ramp_begin(span_ms == MOTION_UNDIM_MS ? RAMP_UNDIM : RAMP_WAKE);
   s_lift_ms = span_ms;
   s_lift_k0 = k0;
   s_lift_mark0 = mark0;
@@ -10466,7 +11137,7 @@ static void lift_start(int k0, int mark0, int32_t span_ms) {
  * is still running, so the pass comes straight back. */
 static bool lift_step(bool *drew) {
   if (s_lift_us == 0) return false;
-  const int64_t t = esp_timer_get_time() - s_lift_us;
+  const int64_t t = gfx_due_us() - s_lift_us;
   int k, m;
   lift_at(t, s_lift_ms, s_lift_k0, s_lift_mark0, &k, &m);
   if (k != s_dim_k || m != s_lift_mark) {
@@ -10479,6 +11150,7 @@ static bool lift_step(bool *drew) {
     s_lift_us = 0;
     s_dim_k = 0;
     s_lift_mark = 0;
+    ramp_end(s_lift_ms == MOTION_UNDIM_MS ? RAMP_UNDIM : RAMP_WAKE);
     return false;
   }
   return true;
@@ -10525,6 +11197,214 @@ static void update_poll(void) {
   ui_render(render_screen, NULL);
 }
 
+/* An open question's content, repainted when it changes (#247): DELETE's
+ * tile decoded or dropped, an erasure's count arriving or going. The room was
+ * fixed at the open (dialog_open()), so the repaint fills it and moves no row.
+ * Nothing is repainted on the pass a question opens: the open drew it. A
+ * finger, a move or the sleep own the frame, and the next pass catches up. */
+static void dlg_content_poll(void) {
+  static int open = DLG_NONE;
+  static int drawn;
+  int n = 0;
+  const int key = s_dialog == DLG_DELETE ? (dlg_thumb_on() && photo_thumb() != NULL)
+                  : dlg_count(&n)        ? n
+                                         : -1;
+  if ((int)s_dialog != open) {
+    open = (int)s_dialog;
+    drawn = key;
+    return;
+  }
+  if (s_dialog == DLG_NONE || key == drawn) return;
+  power_state_t ps;
+  power_get(&ps);
+  if (held != -1 || anim_active() || s_sleep_mark || power_sleep_pending() ||
+      ps.stage == POWER_ASLEEP)
+    return;
+  drawn = key;
+  ui_render(render_screen, NULL);
+}
+
+/* ------------------------------------------------------------------ */
+/* The screen over KDP (#246): the UI task's half                      */
+/* ------------------------------------------------------------------ */
+
+/* The sleep's mark counts only while its wind-down runs. s_sleep_mark stays
+ * set through the sleep itself, until the wake clears it; a body asleep is
+ * still, and its render is the screen under SLEEP_DARK_K. */
+bool ui_screen_moving(void) {
+  return anim_active() || (s_sleep_mark && power_sleep_pending()) || s_lift_us != 0;
+}
+
+uint32_t ui_shot_ask(void) {
+  uint32_t t = __atomic_load_n(&s_kdp.shot_asked, __ATOMIC_RELAXED) + 1;
+  if (t == 0) t = 1;
+  __atomic_store_n(&s_kdp.shot_asked, t, __ATOMIC_RELEASE);
+  return t;
+}
+
+ui_shot_state_t ui_shot_poll(uint32_t ticket, ui_shot_t *out) {
+  if (__atomic_load_n(&s_kdp.shot_done, __ATOMIC_ACQUIRE) != ticket) return UI_SHOT_WAITING;
+  if (out != NULL) *out = s_kdp.shot;
+  return (ui_shot_state_t)s_kdp.shot_state;
+}
+
+int ui_tap_post(int x, int y, int hold_ms) {
+  const uint32_t head = s_kdp.tap_head;
+  const uint32_t tail = __atomic_load_n(&s_kdp.tap_tail, __ATOMIC_ACQUIRE);
+  if (head - tail >= UI_TAP_Q) return 0;
+  s_kdp.taps[head % UI_TAP_Q] = (ui_tap_t){(int16_t)x, (int16_t)y, (uint16_t)hold_ms};
+  __atomic_store_n(&s_kdp.tap_head, head + 1, __ATOMIC_RELEASE);
+  return (int)(head + 1 - tail);
+}
+
+bool ui_key_post(bool shutter, bool long_press) {
+  if (s_btn_q == NULL) return false;
+  /* What buttons.c does on a down edge: activity, which wakes a dark panel,
+   * and the press is not swallowed - a shutter press means a photograph. */
+  power_activity();
+  const btn_event_t down = {.id = shutter ? BTN_SHUTTER : BTN_FN, .long_press = false};
+  if (xQueueSend(s_btn_q, &down, 0) != pdTRUE) return false;
+  if (long_press) {
+    const btn_event_t hold = {.id = down.id, .long_press = true};
+    (void)xQueueSend(s_btn_q, &hold, 0);
+  }
+  klog("P4", "host key %s%s", shutter ? "SHUTTER" : "FN", long_press ? " held" : "");
+  return true;
+}
+
+void ui_plate_post(bool on) {
+  s_kdp.plate_want = on ? 1 : 0;
+  __atomic_store_n(&s_kdp.plate_asked, s_kdp.plate_asked + 1, __ATOMIC_RELEASE);
+}
+
+/*
+ * The touch panel, or the host's tap. Every touch read in ui_pass() comes
+ * through here, so a tap from UI_TAP meets the same palm edge, drift and
+ * hold rules and the same wake as a finger. Touch is in panel space; the tap
+ * is turned back into it with the inverse of the quarter turn ui_pass()
+ * applies (lx = ty, ly = DISPLAY_H_RES - 1 - tx).
+ */
+static bool ui_touch(uint16_t *tx, uint16_t *ty) {
+  const int64_t now = esp_timer_get_time();
+  if (s_kdp.tap_until_us == 0 && now - s_kdp.tap_up_us >= UI_TAP_GAP_US) {
+    const uint32_t tail = s_kdp.tap_tail;
+    if (__atomic_load_n(&s_kdp.tap_head, __ATOMIC_ACQUIRE) != tail) {
+      s_kdp.tap_now = s_kdp.taps[tail % UI_TAP_Q];
+      __atomic_store_n(&s_kdp.tap_tail, tail + 1, __ATOMIC_RELEASE);
+      s_kdp.tap_until_us = now + (int64_t)s_kdp.tap_now.hold_ms * 1000;
+      if (s_kdp.tap_until_us == 0) s_kdp.tap_until_us = 1;
+      klog("P4", "host tap %d,%d held %d ms", s_kdp.tap_now.x, s_kdp.tap_now.y, s_kdp.tap_now.hold_ms);
+      /* touch.c reports a contact as activity on its own task; this one did
+       * not pass through it. */
+      power_activity();
+    }
+  }
+  if (s_kdp.tap_until_us != 0) {
+    if (now < s_kdp.tap_until_us) {
+      *tx = (uint16_t)(DISPLAY_H_RES - 1 - s_kdp.tap_now.y);
+      *ty = (uint16_t)s_kdp.tap_now.x;
+      return true;
+    }
+    /* The lift: this read sees no contact, which is what fires the press. */
+    s_kdp.tap_until_us = 0;
+    s_kdp.tap_up_us = now;
+    return false;
+  }
+  return touch_ready() && touch_get(tx, ty);
+}
+
+static void plate_set(bool on, const char *why) {
+  if (on == s_kdp.plate_on) return;
+  s_kdp.plate_on = on;
+  s_kdp.plate_since_us = esp_timer_get_time();
+  klog("P4", "screen plate %s: %s", on ? "on" : "off", why);
+  if (on) {
+    viewfinder_run(false);
+    power_activity();
+  }
+  s_pressed = -1;
+  held = -1;
+  ui_render(render_screen, NULL);
+}
+
+/*
+ * The plate, asked for or dropped, and its rules while it is up. True while
+ * it owns the panel: the pass ends there, so nothing under it is pressed and
+ * no screen paints over it. It holds the panel awake, and ends on a touch, a
+ * key, SCREEN_PLATE off, a sleep asked for (the lens cover closing), or after
+ * UI_PLATE_MAX_US. The press that ends it does nothing else.
+ */
+static bool plate_pass(void) {
+  const uint32_t asked = __atomic_load_n(&s_kdp.plate_asked, __ATOMIC_ACQUIRE);
+  /* Not while a move, the wind-down or a lift runs: lift_step() does not run
+   * while the plate owns the pass, so a lift under it would never end. A body
+   * asleep takes it: plate_set() wakes it, and the wake's lift runs when the
+   * plate drops. */
+  if (asked != s_kdp.plate_seen && !ui_screen_moving()) {
+    s_kdp.plate_seen = asked;
+    plate_set(s_kdp.plate_want != 0, "asked over KDP");
+  }
+  if (!s_kdp.plate_on) return false;
+  if (power_sleep_pending()) {
+    plate_set(false, "sleep");
+    return false;
+  }
+  if (esp_timer_get_time() - s_kdp.plate_since_us >= UI_PLATE_MAX_US) {
+    plate_set(false, "5 minutes up");
+    return false;
+  }
+  bool ended = false;
+  btn_event_t ev;
+  while (s_btn_q != NULL && xQueueReceive(s_btn_q, &ev, 0) == pdTRUE) ended = true;
+  uint16_t tx, ty;
+  if (ui_touch(&tx, &ty)) {
+    /* Held until the finger lifts, so the lift presses nothing under it. */
+    swallow_touch = true;
+    ended = true;
+  }
+  if (ended) {
+    plate_set(false, "a press");
+    return true;
+  }
+  /* A sleep asked for (the lens cover closing, power_sleep_now()) only ages
+   * the idle clock, and power.c acts on it on its next 500 ms poll. This
+   * pass refreshes the clock every 20 ms, so it would cancel that ask nearly
+   * every time and power_sleep_pending() would never go true. While the
+   * plate is up nothing else can age the clock past body.sleepS: let go of
+   * the panel and leave the clock aged. */
+  power_state_t ps;
+  power_get(&ps);
+  const int sleep_s = config_int("body.sleepS", 120);
+  if (sleep_s > 0 && ps.idle_s >= (uint32_t)sleep_s) {
+    plate_set(false, "sleep asked");
+    return false;
+  }
+  power_activity();
+  return true;
+}
+
+/*
+ * A GET_SCREEN render, on this task, into the canvas, between two passes.
+ * The canvas is only a transition's scratch: no move is running (they are
+ * refused), and every move draws its own first frame into it before it reads
+ * it. The finder's panes, the toast, the dim scrim and a held press are drawn
+ * as the glass shows them, because render_screen() is what the glass shows.
+ */
+static void shot_pass(void) {
+  const uint32_t asked = __atomic_load_n(&s_kdp.shot_asked, __ATOMIC_ACQUIRE);
+  if (asked == s_kdp.shot_done) return;
+  if (ui_screen_moving() || power_sleep_pending()) {
+    s_kdp.shot_state = UI_SHOT_BUSY;
+  } else {
+    gfx_render_canvas(render_screen, NULL);
+    s_kdp.shot.gen = gfx_canvas_gen();
+    s_kdp.shot.screen = (uint8_t)s_screen;
+    s_kdp.shot.plate = s_kdp.plate_on;
+    s_kdp.shot_state = UI_SHOT_DONE;
+  }
+  __atomic_store_n(&s_kdp.shot_done, asked, __ATOMIC_RELEASE);
+}
+
 static uint32_t ui_pass(void) {
   {
     /* The pulse, first thing and unconditionally. Several branches below
@@ -10540,10 +11420,16 @@ static uint32_t ui_pass(void) {
     touch_rest_counts(s_screen == SCR_SHOOT);
 
     /* The camera snapshot every draw reads (s_cams), before anything draws.
-     * Above the move, because the boot field is drawn from it while the
-     * splash owns the pass; not during the other moves, which are short and
-     * should not wait on a channel lock between two frames. */
-    if (!anim_active() || s_anim.kind == ANIM_SPLASH) cams_refresh();
+     * Not during a move, which should not wait on a channel lock between two
+     * frames: the start reads camlink_online_mask() and tells s_cams what it
+     * drew (start_tell()). */
+    if (!anim_active()) cams_refresh();
+
+    /* The screen over KDP (#246): a render the host asked for, before
+     * anything this pass draws, and the test plate, which owns the pass
+     * while it is up. */
+    shot_pass();
+    if (plate_pass()) return 20;
 
     /*
      * A move in flight gets the pass, and nothing else in this function runs.
@@ -10555,38 +11441,20 @@ static uint32_t ui_pass(void) {
      * first. The press is not swallowed - it stays in its queue and is read
      * on the pass after the move ends.
      *
-     * The splash is the exception. It is 3.8 s long, and a finger on the
-     * glass or a key going down during it is somebody who wants the camera,
-     * not the picture: a shutter press queued behind the field fired when the
-     * menu landed, up to 3.8 s after the thumb did. Either input ends the
-     * splash on the spot and hands off to the menu; the key stays queued and
-     * fires on this same pass, the touch is swallowed until it lifts, because
-     * the thing it landed on was drawn after it landed.
+     * The start is the exception. A finger on the glass or a key going down
+     * during it is somebody who wants the camera, not the picture
+     * (start_input()). A key lands the menu on the spot and fires on this
+     * same pass. A finger runs the rest of the build in MOTION_START_CUT_MS
+     * and is swallowed until it lifts, because the thing it landed on was
+     * drawn after it landed.
      */
     if (anim_active()) {
-      if (s_anim.kind == ANIM_SPLASH) {
-        uint16_t sx = 0, sy = 0;
-        const bool finger = touch_ready() && touch_get(&sx, &sy);
-        const bool key = s_btn_q != NULL && uxQueueMessagesWaiting(s_btn_q) > 0;
-        if (finger || key) {
-          klog("P4", finger ? "splash cut by touch" : "splash cut by key");
-          s_anim.kind = ANIM_NONE;
-          boot_handoff();
-          if (finger) swallow_touch = true;
-        } else {
-          return anim_tick();
-        }
-      } else if (s_anim.kind == ANIM_CASCADE && s_btn_q != NULL &&
-                 uxQueueMessagesWaiting(s_btn_q) > 0) {
-        /* The shutter during the cascade: the menu lands now and the key is
-         * handled on this pass, so a body handed over mid-boot shoots when
-         * its button is pressed rather than 700 ms later. */
-        s_anim.kind = ANIM_NONE;
-        ui_render(render_screen, NULL);
-        boot_bench();
-      } else {
-        return anim_tick();
-      }
+      if (s_anim.kind != ANIM_START) return anim_tick();
+      uint16_t sx = 0, sy = 0;
+      const bool finger = !s_anim.st_quick && ui_touch(&sx, &sy);
+      const bool key = s_btn_q != NULL && uxQueueMessagesWaiting(s_btn_q) > 0;
+      if (finger) swallow_touch = true;
+      if (!start_input(finger, key)) return anim_tick();
     }
 
     /* Physical keys first: they were recorded on the buttons task and this
@@ -10607,7 +11475,8 @@ static uint32_t ui_pass(void) {
       const int64_t now_us = esp_timer_get_time();
       if (scan_us == 0 || now_us - scan_us > 2000000) {
         scan_us = now_us;
-        conditions_scan(s_cams);
+        conditions_scan(s_cams, lens_grace());
+        wifi_saved_refresh();
         /* Above the warm line the finder drops to a few frames a second: the
          * four nodes and the PPA are most of the heat. STATUS says why. */
         viewfinder_throttle(conditions_has(COND_WARM));
@@ -10622,16 +11491,29 @@ static uint32_t ui_pass(void) {
      * dropped kept its filled cell until the next touch. The rescan puts the
      * card line in the same frame as the cells. Not on SHOOT, which repaints
      * on its own clock; not under a finger, a move or the sleep's wind-down,
-     * which own the frame. A change while asleep is drawn by the wake.
+     * which own the frame. A change while asleep is drawn by the wake. So
+     * does the start's wait running out (lens_grace()): a lens still silent
+     * then is called down on that pass, not on the next slow scan.
+     *
+     * The LOOK screen's numbers for a custom look are read here too, off the
+     * card and outside any draw (#248), and a read that changed them repaints
+     * LOOK the same way.
      */
     {
       static uint8_t drawn_on = 0xFF;
+      static bool drawn_grace;
+      const bool grace = lens_grace();
       uint8_t on = 0;
       for (int i = 0; i < 4; i++)
         if (s_cams[i].online) on |= (uint8_t)(1u << i);
-      if (on != drawn_on) {
+      const bool cams_moved = on != drawn_on || grace != drawn_grace;
+      const bool look_read = !anim_active() && look_capture_refresh() && s_screen == SCR_LOOK;
+      if (cams_moved) {
         drawn_on = on;
-        conditions_scan(s_cams);
+        drawn_grace = grace;
+        conditions_scan(s_cams, grace);
+      }
+      if (cams_moved || look_read) {
         power_state_t ps;
         power_get(&ps);
         if (s_screen != SCR_SHOOT && held == -1 && !anim_active() && !s_sleep_mark &&
@@ -10640,7 +11522,15 @@ static uint32_t ui_pass(void) {
       }
     }
     calib_poll();
-    first_review_poll();
+    /* The review clock and a page turn's owed photograph both repaint or start
+     * a move, so neither runs under the sleep's wind-down or while the body
+     * is asleep: s_sleep_mark holds until the wake clears it. Whatever is owed
+     * runs on the first pass after the wake. */
+    if (!s_sleep_mark && !power_sleep_pending()) {
+      first_review_poll();
+      photo_seek_poll();
+    }
+    dlg_content_poll();
     storage_events_poll();
     lens_hint_poll();
     timer_poll();
@@ -10655,7 +11545,7 @@ static uint32_t ui_pass(void) {
 
     uint16_t tx = 0, ty = 0;
     int region = -1;
-    const bool down = touch_ready() && touch_get(&tx, &ty);
+    const bool down = ui_touch(&tx, &ty);
     /* True on the first pass of a contact only. A thumb resting on the
      * picture when the count starts never sets `held`, so without this every
      * pass would read it as a new tap. */
@@ -10698,6 +11588,7 @@ static uint32_t ui_pass(void) {
       /* The timer setting does not outlive the session it was set in. */
       s_timer_on = false;
       s_timer_end_us = 0;
+      sleep_safe_state();
     }
     was_asleep = asleep_now;
 
@@ -10714,7 +11605,10 @@ static uint32_t ui_pass(void) {
     bool lifting = false, lift_drew = false;
     {
       const bool dim_now = dim_drawn(&pst) && !power_sleep_pending() && !asleep_now;
-      if (dim_now && s_dim_since_us == 0) s_dim_since_us = esp_timer_get_time();
+      if (dim_now && s_dim_since_us == 0) {
+        s_dim_since_us = gfx_due_us();
+        ramp_begin(RAMP_DIM);
+      }
       if (!dim_now) s_dim_since_us = 0;
       if (power_sleep_pending() || s_sleep_mark) {
         s_lift_us = 0; /* the sleep's wind-down owns the scrim from here */
@@ -10724,14 +11618,21 @@ static uint32_t ui_pass(void) {
          * rather than stepping down. */
         s_lift_us = 0;
         s_lift_mark = 0;
-        const int64_t up = esp_timer_get_time() - s_dim_since_us;
+        const int64_t up = gfx_due_us() - s_dim_since_us;
         float t = (float)up / (float)(MOTION_DIM_MS * 1000);
         if (t > 1.0f) t = 1.0f;
         const int k = (int)(ease_ui(t) * (float)DIM_SCRIM_K + 0.5f);
         if (k != s_dim_k) {
           s_dim_k = k;
           ui_render(render_screen, NULL);
+          /* Straight back round, like a lift: on the 20 ms pass a frame
+           * landed every third or fourth refresh (#248). A pass that drew
+           * nothing sleeps as before, so the slow ends of the curve do not
+           * spin the task. */
+          lift_drew = true;
+          lifting = true;
         }
+        if (t >= 1.0f) ramp_end(RAMP_DIM);
       } else if (anim_active()) {
         /* A press on this pass started a move: the move takes the undim. */
         move_takes_scrim(s_dim_k, MOTION_UNDIM_MS);
@@ -10761,18 +11662,30 @@ static uint32_t ui_pass(void) {
        * is the screen exactly as it was, so nothing jumps. */
       s_sleep_stage = -1;
       s_sleep_dim0 = s_dim_k;
-      s_sleep_mark_us = esp_timer_get_time();
+      s_sleep_mark_us = gfx_due_us();
       power_sleep_shown();
       s_sleep_mark = true;
       klog("P4", "sleep: wind-down from dim %d on screen %d", s_dim_k, (int)s_screen);
+      ramp_begin(RAMP_SLEEP_DARK);
     } else if (s_sleep_mark && power_sleep_pending() && !asleep_now) {
-      const int64_t up = esp_timer_get_time() - s_sleep_mark_us;
+      const int64_t up = gfx_due_us() - s_sleep_mark_us;
+      /* The wind-down's three parts, each reported (ramp_end() ignores a
+       * part already ended); the hold between the last two draws nothing. */
+      if (up >= SLEEP_OUT_US && s_ramp.what == RAMP_SLEEP_DARK) {
+        ramp_end(RAMP_SLEEP_DARK);
+        ramp_begin(RAMP_SLEEP_IN);
+      }
+      if (up >= SLEEP_OUT_US + SLEEP_IN_US) ramp_end(RAMP_SLEEP_IN);
+      if (up >= SLEEP_OUT_US + SLEEP_IN_US + SLEEP_HOLD_US + SLEEP_FADE_US) ramp_end(RAMP_SLEEP_OUT);
+      else if (up >= SLEEP_OUT_US + SLEEP_IN_US + SLEEP_HOLD_US && s_ramp.what == NULL) ramp_begin(RAMP_SLEEP_OUT);
       if (up < SLEEP_OUT_US) {
         const float t = (float)up / (float)SLEEP_OUT_US;
         const int k = s_sleep_dim0 + (int)((float)(SLEEP_DARK_K - s_sleep_dim0) * ease_ui(t) + 0.5f);
         if (k != s_dim_k) {
           s_dim_k = k;
           ui_render(render_screen, NULL);
+          lift_drew = true; /* paced like the dim, above */
+          lifting = true;
         }
       } else {
         const int64_t u = up - SLEEP_OUT_US;
@@ -10789,6 +11702,8 @@ static uint32_t ui_pass(void) {
         if (k != s_sleep_stage) {
           s_sleep_stage = k;
           ui_render(render_sleep, &s_sleep_stage);
+          lift_drew = true;
+          lifting = true;
         }
       }
     } else if (s_sleep_mark && !power_sleep_pending() && !asleep_now) {
@@ -10859,6 +11774,7 @@ static uint32_t ui_pass(void) {
       swallow_touch = true;
     }
     if (swallow_touch) {
+      s_swipe.on = false;
       return lifting ? 0 : 20;
     }
 
@@ -10867,6 +11783,14 @@ static uint32_t ui_pass(void) {
        * reverse: touch y is the logical x. */
       const int lx = ty;
       const int ly = DISPLAY_H_RES - 1 - tx;
+
+      /* A swipe under way: follow it, press nothing. Judged on the lift. */
+      if (s_swipe.on && !landed) {
+        s_swipe.x = (int16_t)lx;
+        s_swipe.y = (int16_t)ly;
+        return 20;
+      }
+      s_swipe.on = false;
 
       /*
        * The palm.
@@ -10925,6 +11849,40 @@ static uint32_t ui_pass(void) {
         swallow_touch = true;
         return 20;
       }
+      if (landed && held == -1 && region < 0 && ly < SH_BAR_Y && sh_first_use_shown() &&
+          (s_sh_live & (1u << sh_pane_at(lx, ly)))) {
+        /* Before the first photograph, a tap on the picture is someone
+         * looking for the shutter on the glass (#247). The pill says where
+         * it is; the toast says it under the finger. */
+        toast("Press the shutter on top.");
+        swallow_touch = true;
+        ui_render(render_screen, NULL);
+        return 20;
+      }
+      if (landed && held == -1 && region < 0 && s_screen == SCR_PHOTO && s_dialog == DLG_NONE &&
+          in(lx, ly, ph_well_x(), PH_TOP, PH_W, PH_H)) {
+        /* On the photograph itself: nothing there is a target, so the
+         * contact is watched as a swipe instead (#247). A tap that does not
+         * travel still stops the review's clock, above, and does nothing
+         * else, as it always did. */
+        s_swipe.on = true;
+        s_swipe.x0 = s_swipe.x = (int16_t)lx;
+        s_swipe.y0 = s_swipe.y = (int16_t)ly;
+        return 20;
+      }
+    }
+
+    if (!down && s_swipe.on) {
+      s_swipe.on = false;
+      const int dir = pure_swipe_dir(s_swipe.x - s_swipe.x0, s_swipe.y - s_swipe.y0,
+                                     PURE_SWIPE_TRAVEL_PX, PURE_SWIPE_OFF_AXIS_PX);
+      if (dir != 0 && s_screen == SCR_PHOTO && s_dialog == DLG_NONE) {
+        /* Leftwards brings the next photograph in, the way a page turns,
+         * whichever hand holds the camera: reading order does not mirror. */
+        photo_step(-dir);
+        ui_render(render_screen, NULL);
+      }
+      return 20;
     }
 
     if (down && region != s_pressed) {
@@ -11128,8 +12086,10 @@ static uint32_t ui_pass(void) {
        */
       const bool wig_pacing = s_screen == SCR_PHOTO && s_wig_play;
       /* And a capture landing: its colour leaves over 180 ms, and at 90 ms a
-       * pass that is two frames, a step and not a fade. */
+       * pass that is two frames, a step and not a fade. With the links idle
+       * it goes straight back round, as on SHOOT. */
       if (lifting) return 0;
+      if (landing && cstage != CAPTURE_TRIGGERING && cstage != CAPTURE_READING) return 0;
       return (busy && !wig_pacing && !landing) ? 90 : 20;
     }
 
@@ -11217,7 +12177,9 @@ static uint32_t ui_pass(void) {
     /* The viewfinder repaints on the link's clock, not the panel's: it is the
      * one screen that presents with nothing having been touched. */
     if (s_screen == SCR_SHOOT && held == -1) {
-      if (!lift_drew) ui_render(render_screen, NULL);
+      /* Not over the sleep's mark: the wind-down draws it, and the finder
+       * drawn after it on the same pass took it off the glass again. */
+      if (!lift_drew && !(s_sleep_mark && s_sleep_stage >= 0)) ui_render(render_screen, NULL);
       /* Paced against the link, not the panel: new frames arrive a few times
        * a second at best. A landing capture is paced against the panel
        * instead, so its 180 ms return is a fade and not three steps, and so
@@ -11235,7 +12197,13 @@ static uint32_t ui_pass(void) {
       const capture_stage_t st = capture_stage();
       const bool links_busy = st == CAPTURE_TRIGGERING || st == CAPTURE_READING;
       const bool ring_paced = s_timer_end_us != 0 && !links_busy;
-      return (landing || (pill_pulsing() && !links_busy) || ring_paced) ? 20 : 60;
+      /* The landing and the pill's pulse are short, so with the links idle
+       * they go straight back round, a frame a refresh: on the 20 ms pass
+       * they were a frame every other one, 33 fps (#248). The countdown's
+       * ring keeps the 20 ms pass: it runs for seconds, and a finder drawn
+       * back to back for that long starves the panes' own decode. */
+      if ((landing || pill_pulsing()) && !links_busy) return 0;
+      return (landing || ring_paced) ? 20 : 60;
     }
     /* A lift (undim, wake, a sleep called off) repaints every pass it runs;
      * at the loop's 20 ms on top of the draw it would be a frame every 40. */
@@ -11306,9 +12274,9 @@ esp_err_t ui_start(void) {
    * trading the preview against the shutter.
    */
   /* Checked, like capture.c does. A UI task that was never created leaves a
-   * board that boots, logs UI_READY and then shows a splash for ever - which
+   * board that boots, logs UI_READY and then stays dark for ever - which
    * reads as a display or touch fault rather than as an out-of-memory. */
-  if (xTaskCreatePinnedToCore(ui_task, "ui", 8192, NULL, 4, &ui_h, 1) != pdPASS) {
+  if (xTaskCreatePinnedToCore(ui_task, "ui", 8192, NULL, UI_PRIO, &ui_h, 1) != pdPASS) {
     ESP_LOGE(TAG, "no room for the ui task");
     return ESP_ERR_NO_MEM;
   }

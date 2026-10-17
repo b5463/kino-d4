@@ -154,6 +154,20 @@ static EXT_RAM_BSS_ATTR channel_t s_ch[CAMLINK_CAMS];
 
 static bool valid_cam(int cam) { return cam >= 0 && cam < CAMLINK_CAMS && s_ch[cam].lock != NULL; }
 
+/* `online` of all four, bit i for CAM(i+1), for camlink_online_mask(). One
+ * byte of internal SRAM; the channel structs are in PSRAM. */
+static uint8_t s_online;
+
+/* A channel's `online`, and its bit in s_online. Called with the lock held. */
+static void set_online(int cam, bool on) {
+  s_ch[cam].info.online = on;
+  const uint8_t bit = (uint8_t)(1u << cam);
+  if (on) __atomic_fetch_or(&s_online, bit, __ATOMIC_RELEASE);
+  else __atomic_fetch_and(&s_online, (uint8_t)~bit, __ATOMIC_RELEASE);
+}
+
+uint8_t camlink_online_mask(void) { return __atomic_load_n(&s_online, __ATOMIC_ACQUIRE); }
+
 static void set_last_error(channel_t *ch, const char *code) {
   strlcpy(ch->stats.last_error, code, sizeof ch->stats.last_error);
   ch->stats.last_error[sizeof ch->stats.last_error - 1] = '\0';
@@ -583,18 +597,18 @@ esp_err_t camlink_hello_ch_timeout(int cam, uint32_t timeout_ms) {
 
   xSemaphoreTake(ch->lock, portMAX_DELAY);
   if (err != ESP_OK) {
-    ch->info.online = false;
+    set_online(cam, false);
     xSemaphoreGive(ch->lock);
     return err;
   }
   resp[len] = '\0';
   cJSON *json = cJSON_Parse((const char *)resp);
   if (json == NULL) {
-    ch->info.online = false;
+    set_online(cam, false);
     xSemaphoreGive(ch->lock);
     return ESP_ERR_INVALID_RESPONSE;
   }
-  ch->info.online = true;
+  set_online(cam, true);
   copy_str(ch->info.firmware, sizeof ch->info.firmware, cJSON_GetObjectItem(json, "firmware"));
   copy_str(ch->info.sensor, sizeof ch->info.sensor, cJSON_GetObjectItem(json, "sensor"));
   copy_str(ch->info.sensor_pid, sizeof ch->info.sensor_pid, cJSON_GetObjectItem(json, "sensorPid"));
@@ -1133,7 +1147,7 @@ esp_err_t camlink_fw_end_ch(int cam, bool *verified, char *code, size_t code_cap
   /* The node restarts as soon as this reply has left it; what the channel
    * knew about it is stale from here. */
   xSemaphoreTake(s_ch[cam].lock, portMAX_DELAY);
-  s_ch[cam].info.online = false;
+  set_online(cam, false);
   xSemaphoreGive(s_ch[cam].lock);
   return ESP_OK;
 }

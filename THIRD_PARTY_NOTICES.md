@@ -116,8 +116,11 @@ and not shapes a program should be guessing at.
 
 ## The KINO wordmark (reserved)
 
-`firmware/p4/main/logo_kino_d4.h` is the KINO D4 wordmark the camera shows
-while it shuts down, restarts or goes to sleep. `tools/mkmask.mjs` bakes it
+`firmware/p4/main/logo_kino_d4.h` is the KINO D4 wordmark the camera showed
+while it shut down, restarted or went to sleep, until the ODD JOBS mark took
+that place in 0.4.63 (#245). It is not drawn and not built into the firmware
+any more; it stays in the tree, under the terms below, because LICENSE names
+it. `tools/mkmask.mjs` bakes it
 from `docs/assets/brand/kino-d4-white-on-dark.png` into a 374x52 8-bit
 coverage table, box-filtered from the raster, which `ui.c` blends in one
 ink. The header names its source and the source's sha256.
@@ -133,7 +136,8 @@ that makes this camera. `tools/mkmask.mjs` bakes it from the carrier's traced
 outline, `hardware/pcb/kino-d4-carrier-a0/brand/odd-jobs-symbol.json` (itself
 traced from the studio's `odd_jobs_symbol.png`, sha256 e649915c...), into 8-bit
 coverage at two sizes: 50x40, which `ui.c` draws on the ABOUT screen under
-MADE BY, and 158x128 for a boot mark that is not drawn yet. The outline is
+MADE BY, and 158x128, which the camera opens on at the start and shows at
+sleep, restart and power-down. The outline is
 filled as supplied; nothing is redrawn. The header names its source and the
 source's sha256.
 

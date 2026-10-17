@@ -20,6 +20,7 @@
 #include "clock.h"
 #include "config_store.h"
 #include "esp_crt_bundle.h"
+#include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -86,6 +87,21 @@ static const char *TAG = "rollhttp";
  * waited for esp_http_client_write - bounded by HTTP_TIMEOUT_MS, 15 s, not by
  * a card read. The lock is taken per read and released before each write. */
 #define CHUNK_BYTES 16384
+
+/** One CHUNK_BYTES buffer, in PSRAM (#244, audit FW-42).
+ *
+ * malloc(16384) is at CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL, so both buffers in
+ * this file used to land in internal SRAM: 32 KB of the pool the C6 recovery
+ * reserve and every DMA buffer come from, held for a whole hash or part PUT.
+ * Neither needs internal memory. Each is used by one task, read by the CPU and
+ * by esp_http_client (which copies), and filled by fread. The P4's SDMMC DMA
+ * reaches PSRAM when the buffer is cache-line aligned, so the 64-byte
+ * alignment keeps whole-sector reads on the direct path. Internal only when
+ * PSRAM is exhausted, which is the old behaviour. Free with free(). */
+static uint8_t *chunk_alloc(void) {
+  uint8_t *buf = heap_caps_aligned_alloc(64, CHUNK_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  return buf != NULL ? buf : malloc(CHUNK_BYTES);
+}
 
 /** Network timeout for one request. The queue's own backoff is what handles a
  * server that is slow or gone, so this only has to be long enough for a TLS
@@ -471,7 +487,7 @@ bool roll_http_sha256_file_ex(const char *file_path, size_t offset, size_t len, 
   }
 
   bool ok = false;
-  uint8_t *buf = malloc(CHUNK_BYTES);
+  uint8_t *buf = chunk_alloc();
   FILE *f = buf != NULL ? fopen(file_path, "rb") : NULL;
   mbedtls_sha256_context ctx;
   mbedtls_sha256_init(&ctx);
@@ -524,7 +540,7 @@ void roll_http_put_file(const char *path, const char *file_path, size_t offset, 
     return;
   }
 
-  uint8_t *buf = malloc(CHUNK_BYTES);
+  uint8_t *buf = chunk_alloc();
   if (buf == NULL) {
     fail_out(out, "no memory for an upload buffer");
     return;

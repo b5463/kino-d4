@@ -1073,7 +1073,7 @@ static int fake_drain(fake_card_t *c, rq_scan_t *s, int work, int retire_per_rou
     for (int i = 0; i < c->n; i++) {
       if (c->eligible[i] && !c->admitted[i]) pending_before++;
     }
-    if (pending_before == 0 && !rq_scan_more(s)) break;
+    if (pending_before == 0 && !rq_scan_more(s, c->window < c->window_max)) break;
     fake_pass(c, s, work);
     fake_retire(c, retire_per_round);
   }
@@ -1099,24 +1099,30 @@ static void test_scan_cursor_basics(void) {
   rq_scan_t s;
   rq_scan_init(&s);
   CHECK(rq_scan_skip(&s) == 0, "a fresh cursor skips nothing");
-  CHECK(!rq_scan_more(&s), "and owes no pass");
+  CHECK(!rq_scan_more(&s, true), "and owes no pass");
 
   /* A pass that stopped short advances the cursor and owes another. */
   rq_scan_pass_done(&s, 512, 0, false);
   CHECK(rq_scan_skip(&s) == 512, "the next pass resumes at 512, got %u", rq_scan_skip(&s));
-  CHECK(rq_scan_more(&s), "mid-cycle owes another pass");
+  CHECK(rq_scan_more(&s, true), "mid-cycle owes another pass");
 
   /* Reaching the end closes the cycle and wraps. */
   rq_scan_pass_done(&s, 276, 0, true);
   CHECK(rq_scan_skip(&s) == 0, "the cycle wrapped, got %u", rq_scan_skip(&s));
-  CHECK(!rq_scan_more(&s), "a complete cycle that found nothing owes nothing");
+  CHECK(!rq_scan_more(&s, true), "a complete cycle that found nothing owes nothing");
   CHECK(s.cycle_complete, "and says it completed");
 
   /* A complete cycle that found work the window could not take still owes. */
   rq_scan_init(&s);
   rq_scan_pass_done(&s, 100, 3, true);
   CHECK(s.card_pending == 3, "card_pending is the cycle's count, got %u", s.card_pending);
-  CHECK(rq_scan_more(&s), "work the window refused is still owed");
+  CHECK(rq_scan_more(&s, true), "work the window refused is still owed");
+  /* ...but not while the window is still full: no pass could admit it (#248). */
+  CHECK(!rq_scan_more(&s, false), "a full window owes no pass for card_pending alone");
+  rq_scan_card_changed(&s);
+  CHECK(rq_scan_more(&s, false), "a changed card is owed a cycle, full window or not");
+  rq_scan_pass_done(&s, 50, 0, false);
+  CHECK(rq_scan_more(&s, false), "and a cycle in progress finishes, full window or not");
 
   /* Unadmitted counts accumulate across the passes of one cycle. */
   rq_scan_init(&s);
@@ -1127,7 +1133,7 @@ static void test_scan_cursor_basics(void) {
   CHECK(s.card_pending == 7, "the whole cycle's count is 2+1+4, got %u", s.card_pending);
 
   rq_scan_init(NULL);
-  CHECK(rq_scan_skip(NULL) == 0 && !rq_scan_more(NULL), "NULL is answered, not crashed");
+  CHECK(rq_scan_skip(NULL) == 0 && !rq_scan_more(NULL, true), "NULL is answered, not crashed");
 }
 
 static void test_scan_finds_work_past_the_window(void) {
@@ -1146,7 +1152,7 @@ static void test_scan_finds_work_past_the_window(void) {
     CHECK(admitted_first == (counts[k] < UPLOAD_QUEUE_MAX_TEST ? counts[k] : UPLOAD_QUEUE_MAX_TEST),
           "%d pending: the first pass admits what fits (%d)", counts[k], admitted_first);
     if (counts[k] > UPLOAD_QUEUE_MAX_TEST) {
-      CHECK(rq_scan_more(&s), "%d pending: more is owed", counts[k]);
+      CHECK(rq_scan_more(&s, c.window < c.window_max), "%d pending: more is owed", counts[k]);
       CHECK(fake_unadmitted(&c) == counts[k] - UPLOAD_QUEUE_MAX_TEST,
             "%d pending: the rest waits", counts[k]);
     }
@@ -1265,20 +1271,20 @@ static void test_a_new_capture_reopens_the_cycle(void) {
   /* Walk a card with nothing owed: the cycle closes and says so. */
   fake_pass(&c, &s, SCAN_WORK_TEST);
   CHECK(s.cycle_complete, "a pass that reached the end closes the cycle");
-  CHECK(!rq_scan_more(&s), "and with nothing unadmitted, nothing is owed");
+  CHECK(!rq_scan_more(&s, c.window < c.window_max), "and with nothing unadmitted, nothing is owed");
   CHECK(s.card_pending == 0, "card_pending is 0");
 
   /* A shutter. The window took it or it did not; either way the card changed. */
   rq_scan_card_changed(&s);
   CHECK(!s.cycle_complete, "the last cycle is no longer an answer about this card");
-  CHECK(rq_scan_more(&s), "so a cycle is owed");
+  CHECK(rq_scan_more(&s, c.window < c.window_max), "so a cycle is owed");
   CHECK(s.card_pending == 0, "and no count is invented to say so");
 
   /* The cycle that follows closes it again, honestly. */
   c.eligible[39] = true;
   const int rounds = fake_drain(&c, &s, SCAN_WORK_TEST, 8, 200);
   CHECK(c.admitted[39], "the new capture is discovered (%d rounds)", rounds);
-  CHECK(s.cycle_complete && !rq_scan_more(&s), "and only then does nothing-owed return");
+  CHECK(s.cycle_complete && !rq_scan_more(&s, c.window < c.window_max), "and only then does nothing-owed return");
 }
 
 /* The same, with the window full at the shutter: the capture is refused, the
@@ -1290,7 +1296,7 @@ static void test_a_refused_capture_is_still_owed(void) {
   fake_init(&c, 60, UPLOAD_QUEUE_MAX_TEST);
   rq_scan_init(&s);
   fake_pass(&c, &s, SCAN_WORK_TEST);
-  CHECK(!rq_scan_more(&s), "settled to nothing owed first");
+  CHECK(!rq_scan_more(&s, c.window < c.window_max), "settled to nothing owed first");
 
   /* Ten shutters land while the window is full of jobs that have not drained. */
   c.window = c.window_max;
@@ -1299,7 +1305,7 @@ static void test_a_refused_capture_is_still_owed(void) {
     rq_scan_card_changed(&s);
   }
   fake_pass(&c, &s, SCAN_WORK_TEST); /* a pass that can admit nothing */
-  CHECK(rq_scan_more(&s), "a cycle is owed while the window cannot take them");
+  CHECK(rq_scan_more(&s, c.window < c.window_max), "a cycle is owed while the window cannot take them");
 
   /* The window drains. Nothing else prompts the queue. */
   c.window = 0;
@@ -1310,7 +1316,148 @@ static void test_a_refused_capture_is_still_owed(void) {
   }
   CHECK(found == 10, "all ten refused captures are discovered, %d found in %d rounds", found,
         rounds);
-  CHECK(s.cycle_complete && !rq_scan_more(&s), "and the queue may then say nothing is owed");
+  CHECK(s.cycle_complete && !rq_scan_more(&s, c.window < c.window_max), "and the queue may then say nothing is owed");
+}
+
+/* ---- the worker's idle loop (#248) -------------------------------------- */
+
+/*
+ * Bench, 0.4.63: no Roll API base URL in the build, so every step failed in
+ * 0 ms. The RAM window held 28 jobs backing off and 4 parked, and 60 more
+ * captures were eligible on the card. rq_scan_more() answered true while
+ * cardPending > 0, every pass admitted nothing, and the worker went straight
+ * round its loop into the next one: 12 passes in a 468 ms move, each holding
+ * the FatFs volume lock, and the screen's moves fell to 4-47 fps.
+ *
+ * worker_wake() is one wake of worker_task() with the card and FreeRTOS
+ * removed: a step if a job has one due (it fails as a missing API base does,
+ * status 0), else a pass if one is owed (rq_scan_more() with the window's
+ * room), then straight on or to sleep as rq_scan_run_on() says. `old` runs the
+ * loop as it was - room ignored, straight on after any pass that had the card
+ * - so the test shows it can tell the two apart. Returns the passes run.
+ */
+typedef struct {
+  rq_job_t jobs[UPLOAD_QUEUE_MAX_TEST];
+  int n;
+  bool rescan; /* s_rescan */
+  int steps;
+} fake_worker_t;
+
+static int worker_wake(fake_worker_t *w, fake_card_t *c, rq_scan_t *s, int64_t now, bool old) {
+  int passes = 0;
+  for (int guard = 0; guard < 200; guard++) {
+    int idx = -1;
+    rq_step_t step = {0};
+    for (int i = 0; i < w->n; i++) {
+      step = rq_next_step(&w->jobs[i], now);
+      if (step.kind != RQ_STEP_NOTHING && step.kind != RQ_STEP_WAIT_BACKOFF) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx >= 0) {
+      rq_job_t *job = &w->jobs[idx];
+      rq_apply(job, step, rq_classify_step(0, NULL, false), "no Roll API base URL in this build");
+      if (job->state == RQ_RETRY_WAIT) job->next_attempt_ms = now + rq_backoff_ms(job->attempts);
+      w->steps++;
+      continue;
+    }
+    const bool room = old || c->window < c->window_max;
+    if (!w->rescan && rq_scan_more(s, room)) w->rescan = true;
+    if (!w->rescan) break; /* nothing owed: sleep */
+    w->rescan = false;     /* queue_scan() takes the request */
+    const int before = c->admits;
+    fake_pass(c, s, SCAN_WORK_TEST);
+    passes++;
+    const uint32_t admitted = (uint32_t)(c->admits - before);
+    if (rq_scan_more(s, old || c->window < c->window_max)) w->rescan = true;
+    if (old ? true : rq_scan_run_on(true, admitted)) continue;
+    break; /* sleep until the next wake */
+  }
+  return passes;
+}
+
+/* The bench's queue: a full window of 4 parked jobs and 28 backing off, 60
+ * eligible captures past it on the card, 8 finished ones. */
+static void bench_queue(fake_worker_t *w, fake_card_t *c, rq_scan_t *s, int parked) {
+  memset(w, 0, sizeof *w);
+  fake_init(c, 100, UPLOAD_QUEUE_MAX_TEST);
+  rq_scan_init(s);
+  for (int i = 0; i < 92; i++) c->eligible[i] = true;
+  for (int i = 0; i < UPLOAD_QUEUE_MAX_TEST; i++) c->admitted[i] = true;
+  c->window = UPLOAD_QUEUE_MAX_TEST;
+  w->n = UPLOAD_QUEUE_MAX_TEST;
+  const rq_step_t reg = {.kind = RQ_STEP_REGISTER};
+  for (int i = 0; i < w->n; i++) {
+    rq_job_init(&w->jobs[i], UUID_A, "roll_0001", 4, true);
+    if (i < parked) {
+      for (int k = 0; k < RQ_MAX_ATTEMPTS; k++) rq_apply(&w->jobs[i], reg, RQ_DISP_RETRY, "connect");
+    } else {
+      rq_apply(&w->jobs[i], reg, RQ_DISP_RETRY, "connect");
+      w->jobs[i].next_attempt_ms = 0;
+    }
+  }
+  /* The boot's pass is owed: the card has not been walked yet. */
+  rq_scan_card_changed(s);
+  w->rescan = true;
+}
+
+static void test_worker_does_not_spin_on_a_full_window(void) {
+  const int parked_counts[] = {4, UPLOAD_QUEUE_MAX_TEST};
+  for (unsigned k = 0; k < sizeof parked_counts / sizeof parked_counts[0]; k++) {
+    const int parked = parked_counts[k];
+    fake_worker_t w;
+    fake_card_t c;
+    rq_scan_t s;
+    bench_queue(&w, &c, &s, parked);
+    for (int i = 0; i < w.n; i++) {
+      if (i < parked) CHECK(rq_park_is_transient(&w.jobs[i]), "%d parked: job %d is parked", parked, i);
+    }
+
+    /* A wake a second (IDLE_TICKS) for ten minutes. */
+    int worst = 0, total = 0, last_pass = -1;
+    for (int wake = 0; wake < 600; wake++) {
+      const int p = worker_wake(&w, &c, &s, (int64_t)wake * 1000, false);
+      if (p > worst) worst = p;
+      if (p > 0) last_pass = wake;
+      total += p;
+    }
+    CHECK(worst <= 1, "%d parked: at most one pass per wake, got %d", parked, worst);
+    CHECK(s.cycle_complete && s.card_pending == 60,
+          "%d parked: the cycle still completes and counts the 60 waiting (%u)", parked, s.card_pending);
+    CHECK(last_pass >= 0 && last_pass < 100,
+          "%d parked: once the full window's cycle is done no pass runs (last at wake %d)", parked,
+          last_pass);
+    CHECK(total <= 62, "%d parked: %d passes in ten minutes, not one per loop", parked, total);
+    CHECK(c.admits == 0, "%d parked: and nothing was admitted twice or past the window", parked);
+    if (parked == UPLOAD_QUEUE_MAX_TEST) {
+      CHECK(w.steps == 0, "every job parked: no step runs, %d did", w.steps);
+    } else {
+      CHECK(w.steps > 0, "the jobs backing off still get their steps (%d)", w.steps);
+    }
+
+    /* A job leaves the window - a COMPLETE drop or a trim, which also ask for
+     * a pass. The next wake takes the next capture off the card, once. */
+    c.window--;
+    w.rescan = true;
+    const int before = c.admits;
+    const int p = worker_wake(&w, &c, &s, 600 * 1000, false);
+    CHECK(c.admits == before + 1, "%d parked: the freed slot admits one capture (%d)", parked,
+          c.admits - before);
+    CHECK(p <= 2, "%d parked: in at most the pass that admits and one that cannot (%d)", parked, p);
+  }
+
+  /* The loop as it was, on the same queue: straight on after every pass. */
+  fake_worker_t w;
+  fake_card_t c;
+  rq_scan_t s;
+  bench_queue(&w, &c, &s, 4);
+  int old_worst = 0;
+  for (int wake = 0; wake < 5; wake++) {
+    const int p = worker_wake(&w, &c, &s, (int64_t)wake * 1000, true);
+    if (p > old_worst) old_worst = p;
+  }
+  CHECK(old_worst > 1, "the old loop runs pass after pass in one wake (%d), which is the spin", old_worst);
 }
 
 
@@ -1628,6 +1775,7 @@ int main(void) {
   test_revive_round_trip();
   test_a_new_capture_reopens_the_cycle();
   test_a_refused_capture_is_still_owed();
+  test_worker_does_not_spin_on_a_full_window();
   test_scan_cursor_basics();
   test_scan_finds_work_past_the_window();
   test_scan_has_no_directory_ceiling();

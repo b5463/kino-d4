@@ -152,6 +152,26 @@ export enum Cmd {
    * there is nowhere else for the bytes to go.
    */
   UPLOAD_ENQUEUE = 0xaa,
+
+  // Screen (#246): see and drive the body's own screen from a host. A family
+  // of its own above the network group, so the four ids sit together and the
+  // last two diagnostics slots (0x4e, 0x4f) stay free. Gated by the
+  // `screenControl` capability. The USB host can already capture and delete,
+  // so a tap or a key adds no authority it did not have.
+  /**
+   * `{}` renders the current screen once into the body's canvas and describes
+   * it (`ScreenShotInfo`); `{ shot, offset, length }` reads RGB565 bytes out
+   * of that render, at most 3072 per reply, paged like MEDIA_READ. Refused
+   * BUSY while a move or the boot sequence runs, INVALID_STATE once the
+   * canvas has been drawn again since `shot`.
+   */
+  GET_SCREEN = 0xb0,
+  /** A test plate for panel photos: grey ramp, every palette colour, a 1 px grid. */
+  SCREEN_PLATE = 0xb1,
+  /** A tap in logical 800x480 coordinates, through the path a finger takes. */
+  UI_TAP = 0xb2,
+  /** The shutter or FN key, through the queue the physical keys use. */
+  UI_KEY = 0xb3,
 }
 
 // Unsolicited frames pushed by the device (FrameFlags.EVENT set).

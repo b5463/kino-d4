@@ -4,6 +4,7 @@
 
 import type { KinoDevice } from '../device/KinoDevice';
 import { Cmd, KinoCommandError, KinoTimeoutError, KinoUnsupportedError } from '@kino/kdp';
+import { SCREEN_CHUNK_MAX, SCREEN_IDS } from '@kino/kdp';
 import type { CamId, GetModesResponse, SoakTestSummary } from '@kino/kdp';
 
 export type ConformanceStatus = 'pass' | 'shape' | 'unsupported' | 'timeout' | 'error' | 'skipped';
@@ -32,6 +33,8 @@ interface Ctx {
   gallery?: boolean;
   /** Set by the GET_CAPABILITIES case; gates the bench-diagnostics cases. */
   bench?: boolean;
+  /** Set by the GET_CAPABILITIES case; gates the Screen cases (#246). */
+  screen?: boolean;
   /**
    * The camera channels that answered `GET_CAMERA_INFO`, set by that case.
    *
@@ -92,6 +95,7 @@ const CASES: Case[] = [
       const r = await dev.getCapabilities();
       ctx.bench = r.capabilities.benchDiagnostics === true;
       ctx.gallery = r.capabilities.gallery === true;
+      ctx.screen = r.capabilities.screenControl === true;
       // `firmware` is in the response contract and is what the Unsupported
       // panels quote by name, so a device that omits it is a shape failure,
       // not a cosmetic one.
@@ -599,6 +603,59 @@ const CASES: Case[] = [
       const bytes = await dev.previewFrame(cam ?? 'cam2');
       if (bytes[0] !== 0xff || bytes[1] !== 0xd8) throw new ShapeError('PREVIEW: not a JPEG');
       return `${(cam ?? 'cam2').toUpperCase()} · ${bytes.length} bytes`;
+    },
+  },
+  {
+    /*
+     * Passive: a render of what the panel already shows changes nothing on
+     * the body. A move or the boot sequence answers BUSY, which is the body
+     * being honest about its panel, so the case asks again for 3 s. The first
+     * page and the empty answer at the end prove the paging; the whole
+     * screen is 250 pages and belongs to scripts/kino-ui-walk.mjs.
+     */
+    name: 'GET_SCREEN',
+    active: false,
+    run: async (dev, ctx) => {
+      if (ctx.screen !== true) return 'skipped — no screenControl in this firmware';
+      const deadline = performance.now() + 3000;
+      let info;
+      for (;;) {
+        try {
+          info = await dev.getScreen();
+          break;
+        } catch (err) {
+          if (!(err instanceof KinoCommandError) || err.code !== 'BUSY' || performance.now() > deadline) throw err;
+          await new Promise((res) => setTimeout(res, 150));
+        }
+      }
+      expectKeys(info, ['shot', 'width', 'height', 'format', 'bytes', 'chunkMax', 'screen', 'plate'], 'GET_SCREEN');
+      if (info.format !== 'rgb565le') throw new ShapeError(`GET_SCREEN: format ${String(info.format)}`);
+      if (info.bytes !== info.width * info.height * 2) throw new ShapeError('GET_SCREEN: bytes is not width x height x 2');
+      if (info.chunkMax > SCREEN_CHUNK_MAX) throw new ShapeError(`GET_SCREEN: chunkMax ${info.chunkMax} over ${SCREEN_CHUNK_MAX}`);
+      if (!(SCREEN_IDS as readonly string[]).includes(info.screen)) {
+        throw new ShapeError(`GET_SCREEN: unknown screen ${String(info.screen)}`);
+      }
+      const first = await dev.getScreenPage(info.shot, 0, info.chunkMax);
+      if (first.length !== info.chunkMax) throw new ShapeError(`GET_SCREEN: first page ${first.length} bytes`);
+      const tail = await dev.getScreenPage(info.shot, info.bytes, info.chunkMax);
+      if (tail.length !== 0) throw new ShapeError('GET_SCREEN: a page at the end is not empty');
+      return `${info.screen}${info.plate ? ' (plate)' : ''} · ${info.width}x${info.height} · shot ${info.shot}`;
+    },
+  },
+  {
+    /* Active: the plate covers the screen until it is turned off. Off at the
+     * end whatever happened, so a failed case does not leave a plate up. */
+    name: 'SCREEN_PLATE on/off',
+    active: true,
+    run: async (dev, ctx) => {
+      if (ctx.screen !== true) return 'skipped — no screenControl in this firmware';
+      try {
+        const on = await dev.screenPlate(true);
+        if (on.on !== true) throw new ShapeError('SCREEN_PLATE: on did not answer on: true');
+      } finally {
+        await dev.screenPlate(false);
+      }
+      return 'plate shown and dropped';
     },
   },
   {

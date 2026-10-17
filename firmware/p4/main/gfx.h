@@ -162,6 +162,19 @@ const uint16_t *gfx_stash_px(void);
 void gfx_layer_keep(void);
 void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h);
 
+/**
+ * The canvas's generation: it goes up whenever something may have drawn into
+ * the canvas - gfx_render_canvas(), a blit, a present - and is never 0.
+ *
+ * GET_SCREEN (#246, kdp_ui.c) renders the screen into the canvas once and
+ * then reads it out a page at a time from the KDP task while the UI carries
+ * on. A page is answered only while the generation is still the one the
+ * render left, so a picture read across a move is refused rather than sent
+ * half one screen and half the next. Only the UI task bumps it; any task may
+ * read it.
+ */
+uint32_t gfx_canvas_gen(void);
+
 /** Frames presented and the time they took, for bandwidth checks. */
 void gfx_stats(uint32_t *frames, uint32_t *last_ms);
 
@@ -171,5 +184,37 @@ uint64_t gfx_present_us_total(void);
 /** Microseconds spent drawing, writing tiles out, and waiting for the panel's
  *  refresh end, since boot. */
 void gfx_pass_split(uint64_t *draw_us, uint64_t *xpose_us, uint64_t *vsync_us);
+
+/**
+ * The cadence the eye saw: how many panel refreshes each frame stayed up.
+ *
+ * The panel switches buffers only at a refresh end, so the time between two
+ * frames on the glass is a whole number of refreshes. A move that averages
+ * 50 fps is mostly one-refresh frames with some held for two, and the two are
+ * the judder; an average cannot show them. Counted per hand-over from the
+ * refresh-end interrupt's count, since gfx_cadence_begin(). hist[k] is the
+ * frames that followed the one before by k refreshes (k = 1..6, [7] for 7 or
+ * more; [0] would be a frame replaced before it was shown). period_us is one
+ * refresh, measured against esp_timer since the first frame; 0 until known.
+ * max_n is the longest gap in refreshes, uncapped, and max_us when the frame
+ * that ended it was handed over (esp_timer).
+ */
+typedef struct {
+  uint16_t hist[8];
+  uint32_t period_us;
+  uint32_t max_n;
+  int64_t max_us;
+} gfx_cadence_t;
+void gfx_cadence_begin(void);
+void gfx_cadence(gfx_cadence_t *out);
+
+/**
+ * When a frame drawn now goes up on the glass (esp_timer us): the refresh end
+ * after the frame already handed over, or the next one when none is waiting.
+ * A move's clock reads this rather than the time the frame is drawn, so on a
+ * steady cadence its picture steps by exactly one refresh of motion a frame,
+ * whatever each frame took to draw (#248). Never earlier than now.
+ */
+int64_t gfx_due_us(void);
 
 #endif

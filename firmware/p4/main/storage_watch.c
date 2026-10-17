@@ -129,6 +129,9 @@ static void watch_task(void *arg) {
         klog("SD", "card removed while running");
         continue;
       }
+      /* Free space for the screen (#248). Read here because this task may wait
+       * on the FatFs volume lock behind an upload pass; the ui task may not. */
+      storage_status_refresh();
       if (!was_mounted) {
         was_mounted = true;
         push(STORAGE_EV_MOUNTED);

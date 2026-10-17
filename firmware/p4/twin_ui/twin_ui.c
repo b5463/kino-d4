@@ -276,6 +276,10 @@ void gfx_render(gfx_draw_fn draw, void *ctx) {
   draw(ctx);
   gfx_present();
 }
+/* GET_SCREEN's canvas generation (#246). The Twin has no KDP task reading
+ * the canvas behind the UI's back, so the pass count stands in: it moves
+ * whenever anything is drawn. Never 0. */
+uint32_t gfx_canvas_gen(void) { return s_pass + 1; }
 
 void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (dx < 0) { w += dx; sx -= dx; dx = 0; }
@@ -327,6 +331,13 @@ void gfx_pass_split(uint64_t *d, uint64_t *x, uint64_t *v) {
   if (d) *d = 0;
   if (x) *x = 0;
   if (v) *v = 0;
+}
+/* No panel, no refreshes: a move's cadence line reads "no second frame". */
+void gfx_cadence_begin(void) {}
+/* The virtual clock: a frame goes up when it is drawn. */
+int64_t gfx_due_us(void) { return kui_now_us; }
+void gfx_cadence(gfx_cadence_t *out) {
+  if (out != NULL) memset(out, 0, sizeof *out);
 }
 
 void taskmon_register(const char *name, void *handle) {
@@ -583,6 +594,12 @@ bool kdp_recipes_capture_block(const char *id, recipe_capture_t *out) {
   out->has_sharpness = true;
   return true;
 }
+/* No card in the Twin: every look is answered without one, so LOOK draws its
+ * numbers on the first frame (#248). */
+bool kdp_recipes_capture_block_ram(const char *id, recipe_capture_t *out, bool *known) {
+  if (known != NULL) *known = true;
+  return kdp_recipes_capture_block(id, out);
+}
 
 static named_t s_clips[8] = {{"snd-air-horn", "Air horn"}, {"snd-polaroid", "Polaroid"}};
 static int s_clips_n = 2;
@@ -717,6 +734,8 @@ void capture_last(capture_report_t *out) {
   if (out) *out = g_report;
 }
 uint32_t capture_count(void) { return g_capture_count; }
+/* The Twin is a D4-V1: no flash since ECN-0003, so no flash control (#247). */
+bool capture_has_flash(void) { return false; }
 
 /* ---- firmware update ------------------------------------------------------ */
 
@@ -762,7 +781,9 @@ void kui_set_capture_report(int ok, const char *id, int stored, int online, unsi
 
 static uint16_t g_tile[GALLERY_PAGE][GALLERY_TILE_W * GALLERY_TILE_H];
 static gallery_item_t g_slot[GALLERY_PAGE];
-static int g_total, g_page = 1, g_pages = 1;
+/* g_page is 0-based, as gallery.c's s_page and everything in ui.c that reads
+ * gallery_page(); the page script counts from 1 (kui_gallery_set()). */
+static int g_total, g_page = 0, g_pages = 1;
 static bool g_loading, g_deleting;
 static int g_delete_done, g_delete_total;
 
@@ -827,7 +848,7 @@ void gallery_delete_progress(int *done, int *total) {
 
 KUI_EXPORT("kui_gallery_set") void kui_gallery_set(int total, int page, int pages, int loading) {
   g_total = total;
-  g_page = page;
+  g_page = page - 1;
   g_pages = pages;
   g_loading = loading != 0;
 }
@@ -999,6 +1020,13 @@ void camlink_get_info_ch(int cam, camlink_info_t *out) {
   }
   *out = g_cam[cam];
 }
+/* What kui_set_cam() said, as cam_link's byte (#245). */
+uint8_t camlink_online_mask(void) {
+  uint8_t m = 0;
+  for (int i = 0; i < 4; i++)
+    if (g_cam[i].online) m |= (uint8_t)(1u << i);
+  return m;
+}
 KUI_EXPORT("kui_set_cam")
 void kui_set_cam(int cam, int online, const char *fw, const char *sensor, int temp_c, unsigned latency_ms) {
   if (cam < 0 || cam >= 4) return;
@@ -1021,6 +1049,8 @@ static char g_storage_error[32];
 void storage_get_status(storage_status_t *out) {
   if (out) *out = g_storage;
 }
+/* The screen's copy (#248): no card to wait on here, so the same record. */
+void storage_get_status_cached(storage_status_t *out) { storage_get_status(out); }
 KUI_EXPORT("kui_set_storage")
 void kui_set_storage(int present, int mounted, double capacity_bytes, double free_bytes, const char *last_error) {
   memset(&g_storage, 0, sizeof g_storage);

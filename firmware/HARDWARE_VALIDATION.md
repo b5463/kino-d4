@@ -1577,7 +1577,9 @@ to read the build's own `overlay` lines rather than to trust the intent.
 and a 3 s budget - and reports `capture sweep left 541 dirs for the next boot`,
 so it reaches about 247 directories per boot and successive boots reach further
 in. That is housekeeping and not a photograph at risk, and it is not changed
-here.
+here. (0.4.63, #245: the budget is 800 ms, so a boot reaches fewer directories
+and the cursor carries the rest. The boot logs `orphan sweep N ms` and `first
+frame lit N ms after start`; neither is measured on this card yet.)
 
 **The backlog, uploaded.** With the reader fixed the same card drained without
 an operator touching anything: 32 captures admitted per pass, the RAM window

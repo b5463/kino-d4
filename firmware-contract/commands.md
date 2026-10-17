@@ -18,10 +18,13 @@ Payload shapes are marked:
 0x26–0x2b  Sounds             0x80–0x89  EVENTS (device→host, unsolicited)
 0x30–0x37  Camera             0xa0–0xaa  Network / Roll / upload queue
 0x40–0x4d  Diagnostics (0x4d bench-only, private)
+0xb0–0xb3  Screen (the body's own screen, seen and driven)
 ```
 
 The Network/Roll group sits above the event range on purpose: a command id and an event id can never
-collide in a protocol trace. Do not allocate new commands into `0x80`–`0x89`.
+collide in a protocol trace. Do not allocate new commands into `0x80`–`0x89`. The Screen group
+(#246) took a range of its own above it rather than `0x4e`/`0x4f`: four commands do not fit in two
+slots, and the last two diagnostics ids stay free.
 
 > **Name collision: `SELF_TEST` exists in both enums.** `Cmd.SELF_TEST` = `0x42` (host asks the device
 > to run the suite); `Evt.SELF_TEST` = `0x84` (device reports each check as it completes). Different
@@ -142,6 +145,7 @@ above, and these optional ones:
 | `radioFitted` | An ESP32-C6 is soldered on |
 | `radioRouted` | This firmware has a transport to that radio. A build-time opt-in on D4-V1 |
 | `brightnessControl` | `BodyConfig.brightness` moves the backlight. **Defaults to true — see below** |
+| `screenControl` | The Screen group answers: `GET_SCREEN`, `SCREEN_PLATE`, `UI_TAP`, `UI_KEY` (`0xb0`–`0xb3`, #246) |
 
 Optional means absent on firmware that predates the feature. **Absence is an answer — "not
 supported" — not an unknown.** One exception:
@@ -849,6 +853,66 @@ Reference-device rejections: `INVALID_ARGUMENT` for a missing/empty `captureId`,
 and `NOT_FOUND` for an id the card does not hold. Studio hides the action entirely unless
 `ROLL_STATUS` reports an active Roll **and** `rollUpload` is advertised, so a NACK here means the two
 sides disagree, not that the user pressed something they should not have.
+
+### Screen — 0xb0–0xb3
+
+The body's own screen, seen and driven from the host (#246). Gated by `screenControl`; a body without
+it answers `UNSUPPORTED_COMMAND`. Every build answers on D4-V1 from 0.4.63
+(`firmware/p4/main/kdp_ui.c`). The USB host can already capture and delete, so a tap or a key gives it
+no authority it did not have.
+
+| Cmd | Value | Payload |
+|---|---:|---|
+| `GET_SCREEN` | `0xb0` | → `{}` ← **typed** `ScreenShotInfo`; → `{ "shot", "offset", "length" }` ← **BINARY** RGB565 bytes. Timeout 3 s |
+| `SCREEN_PLATE` | `0xb1` | → **typed** `ScreenPlateRequest` `{ "on": true }` ← `{ "ok": true, "on": true }` |
+| `UI_TAP` | `0xb2` | → **typed** `UiTapRequest` `{ "x": 190, "y": 58, "holdMs"?: 80 }` ← `{ "ok": true, "queued": 1 }` |
+| `UI_KEY` | `0xb3` | → **typed** `UiKeyRequest` `{ "key": "shutter", "longPress"?: false }` ← `{ "ok": true, "key": "shutter" }`. `key` is `shutter` or `fn` |
+
+**`GET_SCREEN` is two steps on one command.** `{}` renders the current screen once, on the UI task,
+through the drawing path a transition already uses (`gfx_render_canvas`), into the canvas the body
+already has. No buffer is added. The reply describes it:
+
+```json
+{ "shot": 41, "width": 800, "height": 480, "format": "rgb565le", "bytes": 768000,
+  "chunkMax": 3072, "screen": "menu", "plate": false }
+```
+
+`{ "shot", "offset", "length" }` then reads that render: `length` 1–3072 (absent or 0 is 3072) bytes from
+`offset`, two bytes a pixel, low byte first, rows top to bottom in the logical 800x480 landscape the
+host_preview renders use. A page that runs past the end is short; a page at exactly `bytes` is
+empty. A screen is 250 pages. A host reads them in order and then asks once more at `offset: bytes`:
+the empty answer there proves the canvas was not drawn again while the pages were read.
+
+Refusals: `BUSY` while a move, the boot sequence, the sleep's wind-down or a wake's lift owns the
+panel, or when the UI task does not answer within 1.5 s — ask again. `INVALID_STATE` for a page of a
+render the canvas no longer holds (`shot` is the canvas generation; a move draws into the canvas and
+moves it on) — render again. `INVALID_ARGUMENT` for an `offset` past `bytes` or a `shot` that is
+not a number. A body asleep is not `BUSY`: the render is the screen under the sleep's dark scrim,
+which is what the glass would show with the light on.
+
+`screen` is the lower-case `screen_t` name (`SCREEN_IDS` in `types.ts`, `UI_SCREEN_IDS` in `ui.h`):
+`menu shoot look gallery photo roll settings display sound connection storage about status power`. On
+the plate it names the screen the plate covers, and `plate` is true.
+
+**`UI_TAP`** holds a contact at `x` 0–799, `y` 0–479 for `holdMs` (20–4000, default 80) and lifts it,
+through the same pass a finger goes through: the palm edge, the drift and hold rules (a contact held
+past 2500 ms is not a tap), and the wake that swallows a press on a dark screen. Taps queue four deep
+and run one after another; a fifth is `BUSY`. Out-of-range values are `INVALID_ARGUMENT`. A body
+whose screen is not running answers `INVALID_STATE`.
+
+**`UI_KEY`** puts a press on the queue the physical keys use, with the same wake. The shutter on SHOOT
+takes a photograph. `longPress` adds the 600 ms hold report the button sends, which the screen
+ignores, as it ignores the button's. A full key queue is `BUSY`. A body whose screen is not running
+answers `INVALID_STATE`.
+
+**`SCREEN_PLATE`** `{ "on": true }` covers the screen with a test plate for panel photos: a 32-step grey
+ramp, every palette colour, the eight launch shades and their pressed steps, and a 1 px grid. A body
+asleep wakes and shows it. It holds the panel awake and ends on a touch, a key, `{ "on": false }`, a sleep the body is told to take (the lens
+cover closing), or after 5 minutes. A press that ends it does nothing else.
+
+The reference device answers all four. Its pictures are flat blocks where the real screens have their
+rows and card, and its taps move between screens on the right-hand layout, so
+`scripts/kino-ui-walk.mjs --mock` runs end to end; its plate is the firmware's layout.
 
 ## Events — 0x80–0x89
 

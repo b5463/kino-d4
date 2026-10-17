@@ -158,20 +158,20 @@ Type is Inter and Oxanium, rasterised to 8-bit coverage: Inter for everything a 
 
 Colour is one pink, and it means something happened. At rest the screen is ink on near-black, the same base as MAO, the studio's controller. The pink fills the SHOOT card, a control under a finger, and the four-mark for the 300 ms after a capture lands. Red is for a fault. The pink is not quite the same on every start: the camera takes one of eight shades from MAO pink a short way toward lavender, by its boot count, and wears it until it restarts. The palette, the eight shades and the rules for using them are in [`firmware/UI_DIRECTION.md`](firmware/UI_DIRECTION.md).
 
-#### It boots by showing you the camera
+#### It starts by showing you the camera
 
-The startup screen is not a logo. It is a field of small glyphs on a square lattice, and both of the things it does carry a fact about the machine that is waking up.
+The start opens on the maker's mark, ODD JOBS, in ink on black. Under it are four cells, one per camera, CAM1 top left, the way the four sit on the viewfinder and on the menu card.
 
 <p align="center">
-  <img src="docs/assets/product/firmware-boot-field-render.png" width="49%" alt="The boot field with all four cameras answering">
-  <img src="docs/assets/product/firmware-boot-field-two-silent-render.png" width="49%" alt="The boot field with two cameras silent">
+  <img src="docs/assets/product/firmware-start-render.png" width="49%" alt="The start with all four cameras answering">
+  <img src="docs/assets/product/firmware-start-three-render.png" width="49%" alt="The start with the third camera silent">
 </p>
 
-<p align="center"><sub>Left: four cameras answering. Right: the same body with cameras 2 and 4 silent. Both are firmware renders.</sub></p>
+<p align="center"><sub>Left: four cameras answering. Right: the same body with the third camera silent. Both are firmware renders.</sub></p>
 
-**How far the field reaches is how many of the four cameras have answered** — one quadrant each, cam 1 top left, the way the four sit on the viewfinder and on the body. A node that answers part-way through the boot opens its quarter out instead of appearing. So a camera with a dead node says so on the first screen it shows, without a word of type, in the product's own mark.
+**A cell fills when its camera answers**, not on a timer. A camera that has not answered after 1.6 s keeps an outline, drawn in full ink: a camera with a dead node says so on the first screen it shows, without a word of type.
 
-**What colour it warms to is this start's shade.** The field comes up in neutral greys and travels to the launch shade's inks as the cameras answer: the same pink the SHOOT card wears until the next restart.
+**Then the four become the menu.** The cells turn dark while the box behind them turns this start's pink. The box grows into the SHOOT card, the cells into the card's four-mark, and the rows land beside it. That pink is the only colour in the start. With all four cameras up the menu is there in about two seconds, and in under three with one silent. A tap cuts the start short.
 
 #### The rest of it
 

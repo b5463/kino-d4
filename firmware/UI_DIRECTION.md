@@ -11,14 +11,15 @@ The words on the glass are not here. They are in [`docs/DEVICE_COPY.md`](../docs
 | File | What it holds |
 |---|---|
 | `firmware/p4/main/ui.c` | Every screen, the hit test, the moves, the UI task. No NVS and no filesystem: the Twin compiles it to wasm. |
-| `firmware/p4/main/ui.h` | `ui_start()`, `ui_set_launch_index()`, `ui_liveness()`. |
+| `firmware/p4/main/ui.h` | `ui_start()`, `ui_set_launch_index()`, `ui_liveness()`, and the screen over KDP: `ui_shot_ask()`, `ui_tap_post()`, `ui_key_post()`, `ui_plate_post()`. |
 | `firmware/p4/main/ui_theme.h` | `RGB()`, the launch shade names, the type roles and `K_PAIRS`. |
 | `firmware/p4/main/ui_palette.h` | Generated from the palette JSON by `scripts/gen-device-palette.mjs`. Never edited by hand. |
 | `firmware/p4/main/ui_motion.h` | Every duration and curve, and the five motion rules. |
 | `firmware/p4/main/ui_font.h` | Inter and Oxanium at six sizes, 8-bit coverage. |
-| `firmware/p4/main/logo_kino_d4.h` | The KINO D4 wordmark, 8-bit coverage. Reserved, not MIT. |
+| `firmware/p4/main/logo_kino_d4.h` | The KINO D4 wordmark, 8-bit coverage. Reserved, not MIT. Not drawn since #245: `ui.c` does not include it, so it costs no flash. Kept because LICENSE names it. |
 | `firmware/p4/main/ui_mark_odd_jobs.h` | The ODD JOBS symbol at two sizes, 8-bit coverage. Reserved, not MIT. |
 | `firmware/p4/main/gfx.c` | The tile renderer and the panel-orientation moves. |
+| `firmware/p4/main/kdp_ui.c` | GET_SCREEN, SCREEN_PLATE, UI_TAP and UI_KEY on the KDP task (#246). It asks `ui.c` and never draws. |
 | `firmware/p4/main/conditions.h` | The conditions a screen reports, and their severity. |
 | `firmware/p4/host_preview/preview.c` | Renders every screen for both hands and audits them. |
 | `firmware/p4/twin_ui/twin_ui.c` | The same `ui.c` in KINO Twin. |
@@ -30,10 +31,10 @@ Logical space is `UI_W` x `UI_H`, 800 x 480 px, landscape. The panel's own long 
 | Screen | Opened from | Back goes to | What it does |
 |---|---|---|---|
 | `SCR_MENU` | Boot, and Back from the top level | stays | The SHOOT card and five rows: LOOK, GALLERY, ROLL, SETTINGS, POWER. |
-| `SCR_SHOOT` | The SHOOT card | `SCR_MENU` | The four streams, a quarter of the panel each, edge to edge. A MENU button on the hand's side. A 34 px status bar at the foot with the look, the mode, the flash, the four (with a count such as 3/4 beside them only when one is missing), STUDIO while Studio talks, and the card only when it is missing or under `COND_CARD_LOW_SHOTS` photographs left and the card pill is not saying it (during the count, which hides the pill, the bar keeps it); a press on the decisions opens LOOK. Outermost at the bar's hand end, the TIMER panel: TIMER OFF in `K_INK_QUIET` or TIMER 10 S in `K_INK`, its own target in the same `SH_LOOK_HIT_H` band, out to the hand's edge. The look's panel takes what is left and cuts a long name with an ellipsis. A pane with no picture says NO PICTURE over a 248 x 52 RESTART THE CAMERAS button; the button is the target, not the pane. |
-| `SCR_LOOK` | The LOOK row, or the SHOOT bar | `SCR_MENU`, or `SCR_SHOOT` when opened from it | The look picker, COLOUR or B&W, WIGGLE or QUAD, FLASH AUTO, ON or OFF, and in QUAD which lens: ALL, or a lens as the four-mark with its cell lit (`lens_glyph()`), no camera numbers. |
+| `SCR_SHOOT` | The SHOOT card | `SCR_MENU` | The four streams, a quarter of the panel each, edge to edge. A MENU button on the hand's side. A 34 px status bar at the foot with the look, the mode, the flash when one is fitted (`capture_has_flash()`; D4-V1 has none, so no flash panel and no gap, and the look's panel takes the room), the four (with a count such as 3/4 beside them only when one is missing), STUDIO while Studio talks, and the card only when it is missing or under `COND_CARD_LOW_SHOTS` photographs left and the card pill is not saying it (during the count, which hides the pill, the bar keeps it); a press on the decisions opens LOOK. Outermost at the bar's hand end, the TIMER panel: TIMER OFF in `K_INK_QUIET` or TIMER 10 S in `K_INK`, its own target in the same `SH_LOOK_HIT_H` band, out to the hand's edge. The look's panel takes what is left and cuts a long name with an ellipsis. A pane with no picture says NO PICTURE over a 248 x 52 RESTART THE CAMERAS button; the button is the target, not the pane. |
+| `SCR_LOOK` | The LOOK row, or the SHOOT bar | `SCR_MENU`, or `SCR_SHOOT` when opened from it | The look picker, COLOUR or B&W, WIGGLE or QUAD, FLASH AUTO, ON or OFF only with a flash fitted (`capture_has_flash()`: with none the row is two columns, MODE nearer the hand, and no FLASH item is drawn or hit; FN steps nothing), and in QUAD which lens: ALL, or a lens as the four-mark with its cell lit (`lens_glyph()`), no camera numbers. |
 | `SCR_GALLERY` | The GALLERY row | `SCR_MENU` | Three by two tiles of 252 x 189 px, the page pair in the header, `n / N` beside the title. |
-| `SCR_PHOTO` | A gallery tile, and after a shot | `SCR_GALLERY`; `SCR_SHOOT` after a shot | The photograph in a 600 x 450 well, playing. A 162 px column on the hand's side: the facts, previous and next, DELETE, SEND TO ROLL, FAVOURITE. |
+| `SCR_PHOTO` | A gallery tile, and after a shot | `SCR_GALLERY`; `SCR_SHOOT` after a shot | The photograph in a 600 x 450 well, playing. A 162 px column on the hand's side: the facts, previous and next, DELETE, SEND TO ROLL, FAVOURITE. The facts lead with the date, NO DATE when the clock never was (`pure_epoch_plausible()`), then the mode, then PHOTO 37, the place in the gallery (`photo_pos()`), all in `K_TYPE_CAPTION` and no wider than `PH_FACT_W`; no capture number. Previous and next cross gallery pages: past a page's edge the page turns, the photograph stays up, and the near end of the new page opens once the gallery task has read it (`photo_seek_poll()`; the grid after `PHOTO_SEEK_MAX_US`). A page turn owed when the sleep starts waits for the wake, as the review clock after a shot does: neither paints over the wind-down. Only the roll's two ends are dead. A horizontal swipe on the well steps it too, leftwards to the next for either hand (`pure_swipe_dir()`, judged on the lift); while it is down it presses nothing. |
 | `SCR_ROLL` | The ROLL row | `SCR_MENU` | The QR a guest scans, the address, the code, one word for the connection, and the counts from the card. |
 | `SCR_SETTINGS` | The SETTINGS row | `SCR_MENU` | Six rows: Display, Sound, Connection, Storage, About, Status. |
 | `SCR_DISPLAY` | Settings | `SCR_SETTINGS` | Dim after, sleep after, how long a shot stays up, camera idle. |
@@ -51,7 +52,7 @@ Rules that hold on every screen:
 - A screen sets `s_list_top` while it draws, and the hit test reads it afterwards. A rectangle the hit test computes on its own is the bug `ui.c` kept finding.
 - After a good shot on SHOOT the photograph opens for review, for the longer of `shoot.displayAfterShotS` and `MOTION_REVIEW_MIN_S`, plus `MOTION_REVIEW_TAIL_MS`, then returns to the finder as a back move. `-1` holds it until a touch. While its clock runs and nothing has touched it, the shutter fires and the finder slides back in; `shutter_now()` acknowledges the report still up first. With TIMER 10 S on, that press starts the count, which runs on the finder. A report that lands while the self-timer counts opens no review: it stays on SHOOT's banner, and the count's end acknowledges it. A touch stops the clock, and the shutter then only opens the finder. BACK and a confirmed DELETE end on SHOOT, DELETE with the undo toast; the next photograph clears that toast. The clock never carries an open dialog off. Under HOLD the first press acknowledges and the next opens the finder. PHOTO opened from GALLERY has none of this. On PHOTO the capture strip is a card inside the photo well (`PH_STRIP_Y`), clear of the column, and a toast sits above it.
 
-Dialogs are questions and nothing else. Seven exist: `DLG_RESTART`, `DLG_DELETE`, `DLG_DELETE_ALL`, `DLG_FORMAT`, `DLG_FACTORY`, `DLG_WELCOME` and `DLG_UPDATED`. Focus starts on the safe action. Something the camera is doing, rather than asking, is a strip or a row, never a dialog.
+Dialogs are questions and nothing else. Seven exist: `DLG_RESTART`, `DLG_DELETE`, `DLG_DELETE_ALL`, `DLG_FORMAT`, `DLG_FACTORY`, `DLG_WELCOME` and `DLG_UPDATED`. Focus starts on the safe action, the lower row: Cancel, or Keep on `DLG_DELETE` (`dlg_safe_word()`). What a question is about sits between its title and its sentence: DELETE shows the photograph, its gallery tile at half size (`photo_thumb()` through `blit_half()`, a 2 x 2 integer mean; nothing is decoded for it, and with no tile in memory at the open the question is drawn without it), and DELETE ALL and FORMAT CARD show the photographs they take in `K_TYPE_TITLE` (`dlg_count()`). The room is fixed when the question opens (`dialog_open()`) and does not change while it is up, so no row moves under a finger: a tile dropped since the open leaves its box in `K_OFF`, and the count line is kept empty until the card is counted. `dlg_content_poll()` repaints the question when its tile or its count changes. A sleep closes an open question with the safe action; the two notes stay. Something the camera is doing, rather than asking, is a strip or a row, never a dialog.
 
 ## The hand
 
@@ -72,6 +73,8 @@ The shutter sits on the body's top wall at the +X end. The right hand holds that
 | `HAND_EDGE` | 6 | A contact that begins this close to the hand's edge is a palm, not a finger. |
 | `TOUCH_DRIFT` | 40 | A contact that travels further than this is not a tap and fires nothing. |
 | `PURE_TAP_MAX_MS` | 2500 | A contact held longer than this, ms, is not a tap. The pressed paint clears while the finger is still down, nothing fires on the lift, and one klog line says so. Not shorter: a slow, deliberate press runs to 2 s. |
+| `PURE_SWIPE_TRAVEL_PX` | 120 | A contact on PHOTO's well that travels at least this far across is a swipe, px. |
+| `PURE_SWIPE_OFF_AXIS_PX` | 60 | A swipe stays under this many px up or down, or it steps nothing. |
 | `PURE_STILL_CONTACT_S` | 10 | Off SHOOT, a contact still this long, s, stops counting as activity. |
 | `PURE_STILL_CONTACT_PX` | 40 | Still means within this many panel px of where the contact last moved. |
 | `SH_LOOK_HIT_H` | 52 | The SHOOT bar's target, taller than the 34 px bar it covers. |
@@ -81,14 +84,14 @@ The shutter sits on the body's top wall at the +X end. The right hand holds that
 ### The rule
 
 - Monochrome at rest. Colour is an event.
-- One colour: MAO pink, as the launch shade. It means a press, the SHOOT card, a capture landing, and the boot field warming. Nothing else.
+- One colour: MAO pink, as the launch shade. It means a press, the SHOOT card, a capture landing, and the card growing out of the four cells at the start. Nothing else.
 - Red means a fault. Type in red is `K_FAULT_INK`; a red fill carries `K_GROUND` type, never `K_INK`.
 - A selection that stays (the live segment, a toggle that is on, a favourite) is `K_ON`: an ink fill with a ground label. Ink, not colour.
-- No yellow anywhere: not in the palette, not in the boot field. Cobalt 3D63FF is reserved and unused in v1.
+- No yellow anywhere. Cobalt 3D63FF is reserved and unused in v1.
 - Greys are neutral in their RGB565 code: G6 = 2 R5 = 2 B5, so the panel shows no green cast.
 - Something unavailable recedes: `dim_ink()` on its own row, no edge, no chevron. Never a grey box.
 
-Retired with the MAO base: terracotta E8734A, the peach card E8A183, mint 86D6B4, the green menu ramp, the green-cast greys, and the amber and green boot-field inks.
+Retired with the MAO base: terracotta E8734A, the peach card E8A183, mint 86D6B4, the green menu ramp, the green-cast greys, the amber and green boot-field inks, and with the boot field itself (#245) its pink and grey inks.
 
 ### The base
 
@@ -97,7 +100,7 @@ From MAO's colour header, mao_ui_type.h in the MAO tree: ground 08080A, ink F1EC
 <!-- ui-doc:palette -->
 | Colour | sRGB | RGB565 | On `K_GROUND` | Use |
 |---|---|---|---|---|
-| `K_GROUND` | 08080A | 0x0841 | 1.00 | Every screen's face, the finder, the photograph, the boot field, sleep. |
+| `K_GROUND` | 08080A | 0x0841 | 1.00 | Every screen's face, the finder, the photograph, the start, sleep. |
 | `K_SCRIM` | 000000 | 0x0000 | 1.05 | The scrim over a screen, the panel going dark. |
 | `K_SURFACE` | 101010 | 0x1082 | 1.05 | A window or list ground, a status panel, the toast plate, a button at rest on the page. Found by its edge or its content. |
 | `K_ROW` | 181818 | 0x18C3 | 1.13 | Every row you can press, and a disabled one. |
@@ -118,9 +121,9 @@ Roles point at a colour; a role changes meaning by pointing somewhere else.
 | `K_ON` | `K_INK` | A selection that stays. |
 | `K_ON_INK` | `K_GROUND` | The label or knob on `K_ON`. |
 | `K_TITLE` | `K_INK` | A screen's or a dialog's title. |
-| `K_MARK` | `K_INK` | The wordmark at sleep and power-down, and every other mark. |
+| `K_MARK` | `K_INK` | The ODD JOBS mark at the start, at sleep and power-down, and every other mark. |
 | `K_TOAST` | `K_SURFACE` | The toast's plate, with a `K_EDGE` outline and `K_INK` words. |
-| `K_ACCENT` | the launch shade | The SHOOT card, a landed four-mark cell. The boot field's warm inks, `K_BF_WARM`, are built from it. |
+| `K_ACCENT` | the launch shade | The SHOOT card, a landed four-mark cell, the card growing out of the cells at the start. |
 | `K_ACCENT_DOWN` | the shade, pressed | The SHOOT card under a finger. |
 | `K_PRESS` | `K_ACCENT` | Any control under a finger, with `K_PRESS_INK` (`K_ACCENT_INK`) on it. |
 
@@ -128,7 +131,7 @@ Roles point at a colour; a role changes meaning by pointing somewhere else.
 
 The pink shifts slightly on each start. `K_LAUNCH` holds eight shades: MAO pink F3A2C4 and seven steps toward lavender C7A6F7, computed offline in OKLCH with the lightness and chroma of F3A2C4 kept and the hue moved by at most 40 % of the gap, 20 degrees in all. It never moves toward orange, peach or yellow. Each shade is a distinct RGB565 code. `K_LAUNCH_DOWN` is the same hue at 84 % of its OKLCH lightness, for a press.
 
-`main.c` owns the boot count and passes it once through `ui_set_launch_index()`; `ui.c` keeps row `boot_count % K_LAUNCH_N` in two halfwords and never reads NVS. `host_preview` and the Twin pass 0, so every render and every Twin picture is row 0. The launch shade colours the SHOOT card, a press, the capture landing and the boot field (`K_BF_WARM`, one row of four inks per shade).
+`main.c` owns the boot count and passes it once through `ui_set_launch_index()`; `ui.c` keeps row `boot_count % K_LAUNCH_N` in two halfwords and never reads NVS. `host_preview` and the Twin pass 0, so every render and every Twin picture is row 0. The launch shade colours the SHOOT card, a press, the capture landing and the card at the start.
 
 `K_LAUNCH_N` is 8. Contrast is `K_ACCENT_INK` on the shade, the shade on `K_GROUND`, and `K_ACCENT_INK` on the pressed shade. The floors are 7.0, 7.0 and 4.5.
 
@@ -157,6 +160,7 @@ The pink shifts slightly on each start. `K_LAUNCH` holds eight shades: MAO pink 
 | Destructive row at rest | `K_ROW` | `K_FAULT_INK` |
 | Destructive row pressed, DELETE pressed | `K_FAULT` | `K_GROUND` |
 | Card pill and lens hint on SHOOT | `K_FAULT` pill | `K_GROUND` |
+| First-use hint on SHOOT | `K_INK` pill | `K_GROUND` |
 | Severity on a STATUS row: PROBLEM, CHECK, NOTE | a 4 px bar beside the row | `K_FAULT_INK`, `K_INK`, `K_INK_QUIET`, always with the word |
 | The header chip | none | `K_FAULT_INK` on a FAULT, `K_INK` on a WARN; the readings beside it `K_INK_QUIET` |
 | Toast | `K_TOAST`, `K_EDGE` outline | `K_INK` |
@@ -173,7 +177,7 @@ The pink shifts slightly on each start. `K_LAUNCH` holds eight shades: MAO pink 
 
 A failed capture keeps its red while the strip is up: a lost frame is a fact, not an event. That is the one departure from LAND.
 
-`K_PAIRS` in `ui_theme.h` lists every ink-on-fill pair `ui.c` draws, with its floor: 4.5 for text, 3.0 for edges, marks and the one face over 18 pt. `firmware/p4/host_tests/test_theme.c` measures each with `rel_lum()` once per launch shade, checks the no-yellow guard over the palette and the boot field, the code neutrality of every grey, and that no two colours share a 565 code. `host_preview` measures the same strings again from the pixels they land on. A pair goes into `K_PAIRS` in the same change that first draws it.
+`K_PAIRS` in `ui_theme.h` lists every ink-on-fill pair `ui.c` draws, with its floor: 4.5 for text, 3.0 for edges, marks and the one face over 18 pt. `firmware/p4/host_tests/test_theme.c` measures each with `rel_lum()` once per launch shade, checks the no-yellow guard over the palette and the launch shades, the code neutrality of every grey, and that no two colours share a 565 code. `host_preview` measures the same strings again from the pixels they land on. A pair goes into `K_PAIRS` in the same change that first draws it.
 
 ## Type
 
@@ -198,8 +202,8 @@ Two families. Caps are set in Oxanium, sentences in Inter. Nothing switches fami
 
 Every mark is ink (`K_MARK`), drawn as coverage with `mask_blit()`, never stepped. Baked art is never redrawn.
 
-- **The KINO D4 wordmark.** `logo_kino_d4.h`, 374 x 52, baked by `tools/mkmask.mjs` from `docs/assets/brand/kino-d4-white-on-dark.png`. Shown at sleep, restart and power-down.
-- **The ODD JOBS symbol.** `ui_mark_odd_jobs.h`, baked by `tools/mkmask.mjs` from the supplied outline `hardware/pcb/kino-d4-carrier-a0/brand/odd-jobs-symbol.json` and never redrawn. The 50 x 40 bake is drawn on ABOUT under MADE BY. The 158 x 128 bake is in the header and not drawn: a boot mark is an option, not built.
+- **The ODD JOBS symbol.** `ui_mark_odd_jobs.h`, baked by `tools/mkmask.mjs` from the supplied outline `hardware/pcb/kino-d4-carrier-a0/brand/odd-jobs-symbol.json` and never redrawn. The 50 x 40 bake is drawn on ABOUT under MADE BY. The 158 x 128 bake (`odd_mark()`) is the start's mark and the one shown at sleep, restart and power-down (`leave_mark()`), at one place: centred on its coverage centroid. Its fades move the ink through code-neutral greys (`fade_in()`), never the coverage.
+- **The KINO D4 wordmark.** `logo_kino_d4.h`, 374 x 52, baked from `docs/assets/brand/kino-d4-white-on-dark.png`. Not drawn since #245; the ODD JOBS mark took its place.
 - **The four-mark.** `four_mark()`: four cells, one per camera, left to right or two by two. Cell i is always lens i, in slot order, never the i-th frame counted. On the menu card a filled cell is a camera that answers and a 3 px outline is one that does not. Everywhere else an outline, a sixth of the cell thick, is a lens that was not asked (`FM_ABSENT`). On a capture strip a cell is that lens's frame: `K_OFF` while it is out, easing to `K_INK` as it crosses in, the launch shade as it lands, `K_FAULT` lost. On a gallery tile and PHOTO the cells come from `gallery_item_t.have`, which lenses have a file on the card, and on PHOTO a file that would not decode is red as well. The card does not record which lenses were asked, so there every lens counts as asked; the review after a shot takes them from the report (`s_photo_asked`), so a lens left out stays an outline and is not counted MISSING, as on the strip beside it; a quad's empty quarter carries the mark with its lens red, and MISSING or DAMAGED. When all four lenses land, the strip's gaps close to one bar over `MOTION_LAND_HOLD_MS`, stay shut while the shade turns, and open again over the last `LAND_REOPEN_MS` (`close_gap()`), inside the same `MOTION_LAND_MS`. Nothing short of four closes.
 - **Icons.** One set, drawn, not baked: a 22 px box (`ICON_BOX`) and a 2.5 px anti-aliased stroke, sampled once into PSRAM. Back is an arrow; the pager's chevrons are the item before and after.
 
@@ -240,7 +244,7 @@ The five rules, as `ui_motion.h` states them:
 - **SMOOTH.** No level changes in a step or a cut. A scrim, a fade or a move runs on a curve, one value per presented frame.
 - **WIGGLE.** The exception. A wigglegram is hard cuts at its frame rate (`wiggle.fps`, `PURE_WIGGLE_FPS_DEFAULT`), one way round, the subject pinned. Its smoothness is alignment, never a crossfade.
 
-Curves: `motion_smooth()` (smootherstep) for anything that travels on its own, `motion_ease_out()` for the screen answering a touch, `motion_accel()` for something leaving for good.
+Curves: `motion_smooth()` (smootherstep) for anything that travels on its own, `motion_ease_out()` for the screen answering a touch.
 
 Who started a move picks its curve. A tap's release and a key run inside the `s_by_hand` bracket, and a move started there is by hand.
 
@@ -250,7 +254,7 @@ Who started a move picks its curve. A tap's release and a key run inside the `s_
 | Back into the row | A tap or a key | `motion_by_hand()` on the time, flipped: it leaves fast and settles into the row. 13.5 % at 16 ms. |
 | Slide beside the parent | A tap or a key | `motion_by_hand()` on the time. |
 | The review opening after a shot, and closing on its clock | Nobody | `motion_smooth()`. |
-| The cascade, the splash | Nobody | `motion_smooth()`; the splash leaves on `motion_accel()`. |
+| The start | Nobody; a finger shortens it | `motion_smooth()` on every beat. |
 
 `motion_by_hand()` is cubic ease-out (`motion_ease_out()`). `MOTION_HAND_QUAD` set to 1 swaps in quadratic ease-out (`motion_ease_out_quad()`, 7.5 % at 16 ms) if the cubic reads abrupt on the panel. It is 0. The spans stay `MOTION_OPEN_MS` and `MOTION_BACK_MS` either way, and a move lands on the destination's own pixels: `lerpi()` rounds half away from zero, so no last-frame 1 px snap.
 
@@ -260,11 +264,29 @@ The row's wash follows the card, not the clock. By hand, on an open it is gone w
 |---|---|---|
 | `MOTION_OPEN_MS` | 420 ms | A screen opening out of the row pressed. |
 | `MOTION_BACK_MS` | 340 ms | And closing back into it. |
-| `MOTION_CASCADE_MS` | 700 ms | The menu's rows arriving after the boot. |
-| `MOTION_HANDOFF_MS` | 420 ms | Any first screen but the menu, dissolving in out of the field. |
-| `MOTION_SPLASH_GROW_MS` | 1820 ms | The boot field, out of nothing to the panel. |
-| `MOTION_SPLASH_HOLD_MS` | 860 ms | Full, the cells re-rolling. |
-| `MOTION_SPLASH_BACK_MS` | 1080 ms | And away, on `motion_accel()`. |
+| `MOTION_START_MARK_IN_MS` | 450 ms | The start: the ODD JOBS mark, ground to ink, through neutral greys (`fade_in()`). |
+| `MOTION_START_SLOTS_FROM_MS` | 250 ms | The four slots' outlines start to come in under it. |
+| `MOTION_START_SLOTS_IN_MS` | 300 ms | And are in. |
+| `MOTION_START_CELL_FROM_MS` | 450 ms | The first a cell can fill. |
+| `MOTION_START_CELL_GAP_MS` | 70 ms | The least between two cells' fills; a tie goes in slot order. |
+| `MOTION_START_CELL_IN_MS` | 180 ms | One cell, outline to filled, from the frame its camera is seen answering. |
+| `MOTION_START_SETTLE_MS` | 150 ms | The last cell in, then the build. |
+| `MOTION_START_MIN_HOLD_MS` | 800 ms | The build never starts before this. |
+| `MOTION_START_WAIT_MS` | 1600 ms | A camera silent this long is drawn missing and the build starts without it. |
+| `MOTION_START_MISSING_MS` | 200 ms | Its outline, quiet to ink. |
+| `MOTION_START_RECEDE_MS` | 280 ms | The build: the mark back to the ground, lifting `MOTION_START_RISE_PX`. |
+| `MOTION_START_RISE_PX` | 16 | How far it lifts. |
+| `MOTION_START_INK_MS` | 180 ms | The cells to the card's ink while their box turns to the shade behind them. |
+| `MOTION_START_TRAVEL_FROM_MS` | 120 ms | The box and the cells start out to the card and its four-mark. |
+| `MOTION_START_TRAVEL_MS` | 480 ms | And arrive. |
+| `MOTION_START_ROWS_FROM_MS` | 240 ms | The five rows start in from the panel's right edge, staggered. |
+| `MOTION_START_ROWS_MS` | 580 ms | And are down. |
+| `MOTION_START_WORDS_FROM_MS` | 580 ms | The card's words, shade to `K_ACCENT_INK`. |
+| `MOTION_START_WORDS_MS` | 240 ms | And are set. |
+| `MOTION_START_BUILD_MS` | 820 ms | The build in all. |
+| `MOTION_START_LATE_FILL_MS` | 120 ms | The shortest fill a camera heard during the build gets. Heard later than that, it lands an outline. |
+| `MOTION_START_CUT_MS` | 300 ms | The rest of the build after a finger lands. |
+| `MOTION_START_LATE_MS` | 5000 ms | A start still running this long had its loop stalled (a Twin in a hidden tab, a held UI task): the menu lands at once with the cameras that answer. |
 | `MOTION_LAND_HOLD_MS` | 120 ms | The landed cells in the launch shade. |
 | `MOTION_LAND_BACK_MS` | 180 ms | And back to ink on `motion_smooth()`. |
 | `MOTION_LAND_MS` | 300 ms | LAND in all. |
@@ -276,13 +298,13 @@ The row's wash follows the card, not the clock. By hand, on an open it is gone w
 | `MOTION_DIM_MS` | 1600 ms | The dim scrim arriving. |
 | `MOTION_UNDIM_MS` | 160 ms | And leaving on a touch, on `motion_ease_out()`. |
 | `MOTION_WAKE_MS` | 240 ms | The screen coming back from sleep. |
-| `MOTION_POWER_FADE_FRAMES` | 20 | The power-down fade, frames on `motion_smooth()`. |
+| `MOTION_POWER_FADE_FRAMES` | 20 | The power-down fade as host_preview samples it. On the panel it is a frame a refresh on `motion_smooth()`. |
 
 The moves:
 
 - **Open.** The pressed row is the destination's header from the first frame. The card grows to the page with the destination revealed inside it; the rows above lift and the rows below drop as two rigid blocks. Back closes the card into the row you left from.
 - **Slide.** A detail screen arriving beside its parent, SETTINGS to STORAGE or GALLERY to PHOTO. Both frames are prepared once and shown in panel orientation by `gfx_slide_show()`.
-- **Cascade.** The menu's rows landing one after another, only after the boot.
+- **The start.** The menu builds once, out of the start: its rows land one after another and the card grows out of the four cells (System states, Start).
 - **Snapshot.** SHOOT and GALLERY are too costly to draw per frame of a move, so each is drawn once into the stash and travels as a picture.
 
 ## Feedback
@@ -313,36 +335,40 @@ One sound per outcome, played at the moment the screen shows it, not when the fa
 
 1. The screen, header included.
 2. The capture strip (`draw_capture_banner()`).
-3. On SHOOT only, one slot: the self-timer count, or else the card pill, or else the lens hint.
+3. On SHOOT only, one slot: the self-timer count, or else the card pill, or else the first-use hint, or else the lens hint.
 4. The working strip: UPDATING 42% (UPDATING in maintenance between images), or else FORMATTING THE CARD, or else RESTARTING THE CAMERAS.
 5. The toast.
 6. The dialog.
 7. The dim scrim, `DIM_SCRIM_K` at full dim, over everything.
 8. A called-off sleep's mark, leaving over the scrim.
 
-Outside `draw_screen()`, whole-panel renders replace it: the boot field, the wordmark at sleep and power-down, RESTARTING, and black.
+Outside `draw_screen()`, whole-panel renders replace it: the start (`render_start()`), the ODD JOBS mark at sleep and power-down, RESTARTING, black, and the test plate (`draw_plate()`).
 
 ## System states
 
 | State | What the glass does |
 |---|---|
-| Boot | The boot field grows over `MOTION_SPLASH_GROW_MS`, holds, and leaves on `motion_accel()`. A quadrant per camera: one that has not answered stays in `K_BF_COLD` greys while the rest warm to the launch shade. A key or a touch during the splash ends it on the spot: the key fires on the first screen's first pass, the touch presses nothing. The menu cascades in; any other first screen dissolves. |
-| First start | `DLG_WELCOME`, once (`body.firstRunSeen`). |
+| Power-on | The backlight stays off until the first frame (`display_first_light()`); a product boot shows no test bars (`KINO_BOOT_TEST_PATTERN` is a bench build). The orphan sweep before the panel is held to 800 ms. The boot logs `orphan sweep N ms` and `first frame lit N ms after start`. |
+| Start | `ANIM_START`, from black. The ODD JOBS mark (the 128 px bake, centred on its coverage centroid, `K_INK`) fades up over `MOTION_START_MARK_IN_MS`, and four `K_INK_QUIET` slot outlines come in 40 px under it, 2 x 2, CAM1 top left. Each cell fills in `K_INK` when its own camera answers (`camlink_online_mask()`, one atomic byte, no channel lock), within the gaps in the MOTION table. A camera silent at `MOTION_START_WAIT_MS` is drawn missing: its outline hardens to `K_INK`. Then the build: the mark recedes and lifts, the cells' own box turns to the launch shade and grows a gap's width out past them while the cells stay `K_INK`, then the cells turn to `K_ACCENT_INK` on the full shade (the two halves of `MOTION_START_INK_MS`, never at once, so cells and gaps never meet in one colour), the box grows into the SHOOT card on the hand side and the cells into its four-mark (a missing camera lands as the card's outline cell), the five rows land from the right, and the card's words come in. The last frame is the menu, pixel for pixel (`host_preview` checks it on both hands). The start tells `s_cams` and the conditions what it drew (`start_tell()`), so the card's status line is the truth it shows. All four answering: the menu in about 1.8-2.3 s (1.83 s with all four up at power-on, 2.30 s at 0.4/0.7/0.9/1.1 s). The build never starts after `MOTION_START_WAIT_MS + MOTION_START_MISSING_MS + MOTION_START_SETTLE_MS`, so a silent or late camera lands the menu by 2.77 s; a cell still filling then finishes inside the travel. A camera that answers during the build still fills, over what is left of it and never under `MOTION_START_LATE_FILL_MS`, so the four-mark lands on its true state; one that answers inside the build's last `MOTION_START_LATE_FILL_MS` lands an outline, and the menu's next `cams_refresh()` fills its cell. `cams_refresh()` reads the cameras again within 100 ms whenever `camlink_online_mask()` disagrees with `s_cams`, not on its 2 s clock, so after any start each cell on the card fills on the pass its lens answers. Until `MOTION_START_WAIT_MS` from the start's first frame a lens not yet heard is still booting, not down (`lens_grace()`, passed to `conditions_scan()`): a start cut by a finger or a key lands the card with that cell an outline and no PROBLEM line. When the wait runs out, a lens still silent is called down on that pass. No cell ever fills before its camera answers. The start carries no words: a cell left an outline is the lens in that position not answering, CAM1 top left, and the card says it in words when the menu lands. A finger runs the rest of the build in `MOTION_START_CUT_MS` and presses nothing: every camera heard by then lands filled, a cell whose turn had not come filling at once. A key lands the menu at once with the cameras heard and fires on the same pass, and the first-start note waits for the next start. A loop stalled past `MOTION_START_LATE_MS` lands the menu at once the same way. The boot logs `start: N frames in M ms (F fps)` and when each lens answered. |
+| First start | `DLG_WELCOME`, once (`body.firstRunSeen`), on the frame after the start lands. |
 | First start after an update | `DLG_UPDATED`, once (`body.lastVersion`). |
 | A condition | The worst one is the first line of the SHOOT card, after its severity word: PROBLEM (`COND_FAULT`), CHECK (`COND_WARN`) or NOTE (`COND_NOTE`). On every detail screen the header chip names the worst one by its short name (`chip_words()`: 1 LENS DOWN, NO CARD, DATE NOT SET), in `K_FAULT_INK` on a FAULT and `K_INK` on a WARN. A NOTE never reaches the header. While the chip names the card, the header's card reading is left out. STATUS lists all of them. The list is `cond_id_t` in `conditions.h`; the words are in `docs/DEVICE_COPY.md`. |
 | Capture | SHOOTING, then TAKEN. SAVING (TAKEN. NEXT ONE QUEUED after a second press), then SAVED, or how many cameras missed. One cell per lens throughout. Cells land in the shade, or stay red where a lens lost its frame. |
 | Self-timer | On SHOOT, one scrim plate centred on the panes' cross: the digit in `K_TYPE_TITLE`, a ring of ten dots round it, and SELF-TIMER.  PRESS TO CANCEL under it. Each dot eases from `K_INK` to `K_OFF` across its second on `motion_smooth()`, clockwise from the gap at the foot; the positions are the const `TIMER_RING` table, no trigonometry at draw time. The pass runs SHOOT at 20 ms while it counts, except while a capture's frames cross the links (#158); there the ring eases on the 60 ms pass. Monochrome: a count is a state, not an event. |
 | A card that will cost the next photograph | On SHOOT, a `K_FAULT` pill at the top from the pass's `sd_status()`: no card, card out, unreadable, failed its write test, or under the reserve capture.c refuses at (`pure_capture_reserve_bytes()`, four frames at `wiggle.resolution`). It states and never gates: capture.c is the one gate. A refusal for the card (an `SD_` code) pulses the pill. The pulse runs SHOOT at 20 ms, except while a capture's frames cross the links (#158); there it steps on the 60 ms pass. |
+| First use | Until the first photograph exists (`sh_first_use()`: `gallery_media_count()` is 0, `capture_count()` is 0, no capture running), SHOOT's slot shows PRESS THE SHUTTER ON TOP in a `K_INK` pill, under the self-timer and the card pill, over the lens hint. A tap that lands on a pane with a picture while it is up toasts Press the shutter on top. and presses nothing. Ink, not red: nothing is wrong. |
 | Delete all photos | The Photos row on STORAGE reads DELETING 120 OF 500 from `gallery_delete_progress()`, repainted while `gallery_deleting()` holds. Both destructive rows are disabled until it ends. The menu and other screens show nothing of it. |
 | Updating | While a firmware update session is open (`fw_update_progress()`): UPDATING 42% on the working strip for the body's own image, UPDATING CAMERA 2 42% for a lens. In maintenance with no session open, before the first image or between two (`maint_active()`): UPDATING with no number. Ink, no shade: an update is a state. Repainted per whole percent by `update_poll()`, never per chunk, and on SHOOT by SHOOT's own clock. The shutter and RESTART THE CAMERAS are refused for the whole time and toast "Updating. Keep the camera on.", the shutter with the warning sound. A session no chunk reaches for `PURE_FW_IDLE_MS` (60 s) is abandoned, and maintenance ends `PURE_MAINT_HOLD_MS` (600 s) after the last ENTER_MAINTENANCE or FW_* command; both are checked on kdp_server's loop, maintenance on the UI task too (`maint_poll()`). Then the shutter works again. |
 | Formatting | FORMATTING THE CARD on the working strip. |
 | Cameras restarting | From the STATUS row or a dead pane's button, the same action and no confirm. RESTARTING THE CAMERAS for `MOTION_CAMS_RESTART_BANNER_MS`. For `CAM_RESTART_GRACE_MS` (7 s, a guess until the node boot is timed on the bench) a pane with no picture says STARTING and has no button, and the STATUS row only toasts. Both entry points re-arm the finder's settle clock. While a capture runs or a shot is queued (`capture_in_flight()`) there is no button and no cycle: the pane says NO PICTURE alone and a press toasts. While the self-timer counts there is no button either: the pane is picture, a tap on it cancels the count, and a press that beat the repaint cancels the count and cycles nothing. |
 | Dim | After `body.autoDimS` (30 s by default) the scrim arrives over `MOTION_DIM_MS` to `DIM_SCRIM_K`. A touch lifts it over `MOTION_UNDIM_MS` and is acted on: a dim screen is still readable. On SHOOT the scrim waits until `PURE_SHOOT_DIM_LEAD_S` (10 s) before `body.sleepS`, or `body.autoDimS` if that is later, and never comes with sleep off (`dim_drawn()`). The scrim saves no current: the backlight is a GPIO. `power.c` still reports DIM at `body.autoDimS`, so KDP says "dim" while SHOOT draws none. |
 | A resting contact | A press held past `PURE_TAP_MAX_MS` is released under the finger and fires nothing. Off SHOOT, a contact within `PURE_STILL_CONTACT_PX` of where it last moved for `PURE_STILL_CONTACT_S` stops counting as activity until it moves or lifts (`touch.c`, `pure_still_step()`), so a water bead, a sleeve or a pocket lets the screen dim and sleep. On SHOOT a resting thumb is someone framing and counts for `PURE_REST_CONTACT_S` (120 s) before it stops, so a camera left on SHOOT in a pocket still dims and sleeps, about two minutes plus `body.sleepS` after it last moved. |
-| Sleep | After `body.sleepS` (120 s by default) the picture darkens, the wordmark fades in, holds and fades out inside `SLEEP_WIND_MS`, and `power.c` cuts the backlight. A touch brings the screen back over `MOTION_WAKE_MS`; that touch presses nothing. |
-| Restart, power-down | RESTARTING for `MOTION_RESTARTING_MS`, the wordmark, a fade over `MOTION_POWER_FADE_FRAMES` frames, then black. A blocking loop: it only runs on the way to a reset. |
+| Sleep | After `body.sleepS` (120 s by default) the picture darkens, the ODD JOBS mark and its line fade in, hold and fade out inside `SLEEP_WIND_MS`, and `power.c` cuts the backlight. A touch brings the screen back over `MOTION_WAKE_MS`; that touch presses nothing. When the panel goes dark the camera moves somewhere safe to wake to (`sleep_safe_state()`, #247): an open question closes with its safe answer, never its action, and the two notes (`DLG_WELCOME`, `DLG_UPDATED`) stay, since they are marked seen when they open; the SETTINGS subtree, POWER and LOOK go to the menu with the row that led there focused; SHOOT, MENU, GALLERY, PHOTO and ROLL stay. Done in the dark, so the wake's lift is the first frame of the new place. A sleep called off before the dark changes nothing. |
+| Restart, power-down | RESTARTING for `MOTION_RESTARTING_MS`, the ODD JOBS mark, its ink down to black through the greys over `MOTION_POWER_FADE_FRAMES` frames, then black. A blocking loop: it only runs on the way to a reset. |
 | Safe mode | `COND_SAFE_MODE`: three crashes in a row left the radio and uploads out. Reported as a condition. |
 | A dead panel | Cannot show anything. Reported over KDP. |
+| Seen and driven over KDP | GET_SCREEN renders the screen once into the canvas between two passes (`shot_pass()`), through `render_screen()`, so the picture is what the glass shows: finder panes, toast, dim scrim, a held press. The host reads it out a page at a time, `PURE_SCREEN_CHUNK_MAX` bytes a page, while the UI carries on; a page is refused once the canvas generation (`gfx_canvas_gen()`) moved. Refused while a move, the sleep's wind-down or a wake's lift runs (`ui_screen_moving()`). A body asleep is not moving: its render is the screen under the sleep's scrim, and SCREEN_PLATE wakes it and goes up; the wake's lift runs when the plate drops. A UI_TAP goes through `ui_touch()`, which every touch read in `ui_pass()` uses, `UI_TAP_Q` deep: the palm edge, the drift and hold rules and the wake that swallows a press all apply, and each tap is lifted for `UI_TAP_GAP_US` before the next lands. A UI_KEY goes on the physical keys' queue. The state lives in PSRAM. |
+| Test plate | SCREEN_PLATE: a 32-step grey ramp, every palette colour, the eight launch shades over their pressed steps, and a 1 px grid at a 20 px pitch, for photographs of the panel. No words. It holds the panel awake and ends on a touch, a key, SCREEN_PLATE off, a sleep asked for (the lens cover closing: `power_sleep_now()` ages the idle clock past `body.sleepS`, and the plate lets go instead of refreshing it), or after `UI_PLATE_MAX_US` (5 minutes). The press that ends it does nothing else. |
 
 
 ## Renderer budget
@@ -350,10 +376,12 @@ Outside `draw_screen()`, whole-panel renders replace it: the boot field, the wor
 | Item | Figure |
 |---|---|
 | Tile | `TILE_W` x `TILE_H`, 48 x 96 px: 85 tiles a frame, 17 x 5. |
-| Tile buffers | Two, 18 KB of internal SRAM in all, so one is written out while the next is drawn. |
+| Tile buffers | Three, 27 KB of internal SRAM in all, so two are on the engine being written out while the next is drawn. |
+| Framebuffers | Three, the panel driver's, 768 KB of PSRAM each: one on the glass, one handed over and waiting for the refresh end, one being drawn. Only the hand-over waits for the refresh, so a frame that takes 18 ms borrows from the next and what has to fit in 16.4 ms is the average. |
+| Motion clock | A move or a ramp is drawn at the moment its frame goes up (`gfx_due_us()`), so on a steady cadence the picture steps one refresh of motion a frame. |
 | Display list | `DL_MAX` commands in PSRAM, their 10-byte boxes in internal SRAM (3.75 KB), and a `DL_STR` string arena in PSRAM. |
 | A full list | The frame is drawn directly instead. Nothing is lost; the frame is slower. |
-| Moves | 51 to 58 fps measured on the panel. SHOOT and GALLERY move as snapshots: drawn per frame they ran at 30 and 25 fps. |
+| Moves | Every frame on the next refresh for LOOK, ROLL, SETTINGS, POWER, GALLERY and the settings slides, measured on the panel (#248): gaps 16.4 ms at the median and p90, none over 20 ms in most runs. The start runs 166-169 frames in 2.76 s. SHOOT moves hold one or two frames for a refresh (12 ms of drawing a frame, the snapshot read from PSRAM), the slide into PHOTO four (its copy shares the bus with the photograph's decode). SHOOT and GALLERY move as snapshots: drawn per frame they ran at 30 and 25 fps. |
 
 | Constant | Value | Meaning |
 |---|---|---|
@@ -366,8 +394,8 @@ The rules a change must keep:
 
 - A frame is recorded once (`dl_begin()`, `dl_push()`) and replayed per tile (`dl_replay()`). A draw callback must be a function of state only: it may run once per tile.
 - No per-pixel float maths in a hot loop. A fixed picture that moves (a slide, a snapshot) moves in panel orientation.
-- Internal SRAM is the scarce pool: about 66 KB free after boot, and the C6 recovery reserve must read 2/2. No new internal `.bss` or `.data` beyond a few hundred bytes. A table goes in flash as `const`, or in PSRAM with EXT_RAM_BSS_ATTR. Nothing goes in IRAM.
-- No camlink lock inside a draw. Screens read the `s_cams` snapshot `ui_pass()` refreshes.
+- Internal SRAM is the scarce pool: about 74 KB free after boot, and the C6 recovery reserve must read 2/2. No new internal `.bss` or `.data` beyond a few hundred bytes; the third tile buffer (9 KB, #248) was measured in, and the reserve read 2/2 after it. A table goes in flash as `const`, or in PSRAM with EXT_RAM_BSS_ATTR. Nothing goes in IRAM.
+- No camlink lock inside a draw. Screens read the `s_cams` snapshot `ui_pass()` refreshes; the start reads `camlink_online_mask()` between frames.
 - `ui.c` touches no NVS and no filesystem. A new FreeRTOS, heap or ESP-IDF call in `ui.c` needs a stub in `firmware/p4/host_preview/shim` and `firmware/p4/host_preview/preview.c`, and in `firmware/p4/twin_ui/shim` and `firmware/p4/twin_ui/twin_ui.c`.
 
 ## Verify a change
@@ -383,7 +411,7 @@ On the workstation:
 On the bench, for a change to drawing or memory:
 
 1. Build both images, the plain one and the radio one, and read the radio image size against the CI guard.
-2. Flash, then read a move's frame rate from the log (GET_LOGS): each move logs its frames, fps and the split between drawing, writing out and waiting for the panel.
+2. Flash, then read a move's frame rate from the log (GET_LOGS): each move logs three lines, its frames and fps, then the time per frame spent recording the display list, drawing (the replay through the tiles), writing out and waiting for the panel, then its gaps: the time between frames on the glass as min, median, p90 and max, the max with the moment it ended, and how many frames were held past 20 ms and past 34 ms (one refresh missed, two missed). The gaps come from the panel's own refresh count, so they are what the eye saw; an average fps hides a held frame and they do not. A record that waits on a lock shows in the first of the four; no draw may touch the card, the camera link or NVS (#248). The dim, an undim or wake, the sleep's three parts, a capture landing and the power-down fade log the same frames and gaps lines; the start also logs `panel refresh N us`.
 3. Read internal free and "recovery reserve 2/2" from the runtime stats on the radio image.
 
 ## Earlier documents

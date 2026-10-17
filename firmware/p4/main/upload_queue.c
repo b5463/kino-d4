@@ -249,8 +249,12 @@ static int trim_parked(void) {
  * One acquire for the whole pass, because opendir/readdir touch the card too,
  * and a yield check between entries. A pass abandoned halfway costs nothing: it
  * re-arms s_rescan, and every action it takes is idempotent.
+ *
+ * `*admitted` is how many jobs the pass put in the RAM list: the worker sleeps
+ * after a pass that admitted none (rq_scan_run_on(), #248).
  */
-static bool queue_scan(void) {
+static bool queue_scan(uint32_t *admitted) {
+  *admitted = 0;
   lock();
   if (s_parked_off_list == 0) s_revive_parked = false;
   unlock();
@@ -429,11 +433,13 @@ static bool queue_scan(void) {
   closedir(d);
   card_give();
 
+  *admitted = (uint32_t)added;
   lock();
   rq_scan_pass_done(&s_scan, (uint32_t)looked_at, (uint32_t)unadmitted, reached_end);
-  /* Another pass is owed while the cycle is unfinished or the last complete
-   * cycle found work the window refused. */
-  if (rq_scan_more(&s_scan)) s_rescan = true;
+  /* Another pass is owed while the cycle is unfinished, or while the last
+   * complete cycle found work the window refused and the window has a slot
+   * for it. A full window owes nothing until a job leaves it (#248). */
+  if (rq_scan_more(&s_scan, s_count < UPLOAD_QUEUE_MAX)) s_rescan = true;
   if (reached_end) {
     /* The card is the authority on how many captures are parked. Only a pass
      * that reached the end may replace the count: a partial walk counts a
@@ -888,10 +894,29 @@ static void worker_task(void *arg) {
 
     if (run_one_step()) continue;
     if (!s_rescan && maybe_probe_parked()) continue;
+    if (!s_rescan) {
+      /* A job left a full window by a path that did not ask for a pass: work
+       * the last cycle could not admit is owed again now there is a slot. */
+      lock();
+      if (rq_scan_more(&s_scan, s_count < UPLOAD_QUEUE_MAX)) s_rescan = true;
+      unlock();
+    }
     if (s_rescan) {
-      /* Clears both flags, and re-arms s_rescan when it could not finish.
-       * Sleeping on a refusal is what keeps that from being a spin. */
-      if (queue_scan()) continue;
+      /*
+       * Clears both flags, and re-arms s_rescan when it could not finish.
+       *
+       * Straight round the loop only when the pass admitted work. A pass that
+       * admitted nothing - the window full, every job parked or backing off -
+       * sleeps until a wake (enqueue, retry, network back) or IDLE_TICKS. It
+       * used to `continue` after every pass that had the card: with no Roll
+       * API base every step failed in 0 ms and the worker ran passes back to
+       * back - 12 in one 468 ms move, about 37 ms each, holding the FatFs
+       * volume lock - and the screen's moves fell to 4-47 fps (#248). A
+       * refusal sleeps as it always did.
+       */
+      uint32_t admitted = 0;
+      const bool got = queue_scan(&admitted);
+      if (rq_scan_run_on(got, admitted)) continue;
       xTaskNotifyWait(0, 0, &ignored, IDLE_TICKS);
       continue;
     }
@@ -937,7 +962,8 @@ esp_err_t upload_queue_start(void) {
 
   /* A refusal here is not a failure: s_rescan is re-armed and the worker picks
    * the pass up as soon as the card is free. */
-  (void)queue_scan();
+  uint32_t admitted = 0;
+  (void)queue_scan(&admitted);
 
   /* Priority 2, below ui (4) and the capture workers (5), deliberately. Gate F
    * in firmware/FIRMWARE_ROADMAP.md asks for capture timing and CRC error rates
@@ -1103,7 +1129,9 @@ void upload_queue_status(upload_queue_report_t *out) {
    * what make "pending 0" mean "nothing left" rather than "nothing loaded"
    * (#167). */
   out->card_pending = (int)s_scan.card_pending;
-  out->scan_complete = s_scan.cycle_complete && !rq_scan_more(&s_scan);
+  /* room=true: the reporting question is whether durable work is owed at
+   * all, not whether the worker can take it now. */
+  out->scan_complete = s_scan.cycle_complete && !rq_scan_more(&s_scan, true);
   out->uploading = s_active >= 0 ? 1 : 0;
   out->uploaded = s_uploaded;
   out->halted = s_halted;

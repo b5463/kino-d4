@@ -107,4 +107,12 @@ typedef struct {
  */
 bool kdp_recipes_capture_block(const char *id, recipe_capture_t *out);
 
+/**
+ * The same, without the card, for a draw (#248). A factory look is answered
+ * from the embedded array and `*known` is true. A custom look, or an id that
+ * is no factory look, needs the card: `*known` is false, nothing is read, and
+ * the caller asks kdp_recipes_capture_block() outside the draw.
+ */
+bool kdp_recipes_capture_block_ram(const char *id, recipe_capture_t *out, bool *known);
+
 #endif

@@ -566,15 +566,18 @@ void rq_scan_card_changed(rq_scan_t *s) {
   s->owed = true;
 }
 
-bool rq_scan_more(const rq_scan_t *s) {
+bool rq_scan_more(const rq_scan_t *s, bool room) {
   if (s == NULL) return false;
   /* Mid-cycle: the rest of the card has not been looked at yet. */
   if (s->cursor > 0) return true;
-  /* A completed cycle that found work the window could not take. */
-  if (s->card_pending > 0) return true;
+  /* A completed cycle that found work the window could not take - owed once
+   * the window can take some of it, and not before (#248). */
+  if (s->card_pending > 0 && room) return true;
   /* Or the card changed after that cycle, so its answer is stale. */
   return s->owed;
 }
+
+bool rq_scan_run_on(bool got_card, uint32_t admitted) { return got_card && admitted > 0; }
 
 /* ------------------------------------------------------------------ */
 /* Naming and safety                                                  */

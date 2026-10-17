@@ -68,6 +68,7 @@ bool roll_api_heartbeat(const char *roll_id, const roll_heartbeat_t *hb, int *ou
 #else /* KINO_RADIO */
 
 #include "cJSON.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "roll_client.h"
 #include "roll_http.h"
@@ -104,7 +105,10 @@ static char *read_card_file_ex(const char *path, size_t cap, bool *card_busy) {
   char *buf = NULL;
   FILE *f = fopen(path, "rb");
   if (f != NULL) {
-    buf = malloc(cap + 1);
+    /* PSRAM first (#244): 4 KB of META.JSON, read on the upload task while the
+     * part buffers are live, has no business in internal SRAM. free() takes it. */
+    buf = heap_caps_malloc(cap + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (buf == NULL) buf = malloc(cap + 1);
     if (buf != NULL) {
       const size_t n = fread(buf, 1, cap, f);
       buf[n] = '\0';

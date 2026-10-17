@@ -386,6 +386,21 @@ bool kdp_recipes_capture_block(const char *id, recipe_capture_t *out) {
   return ok;
 }
 
+bool kdp_recipes_capture_block_ram(const char *id, recipe_capture_t *out, bool *known) {
+  if (known != NULL) *known = false;
+  if (out == NULL) return false;
+  memset(out, 0, sizeof *out);
+  if (id == NULL || id[0] == '\0') {
+    if (known != NULL) *known = true; /* no look: nothing to read anywhere */
+    return false;
+  }
+  /* s_factory is parsed once at boot and never changes: no lock, no card. */
+  const cJSON *factory = factory_by_id(id);
+  if (factory == NULL) return false;
+  if (known != NULL) *known = true;
+  return capture_block_from_doc(factory, out);
+}
+
 /* ------------------------------------------------------------------ */
 /* Commands                                                            */
 /* ------------------------------------------------------------------ */

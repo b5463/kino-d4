@@ -110,6 +110,15 @@ const M1B_CAPABILITIES: ProfileCapabilities = {
    * too: SYNC_BENCH answers there without a flag, exactly as in firmware.
    */
   benchDiagnostics: true,
+  /**
+   * The Screen group (#246) arrived in 0.4.63. Only d4-settings-0-4-9 reports
+   * 0.4.63, and its whitelist lags the body on these four as it does on
+   * FW_BEGIN..FW_STATUS and the maintenance pair; no whitelist carries them. Spelled
+   * out false rather than left absent: the reference device reports the flag
+   * true on its own, and the profile's map is merged over that, so an absent
+   * key here would advertise a group the profile then refuses.
+   */
+  screenControl: false,
 };
 
 /**
@@ -414,18 +423,18 @@ export const FIRMWARE_PROFILES: Record<FirmwareProfileId, FirmwareProfile> = {
   },
   'd4-settings-0-4-9': {
     id: 'd4-settings-0-4-9',
-    label: 'CURRENT FIRMWARE 0.4.62 — settings reach the hardware',
+    label: 'CURRENT FIRMWARE 0.4.63 — settings reach the hardware',
     simulatedFuture: false,
     /* This profile covers every release from 0.4.9 up to the current
      * firmware/VERSION (see PROFILE_FOR_VERSION) — none of them added a KDP
      * command or a capability — so it reports the newest of them, which is
      * what a camera flashed with today's build answers. Bump alongside
      * firmware/VERSION. */
-    p4Fw: '0.4.62',
+    p4Fw: '0.4.63',
     /* The node image is built from the same firmware/VERSION, so a camera
      * node on this body reports the same version — 0.4.9 was the first
      * release where the node has work of its own to do (NL_CMD_SENSOR). */
-    camFw: '0.4.62',
+    camFw: '0.4.63',
     /* Unchanged: one node is jumpered to the bench harness. Per-camera
      * exposure reaches the one sensor that is wired. */
     camsOnline: [true, false, false, false],
@@ -442,8 +451,8 @@ export const FIRMWARE_PROFILES: Record<FirmwareProfileId, FirmwareProfile> = {
      * capabilities it does not have yet (labelled SIMULATED FUTURE wherever
      * they surface), and the version a body reports is the build's. Bump
      * alongside firmware/VERSION. */
-    p4Fw: '0.4.62',
-    camFw: '0.4.62',
+    p4Fw: '0.4.63',
+    camFw: '0.4.63',
     camsOnline: [true, true, true, true],
     capabilities: null,
     maxUartBaud: 3_000_000,
@@ -674,4 +683,10 @@ export const PROFILE_FOR_VERSION: Record<string, FirmwareProfileId> = {
   // body on FW_BEGIN..FW_STATUS (0.4.58) and FACTORY_RESET, and lags it on
   // these two as well. d4-sim-full answers all of them.
   '0.4.62': 'd4-settings-0-4-9',
+  // 0.4.63: internal SRAM (#244), the screen over KDP (#246), honest glass
+  // and faster review (#247), the new start and the ODD JOBS mark (#245).
+  // GET_SCREEN, SCREEN_PLATE, UI_TAP and UI_KEY are new on the wire and the
+  // body reports screenControl true; this profile reports it false and its
+  // whitelist lags the body on these four as well. d4-sim-full answers them.
+  '0.4.63': 'd4-settings-0-4-9',
 };

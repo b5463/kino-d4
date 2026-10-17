@@ -299,23 +299,25 @@ int upload_store_meta_frames(const char *uuid, int max_slot, uint8_t *slots, int
    * the likely cost is a capture not queued rather than a frame uploaded
    * twice - but that is luck, not a guarantee.
    *
-   * `malloc`, not `heap_caps_malloc`: this file is in the host test set and
-   * has to build with plain gcc. 4 KB per call, freed on every path.
+   * cJSON_malloc, not heap_caps_malloc: this file is in the host test set and
+   * has to build with plain gcc. On the device cJSON_malloc is main.c's
+   * PSRAM-first hook (#244), so 4 KB of META.JSON text stays out of internal
+   * SRAM; on the host it is malloc. 4 KB per call, freed on every path.
    *
    * A full buffer is UNREADABLE rather than parsed, the same bound the roll
    * reader states for itself - it landed there and not here, so a META that
    * exactly filled the buffer was parsed from a truncated tail. */
-  char *buf = malloc(META_READ_MAX);
+  char *buf = cJSON_malloc(META_READ_MAX);
   if (buf == NULL) return UPLOAD_META_FRAMES_MALFORMED;
   const size_t n = fread(buf, 1, META_READ_MAX, f);
   const int io_err = ferror(f);
   fclose(f);
   if (io_err || n == 0 || n == META_READ_MAX) {
-    free(buf);
+    cJSON_free(buf);
     return UPLOAD_META_FRAMES_MALFORMED;
   }
   const int result = upload_store_meta_frames_from_text(buf, n, max_slot, slots, cap);
-  free(buf);
+  cJSON_free(buf);
   return result;
 }
 
@@ -445,18 +447,18 @@ upload_meta_roll_t upload_store_meta_roll(const char *uuid, char *out, size_t ca
    */
   /* Per call, not shared. See upload_store_meta_frames() above: these two
    * readers had one `static` buffer between them, taken under different
-   * locks. */
-  char *buf = malloc(META_READ_MAX);
+   * locks. cJSON_malloc for the same reason as there. */
+  char *buf = cJSON_malloc(META_READ_MAX);
   if (buf == NULL) return UPLOAD_META_ROLL_UNREADABLE;
   const size_t n = fread(buf, 1, META_READ_MAX, f);
   const int io_err = ferror(f);
   fclose(f);
   if (io_err || n == 0 || n == META_READ_MAX) {
-    free(buf);
+    cJSON_free(buf);
     return UPLOAD_META_ROLL_UNREADABLE;
   }
   const int result = upload_store_meta_roll_from_text(buf, n, out, cap);
-  free(buf);
+  cJSON_free(buf);
   return result;
 }
 

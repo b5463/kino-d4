@@ -27,6 +27,14 @@ static bool on_srm_done(ppa_client_handle_t client, ppa_event_data_t *event, voi
 static SemaphoreHandle_t s_vsync;
 static volatile bool s_swap_pending; /* a hand-over happened; the panel has not yet switched */
 static uint64_t s_vsync_us;          /* time spent waiting for the panel, since boot */
+/* Refresh ends since boot, and when the last one was (esp_timer): written by
+ * the interrupt, so in internal RAM. The time is written first, so a reader
+ * that sees the count unchanged across its read of the time has a pair. */
+static volatile uint32_t s_vsync_n;
+static volatile int64_t s_vsync_at_us;
+/* s_vsync_n just after the last hand-over: that frame is on the glass once
+ * the count has moved past it. */
+static uint32_t s_shown_n;
 
 /* The refresh end, in interrupt context. In IRAM because the driver insists
  * (it runs from the DMA's frame-end interrupt). */
@@ -35,23 +43,52 @@ static bool IRAM_ATTR on_refresh_done(esp_lcd_panel_handle_t panel,
   (void)panel;
   (void)edata;
   (void)user_ctx;
+  s_vsync_at_us = esp_timer_get_time();
+  __asm__ __volatile__("" ::: "memory");
+  s_vsync_n = s_vsync_n + 1;
   BaseType_t woken = pdFALSE;
   if (s_vsync != NULL) xSemaphoreGiveFromISR(s_vsync, &woken);
   return woken == pdTRUE;
 }
 
-/** Block until the panel has let go of the back framebuffer. */
-static void wait_back_free(void) {
+/**
+ * Block until the frame handed over last is on the glass: the refresh count
+ * has moved past the one show() noted. Called before the next hand-over, not
+ * before drawing: with three buffers the one being drawn into is never the
+ * one being scanned (see FB_COUNT), so only the hand-over has to wait, or it
+ * would replace a frame the panel never showed.
+ */
+static void wait_latched(void) {
   if (!s_swap_pending || s_vsync == NULL) return;
   const int64_t t0 = esp_timer_get_time();
-  if (xSemaphoreTake(s_vsync, pdMS_TO_TICKS(40)) != pdTRUE) {
-    ESP_LOGW(TAG, "no refresh end within 40 ms; writing the back buffer anyway");
+  while (s_vsync_n == s_shown_n) {
+    if (xSemaphoreTake(s_vsync, pdMS_TO_TICKS(40)) != pdTRUE) {
+      ESP_LOGW(TAG, "no refresh end within 40 ms; handing over anyway");
+      break;
+    }
   }
   s_swap_pending = false;
   s_vsync_us += (uint64_t)(esp_timer_get_time() - t0);
 }
 
-#define FB_COUNT 2
+/*
+ * Three framebuffers (#248): one on the glass, one handed over and waiting
+ * for the refresh end, one being drawn.
+ *
+ * With two, a frame could not start until the refresh end freed the buffer
+ * the panel had just stopped scanning, so every frame had to fit in one
+ * refresh by itself: one that took 17 ms was held for two, the next started
+ * a refresh late, and a move whose frames averaged 13-15 ms still missed
+ * one refresh in four. With three, a frame starts as soon as the last one is
+ * handed over and only the hand-over waits for the refresh end, so a frame
+ * can borrow from the next: what has to fit is the average. 768 KB of PSRAM.
+ * display.c asks the driver for three.
+ */
+#define FB_COUNT 3
+/* Tile buffers in internal SRAM, and how many tiles may be on the engine
+ * while the CPU draws the next (gfx_render()). */
+#define TILE_BUFS 3
+#define TILE_INFLIGHT (TILE_BUFS - 1)
 #define PANEL_PX ((size_t)DISPLAY_H_RES * DISPLAY_V_RES)
 #define PANEL_BYTES (PANEL_PX * sizeof(uint16_t))
 #define CANVAS_PX ((size_t)UI_W * UI_H)
@@ -81,10 +118,10 @@ static SemaphoreHandle_t s_srm_done;
  * eye is still being shown - a tear. And frames that land whenever they are
  * ready against a fixed 60 Hz scan are shown for one refresh or two at
  * random, which is the judder a 60 fps animation still has. Both are the one
- * rule: nothing writes a framebuffer the panel has not let go of. Whoever is
- * about to write the back buffer waits for the first refresh end after the
- * last hand-over (wait_back_free), which also paces every animation to the
- * refresh - a frame that draws in under 16.7 ms is shown exactly once.
+ * rule: nothing writes a framebuffer the panel has not let go of. With three
+ * buffers (FB_COUNT) the one written next is always free; what waits is the
+ * hand-over, for the refresh end after the last one (wait_latched), which
+ * also paces every animation to the refresh - no frame is replaced unseen.
  */
 /* s_vsync, s_swap_pending and s_vsync_us are declared with the interrupt
  * handler that gives the first of them, at the top of the file. */
@@ -143,14 +180,31 @@ static uint16_t *s_mix;      /* landscape, the two of them side by side */
  */
 static uint16_t *s_layer;
 static void *s_fb[FB_COUNT]; /* the panel driver's own framebuffers */
-static int s_back = 0;
+static int s_back = 0;       /* the one the next frame is written into */
+/* The buffer after `i`, in hand-over order. Buffer i was last handed over
+ * three frames ago; the frame after it was on the glass before the frame
+ * after that was handed over (wait_latched), so the panel let go of i then. */
+static int fb_next(int i) { return i + 1 < FB_COUNT ? i + 1 : 0; }
 static bool s_ready;
 static uint32_t s_frames;
 static uint32_t s_pass; /* drawing passes begun; see gfx_pass_id() */
+/* The canvas generation, gfx_canvas_gen(). One writer, the UI task, so a
+ * store with release order is enough: no read-modify-write is shared. */
+static uint32_t s_canvas_gen = 1;
 static uint32_t s_last_ms;
 
 bool gfx_ready(void) { return s_ready; }
 uint16_t *gfx_canvas(void) { return s_canvas; }
+
+uint32_t gfx_canvas_gen(void) { return __atomic_load_n(&s_canvas_gen, __ATOMIC_ACQUIRE); }
+
+/* Before the canvas is written, so a reader that copied a page and then sees
+ * the same generation knows nothing moved under the copy. */
+static void canvas_touched(void) {
+  uint32_t g = s_canvas_gen + 1;
+  if (g == 0) g = 1;
+  __atomic_store_n(&s_canvas_gen, g, __ATOMIC_RELEASE);
+}
 
 void gfx_stats(uint32_t *frames, uint32_t *last_ms) {
   if (frames) *frames = s_frames;
@@ -166,7 +220,7 @@ esp_err_t gfx_init(void) {
   /* The driver allocated these when the panel was created; they are already
    * aligned for DMA and for the PPA's output requirements, which is a good
    * reason to use them rather than allocating our own and copying. */
-  esp_err_t err = esp_lcd_dpi_panel_get_frame_buffer(panel, FB_COUNT, &s_fb[0], &s_fb[1]);
+  esp_err_t err = esp_lcd_dpi_panel_get_frame_buffer(panel, FB_COUNT, &s_fb[0], &s_fb[1], &s_fb[2]);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "no framebuffers (num_fbs must be %d): %s", FB_COUNT, esp_err_to_name(err));
     return err;
@@ -174,7 +228,7 @@ esp_err_t gfx_init(void) {
 
   ppa_client_config_t srm_cfg = {
       .oper_type = PPA_OPERATION_SRM,
-      .max_pending_trans_num = 1,
+      .max_pending_trans_num = TILE_INFLIGHT,
       .data_burst_length = PPA_DATA_BURST_LENGTH_128,
   };
   err = ppa_register_client(&srm_cfg, &s_srm);
@@ -182,7 +236,7 @@ esp_err_t gfx_init(void) {
     ESP_LOGE(TAG, "PPA SRM client failed: %s", esp_err_to_name(err));
     return err;
   }
-  /* The panel's refresh end, for wait_back_free(). Without it frames are
+  /* The panel's refresh end, for wait_latched(). Without it frames are
    * written whenever they are ready, which tears and judders but shows. */
   s_vsync = xSemaphoreCreateBinary();
   if (s_vsync != NULL) {
@@ -196,7 +250,7 @@ esp_err_t gfx_init(void) {
 
   /* The tile renderer's completion signal. Without it every tile is written
    * out by the CPU, which is slower and right. */
-  s_srm_done = xSemaphoreCreateBinary();
+  s_srm_done = xSemaphoreCreateCounting(TILE_INFLIGHT, 0);
   if (s_srm_done != NULL) {
     const ppa_event_callbacks_t cbs = {.on_trans_done = on_srm_done};
     if (ppa_client_register_event_callbacks(s_srm, &cbs) != ESP_OK) {
@@ -312,6 +366,7 @@ static esp_err_t rotate_to(void *dst) { return rotate(s_canvas, dst); }
  * on, read back from the camera with GET_LOGS rather than assumed.
  */
 static void measure_rotate(void) {
+  canvas_touched();
   for (int y = 0; y < UI_H; y++) {
     uint16_t *row = s_canvas + (size_t)y * UI_W;
     for (int x = 0; x < UI_W; x++) row[x] = (uint16_t)((x * 7) ^ (y * 13) ^ (x >> 3));
@@ -323,6 +378,60 @@ static void measure_rotate(void) {
   memset(s_canvas, 0, CANVAS_BYTES);
 }
 
+/* The cadence (gfx_cadence()): the refresh count at the last hand-over, the
+ * spread of the gaps since gfx_cadence_begin(), and a reference point for
+ * the refresh period. PSRAM: only show() and the readers touch it. */
+static EXT_RAM_BSS_ATTR struct {
+  bool have;
+  uint32_t last_n;
+  uint16_t hist[8];
+  uint32_t max_d;   /* the longest gap, in refreshes, uncapped */
+  int64_t max_us;   /* when the frame that ended it was handed over */
+  int64_t ref_us;
+  uint32_t ref_n;
+} s_cad;
+
+void gfx_cadence_begin(void) {
+  s_cad.have = false;
+  memset(s_cad.hist, 0, sizeof s_cad.hist);
+  s_cad.max_d = 0;
+  s_cad.max_us = 0;
+}
+
+void gfx_cadence(gfx_cadence_t *out) {
+  if (out == NULL) return;
+  memcpy(out->hist, s_cad.hist, sizeof out->hist);
+  out->max_n = s_cad.max_d;
+  out->max_us = s_cad.max_us;
+  out->period_us = 0;
+  const uint32_t n = s_vsync_n - s_cad.ref_n;
+  if (s_cad.ref_us != 0 && n >= 30) out->period_us = (uint32_t)((esp_timer_get_time() - s_cad.ref_us) / n);
+}
+
+/* A hand-over latches at the next refresh end, so the frame is on the glass
+ * from refresh n + 1, where n is the count now: the gap to the last frame is
+ * the difference of the two counts. A refresh end that lands between this
+ * read and the driver's switch makes one gap a refresh long and the next a
+ * refresh short; rare, and it cannot hide a held frame. */
+static void cadence_note(void) {
+  const uint32_t n = s_vsync_n;
+  if (s_cad.ref_us == 0) {
+    s_cad.ref_us = esp_timer_get_time();
+    s_cad.ref_n = n;
+  }
+  if (s_cad.have) {
+    uint32_t d = n - s_cad.last_n;
+    if (d > s_cad.max_d) {
+      s_cad.max_d = d;
+      s_cad.max_us = esp_timer_get_time();
+    }
+    if (d > 7) d = 7;
+    if (s_cad.hist[d] < UINT16_MAX) s_cad.hist[d]++;
+  }
+  s_cad.last_n = n;
+  s_cad.have = true;
+}
+
 /** Hand a framebuffer to the panel. The driver recognises its own buffer and
  *  only writes the cache back and switches the scan source - no copy. */
 static void show(void *fb) {
@@ -332,20 +441,47 @@ static void show(void *fb) {
    * next writer must wait for. */
   if (s_vsync != NULL) xSemaphoreTake(s_vsync, 0);
   esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, 0, DISPLAY_H_RES, DISPLAY_V_RES, fb);
+  /* Read after the switch: a refresh end that lands inside draw_bitmap then
+   * makes the wait one refresh longer, never one too short. */
+  s_shown_n = s_vsync_n;
+  cadence_note();
   if (err != ESP_OK) ESP_LOGE(TAG, "present failed: %s", esp_err_to_name(err));
+  /* The backlight comes on with the first frame there is (FW-08); a bool
+   * test on every later one. */
+  else display_first_light();
   s_swap_pending = true;
+}
+
+int64_t gfx_due_us(void) {
+  uint32_t n;
+  int64_t at;
+  do {
+    n = s_vsync_n;
+    at = s_vsync_at_us;
+  } while (n != s_vsync_n);
+  const int64_t now = esp_timer_get_time();
+  if (at == 0) return now;
+  const uint32_t n0 = n - s_cad.ref_n;
+  const int64_t per = s_cad.ref_us != 0 && n0 >= 30 ? (at - s_cad.ref_us) / n0 : 16667;
+  /* A frame handed over and not yet latched goes up at the next refresh end;
+   * the frame drawn now follows it one refresh later. */
+  int64_t due = at + ((s_swap_pending && n == s_shown_n) ? 2 : 1) * per;
+  while (due < now) due += per;
+  return due;
 }
 
 void gfx_present(void) {
   if (!s_ready) return;
+  /* Whatever was drawn straight into the canvas since the last bump is going
+   * to the panel now; a picture read across it is not one picture. */
+  canvas_touched();
   const int64_t t0 = esp_timer_get_time();
 
   void *fb = s_fb[s_back];
-  wait_back_free();
   if (rotate_to(fb) != ESP_OK) return;
+  wait_latched();
   show(fb);
-  s_back ^= 1; /* draw into the other one next time, so the panel keeps
-                * scanning the frame it was given until the next is complete */
+  s_back = fb_next(s_back);
 
   s_frames++;
   const int64_t dt = esp_timer_get_time() - t0;
@@ -355,6 +491,7 @@ void gfx_present(void) {
 
 void gfx_render_canvas(gfx_draw_fn draw, void *ctx) {
   if (!s_ready || draw == NULL) return;
+  canvas_touched();
   s_pass++;
   s_target = (gfx_target_t){s_canvas, 0, 0, UI_W, UI_H, UI_W};
   draw(ctx);
@@ -382,17 +519,24 @@ void gfx_render_canvas(gfx_draw_fn draw, void *ctx) {
  * panel row x, panel column H_RES - 1 - y.
  */
 /*
- * Two tile buffers, so the engine writes one out while the CPU draws the
- * next: 48 x 96 x 2 bytes x 2 = 18 KB of internal SRAM, the scarce pool on
- * this board (#162). 48 x 96 rather than the earlier 128 x 48: a tile's
- * landscape column is a run along a panel row, so TILE_H is the run length
- * written into PSRAM (192 bytes, against 96). A tile is 9 KB rather than 12,
- * because the C6 recovery reserve needs two 16 KB blocks of this pool.
- * Cache-line aligned because the PPA reads them as pictures of their own.
+ * Three tile buffers (TILE_BUFS), so the engine can hold two tiles while the
+ * CPU draws the third: 48 x 96 x 2 bytes x 3 = 27 KB of internal SRAM, the
+ * scarce pool on this board (#162). With two, the CPU waited for the engine
+ * after every tile that drew faster than the last one wrote out, and a
+ * frame cost the sum of the slower of each pair; the third lets a quick tile
+ * run ahead. Measured on the panel (#248): writing out 6-7 ms a frame to 4,
+ * the start with no frame held. Three 32 px wide tiles in the old 18 KB were
+ * tried and lost it all again to the 125 transactions a frame (5-7 ms).
+ * 48 x 96 rather than the earlier 128 x 48: a tile's landscape column is a
+ * run along a panel row, so TILE_H is the run length written into PSRAM
+ * (192 bytes, against 96). A tile is 9 KB rather than 12, because the C6
+ * recovery reserve needs two 16 KB blocks of this pool; it reads 2/2 with
+ * 74 KB free after boot. Cache-line aligned because the PPA reads them as
+ * pictures of their own.
  */
 #define TILE_W 48
 #define TILE_H 96
-static uint16_t s_tiles[2][TILE_W * TILE_H] __attribute__((aligned(64)));
+static uint16_t s_tiles[TILE_BUFS][TILE_W * TILE_H] __attribute__((aligned(64)));
 _Static_assert(TILE_H % 2 == 0 && UI_H % TILE_H == 0 && DISPLAY_H_RES % 2 == 0,
                "tiles must divide the height and the transposed write stores two pixels a word");
 
@@ -406,11 +550,27 @@ void gfx_pass_split(uint64_t *draw_us, uint64_t *xpose_us, uint64_t *vsync_us) {
   if (vsync_us) *vsync_us = s_vsync_us;
 }
 
-/* The engine's completion, in interrupt context: one give, nothing else. */
+/*
+ * The engine's completion, in interrupt context: one give, nothing else, and
+ * only for a tile.
+ *
+ * The driver calls this for every transaction on the client, the blocking
+ * whole-frame rotates too (measure_rotate, the slide's two, a present). Each
+ * of those left a give nobody took, and the next tile pass took it as the
+ * first tile's completion while that tile was still on the engine: the second
+ * tile was refused ("exceed maximum pending transactions"), went out by CPU
+ * with an error line on the 115200 console, and the early give and the late
+ * one kept every other tile of the frame failing the same way. Measured on
+ * the panel (#248): the start's first frame took 513 ms to write out, 42 of
+ * its 85 tiles by CPU, and the second 194 ms. A tile's transaction carries
+ * TILE_TAG as its user data; nothing else gives.
+ */
+static const int s_tile_tag = 1; /* its address is the tag */
+#define TILE_TAG ((void *)&s_tile_tag)
 static bool on_srm_done(ppa_client_handle_t client, ppa_event_data_t *event, void *user_data) {
   (void)client;
   (void)event;
-  (void)user_data;
+  if (user_data != TILE_TAG) return false;
   BaseType_t woken = pdFALSE;
   if (s_srm_done != NULL) xSemaphoreGiveFromISR(s_srm_done, &woken);
   return woken == pdTRUE;
@@ -448,6 +608,7 @@ static esp_err_t rotate_tile_async(const uint16_t *tile, int w, int h, int tx, i
       .scale_x = 1.0f,
       .scale_y = 1.0f,
       .mode = PPA_TRANS_MODE_NON_BLOCKING,
+      .user_data = TILE_TAG,
   };
   return ppa_do_scale_rotate_mirror(s_srm, &cfg);
 }
@@ -494,10 +655,8 @@ void gfx_render(gfx_draw_fn draw, void *ctx) {
   if (!s_ready || draw == NULL) return;
   s_pass++;
   const int64_t t0 = esp_timer_get_time();
-  uint16_t *fb = s_fb[s_back];
-  /* Before the first tile lands in it: the panel may still be scanning it. */
-  wait_back_free();
-  bool pending = false; /* a tile is on the engine */
+  uint16_t *fb = s_fb[s_back]; /* free: see fb_next() */
+  int pending = 0; /* tiles on the engine, oldest first */
   int which = 0;
 
   for (int ty = 0; ty < UI_H; ty += TILE_H) {
@@ -505,40 +664,44 @@ void gfx_render(gfx_draw_fn draw, void *ctx) {
     for (int tx = 0; tx < UI_W; tx += TILE_W) {
       const int w = UI_W - tx < TILE_W ? UI_W - tx : TILE_W;
       uint16_t *tile = s_tiles[which];
-      /* This buffer was last read by the engine two tiles ago, and that
-       * read was waited for before the tile in between was submitted. */
+      /* This buffer was last read by the engine TILE_BUFS tiles ago, and
+       * that read was waited for before the next tile was submitted: at most
+       * TILE_INFLIGHT are ever on the engine. */
       s_target = (gfx_target_t){tile, tx, ty, w, h, w};
       const int64_t d0 = esp_timer_get_time();
       draw(ctx);
       const int64_t d1 = esp_timer_get_time();
       s_draw_us += (uint64_t)(d1 - d0);
 
-      if (pending) {
+      if (pending == TILE_INFLIGHT) {
         if (xSemaphoreTake(s_srm_done, pdMS_TO_TICKS(50)) != pdTRUE) {
           ESP_LOGE(TAG, "tile rotate did not complete in 50 ms");
         }
-        pending = false;
+        pending--;
       }
       if (s_srm_done != NULL && rotate_tile_async(tile, w, h, tx, ty, fb) == ESP_OK) {
-        pending = true;
+        pending++;
       } else {
         transpose_tile(tile, w, h, tx, ty, fb);
       }
       s_xpose_us += (uint64_t)(esp_timer_get_time() - d1);
-      which ^= 1;
+      which = which + 1 < TILE_BUFS ? which + 1 : 0;
     }
   }
-  if (pending) {
+  if (pending > 0) {
     const int64_t w0 = esp_timer_get_time();
-    if (xSemaphoreTake(s_srm_done, pdMS_TO_TICKS(50)) != pdTRUE) {
-      ESP_LOGE(TAG, "last tile rotate did not complete in 50 ms");
+    for (; pending > 0; pending--) {
+      if (xSemaphoreTake(s_srm_done, pdMS_TO_TICKS(50)) != pdTRUE) {
+        ESP_LOGE(TAG, "last tile rotate did not complete in 50 ms");
+      }
     }
     s_xpose_us += (uint64_t)(esp_timer_get_time() - w0);
   }
   s_target = (gfx_target_t){s_canvas, 0, 0, UI_W, UI_H, UI_W};
 
+  wait_latched();
   show(fb);
-  s_back ^= 1;
+  s_back = fb_next(s_back);
   s_frames++;
   const int64_t dt = esp_timer_get_time() - t0;
   s_last_ms = (uint32_t)(dt / 1000);
@@ -558,9 +721,16 @@ void gfx_snapshot(void) {
  * is already there (gfx_snapshot() rotates the canvas into s_from); this
  * rotates the stash, the arriving screen, into s_to. rotate_block() maps a
  * landscape column to a panel row, so a landscape offset is a row offset and
- * one frame is two contiguous copies into the back buffer - about a
- * millisecond, against the 13 ms of blitting the same pixels through the
- * tiles and the 28 fps of the compositor loop this replaced.
+ * one frame is two contiguous copies into the back buffer: 768 KB read and
+ * 768 KB written on the PSRAM bus the panel is also reading, 15 ms a frame
+ * measured on the panel (#248), 18 behind a photograph being decoded. The
+ * 28 fps compositor loop this replaced, and 13 ms of blitting the same
+ * pixels through the tiles before their write-out, were slower.
+ *
+ * By the CPU, on purpose. The PPA's SRM copied it in 14 ms, but the engine is
+ * shared and takes transactions in order: sliding into PHOTO, the copies
+ * queued behind the photograph's scaling and a frame was held 65 ms, where
+ * the CPU's copy only ever missed one refresh (#248).
  */
 void gfx_slide_prepare(void) {
   if (!s_ready || s_mix == NULL || s_to == NULL) return;
@@ -576,7 +746,7 @@ void gfx_slide_show(int o, int b, bool from_right) {
   if (b > o) b = o;
   const size_t row = DISPLAY_H_RES; /* one landscape column, in pixels */
   uint16_t *fb = s_fb[s_back];
-  wait_back_free();
+  const int64_t c0 = esp_timer_get_time();
   if (from_right) {
     /* Columns [0, UI_W-o) show the leaving screen from column b on; the rest
      * is the arriving screen's first o columns. */
@@ -591,8 +761,11 @@ void gfx_slide_show(int o, int b, bool from_right) {
   }
   /* The CPU wrote it; the panel reads it by DMA. */
   esp_cache_msync(fb, PANEL_BYTES, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+  /* The copy is this frame's writing out, and a move's report says so. */
+  s_xpose_us += (uint64_t)(esp_timer_get_time() - c0);
+  wait_latched();
   show(fb);
-  s_back ^= 1;
+  s_back = fb_next(s_back);
   s_frames++;
   const int64_t dt = esp_timer_get_time() - t0;
   s_last_ms = (uint32_t)(dt / 1000);
@@ -656,11 +829,13 @@ void gfx_layer_keep(void) {
 
 void gfx_layer_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (!s_ready || s_layer == NULL) return;
+  canvas_touched();
   layer_blit(s_layer, dx, dy, sx, sy, w, h);
 }
 
 void gfx_stash_blit(int dx, int dy, int sx, int sy, int w, int h) {
   if (!s_ready || s_mix == NULL) return;
+  canvas_touched();
   layer_blit(s_mix, dx, dy, sx, sy, w, h);
 }
 
@@ -700,7 +875,6 @@ void gfx_dissolve(int duration_ms) {
     if (k > 255) k = 255;
 
     void *fb = s_fb[s_back];
-    wait_back_free();
     ppa_blend_oper_config_t cfg = {
         .in_bg =
             {
@@ -737,8 +911,9 @@ void gfx_dissolve(int duration_ms) {
         .mode = PPA_TRANS_MODE_BLOCKING,
     };
     if (ppa_do_blend(s_blend, &cfg) != ESP_OK) break;
+    wait_latched();
     show(fb);
-    s_back ^= 1;
+    s_back = fb_next(s_back);
     s_frames++;
   }
 

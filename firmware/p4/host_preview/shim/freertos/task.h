@@ -36,6 +36,11 @@ static inline uint32_t ulTaskNotifyTake(int clear, uint32_t wait) {
   return 0;
 }
 static inline void xTaskNotifyGive(TaskHandle_t t) { (void)t; }
+/* A move raises the UI task while it runs (ui.c, UI_MOVE_PRIO); no tasks here. */
+static inline void vTaskPrioritySet(TaskHandle_t t, int prio) {
+  (void)t;
+  (void)prio;
+}
 static inline void vTaskDelete(TaskHandle_t t) { (void)t; }
 
 /* The calibration task parks itself and the UI task deletes it (ui.c

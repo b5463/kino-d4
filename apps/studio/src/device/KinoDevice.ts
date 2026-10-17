@@ -29,6 +29,8 @@ import type {
   RecipesResponse,
   HwValidationReport,
   RuntimeStats,
+  ScreenPlateResponse,
+  ScreenShotInfo,
   ShootMode,
   SoundBeginRequest,
   SoundBeginResponse,
@@ -39,8 +41,11 @@ import type {
   StorageSelfTestResult,
   StorageStatus,
   TargetId,
+  UiKey,
+  UiKeyResponse,
+  UiTapResponse,
 } from '@kino/kdp';
-import { CONFIG_SCHEMA_VERSION } from '@kino/kdp';
+import { CONFIG_SCHEMA_VERSION, SCREEN_CHUNK_MAX } from '@kino/kdp';
 import type { CameraFocus, FocusMode, TimingResult } from '@kino/kdp';
 import { readbackDiff } from '../utils/diffConfig';
 import type { ConfigDiff } from '../utils/diffConfig';
@@ -378,6 +383,32 @@ export class KinoDevice {
   /** Runtime hardware-validation registry: what this unit has bench-proven. */
   getHwValidation() {
     return this.client.request<HwValidationReport>(Cmd.GET_HW_VALIDATION);
+  }
+
+  // ---- the body's own screen (#246), gated by `screenControl` ----
+
+  /** Render the screen once on the body and describe the render. BUSY while a
+   * move or the boot sequence owns the panel. */
+  getScreen() {
+    return this.client.request<ScreenShotInfo>(Cmd.GET_SCREEN, {}, 3000);
+  }
+
+  /** One page of render `shot`. INVALID_STATE once the body drew again. */
+  getScreenPage(shot: number, offset: number, length: number = SCREEN_CHUNK_MAX) {
+    return this.client.requestBytes(Cmd.GET_SCREEN, { shot, offset, length }, 3000);
+  }
+
+  screenPlate(on: boolean) {
+    return this.client.request<ScreenPlateResponse>(Cmd.SCREEN_PLATE, { on });
+  }
+
+  /** A tap in logical 800x480 coordinates, through the path a finger takes. */
+  uiTap(x: number, y: number, holdMs?: number) {
+    return this.client.request<UiTapResponse>(Cmd.UI_TAP, holdMs === undefined ? { x, y } : { x, y, holdMs });
+  }
+
+  uiKey(key: UiKey, longPress?: boolean) {
+    return this.client.request<UiKeyResponse>(Cmd.UI_KEY, longPress === undefined ? { key } : { key, longPress });
   }
 
   enterMaintenance() {
