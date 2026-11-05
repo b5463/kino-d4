@@ -1,0 +1,67 @@
+{
+    "$schema": "https://schemas.kicad.org/erc.v1.json",
+    "coordinate_units": "mm",
+    "date": "2026-11-05T22:42:52",
+    "ignored_checks": [
+        {
+            "description": "Global label only appears once in the schematic",
+            "key": "single_global_label"
+        },
+        {
+            "description": "Four connection points are joined together",
+            "key": "four_way_junction"
+        },
+        {
+            "description": "SPICE model issue",
+            "key": "simulation_model_issue"
+        },
+        {
+            "description": "Assigned footprint doesn't match footprint filters",
+            "key": "footprint_filter"
+        }
+    ],
+    "included_severities": [
+        "error",
+        "warning",
+        "exclusion"
+    ],
+    "kicad_version": "10.0.6",
+    "sheets": [
+        {
+            "path": "/",
+            "uuid_path": "/0d0fd23e-db2b-512e-99e6-f3e0e26f1698",
+            "violations": []
+        },
+        {
+            "path": "/P4 header, controls and I2C/",
+            "uuid_path": "/0d0fd23e-db2b-512e-99e6-f3e0e26f1698/3232a404-6196-5458-99d2-26d3fe79de97",
+            "violations": []
+        },
+        {
+            "path": "/5 V input/",
+            "uuid_path": "/0d0fd23e-db2b-512e-99e6-f3e0e26f1698/e33cce5d-a79a-5368-b4a1-d200b66aad5e",
+            "violations": []
+        },
+        {
+            "path": "/Camera 1/",
+            "uuid_path": "/0d0fd23e-db2b-512e-99e6-f3e0e26f1698/7e073319-8e4c-5a67-99c2-5bbefcc5217c",
+            "violations": []
+        },
+        {
+            "path": "/Camera 2/",
+            "uuid_path": "/0d0fd23e-db2b-512e-99e6-f3e0e26f1698/6d5c5ae8-898b-57cf-bce8-cda745360748",
+            "violations": []
+        },
+        {
+            "path": "/Camera 3/",
+            "uuid_path": "/0d0fd23e-db2b-512e-99e6-f3e0e26f1698/305810a9-07ad-5c3b-a258-bd38998903bd",
+            "violations": []
+        },
+        {
+            "path": "/Camera 4/",
+            "uuid_path": "/0d0fd23e-db2b-512e-99e6-f3e0e26f1698/6d6508fa-4665-5075-b1ec-54f7b545fb3e",
+            "violations": []
+        }
+    ],
+    "source": "KINO_D4_Dev_Carrier_D1.kicad_sch"
+}

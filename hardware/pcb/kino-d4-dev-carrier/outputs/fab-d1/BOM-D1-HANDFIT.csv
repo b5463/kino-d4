@@ -1,0 +1,13 @@
+Designator,Value,Part,Note
+J100,P4 JP1 - 26 pin IDC,Wurth 61202621621 (any keyed 2x13 2.54 mm box header),Same position as A0.2 J100; keyed ribbon to P4 JP1.
+J101,C6 service,1x06 2.54 mm pin header,"C6_3V3 is the C6 supply: sense only, do not feed."
+SW100,SHUTTER,6x6 mm THT tactile switch,GPIO28 has the internal pull-up and 25 ms debounce in buttons.c; no resistor.
+J103,REMOTE SHUTTER,1x02 2.54 mm pin header,"Dry contact to GND, in parallel with SW100."
+J200,XIAO ESP32-S3 Sense socket,2x Wurth 61300711821 (1x07 socket),"Same centres as A0.2: 22 mm pitch. Pin 2 D1 sync, 7 D6 TX, 8 D7 RX."
+JP200,LINK 1,1x02 2.54 mm pin header + shunt,Remove before connecting node USB.
+J300,XIAO ESP32-S3 Sense socket,2x Wurth 61300711821 (1x07 socket),"Same centres as A0.2: 22 mm pitch. Pin 2 D1 sync, 7 D6 TX, 8 D7 RX."
+JP300,LINK 2,1x02 2.54 mm pin header + shunt,Remove before connecting node USB.
+J400,XIAO ESP32-S3 Sense socket,2x Wurth 61300711821 (1x07 socket),"Same centres as A0.2: 22 mm pitch. Pin 2 D1 sync, 7 D6 TX, 8 D7 RX."
+JP400,LINK 3,1x02 2.54 mm pin header + shunt,Remove before connecting node USB.
+J500,XIAO ESP32-S3 Sense socket,2x Wurth 61300711821 (1x07 socket),"Same centres as A0.2: 22 mm pitch. Pin 2 D1 sync, 7 D6 TX, 8 D7 RX."
+JP500,LINK 4,1x02 2.54 mm pin header + shunt,Remove before connecting node USB.

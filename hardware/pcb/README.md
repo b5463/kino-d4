@@ -4,6 +4,8 @@ D4 V1 currently uses a perfboard or Perma-Proto-style carrier. No production PCB
 
 A component-level [carrier A0.2 draft](kino-d4-carrier-a0/README.md) now exists, with four sockets at 22 mm pitch and the P4 mounting pattern. Its working PCB has components on both faces and partial routing. The [strict release review](kino-d4-carrier-a0/A02-REVIEW.md) rejects it for fabrication pending electrical, routing and mechanical resolution.
 
+The [dev carrier D1](kino-d4-dev-carrier/README.md) is the bench version of the same board: the A0.2 outline, mounting and ribbon with only the circuits the firmware drives, 2 layers, SMT on one face. Its fab package is released for ordering after the manual checks in its README (ECN-0008).
+
 Before a PCB release, commit:
 
 - native KiCad project files;
