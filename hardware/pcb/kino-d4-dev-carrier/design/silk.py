@@ -129,7 +129,7 @@ def front(L):
     # socket pins named inside the rows (seen when the module is out).
     for n, cx in enumerate(CAMERA_X, 1):
         b = 200 + 100 * (n - 1)
-        L.text(f'CAM {n}', cx - 9.0, 20.1, H2, F, LEFT, bold=True, tag=True)
+        L.text(f'CAM {n}', cx - 9.0, 19.5, H2, F, LEFT, bold=True, tag=True)   # on the link header's centre line
         L.text(f'J{b}', cx - 9.0, 22.8, 1.0, F, LEFT)
         L.text(f'LINK  JP{b}', cx + 3.81, 22.8, 1.0, F)
         L.text('XIAO ESP32-S3', cx, 25.3, 1.0, F)
