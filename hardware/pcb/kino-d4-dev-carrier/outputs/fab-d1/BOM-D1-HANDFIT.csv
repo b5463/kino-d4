@@ -3,6 +3,10 @@ J100,P4 JP1 - 26 pin IDC,Wurth 61202621621 (any keyed 2x13 2.54 mm box header),S
 J101,C6 service,1x06 2.54 mm pin header,"C6_3V3 is the C6 supply: sense only, do not feed."
 SW100,SHUTTER,6x6 mm THT tactile switch,GPIO28 has the internal pull-up and 25 ms debounce in buttons.c; no resistor.
 J103,REMOTE SHUTTER,1x02 2.54 mm pin header,"Dry contact to GND, in parallel with SW100."
+GL1,GND loop,0.8 mm tinned wire loop,Scope probe ground.
+GL2,GND loop,0.8 mm tinned wire loop,Scope probe ground.
+GL3,GND loop,0.8 mm tinned wire loop,Scope probe ground.
+F1000,PPTC 3A,"SMD1812P300TF (LCSC C21004, extended library: hand-fit)",Protects the board and the source if 5V_IN shorts; the TPS2553s only protect the nodes.
 J200,XIAO ESP32-S3 Sense socket,2x Wurth 61300711821 (1x07 socket),"Same centres as A0.2: 22 mm pitch. Pin 2 D1 sync, 7 D6 TX, 8 D7 RX."
 JP200,LINK 1,1x02 2.54 mm pin header + shunt,Remove before connecting node USB.
 J300,XIAO ESP32-S3 Sense socket,2x Wurth 61300711821 (1x07 socket),"Same centres as A0.2: 22 mm pitch. Pin 2 D1 sync, 7 D6 TX, 8 D7 RX."

@@ -27,9 +27,9 @@ def add(sh, ref, value, nets, pin_defs, footprint, mpn='', lcsc='', basic=True, 
 
 
 # JLC basic-library passives, 0603 1 % thick film unless stated.
-RES = {'1k': 'C21190', '2.2k': 'C4190', '5.1k': 'C23186', '24k': 'C23352', '100k': 'C25803'}
-RES_MPN = {'1k': '0603WAF1001T5E', '2.2k': '0603WAF2201T5E', '5.1k': '0603WAF5101T5E',
-           '24k': '0603WAF2402T5E', '100k': '0603WAF1003T5E'}
+RES = {'0R': 'C21189', '1k': 'C21190', '2.2k': 'C4190', '4.7k': 'C23162', '5.1k': 'C23186', '24k': 'C23352', '100k': 'C25803'}
+RES_MPN = {'0R': '0603WAF0000T5E', '1k': '0603WAF1001T5E', '2.2k': '0603WAF2201T5E', '4.7k': '0603WAF4701T5E',
+           '5.1k': '0603WAF5101T5E', '24k': '0603WAF2402T5E', '100k': '0603WAF1003T5E'}
 CAPS = {'100n': ('CC0603KRX7R9BB104', 'C14663', '0603'), '1u': ('CL10A105KB8NNNC', 'C15849', '0603'),
         '22u': ('CL21A226MAQNNNE', 'C45783', '0805')}
 
@@ -38,8 +38,8 @@ def two(sh, ref, value, a, b, footprint, names=('1', '2'), **kw):
     return add(sh, ref, value, {1: a, 2: b}, {1: (names[0], 'passive'), 2: (names[1], 'passive')}, footprint, **kw)
 
 
-def res(sh, ref, value, a, b, note=''):
-    return two(sh, ref, value, a, b, 'Resistor_SMD:R_0603_1608Metric', mpn=RES_MPN[value], lcsc=RES[value], note=note)
+def res(sh, ref, value, a, b, note='', fit='smt'):
+    return two(sh, ref, value, a, b, 'Resistor_SMD:R_0603_1608Metric', mpn=RES_MPN[value], lcsc=RES[value], note=note, fit=fit)
 
 
 def cap(sh, ref, value, net, note=''):
@@ -85,20 +85,32 @@ add('01_p4', 'SW100', 'SHUTTER', {1: 'SHUTTER_N', 2: 'GND'}, {1: ('A', 'passive'
 con('01_p4', 'J103', 'REMOTE SHUTTER', {1: 'SHUTTER_N', 2: 'GND'},
     'Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical', mpn='1x02 2.54 mm pin header',
     note='Dry contact to GND, in parallel with SW100.')
+res('01_p4', 'R102', '4.7k', 'P4_SDA', 'P4_3V3', fit='none',
+    note='DNP. The P4 bus has the touch controller pull-ups; fit only for a breakout that has none.')
+res('01_p4', 'R103', '4.7k', 'P4_SCL', 'P4_3V3', fit='none', note='DNP, as R102.')
 res('01_p4', 'R100', '100k', 'CAM_PWR_EN', 'GND', note='Camera bank off while GPIO31 is Hi-Z from reset.')
 res('01_p4', 'R101', '100k', 'SYNC_MASTER', 'GND', note='GPIO32 is Hi-Z from reset; holds the shared sync low.')
 cap('01_p4', 'C100', '100n', 'P4_3V3')
 for i, net in enumerate(['P4_3V3', 'P4_5V', 'SYNC_MASTER', 'CAM_PWR_EN', 'SHUTTER_N', 'GND', 'GND']):
     tp('01_p4', f'TP{100 + i}', net)
+tp('01_p4', 'TP107', 'FAULT_N')
+for i in range(1, 4):   # scope-probe grounds: a wire loop each, hand-fitted
+    con('01_p4', f'GL{i}', 'GND loop', {1: 'GND'}, 'TestPoint:TestPoint_Loop_D2.50mm_Drill1.0mm',
+        mpn='0.8 mm tinned wire loop', note='Scope probe ground.')
+for i in range(1, 4):   # assembly fiducials on the SMT face
+    add('01_p4', f'FID{i}', 'Fiducial', {}, {}, 'Fiducial:Fiducial_1mm_Mask2mm', fit='none', mpn='PCB feature')
 
 # --- 5 V input ----------------------------------------------------------------------------
 sheet('02_power', '5 V input',
       'USB-C sink at 5 V only: 5.1k Rd on CC1/CC2, up to 3 A from a Type-C source. No PD, no battery. '
       'JP1000 (open) joins the dev carrier 5 V to the P4 5 V pins: close it only when exactly one USB cable powers the stack.')
-usb = {'A1': 'GND', 'A12': 'GND', 'B1': 'GND', 'B12': 'GND', 'A4': '5V_IN', 'A9': '5V_IN', 'B4': '5V_IN', 'B9': '5V_IN',
+usb = {'A1': 'GND', 'A12': 'GND', 'B1': 'GND', 'B12': 'GND', 'A4': 'VBUS', 'A9': 'VBUS', 'B4': 'VBUS', 'B9': 'VBUS',
        'A5': 'USB_CC1', 'B5': 'USB_CC2', 'A6': None, 'A7': None, 'B6': None, 'B7': None, 'A8': None, 'B8': None, 'SH': 'GND'}
 con('02_power', 'J1000', 'USB-C 5V', usb, 'KINO_DEV:USB_C_GCT_USB4105_KINO_GND0.05', fit='smt',
     mpn='GCT USB4105-GF-A', lcsc='C3020560', basic=False, note='Power only; data pins open. A0.2 land pattern.')
+two('02_power', 'F1000', 'PPTC 3A', 'VBUS', '5V_IN', 'Fuse:Fuse_1812_4532Metric', fit='hand',
+    mpn='SMD1812P300TF (LCSC C21004, extended library: hand-fit)',
+    note='Protects the board and the source if 5V_IN shorts; the TPS2553s only protect the nodes.')
 res('02_power', 'R1000', '5.1k', 'USB_CC1', 'GND')
 res('02_power', 'R1001', '5.1k', 'USB_CC2', 'GND')
 cap('02_power', 'C1000', '22u', '5V_IN')
@@ -136,8 +148,11 @@ for n in range(1, 5):
     cap(sh, f'C{b}', '1u', '5V_IN')
     two(sh, f'D{b}', 'SS34', c('LINK'), c('SW5V'), 'Diode_SMD:D_SMA', names=('K', 'A'), mpn='SS34', lcsc='C8678',
         note='Blocks node USB from back-feeding the bank.')
-    con(sh, f'JP{b}', f'LINK {n}', {1: c('LINK'), 2: c('5V')}, 'Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical',
+    con(sh, f'JP{b}', f'LINK {n}', {1: c('LINK'), 2: c('5VJ')}, 'Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical',
         mpn='1x02 2.54 mm pin header + shunt', note='Remove before connecting node USB.')
+    res(sh, f'R{b + 6}', '0R', c('5VJ'), c('5V'),
+        note=f'Current-measure link: lift it and meter between TP{b + 5} (5VJ) and TP{b + 4} (5V) for this node.')
+    tp(sh, f'TP{b + 5}', c('5VJ'))
     cap(sh, f'C{b + 1}', '22u', c('5V'))
     cap(sh, f'C{b + 2}', '100n', c('5V'))
     res(sh, f'R{b + 3}', '2.2k', f'P4_TX{n}', c('RX'))

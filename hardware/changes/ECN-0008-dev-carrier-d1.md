@@ -22,6 +22,7 @@ A new board, `hardware/pcb/kino-d4-dev-carrier/`, alongside A0.2 (which stays as
 - Four TPS2553 camera switches with a shared enable (CAM_PWR_EN) and a shared fault line (the four FAULT_N open drains wired-OR); link headers for node USB service; 2.2k series resistors in place of the TXU0304 buffers.
 - USB-C 5 V input with 5.1k CC pull-downs. No charger, battery, PD, haptic, IMU, RTC, temperature, current monitor, expander or power controller.
 - Three board-status LEDs at the bottom edge, visible through the spacer gap: 5 V in (PWR), camera bank enabled (CAM, from GPIO31), any channel in fault (FLT). No per-node LEDs.
+- Bench additions at no BOM-line cost: a 0 ohm current-measure link per node with a test pad either side, a FAULT_N test pad, DNP Qwiic pull-up pads, three fiducials, three wire-loop scope grounds. A 1812 polyfuse footprint on the input, hand-fitted (JLC polyfuses are extended-library parts).
 - Qwiic I2C port for breakouts while the feature firmware is written.
 - 2 layers, SMT on the bottom face only, 14 BOM lines (11 JLC basic), 12 hand-fit through-hole parts.
 

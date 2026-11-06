@@ -27,7 +27,12 @@ PLACE = {
     'C1002': (109.0, 56.5, 90, 'B'),
     # Status LEDs at the bottom edge, left of the USB-C, so they show through the spacer gap with the carrier on the P4.
     'D1000': (92.0, 67.0, 0, 'B'), 'D1001': (96.0, 67.0, 0, 'B'), 'D1002': (100.0, 67.0, 0, 'B'),
-    'R1002': (111.0, 52.0, 0, 'B'), 'R1003': (94.0, 63.5, 0, 'B'), 'R1004': (99.0, 63.5, 0, 'B'),
+    'R1002': (90.0, 63.5, 0, 'B'), 'R1003': (94.0, 63.5, 0, 'B'), 'R1004': (99.0, 63.5, 0, 'B'),   # each LED's resistor beside it
+    'F1000': (109.0, 52.5, 0, 'B'),   # input polyfuse between the USB-C VBUS pads and the 5V_IN caps
+    'TP107': (97.0, 60.0, 0, 'B'),    # FAULT_N
+    'R102': (45.0, 61.5, 90, 'B'), 'R103': (47.0, 61.5, 90, 'B'),   # Qwiic pull-ups, DNP, between the switch pad and J103
+    'FID1': (4.0, 4.0, 0, 'B'), 'FID2': (113.0, 4.0, 0, 'B'), 'FID3': (113.0, 46.0, 0, 'B'),
+    'GL1': (25.5, 56.5, 0, 'F'), 'GL2': (88.5, 55.0, 0, 'F'), 'GL3': (108.0, 44.0, 0, 'F'),   # scope grounds, clear of the TP rows
     'J102': (36.0, 64.6, 180, 'B'),    # cable leaves over the bottom edge
     'SW100': (35.0, 56.0, 0, 'F'),
     'J103': (49.0, 56.0, 90, 'F'),
@@ -46,8 +51,10 @@ for n, cx in enumerate(CAMERA_X, 1):
         f'C{b}': (cx - 3.6, 27.5, 90, 'B'),
         f'R{b}': (cx + 3.6, 27.5, 90, 'B'),
         f'D{b}': (cx, 32.2, 0, 'B'),
-        f'C{b + 1}': (cx - 3.4, 36.6, 90, 'B'),
-        f'C{b + 2}': (cx - 1.2, 36.6, 90, 'B'),
+        # One row at 3 mm pitch, all upright: the 22 uF, the 100 nF and the current-measure link.
+        f'C{b + 1}': (cx - 2.4, 36.6, 90, 'B'),
+        f'C{b + 2}': (cx + 0.6, 36.6, 90, 'B'),
+        f'R{b + 6}': (cx + 3.6, 36.6, 90, 'B'),
         f'R{b + 3}': (cx + 4.5, 46.5, 90, 'B'),
         f'R{b + 4}': (cx - 4.5, 46.5, 90, 'B'),
         f'R{b + 5}': (cx, 46.5, 90, 'B'),
@@ -56,4 +63,5 @@ for n, cx in enumerate(CAMERA_X, 1):
         f'TP{b + 2}': (cx, 51.0, 0, 'B'),
         f'TP{b + 3}': (cx + 3.0, 51.0, 0, 'B'),
         f'TP{b + 4}': (cx + 6.0, 51.0, 0, 'B'),
+        f'TP{b + 5}': (cx + 9.0, 51.0, 0, 'B'),
     })

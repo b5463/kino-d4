@@ -17,11 +17,15 @@ Status: design package 0.1.9, DRC 0, ERC 0, 0 unconnected, fab package in `outpu
 | Indicators | D1000 PWR (5 V in, green), D1001 CAM (bank enabled, green, from GPIO31 through 1k), D1002 FLT (any channel in fault, red; its 1k is the FAULT_N pull-up) | Board status only, no per-node LEDs. Bottom face, bottom edge left of the USB-C, so they show through the spacer gap with the carrier on the P4. Named on both faces. |
 | Link headers | JP200-JP500, 1x02 + shunt, top face | Pull the shunt before plugging a node's USB; refit after. |
 | Signals | 2.2k series on every P4-to-node and node-to-P4 line and on the four sync lines | Stops a powered P4 pin feeding an unpowered node through its protection diodes. No isolation buffers. |
-| 5 V input | J1000 USB-C, 5.1k on CC1/CC2, 2 x 22 uF | 5 V at up to 3 A from a Type-C source. No PD, no battery. JP1000 (solder bridge, open) joins 5V_IN to the P4's 5 V pins; close it only when one cable is meant to power the whole stack. |
+| 5 V input | J1000 USB-C, F1000 3 A PPTC, 5.1k on CC1/CC2, 2 x 22 uF | 5 V at up to 3 A from a Type-C source. No PD, no battery. F1000 (1812 polyfuse, hand-fit: the JLC polyfuses are extended-library parts) protects the board and the source if 5V_IN shorts. JP1000 (solder bridge, open) joins 5V_IN to the P4's 5 V pins; close it only when one cable is meant to power the whole stack. |
+| Current-measure links | R206/R306/R406/R506, 0 ohm 0603 | In each node's 5 V between the link header and the socket. Lift one, meter between TPn05 (5VJ) and TPn04 (5V): that node's current. |
+| Qwiic pull-ups | R102/R103, 4.7k 0603, DNP | Pads only. The P4 bus has the touch controller's pull-ups; fit these for a breakout that brings none. |
+| Fiducials | FID1-FID3, 1 mm copper, 2 mm mask, bottom face | For the assembler's placement. |
+| Scope grounds | GL1-GL3, wire loops, hand-fit | GND at the controls, at the power block and right of CAM 4. |
 | Controls | SW100 6 mm tactile shutter, J103 remote dry contact | Both pull SHUTTER_N (GPIO28, JP1 pin 21) to GND. |
 | Service | J101 1x06: GND, C6 3V3 (sense only), RX, TX, IO9, EN | The C6 lines from JP1 pins 18-26. |
 | Expansion | J102 JST SH 1x04, Qwiic/STEMMA QT pinout | P4 I2C (JP1 pins 23/25) at 3.3 V. The bus already carries the touch controller at 0x5D. |
-| Test pads | TP100-TP106, TP200-TP504, 1.5 mm, bottom | P4 3V3, 5V, SYNC, CAM_PWR_EN, SHUTTER, GND; per camera TX, RX, SYNC, 3V3, 5V. Named on the silk. |
+| Test pads | TP100-TP107, TP200-TP505, 1.5 mm, bottom | P4 3V3, 5V, SYNC, CAM_PWR_EN, SHUTTER, GND, FAULT_N; per camera TX, RX, SYNC, 3V3, 5V, 5VJ. Named on the silk. |
 
 Current budget: the 1.0 mm 5 V bus on 1 oz copper carries about 3 A for a 10 degC rise. Four XIAO S3 Sense modules with cameras draw about 2 A together; flash is not on this board.
 
@@ -33,7 +37,7 @@ The top of the hierarchy (`KINO D4`, `SIDE A/B`, `CAM 1-4`, `PROTOTYPE`, `5V IN`
 
 Front ("SIDE A"), the face the XIAOs stand on: the ODD JOBS mark top left; the subtitle `4x XIAO ESP32-S3 SENSE ON ESP32-P4 JP1` between the inserts; `SIDE A`; the identity line `KINO D4 / DEV CARRIER / REV D1 / PROTOTYPE ... KINO-D4-DC-D1 / 2026-11` (the prototype marking is on both faces); per node `CAM n`, `Jn00`, `LINK JPn00`, `XIAO ESP32-S3`, pin 1 and the six wired socket pins named inside the rows (visible when the module is out); the column right of CAM 4, left-aligned on x 102.5: `LINK / PULL SHUNT / BEFORE USB` and `CAM 5V / 1.2A LIMIT / SHARED EN`; `J100 P4 JP1` with pin 1 and `NC` on pin 15; the GPIO map in two columns (`CAM EN GPIO31`, `SYNC GPIO32`, `SHUTTER GPIO28`); `SW100 SHUTTER`, `J103 REMOTE` and `J101 C6 SERVICE` with their pins named; `5V IN` over `J1000 USB-C 3A MAX` against the right margin; `PWR CAM FLT` over the edge LEDs.
 
-Back ("SIDE B"), the assembled face: `SIDE B` and the identity line in the same reading order, S/N box, the `JLCJLCJLCJLC` anchor for the order number, the licence line, `JP1000 5V LINK` at the solder bridge, `CAM 1-4`, every test pad named, `J102 QWIIC`, the LED names.
+Back ("SIDE B"), the assembled face: `SIDE B` and the identity line in the same reading order, S/N box, the `JLCJLCJLCJLC` anchor for the order number, the licence line, `JP1000 5V LINK` at the solder bridge, `CAM 1-4`, every test pad named, `J102 QWIIC`, `I2C PU DNP` at the pull-up pads, `F1000 3A`, `FAULT` at the FAULT_N pad, the LED names; `GND` at the three wire loops on the front.
 
 ## Files
 
@@ -64,7 +68,7 @@ The ODD JOBS symbol is read from `kino-d4-carrier-a0/brand/odd-jobs-symbol.json`
 
 ## Ordering
 
-JLCPCB, 2 layers, 1.6 mm, 1 oz, any finish. Economic assembly, bottom side only, 52 placements. Upload `outputs/fab-d1/` as the Gerber zip, `BOM-D1-JLC.csv` and `CPL-D1-JLC.csv`. Check the rotations of U200-U500, the four SS34 and the three LEDs in the assembler's preview before confirming: the CPL carries KiCad's angles. Hand-fit the parts in `BOM-D1-HANDFIT.csv` after delivery: eight 1x07 sockets, the box header, the C6 and remote headers, four 1x02 link headers with shunts, one 6 mm switch.
+JLCPCB, 2 layers, 1.6 mm, 1 oz, any finish. Economic assembly, bottom side only, 52 placements. Upload `outputs/fab-d1/` as the Gerber zip, `BOM-D1-JLC.csv` and `CPL-D1-JLC.csv`. Check the rotations of U200-U500, the four SS34 and the three LEDs in the assembler's preview before confirming: the CPL carries KiCad's angles. Hand-fit the parts in `BOM-D1-HANDFIT.csv` after delivery: eight 1x07 sockets, the box header, the C6 and remote headers, four 1x02 link headers with shunts, one 6 mm switch, the 1812 polyfuse, three wire loops.
 
 ## Checks before ordering
 
@@ -78,4 +82,5 @@ JLCPCB, 2 layers, 1.6 mm, 1 oz, any finish. Economic assembly, bottom side only,
 2. P4 on the ribbon, firmware up: `CAM_PWR_EN` high, CAM on, each CAMn_5V pad at 5 V.
 3. One XIAO at a time in each socket: the node answers on its UART (issue #148's single-node proof).
 4. Four nodes: all visible at once; SYNC on every TP*02 pad.
-5. Short a camera 5 V pad to GND through 1 ohm: FLT on, that channel's 5 V pad at 0 V, the other three nodes still answering.
+5. Short a camera 5 V pad to GND through 1 ohm: FLT on, TP107 (FAULT_N) low, that channel's 5 V pad at 0 V, the other three nodes still answering.
+6. Lift R206, meter between TP205 and TP204: node 1's current while idle, streaming and with the flash command. Refit.

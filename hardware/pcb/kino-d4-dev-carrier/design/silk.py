@@ -158,6 +158,9 @@ def front(L):
     L.text('J1000  USB-C  3A MAX', END, 57.6, 1.0, F, RIGHT, baseline=True)
     for x, s in ((92.0, 'PWR'), (96.0, 'CAM'), (100.0, 'FLT')):
         L.circle(x, 66.6, 0.75, 0.2); L.text(s, x, BASE, 1.0, F)
+    # Scope-probe ground loops.
+    for x, y in ((25.5, 59.0), (88.5, 57.4), (108.0, 46.4)):
+        L.text('GND', x, y, 1.0, F)
 
 
 def back(L):
@@ -170,13 +173,16 @@ def back(L):
     L.text('JP1000  5V LINK', 19.5, 17.1, 1.0, B)
     for n, cx in enumerate(CAMERA_X, 1):
         L.text(f'CAM {n}', cx, 23.8, H2, B, CENTER, bold=True)
-        for i, s in enumerate(('TX', 'RX', 'SY', '3V3', '5V')):
+        for i, s in enumerate(('TX', 'RX', 'SY', '3V3', '5V', '5VJ')):   # 5VJ: jumper side of the measure link
             L.text(s, cx - 6.0 + 3.0 * i, 49.3, 1.0, B)
     for y, s in ((33.5, 'EN'), (46.0, '3V3'), (49.0, '5V'), (52.0, 'SY'), (55.0, 'SH')):   # the J100 shroud ends at x 11.8
         L.text(s, 14.8, y, 1.0, B, RIGHT)
     L.text('GND', 4.0, 60.2, 1.0, B)
     L.text('J102  QWIIC', 26.5, 62.6, 1.0, B)
     L.text('GND', 101.0, 62.2, 1.0, B)
+    L.text('FAULT', 97.0, 62.2, 1.0, B)
+    L.text('F1000  3A', 109.0, 49.6, 1.0, B)
+    L.text('I2C PU DNP', 47.0, 59.0, 1.0, B)
     for x, s in ((92.0, 'PWR'), (96.0, 'CAM'), (100.0, 'FLT')):
         L.text(s, x, 65.2, 1.0, B)
 
