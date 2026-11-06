@@ -106,11 +106,10 @@ def identity(L, layer, side, end=END, side_end=END):
     # Left group, the product, by importance: name, revision, model. Arial Bold caps run about
     # 0.85 em; gaps are 3 mm. Right group, the record, right-aligned against the margin.
     L.text('KINO D4', m(MARGIN), y, H1, layer, jl, bold=True, baseline=True)
-    L.text('REV ' + REV, m(21.0), y, H2, layer, jl, bold=True, baseline=True)
-    L.text(MODEL, m(31.2), y, BODY, layer, jl, baseline=True)
+    for u, s in ((21.0, MODEL), (37.1, 'REV ' + REV), (47.2, 'PROTOTYPE')):   # one size for the whole group
+        L.text(s, m(u), y, H2, layer, jl, bold=True, baseline=True)
     L.text(DATE, m(end), y, BODY, layer, jr, baseline=True)
     L.text(PN, m(end - 9.0), y, BODY, layer, jr, baseline=True)
-    L.line((m(MARGIN), 16.1), (m(end), 16.1), 0.25, layer)
 
 
 def front(L):
