@@ -27,11 +27,11 @@ Current budget: the 1.0 mm 5 V bus on 1 oz copper carries about 3 A for a 10 deg
 
 ## Legend
 
-Plain bench-board labelling, drawn by `design/silk.py`: a rule-lined identity bar, a rectangle around each functional block with its name, every pin named where a probe or a cable lands. Every item is a pin, a limit, a procedure or an identity field; nothing decorative.
+Drawn by `design/silk.py`. Arial Bold throughout (an outline face every KiCad install resolves; the file is patched after save because the Python API has no font setter), nothing under 1.0 mm, every legend piece a separate silk item so DRC checks the gaps. Every item is a designator, a pin, a limit, a procedure or an identity field.
 
-Front ("SIDE A"), the face the XIAOs stand on: the spec strip (host, nodes, UART, sync, enable, input); the ODD JOBS mark; the identity bar `KINO D4 / DEV CARRIER / REV D1 / 2026-11 / KINO-D4-DC-D1 / SIDE A`; one box per node, `CAM 1-4`, with `LINK`, `ILIM 1.2A`, pin 1 and the six wired socket pins named inside the rows (visible when the module is out); the link procedure right of CAM 4; `P4 JP1` with pin 1 and NC on pin 15; the `JP1 KEY` pin table; the `CONTROL GPIO28` box with the shutter, remote and C6 service pins named; the `POWER` box with `5V IN USB-C 3A MAX` and the `STATUS` row `PWR CAM FLT` over the edge LEDs.
+Front ("SIDE A"), the face the XIAOs stand on: the ODD JOBS mark top right with `ODD JOBS`; the subtitle `4x XIAO ESP32-S3 SENSE ON ESP32-P4 JP1`; the identity line `KINO D4 / DEV CARRIER / REV D1 / 2026-11 / KINO-D4-DC-D1 / SIDE A` over a rule; per node `CAM n`, `Jn00`, `LINK JPn00`, `XIAO ESP32-S3`, pin 1 and the six wired socket pins named inside the rows (visible when the module is out); `J100 P4 JP1` with pin 1 and `NC` on pin 15; the GPIO map (`CAM EN GPIO31`, `SYNC GPIO32`, `SHUTTER GPIO28`) and `LINK: PULL SHUNT BEFORE NODE USB`; `SW100 SHUTTER`, `J103 REMOTE` and `J101 C6 SERVICE` with their pins named; `J1000 5V IN / USB-C 5V 3A MAX`; `PWR CAM FLT` over the edge LEDs.
 
-Back ("SIDE B"), the assembled face: the identity bar in the same reading order, S/N box, the `JLCJLCJLCJLC` anchor for the order number, the licence line, `CAM 1-4`, every test pad named, `5V LINK` at the solder bridge, `QWIIC`, the LED names. Stroke font for text, nothing under 0.8 mm, 0.15 mm strokes; every legend piece is a separate silk item so DRC checks the gaps.
+Back ("SIDE B"), the assembled face: the identity line in the same reading order, S/N box, the `JLCJLCJLCJLC` anchor for the order number, the licence line, `JP1000 5V LINK` at the solder bridge, `CAM 1-4`, every test pad named, `J102 QWIIC`, the LED names.
 
 ## Files
 
