@@ -30,7 +30,7 @@ class Legend:
         self.b = board
         self.items = []
 
-    def text(self, s, x, y, size=1.0, layer=pcb.F_SilkS, justify=CENTER, angle=0, thick=None, bold=False, baseline=False):
+    def text(self, s, x, y, size=1.0, layer=pcb.F_SilkS, justify=CENTER, angle=0, thick=None, bold=False, baseline=False, tag=False):
         t = pcb.PCB_TEXT(self.b)
         t.SetText(s)
         t.SetPosition(pt(x, y))
@@ -42,6 +42,9 @@ class Legend:
         t.SetHorizJustify(justify)
         if baseline:   # y is the bottom of the capitals, so texts of different sizes share a baseline
             t.SetVertJustify(pcb.GR_TEXT_V_ALIGN_BOTTOM)
+        if tag:   # reversed out of a solid block: the top of the hierarchy only. KiCad pads the
+            t.SetIsKnockout(True)   # block from the text thickness, which the outline face ignores otherwise.
+            t.SetTextThickness(pcb.FromMM(0.4 if size < 2 else 0.6))
         t.SetTextAngleDegrees(angle)
         t.SetMirrored(layer == pcb.B_SilkS)
         self.b.Add(t); self.items.append(t)
@@ -101,13 +104,13 @@ def identity(L, layer, side, end=END, side_end=END):
     m = (lambda u: WIDTH - u) if back else (lambda u: u)
     jl, jr = (RIGHT, LEFT) if back else (LEFT, RIGHT)
     # The side marker, large, at the top right: the first thing to find with the board in hand.
-    L.text(side, m(side_end), 9.4, H1, layer, jr, bold=True, baseline=True)
+    L.text(side, m(side_end), 9.4, H1, layer, jr, bold=True, baseline=True, tag=True)
     y = 15.0   # one baseline for every size; the rule 1.1 mm under it
     # Left group, the product, by importance: name, revision, model. Arial Bold caps run about
     # 0.85 em; gaps are 3 mm. Right group, the record, right-aligned against the margin.
-    L.text('KINO D4', m(MARGIN), y, H1, layer, jl, bold=True, baseline=True)
-    for u, s in ((21.0, MODEL), (37.1, 'REV ' + REV), (47.2, 'PROTOTYPE')):   # one size for the whole group
-        L.text(s, m(u), y, H2, layer, jl, bold=True, baseline=True)
+    L.text('KINO D4', m(MARGIN), y, H1, layer, jl, bold=True, baseline=True, tag=True)
+    for u, s in ((21.6, MODEL), (37.7, 'REV ' + REV), (48.4, 'PROTOTYPE')):   # one size for the whole group
+        L.text(s, m(u), y, H2, layer, jl, bold=True, baseline=True, tag=s == 'PROTOTYPE')
     L.text(DATE, m(end), y, BODY, layer, jr, baseline=True)
     L.text(PN, m(end - 9.0), y, BODY, layer, jr, baseline=True)
 
@@ -126,7 +129,7 @@ def front(L):
     # socket pins named inside the rows (seen when the module is out).
     for n, cx in enumerate(CAMERA_X, 1):
         b = 200 + 100 * (n - 1)
-        L.text(f'CAM {n}', cx - 9.0, 20.1, H2, F, LEFT, bold=True)
+        L.text(f'CAM {n}', cx - 9.0, 20.1, H2, F, LEFT, bold=True, tag=True)
         L.text(f'J{b}', cx - 9.0, 22.5, 1.0, F, LEFT)
         L.text(f'LINK  JP{b}', cx + 3.81, 22.5, 1.0, F)
         L.text('XIAO ESP32-S3', cx, 25.3, 1.0, F)
@@ -151,7 +154,7 @@ def front(L):
         L.text(s, 56.5 + 2.54 * i, 61.0, 1.0, F, CENTER, 90)
     L.text('J101  C6 SERVICE', 62.85, BASE, 1.0, F)
     # Power: the input over the USB-C against the right margin, the status LEDs by name.
-    L.text('5V IN', END, 55.0, H2, F, RIGHT, bold=True, baseline=True)
+    L.text('5V IN', END, 55.0, H2, F, RIGHT, bold=True, baseline=True, tag=True)
     L.text('J1000  USB-C  3A MAX', END, 57.6, 1.0, F, RIGHT, baseline=True)
     for x, s in ((92.0, 'PWR'), (96.0, 'CAM'), (100.0, 'FLT')):
         L.circle(x, 66.6, 0.75, 0.2); L.text(s, x, BASE, 1.0, F)

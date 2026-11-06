@@ -17013,7 +17013,7 @@
 		)
 		(fill yes)
 		(layer "F.SilkS")
-		(uuid "e5c114fd-6c0b-46c8-9666-40313b6cedd7")
+		(uuid "0b234732-d5e6-464d-911e-e5231a00e187")
 	)
 	(gr_poly
 		(pts
@@ -17025,7 +17025,7 @@
 		)
 		(fill yes)
 		(layer "F.SilkS")
-		(uuid "5fbdf9cc-e987-4051-a967-cd2ef1e90794")
+		(uuid "42df3e01-bedf-4aa7-9340-281e6574d7f3")
 	)
 	(gr_poly
 		(pts
@@ -17037,7 +17037,7 @@
 		)
 		(fill yes)
 		(layer "F.SilkS")
-		(uuid "b68a771b-b02a-4903-b171-763ecedac87b")
+		(uuid "409443ad-1345-4295-a11a-dc12e4ede7d7")
 	)
 	(gr_poly
 		(pts
@@ -17049,7 +17049,7 @@
 		)
 		(fill yes)
 		(layer "F.SilkS")
-		(uuid "891b6bab-3ec3-4d3f-bbd9-a598298c17b2")
+		(uuid "d40bc88b-f54a-45c3-ae83-376ea1e66092")
 	)
 	(gr_poly
 		(pts
@@ -17143,7 +17143,7 @@
 		)
 		(fill yes)
 		(layer "F.SilkS")
-		(uuid "10d0ca4d-0600-468b-b707-e984a6c5d28b")
+		(uuid "a23d6d6a-a8cc-421c-a9bd-9880fcd7533a")
 	)
 	(gr_circle
 		(center 142 116.6)
@@ -17154,7 +17154,7 @@
 		)
 		(fill no)
 		(layer "F.SilkS")
-		(uuid "cff49d53-f85a-4ca0-9d49-7e6e9a97f79a")
+		(uuid "5e2b2737-6568-4120-be36-4990aeee6208")
 	)
 	(gr_circle
 		(center 146 116.6)
@@ -17165,7 +17165,7 @@
 		)
 		(fill no)
 		(layer "F.SilkS")
-		(uuid "a72b2dfe-9f1f-4e80-a123-5d6fceed18f1")
+		(uuid "c995dbd0-1386-4910-9280-12c806816466")
 	)
 	(gr_circle
 		(center 150 116.6)
@@ -17176,7 +17176,7 @@
 		)
 		(fill no)
 		(layer "F.SilkS")
-		(uuid "2a7b8c07-309f-4eac-b77f-1371b1980f37")
+		(uuid "436aa641-8326-4b9d-b283-2c47b340e0c4")
 	)
 	(gr_line
 		(start 138 53.4)
@@ -17186,7 +17186,7 @@
 			(type default)
 		)
 		(layer "B.SilkS")
-		(uuid "e8fe1d59-06a5-4dde-8ee7-de03cd0b8a5b")
+		(uuid "f90073e9-975d-426c-a879-f9c0ad0b8e44")
 	)
 	(gr_line
 		(start 138 59.6)
@@ -17196,7 +17196,7 @@
 			(type default)
 		)
 		(layer "B.SilkS")
-		(uuid "9276d4b0-183a-43da-a83e-5d03b6aa43aa")
+		(uuid "18749764-d6d1-44d0-a4b7-f2a767d44b59")
 	)
 	(gr_line
 		(start 151 53.4)
@@ -17206,7 +17206,7 @@
 			(type default)
 		)
 		(layer "B.SilkS")
-		(uuid "80e0049a-68ec-4813-a9ca-5ba560969e44")
+		(uuid "9f2d4f44-026b-4f17-bca2-418eaa81f067")
 	)
 	(gr_line
 		(start 151 59.6)
@@ -17216,7 +17216,7 @@
 			(type default)
 		)
 		(layer "B.SilkS")
-		(uuid "068cb9a0-5d4f-4fc3-a903-46abeda80108")
+		(uuid "5dd92634-0e18-49d8-8319-4bf2036fb6a8")
 	)
 	(gr_circle
 		(center 68.255 57.305)
@@ -17305,7 +17305,7 @@
 	(gr_text "CAM EN"
 		(at 53.6 101.2 0)
 		(layer "F.SilkS")
-		(uuid "88ca7b37-f112-4c6e-af48-4e1f9a43f112")
+		(uuid "1f39f4be-4e4d-4cb4-9974-df0996af894a")
 		(effects
 			(font
 				(face "Arial")
@@ -17319,7 +17319,7 @@
 	(gr_text "SYNC"
 		(at 53.6 103.2 0)
 		(layer "F.SilkS")
-		(uuid "05193bf3-2e8f-4e22-ab70-e98d76b5045d")
+		(uuid "575081ba-4a9d-4c44-8545-ba5bb3fb6b45")
 		(effects
 			(font
 				(face "Arial")
@@ -17333,7 +17333,7 @@
 	(gr_text "SHUTTER"
 		(at 53.6 105.2 0)
 		(layer "F.SilkS")
-		(uuid "33f7e7bc-8554-4933-81ef-6a3b32ba1234")
+		(uuid "c041f42a-0470-4754-ae33-439a03957704")
 		(effects
 			(font
 				(face "Arial")
@@ -17347,7 +17347,7 @@
 	(gr_text "GPIO31"
 		(at 63 101.2 0)
 		(layer "F.SilkS")
-		(uuid "5b826eb0-b99a-452b-aaef-564f1d3db57a")
+		(uuid "54aa73aa-8642-4c33-be89-ffe44a96de09")
 		(effects
 			(font
 				(face "Arial")
@@ -17361,7 +17361,7 @@
 	(gr_text "GPIO32"
 		(at 63 103.2 0)
 		(layer "F.SilkS")
-		(uuid "c01b134a-3011-4eae-a5d3-f64452867579")
+		(uuid "69b75af7-f890-403f-b411-137790c639a2")
 		(effects
 			(font
 				(face "Arial")
@@ -17375,7 +17375,7 @@
 	(gr_text "GPIO28"
 		(at 63 105.2 0)
 		(layer "F.SilkS")
-		(uuid "2cbe623f-04c5-4917-944b-4564f447af48")
+		(uuid "4e26342b-9e43-4c14-bc85-eedcf418bc1f")
 		(effects
 			(font
 				(face "Arial")
@@ -17389,7 +17389,7 @@
 	(gr_text "J200"
 		(at 66.505 72.5 0)
 		(layer "F.SilkS")
-		(uuid "0c4948f7-c954-4808-9220-ecc088eecfe3")
+		(uuid "e9249ce6-d73d-4221-9941-7d0251d693f8")
 		(effects
 			(font
 				(face "Arial")
@@ -17403,7 +17403,7 @@
 	(gr_text "SYNC"
 		(at 69.585 79.625 0)
 		(layer "F.SilkS")
-		(uuid "7c2029f3-eced-49ff-b847-54704badca46")
+		(uuid "9face606-7689-41ee-9353-60d981c3ff0a")
 		(effects
 			(font
 				(face "Arial")
@@ -17417,7 +17417,7 @@
 	(gr_text "TX"
 		(at 69.585 92.325 0)
 		(layer "F.SilkS")
-		(uuid "303fa21c-c7ad-4aac-a74a-c598c4d2c992")
+		(uuid "dda34e7e-70ef-4279-85e6-8efe2da470e7")
 		(effects
 			(font
 				(face "Arial")
@@ -17431,7 +17431,7 @@
 	(gr_text "4x XIAO ESP32-S3 SENSE  ON  ESP32-P4 JP1"
 		(at 72.5 56.4 0)
 		(layer "F.SilkS")
-		(uuid "c48148e8-8c9e-4cd0-ac2c-bb67dc2783c0")
+		(uuid "016939b6-f6be-446e-853e-3f9f066d3409")
 		(effects
 			(font
 				(face "Arial")
@@ -17445,7 +17445,7 @@
 	(gr_text "J300"
 		(at 88.505 72.5 0)
 		(layer "F.SilkS")
-		(uuid "ff9d8c35-9c0a-4853-b472-16e11e742ebd")
+		(uuid "9a3613e5-53b8-4a09-9b35-9e94fffd196b")
 		(effects
 			(font
 				(face "Arial")
@@ -17459,7 +17459,7 @@
 	(gr_text "SYNC"
 		(at 91.585 79.625 0)
 		(layer "F.SilkS")
-		(uuid "bc6b4728-64ec-4afe-84ef-9a3dcd442d9e")
+		(uuid "36d56bd3-031b-47db-88a2-c6a25bcc5468")
 		(effects
 			(font
 				(face "Arial")
@@ -17473,7 +17473,7 @@
 	(gr_text "TX"
 		(at 91.585 92.325 0)
 		(layer "F.SilkS")
-		(uuid "b469d610-2a1c-4ac0-a9c3-3225482190a8")
+		(uuid "8d232a1e-ca8b-46fc-a358-74c07b959c7b")
 		(effects
 			(font
 				(face "Arial")
@@ -17487,7 +17487,7 @@
 	(gr_text "J400"
 		(at 110.505 72.5 0)
 		(layer "F.SilkS")
-		(uuid "aa48bf1e-4ab1-4d95-ab6d-5e17f413e6d6")
+		(uuid "2b0def69-0d25-4eea-aa5b-76fc7e159c32")
 		(effects
 			(font
 				(face "Arial")
@@ -17501,7 +17501,7 @@
 	(gr_text "SYNC"
 		(at 113.585 79.625 0)
 		(layer "F.SilkS")
-		(uuid "4f525517-9993-4bf8-834f-70107486806b")
+		(uuid "65d0ecd3-d732-4e06-a1af-d95d1cdf4345")
 		(effects
 			(font
 				(face "Arial")
@@ -17515,7 +17515,7 @@
 	(gr_text "TX"
 		(at 113.585 92.325 0)
 		(layer "F.SilkS")
-		(uuid "a16ec500-10a8-432e-85ba-b1e1ee1aa899")
+		(uuid "a0327b1d-6bc5-43fc-9dbf-3800a6c76896")
 		(effects
 			(font
 				(face "Arial")
@@ -17529,7 +17529,7 @@
 	(gr_text "J500"
 		(at 132.505 72.5 0)
 		(layer "F.SilkS")
-		(uuid "815f6385-1b1d-493d-b440-4537ea02b0f4")
+		(uuid "c5ee786b-b127-41c5-ac65-1683008d4184")
 		(effects
 			(font
 				(face "Arial")
@@ -17543,7 +17543,7 @@
 	(gr_text "SYNC"
 		(at 135.585 79.625 0)
 		(layer "F.SilkS")
-		(uuid "fe3c594d-9d60-43c9-aa1e-18ec4eeada38")
+		(uuid "1f53e00e-1889-4520-96ae-2270cc8f5988")
 		(effects
 			(font
 				(face "Arial")
@@ -17557,7 +17557,7 @@
 	(gr_text "TX"
 		(at 135.585 92.325 0)
 		(layer "F.SilkS")
-		(uuid "6c5d2424-6620-4f55-a6ad-0a6ed887ec5e")
+		(uuid "7c74dafc-4fbd-4cdc-af79-03446f889899")
 		(effects
 			(font
 				(face "Arial")
@@ -17571,7 +17571,7 @@
 	(gr_text "PULL LINK"
 		(at 152.5 72.6 0)
 		(layer "F.SilkS")
-		(uuid "fa33f9f1-865b-4569-b719-bcb2d8e158c9")
+		(uuid "f7f2d0b2-aca0-4ebd-9816-9a519dea7910")
 		(effects
 			(font
 				(face "Arial")
@@ -17585,7 +17585,7 @@
 	(gr_text "SHUNT FIRST"
 		(at 152.5 74.8 0)
 		(layer "F.SilkS")
-		(uuid "4a14181b-b3b9-48f7-84b7-0beed6269ac7")
+		(uuid "eb221b6a-ae09-4d71-8260-5a2348131e60")
 		(effects
 			(font
 				(face "Arial")
@@ -17599,7 +17599,7 @@
 	(gr_text "1.2A LIMIT"
 		(at 152.5 81.2 0)
 		(layer "F.SilkS")
-		(uuid "26e09330-39c0-42eb-b9fc-992f72b7ee7c")
+		(uuid "32fb302f-2a42-426e-897c-2247d2ec0b1b")
 		(effects
 			(font
 				(face "Arial")
@@ -17613,7 +17613,7 @@
 	(gr_text "SHARED EN"
 		(at 152.5 83.4 0)
 		(layer "F.SilkS")
-		(uuid "db80753b-68d4-445c-a679-cc2bae10be89")
+		(uuid "bba2e4a2-baa3-4764-9e4a-9b057e2fca2c")
 		(effects
 			(font
 				(face "Arial")
@@ -17627,7 +17627,7 @@
 	(gr_text "1"
 		(at 61.4 68 0)
 		(layer "F.SilkS")
-		(uuid "93ff0b60-5ba1-4c59-9837-5533a2a89bc5")
+		(uuid "7d873d09-7bb7-4a89-94e1-4e32bf8eb4a3")
 		(effects
 			(font
 				(face "Arial")
@@ -17640,7 +17640,7 @@
 	(gr_text "NC"
 		(at 61.4 85.78 0)
 		(layer "F.SilkS")
-		(uuid "c819b7d4-4071-4b4c-845d-82a8d11187f1")
+		(uuid "a1d805e6-ae3e-43e9-9a66-54acdf7f12f0")
 		(effects
 			(font
 				(face "Arial")
@@ -17653,7 +17653,7 @@
 	(gr_text "XIAO ESP32-S3"
 		(at 75.505 75.3 0)
 		(layer "F.SilkS")
-		(uuid "9ce6d2fd-2382-49f4-98e0-90fa9282e03c")
+		(uuid "0e6e1415-5b21-4fe0-a73e-aa505d2364c9")
 		(effects
 			(font
 				(face "Arial")
@@ -17666,7 +17666,7 @@
 	(gr_text "LINK  JP200"
 		(at 79.315 72.5 0)
 		(layer "F.SilkS")
-		(uuid "7648de4d-336b-4436-98d5-aefb3496e736")
+		(uuid "f2d947e3-cfe8-4c97-8146-066839cefbe6")
 		(effects
 			(font
 				(face "Arial")
@@ -17679,7 +17679,7 @@
 	(gr_text "SW100  SHUTTER"
 		(at 85 114.6 0)
 		(layer "F.SilkS")
-		(uuid "6f69efeb-8cd2-4b4f-ab4b-197a40267250")
+		(uuid "055fedff-a149-4b42-a8a6-5fc27ba01171")
 		(effects
 			(font
 				(face "Arial")
@@ -17692,7 +17692,7 @@
 	(gr_text "XIAO ESP32-S3"
 		(at 97.505 75.3 0)
 		(layer "F.SilkS")
-		(uuid "b0f6b8a4-8579-477e-8851-36a537e4c54c")
+		(uuid "6672644c-f251-493c-81ab-35165788474a")
 		(effects
 			(font
 				(face "Arial")
@@ -17705,7 +17705,7 @@
 	(gr_text "J103  REMOTE"
 		(at 100.3 114.6 0)
 		(layer "F.SilkS")
-		(uuid "b41dc918-0ee1-4bd7-9d9d-fe5b6f4c2ddd")
+		(uuid "2a5af1b7-1c60-48aa-8e84-28576a5e9a75")
 		(effects
 			(font
 				(face "Arial")
@@ -17718,7 +17718,7 @@
 	(gr_text "LINK  JP300"
 		(at 101.315 72.5 0)
 		(layer "F.SilkS")
-		(uuid "526c18df-11ca-4154-a902-151c3aebca83")
+		(uuid "b5cddf4f-e9dd-4e0b-8ffb-676e6ffb5c0d")
 		(effects
 			(font
 				(face "Arial")
@@ -17731,7 +17731,7 @@
 	(gr_text "J101  C6 SERVICE"
 		(at 112.85 114.6 0)
 		(layer "F.SilkS")
-		(uuid "8981bb0b-10df-4f2b-bdf8-6dafa54bef31")
+		(uuid "49a7cc7f-3b0b-4dbc-8c2d-d1c427272bd7")
 		(effects
 			(font
 				(face "Arial")
@@ -17744,7 +17744,7 @@
 	(gr_text "XIAO ESP32-S3"
 		(at 119.505 75.3 0)
 		(layer "F.SilkS")
-		(uuid "f6ecf2bb-6fba-4859-a7e5-c8f6d04b6138")
+		(uuid "d3300c13-dbb3-45c0-9fa6-49b6d031edac")
 		(effects
 			(font
 				(face "Arial")
@@ -17757,7 +17757,7 @@
 	(gr_text "LINK  JP400"
 		(at 123.315 72.5 0)
 		(layer "F.SilkS")
-		(uuid "8e73e611-72d8-4139-b4ce-e9f2c6d19bea")
+		(uuid "c540a245-5484-452c-9078-683acf3ea687")
 		(effects
 			(font
 				(face "Arial")
@@ -17770,7 +17770,7 @@
 	(gr_text "XIAO ESP32-S3"
 		(at 141.505 75.3 0)
 		(layer "F.SilkS")
-		(uuid "1bd35c65-0864-49ca-8dbf-bb1b0dac2c74")
+		(uuid "de8d8682-1423-4b7c-95be-9fc622cd9b50")
 		(effects
 			(font
 				(face "Arial")
@@ -17783,7 +17783,7 @@
 	(gr_text "PWR"
 		(at 142 114.6 0)
 		(layer "F.SilkS")
-		(uuid "48dea361-2b8b-4100-8eab-860a251a2e2c")
+		(uuid "76b7979f-eb6d-4fce-adc7-d7364d52e2c2")
 		(effects
 			(font
 				(face "Arial")
@@ -17796,7 +17796,7 @@
 	(gr_text "LINK  JP500"
 		(at 145.315 72.5 0)
 		(layer "F.SilkS")
-		(uuid "1c1fc1c4-f725-4ec0-809a-2cf6ec11a808")
+		(uuid "beb45eab-2fec-43b8-96c0-7c1d76479c65")
 		(effects
 			(font
 				(face "Arial")
@@ -17809,7 +17809,7 @@
 	(gr_text "CAM"
 		(at 146 114.6 0)
 		(layer "F.SilkS")
-		(uuid "a70950c7-b6c5-4d0c-9cae-198f9b692f5f")
+		(uuid "f09331dc-4ca0-4a89-98d2-b74cadb3cc0f")
 		(effects
 			(font
 				(face "Arial")
@@ -17822,7 +17822,7 @@
 	(gr_text "FLT"
 		(at 150 114.6 0)
 		(layer "F.SilkS")
-		(uuid "4e4b4612-3a6f-4d5a-abe0-a8c2a1568826")
+		(uuid "8694ca52-5db2-40fd-8ba2-234920806046")
 		(effects
 			(font
 				(face "Arial")
@@ -17835,7 +17835,7 @@
 	(gr_text "5V"
 		(at 81.425 77.085 0)
 		(layer "F.SilkS")
-		(uuid "ed8d28fb-232a-4103-9761-398fa6600cec")
+		(uuid "cd5216a1-3be6-4588-9cfb-3408c67bb93a")
 		(effects
 			(font
 				(face "Arial")
@@ -17849,7 +17849,7 @@
 	(gr_text "GND"
 		(at 81.425 79.625 0)
 		(layer "F.SilkS")
-		(uuid "305b72a1-1021-41ed-bf77-3837fffd77fd")
+		(uuid "6253ff5c-f6ae-462b-a77b-cabafe976152")
 		(effects
 			(font
 				(face "Arial")
@@ -17863,7 +17863,7 @@
 	(gr_text "3V3"
 		(at 81.425 82.165 0)
 		(layer "F.SilkS")
-		(uuid "85622c3b-d0cb-4379-954f-53297bdf4164")
+		(uuid "b2339939-9b63-4c5b-8024-a6c7743f3dfc")
 		(effects
 			(font
 				(face "Arial")
@@ -17877,7 +17877,7 @@
 	(gr_text "RX"
 		(at 81.425 92.325 0)
 		(layer "F.SilkS")
-		(uuid "ae0d2c01-6844-4cb2-9e36-519b08090326")
+		(uuid "93942776-094c-437f-bbb7-db71e882c3f7")
 		(effects
 			(font
 				(face "Arial")
@@ -17891,7 +17891,7 @@
 	(gr_text "5V"
 		(at 103.425 77.085 0)
 		(layer "F.SilkS")
-		(uuid "cf192bfd-8322-4099-8e35-254aabc66fcf")
+		(uuid "ba45fad0-65b5-4ab3-9fa5-362ae03e8709")
 		(effects
 			(font
 				(face "Arial")
@@ -17905,7 +17905,7 @@
 	(gr_text "GND"
 		(at 103.425 79.625 0)
 		(layer "F.SilkS")
-		(uuid "d8e46767-300b-40f4-b2dc-31c427068bff")
+		(uuid "ccf87af3-33c6-4c6e-a598-e2d497375dab")
 		(effects
 			(font
 				(face "Arial")
@@ -17919,7 +17919,7 @@
 	(gr_text "3V3"
 		(at 103.425 82.165 0)
 		(layer "F.SilkS")
-		(uuid "1cf6df38-02d9-4368-8857-9d77c6fa2dde")
+		(uuid "42428bcc-e3b8-418a-ad85-bdd43f2ae8ef")
 		(effects
 			(font
 				(face "Arial")
@@ -17933,7 +17933,7 @@
 	(gr_text "RX"
 		(at 103.425 92.325 0)
 		(layer "F.SilkS")
-		(uuid "1e97a165-b4a9-4d43-a975-d95e39710659")
+		(uuid "b2962b1e-7e10-460e-a47a-2b0b7ec105b1")
 		(effects
 			(font
 				(face "Arial")
@@ -17947,7 +17947,7 @@
 	(gr_text "5V"
 		(at 125.425 77.085 0)
 		(layer "F.SilkS")
-		(uuid "03fa7716-4f75-4a7d-a9cb-5391329dcfff")
+		(uuid "c07a1da5-0f52-4a62-aa48-cb5714949204")
 		(effects
 			(font
 				(face "Arial")
@@ -17961,7 +17961,7 @@
 	(gr_text "GND"
 		(at 125.425 79.625 0)
 		(layer "F.SilkS")
-		(uuid "53badd3a-84cc-485a-9478-979b7f1acb7d")
+		(uuid "f83146f3-af69-4e19-9d28-23d2b4a6adb6")
 		(effects
 			(font
 				(face "Arial")
@@ -17975,7 +17975,7 @@
 	(gr_text "3V3"
 		(at 125.425 82.165 0)
 		(layer "F.SilkS")
-		(uuid "2eb1b78e-dcce-4b7b-9642-cbfb15f93358")
+		(uuid "41c185fa-ed52-4851-82e5-ffcc8e985622")
 		(effects
 			(font
 				(face "Arial")
@@ -17989,7 +17989,7 @@
 	(gr_text "RX"
 		(at 125.425 92.325 0)
 		(layer "F.SilkS")
-		(uuid "03221cf1-b888-4dbf-a742-68b74d1fa664")
+		(uuid "07d44db6-b643-43d7-baef-8c49caa3a193")
 		(effects
 			(font
 				(face "Arial")
@@ -18003,7 +18003,7 @@
 	(gr_text "5V"
 		(at 147.425 77.085 0)
 		(layer "F.SilkS")
-		(uuid "e42727ac-b9a9-4799-95d4-72fd7e2da747")
+		(uuid "52241a6b-d6b3-4492-93fa-cf50d766271a")
 		(effects
 			(font
 				(face "Arial")
@@ -18017,7 +18017,7 @@
 	(gr_text "GND"
 		(at 147.425 79.625 0)
 		(layer "F.SilkS")
-		(uuid "fff651ff-e90b-43d6-8ada-6229addda381")
+		(uuid "41668614-e08b-4c74-b544-aa1175887525")
 		(effects
 			(font
 				(face "Arial")
@@ -18031,7 +18031,7 @@
 	(gr_text "3V3"
 		(at 147.425 82.165 0)
 		(layer "F.SilkS")
-		(uuid "76e3d40d-1b56-40ac-b32c-e6f560a06929")
+		(uuid "f5b47b88-71db-48a7-8237-70553b2370ec")
 		(effects
 			(font
 				(face "Arial")
@@ -18045,7 +18045,7 @@
 	(gr_text "RX"
 		(at 147.425 92.325 0)
 		(layer "F.SilkS")
-		(uuid "0534fb23-a956-4f40-88df-994d0bd17a69")
+		(uuid "9015aecb-f727-421e-ad9f-bfefcf10c691")
 		(effects
 			(font
 				(face "Arial")
@@ -18059,7 +18059,7 @@
 	(gr_text "KINO-D4-DC-D1"
 		(at 155.01 65 0)
 		(layer "F.SilkS")
-		(uuid "e75b8efa-4389-4e84-8553-54fc2ac26477")
+		(uuid "c74571f6-a887-4a18-a882-12f8691d4ee0")
 		(effects
 			(font
 				(face "Arial")
@@ -18073,7 +18073,7 @@
 	(gr_text "2026-11"
 		(at 164.01 65 0)
 		(layer "F.SilkS")
-		(uuid "d2629596-5984-458c-a8d3-30f32173111d")
+		(uuid "6a89341a-932c-420a-b556-18dcae433a1b")
 		(effects
 			(font
 				(face "Arial")
@@ -18087,7 +18087,7 @@
 	(gr_text "J1000  USB-C  3A MAX"
 		(at 164.01 107.6 0)
 		(layer "F.SilkS")
-		(uuid "06df3e5e-8fa9-4a1d-876c-34353542d3e8")
+		(uuid "33ed736e-573d-48a7-bc34-843ec468b171")
 		(effects
 			(font
 				(face "Arial")
@@ -18101,7 +18101,7 @@
 	(gr_text "J100  P4 JP1"
 		(at 61.7 78.5 90)
 		(layer "F.SilkS")
-		(uuid "65453004-bcaf-4a6c-9cc5-ef5d97ccb9c9")
+		(uuid "6ca047d6-3a5f-43b1-a5c3-ffa6995c6258")
 		(effects
 			(font
 				(face "Arial")
@@ -18114,7 +18114,7 @@
 	(gr_text "SW"
 		(at 99 111 90)
 		(layer "F.SilkS")
-		(uuid "a4f2e2a8-fa7c-48b1-8970-da5908620223")
+		(uuid "efb4728d-e90b-4001-a323-082bb5bfb986")
 		(effects
 			(font
 				(face "Arial")
@@ -18127,7 +18127,7 @@
 	(gr_text "GND"
 		(at 101.54 111 90)
 		(layer "F.SilkS")
-		(uuid "4f603010-c67b-4bdf-a8d1-fc86a9c6fc49")
+		(uuid "4a41db26-9e7b-4000-8c4e-ce535b655d37")
 		(effects
 			(font
 				(face "Arial")
@@ -18140,7 +18140,7 @@
 	(gr_text "GND"
 		(at 106.5 111 90)
 		(layer "F.SilkS")
-		(uuid "a5f7ad70-7f1d-4bed-9da8-70102bd7834b")
+		(uuid "d4df17fc-d115-4c6d-9f2d-b7a5c56904bd")
 		(effects
 			(font
 				(face "Arial")
@@ -18153,7 +18153,7 @@
 	(gr_text "3V3"
 		(at 109.04 111 90)
 		(layer "F.SilkS")
-		(uuid "1a1c1bd4-526a-440f-a2d4-41aca535eee7")
+		(uuid "6460b181-15dd-4c06-be11-e160f5b64b70")
 		(effects
 			(font
 				(face "Arial")
@@ -18166,7 +18166,7 @@
 	(gr_text "RX"
 		(at 111.58 111 90)
 		(layer "F.SilkS")
-		(uuid "0d849c5e-744f-401c-8922-38355da58a52")
+		(uuid "a7d81403-259a-4951-a406-a9aa3737070a")
 		(effects
 			(font
 				(face "Arial")
@@ -18179,7 +18179,7 @@
 	(gr_text "TX"
 		(at 114.12 111 90)
 		(layer "F.SilkS")
-		(uuid "af9ca6a5-a72d-4413-8dce-47eba4145be3")
+		(uuid "a29c8746-2426-4dc0-879c-6f704aba5a81")
 		(effects
 			(font
 				(face "Arial")
@@ -18192,7 +18192,7 @@
 	(gr_text "IO9"
 		(at 116.66 111 90)
 		(layer "F.SilkS")
-		(uuid "f9065a58-a00d-4bd9-9729-2be8b7348de3")
+		(uuid "c8fdfdac-5157-4c72-ad9f-ff2f121c6402")
 		(effects
 			(font
 				(face "Arial")
@@ -18205,7 +18205,7 @@
 	(gr_text "EN"
 		(at 119.2 111 90)
 		(layer "F.SilkS")
-		(uuid "4e000d92-0125-4772-bd51-22dfb0595e96")
+		(uuid "f447dec0-68a6-4fc0-a636-bcd556ec478b")
 		(effects
 			(font
 				(face "Arial")
@@ -18215,66 +18215,10 @@
 			)
 		)
 	)
-	(gr_text "CAM 1"
-		(at 66.505 70.1 0)
-		(layer "F.SilkS")
-		(uuid "1f81061a-0832-459c-b1a4-17dabae9a6fd")
-		(effects
-			(font
-				(face "Arial")
-				(size 1.4 1.4)
-				(thickness 0.2)
-				(bold yes)
-			)
-			(justify left)
-		)
-	)
-	(gr_text "CAM 2"
-		(at 88.505 70.1 0)
-		(layer "F.SilkS")
-		(uuid "e850444d-ff61-478c-9bf7-0b208f2e18c4")
-		(effects
-			(font
-				(face "Arial")
-				(size 1.4 1.4)
-				(thickness 0.2)
-				(bold yes)
-			)
-			(justify left)
-		)
-	)
-	(gr_text "CAM 3"
-		(at 110.505 70.1 0)
-		(layer "F.SilkS")
-		(uuid "68632883-6387-4eee-a482-ea86047f5274")
-		(effects
-			(font
-				(face "Arial")
-				(size 1.4 1.4)
-				(thickness 0.2)
-				(bold yes)
-			)
-			(justify left)
-		)
-	)
-	(gr_text "CAM 4"
-		(at 132.505 70.1 0)
-		(layer "F.SilkS")
-		(uuid "fa58d68a-aa0a-4df0-8ea9-f6e7829c157d")
-		(effects
-			(font
-				(face "Arial")
-				(size 1.4 1.4)
-				(thickness 0.2)
-				(bold yes)
-			)
-			(justify left)
-		)
-	)
 	(gr_text "NODE USB"
 		(at 152.5 70.4 0)
 		(layer "F.SilkS")
-		(uuid "3ef6cc75-fb0c-47e7-b19a-d69d13d5f254")
+		(uuid "2324693f-d91b-4b54-8cca-85063f9095d4")
 		(effects
 			(font
 				(face "Arial")
@@ -18288,7 +18232,7 @@
 	(gr_text "CAM 5V"
 		(at 152.5 79 0)
 		(layer "F.SilkS")
-		(uuid "8df937da-3d78-4505-a599-8c97bcca64df")
+		(uuid "e2a8fd4b-f6f6-4584-9c11-77d5a64b4970")
 		(effects
 			(font
 				(face "Arial")
@@ -18300,9 +18244,9 @@
 		)
 	)
 	(gr_text "DEV CARRIER"
-		(at 71 65 0)
+		(at 71.6 65 0)
 		(layer "F.SilkS")
-		(uuid "fa01b4d8-af1f-4f21-b6d4-a4abe7bde5e3")
+		(uuid "0411afe0-504a-44ed-bc58-0e857a664222")
 		(effects
 			(font
 				(face "Arial")
@@ -18314,9 +18258,9 @@
 		)
 	)
 	(gr_text "REV D1"
-		(at 87.1 65 0)
+		(at 87.7 65 0)
 		(layer "F.SilkS")
-		(uuid "b7d09aa8-04cd-4982-8174-edfb9afc6c01")
+		(uuid "e8c10b4c-feb7-45e7-8313-4d2722d60c66")
 		(effects
 			(font
 				(face "Arial")
@@ -18327,15 +18271,71 @@
 			(justify left bottom)
 		)
 	)
-	(gr_text "PROTOTYPE"
-		(at 97.2 65 0)
-		(layer "F.SilkS")
-		(uuid "f44a6ed0-de99-4696-9a5c-06063237235c")
+	(gr_text "CAM 1"
+		(at 66.505 70.1 0)
+		(layer "F.SilkS" knockout)
+		(uuid "070d42fd-d753-42e1-9447-325d50008537")
 		(effects
 			(font
 				(face "Arial")
 				(size 1.4 1.4)
-				(thickness 0.2)
+				(thickness 0.4)
+				(bold yes)
+			)
+			(justify left)
+		)
+	)
+	(gr_text "CAM 2"
+		(at 88.505 70.1 0)
+		(layer "F.SilkS" knockout)
+		(uuid "5e94497f-958a-4036-8151-bca63110ee8a")
+		(effects
+			(font
+				(face "Arial")
+				(size 1.4 1.4)
+				(thickness 0.4)
+				(bold yes)
+			)
+			(justify left)
+		)
+	)
+	(gr_text "CAM 3"
+		(at 110.505 70.1 0)
+		(layer "F.SilkS" knockout)
+		(uuid "71a94fc3-550c-46bb-9f9e-afbb92f6a13b")
+		(effects
+			(font
+				(face "Arial")
+				(size 1.4 1.4)
+				(thickness 0.4)
+				(bold yes)
+			)
+			(justify left)
+		)
+	)
+	(gr_text "CAM 4"
+		(at 132.505 70.1 0)
+		(layer "F.SilkS" knockout)
+		(uuid "10150814-1582-4b5f-bb0c-b3bdb3b275a2")
+		(effects
+			(font
+				(face "Arial")
+				(size 1.4 1.4)
+				(thickness 0.4)
+				(bold yes)
+			)
+			(justify left)
+		)
+	)
+	(gr_text "PROTOTYPE"
+		(at 98.4 65 0)
+		(layer "F.SilkS" knockout)
+		(uuid "78d7071c-027a-452d-bb6d-03ee5cf51957")
+		(effects
+			(font
+				(face "Arial")
+				(size 1.4 1.4)
+				(thickness 0.4)
 				(bold yes)
 			)
 			(justify left bottom)
@@ -18343,13 +18343,13 @@
 	)
 	(gr_text "5V IN"
 		(at 164.01 105 0)
-		(layer "F.SilkS")
-		(uuid "78b73e45-92e6-4ee8-83bb-5215b671c7aa")
+		(layer "F.SilkS" knockout)
+		(uuid "59f032b5-1f1a-4525-b432-5be340ad6229")
 		(effects
 			(font
 				(face "Arial")
 				(size 1.4 1.4)
-				(thickness 0.2)
+				(thickness 0.4)
 				(bold yes)
 			)
 			(justify right bottom)
@@ -18357,13 +18357,13 @@
 	)
 	(gr_text "KINO D4"
 		(at 53.6 65 0)
-		(layer "F.SilkS")
-		(uuid "a70aad69-5089-4901-ae5e-133bd89a0751")
+		(layer "F.SilkS" knockout)
+		(uuid "6e64b7ab-4f2b-4dfb-b6d5-f033e5045044")
 		(effects
 			(font
 				(face "Arial")
 				(size 2.4 2.4)
-				(thickness 0.2)
+				(thickness 0.6)
 				(bold yes)
 			)
 			(justify left bottom)
@@ -18371,13 +18371,13 @@
 	)
 	(gr_text "SIDE A"
 		(at 164.01 59.4 0)
-		(layer "F.SilkS")
-		(uuid "52d07a8c-7917-4ef3-b267-86a6d7d5f218")
+		(layer "F.SilkS" knockout)
+		(uuid "555c4294-3ca0-45a3-922e-93c0b3408f9a")
 		(effects
 			(font
 				(face "Arial")
 				(size 2.4 2.4)
-				(thickness 0.2)
+				(thickness 0.6)
 				(bold yes)
 			)
 			(justify right bottom)
@@ -18386,7 +18386,7 @@
 	(gr_text "EN"
 		(at 64.8 83.5 0)
 		(layer "B.SilkS")
-		(uuid "fa97382d-9367-4b61-977a-eecab3f8906a")
+		(uuid "c456fed3-0fa1-4145-925f-830bf5a74398")
 		(effects
 			(font
 				(face "Arial")
@@ -18400,7 +18400,7 @@
 	(gr_text "3V3"
 		(at 64.8 96 0)
 		(layer "B.SilkS")
-		(uuid "0c38363a-32c9-49f2-b80f-e190bf4620b0")
+		(uuid "ed87d7b8-e2e3-43eb-9d96-e7ab38fa81a8")
 		(effects
 			(font
 				(face "Arial")
@@ -18414,7 +18414,7 @@
 	(gr_text "5V"
 		(at 64.8 99 0)
 		(layer "B.SilkS")
-		(uuid "3278f693-06c6-4b75-88c3-96f55af5714f")
+		(uuid "91fa07c2-9b55-4c34-945c-d4acbc7ae998")
 		(effects
 			(font
 				(face "Arial")
@@ -18428,7 +18428,7 @@
 	(gr_text "SY"
 		(at 64.8 102 0)
 		(layer "B.SilkS")
-		(uuid "65df2045-17b9-4a59-b4c8-49ab25bec482")
+		(uuid "5671a1b6-bba7-459a-8a31-1531f5e10605")
 		(effects
 			(font
 				(face "Arial")
@@ -18442,7 +18442,7 @@
 	(gr_text "SH"
 		(at 64.8 105 0)
 		(layer "B.SilkS")
-		(uuid "6f73b30e-bc43-4844-8b06-005b427e92bf")
+		(uuid "75bd8ec4-b0b3-4fe8-83c4-aadaf5fd3dc3")
 		(effects
 			(font
 				(face "Arial")
@@ -18456,7 +18456,7 @@
 	(gr_text "GND"
 		(at 54 110.2 0)
 		(layer "B.SilkS")
-		(uuid "8d9c2766-05ce-4289-9ad4-57183cfd95aa")
+		(uuid "179e2111-96a6-4a47-8409-eb150abb7a6d")
 		(effects
 			(font
 				(face "Arial")
@@ -18470,7 +18470,7 @@
 	(gr_text "JP1000  5V LINK"
 		(at 69.5 67.1 0)
 		(layer "B.SilkS")
-		(uuid "bbaed671-e375-45c5-9d49-9c77d28cc73d")
+		(uuid "7681eb7e-e055-4b03-ad06-ecce31dd3293")
 		(effects
 			(font
 				(face "Arial")
@@ -18484,7 +18484,7 @@
 	(gr_text "TX"
 		(at 69.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "d64f4825-12ea-46bf-ae5d-97afe38bff8a")
+		(uuid "c4951d95-2566-4671-aaff-02c8c4907e60")
 		(effects
 			(font
 				(face "Arial")
@@ -18498,7 +18498,7 @@
 	(gr_text "RX"
 		(at 72.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "4993fb6a-c180-486c-9fa8-86296352861c")
+		(uuid "5081b52e-87b9-478b-ac4f-6f51afddaef2")
 		(effects
 			(font
 				(face "Arial")
@@ -18512,7 +18512,7 @@
 	(gr_text "SY"
 		(at 75.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "1b972477-77c1-4f59-a2f9-d177db6304c0")
+		(uuid "307a5b0c-84b8-43d3-85db-43eeb28458aa")
 		(effects
 			(font
 				(face "Arial")
@@ -18526,7 +18526,7 @@
 	(gr_text "J102  QWIIC"
 		(at 76.5 112.6 0)
 		(layer "B.SilkS")
-		(uuid "5c438afb-393b-45c8-928c-441f1763187c")
+		(uuid "4d953e8e-ba6f-4dc0-9eb6-b1af87feccd8")
 		(effects
 			(font
 				(face "Arial")
@@ -18540,7 +18540,7 @@
 	(gr_text "3V3"
 		(at 78.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "206f4cb2-d1c2-412d-9626-dc4bc06dd76f")
+		(uuid "8034b384-5a94-416f-9a6c-4761a46098eb")
 		(effects
 			(font
 				(face "Arial")
@@ -18554,7 +18554,7 @@
 	(gr_text "5V"
 		(at 81.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "a339c485-159e-4d56-aca4-14b0ce40a4a9")
+		(uuid "2982bfc2-31be-4d22-80e8-d00993655953")
 		(effects
 			(font
 				(face "Arial")
@@ -18568,7 +18568,7 @@
 	(gr_text "TX"
 		(at 91.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "f5539ce2-299f-416a-a779-67212f5701d0")
+		(uuid "b4114e10-5efe-4cd9-a4fe-ca8a694dbb2e")
 		(effects
 			(font
 				(face "Arial")
@@ -18582,7 +18582,7 @@
 	(gr_text "RX"
 		(at 94.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "bab4aa1d-97ab-472d-9120-e53938aea003")
+		(uuid "71c66330-f4d2-48e5-9e6f-d602d33e7536")
 		(effects
 			(font
 				(face "Arial")
@@ -18596,7 +18596,7 @@
 	(gr_text "SY"
 		(at 97.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "8c079b1e-b4a3-45aa-9dea-b8e126933211")
+		(uuid "b466ad6d-c7d9-4b51-968b-0a3742886e55")
 		(effects
 			(font
 				(face "Arial")
@@ -18610,7 +18610,7 @@
 	(gr_text "3V3"
 		(at 100.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "4de74d9b-7dc8-43e6-af2d-cf66f037bec6")
+		(uuid "9b35e16c-c7a8-4361-9eee-b2dbcb60e922")
 		(effects
 			(font
 				(face "Arial")
@@ -18624,7 +18624,7 @@
 	(gr_text "5V"
 		(at 103.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "cd0cb112-ce45-424b-96c6-0d9ca568eafb")
+		(uuid "1a4cf00b-13a3-4328-9808-c19f40314457")
 		(effects
 			(font
 				(face "Arial")
@@ -18638,7 +18638,7 @@
 	(gr_text "TX"
 		(at 113.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "85637b31-86cd-45c3-ae70-1c0b1a14a0cf")
+		(uuid "16c273de-5414-45ac-925a-5d6944d4a5fc")
 		(effects
 			(font
 				(face "Arial")
@@ -18652,7 +18652,7 @@
 	(gr_text "RX"
 		(at 116.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "d86d5988-f3fe-4cb2-8b7c-ddb63b212909")
+		(uuid "932913da-7538-40ce-8015-df77b0346f59")
 		(effects
 			(font
 				(face "Arial")
@@ -18666,7 +18666,7 @@
 	(gr_text "SY"
 		(at 119.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "b313e356-ebcd-4401-9805-36c8ae3ef047")
+		(uuid "31085161-2204-45da-9aca-de2e24a8dd7d")
 		(effects
 			(font
 				(face "Arial")
@@ -18680,7 +18680,7 @@
 	(gr_text "JLCJLCJLCJLC"
 		(at 120 56.4 0)
 		(layer "B.SilkS")
-		(uuid "0a944cbf-29fc-4f57-b3ca-8e190f45ea94")
+		(uuid "e3857a8b-c0b2-475d-a9e0-bb8d09424d67")
 		(effects
 			(font
 				(face "Arial")
@@ -18694,7 +18694,7 @@
 	(gr_text "3V3"
 		(at 122.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "25adfbf6-d581-4d48-bf6f-c38c27bd5b94")
+		(uuid "b3fc27b6-f431-4bad-b635-35911e5b19e0")
 		(effects
 			(font
 				(face "Arial")
@@ -18708,7 +18708,7 @@
 	(gr_text "5V"
 		(at 125.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "a702ca8a-3d39-49b7-9fa1-45a98a47e361")
+		(uuid "0f519ca5-4916-4a09-9da6-1ae8c4858b64")
 		(effects
 			(font
 				(face "Arial")
@@ -18722,7 +18722,7 @@
 	(gr_text "TX"
 		(at 135.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "eddbc6fe-efd9-4c80-952b-ea66b96d21f6")
+		(uuid "fd9fcf6d-3780-4da5-80cb-3ddfc7bf448b")
 		(effects
 			(font
 				(face "Arial")
@@ -18736,7 +18736,7 @@
 	(gr_text "RX"
 		(at 138.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "01608624-2668-4105-b8b2-a355283736b2")
+		(uuid "61ece7cb-86c8-46a8-9aae-c81fad985e08")
 		(effects
 			(font
 				(face "Arial")
@@ -18750,7 +18750,7 @@
 	(gr_text "SY"
 		(at 141.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "5bf8036e-f2c5-4359-8bd0-7d22875a970b")
+		(uuid "771c51dd-4e4f-4671-a19a-6bb91eb1d84d")
 		(effects
 			(font
 				(face "Arial")
@@ -18764,7 +18764,7 @@
 	(gr_text "PWR"
 		(at 142 115.2 0)
 		(layer "B.SilkS")
-		(uuid "daf48459-9877-409f-8198-b32a0ddf6bd9")
+		(uuid "d2940d10-ce85-4954-af6a-6286a65bcb1c")
 		(effects
 			(font
 				(face "Arial")
@@ -18778,7 +18778,7 @@
 	(gr_text "3V3"
 		(at 144.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "bfb73ea2-38c5-40e9-b1e3-99fa1553d060")
+		(uuid "9e4833f2-de19-46a5-ac85-92326445a429")
 		(effects
 			(font
 				(face "Arial")
@@ -18792,7 +18792,7 @@
 	(gr_text "CAM"
 		(at 146 115.2 0)
 		(layer "B.SilkS")
-		(uuid "cbd0cfc8-e5ee-4678-b8c0-66b84495758c")
+		(uuid "14947cc5-c2e6-466d-aff0-70837d77662b")
 		(effects
 			(font
 				(face "Arial")
@@ -18806,7 +18806,7 @@
 	(gr_text "5V"
 		(at 147.505 99.3 0)
 		(layer "B.SilkS")
-		(uuid "178f455d-0f5f-4c10-8776-0aa573d233d7")
+		(uuid "2063514e-e22d-42cb-8b46-f97660e67360")
 		(effects
 			(font
 				(face "Arial")
@@ -18820,7 +18820,7 @@
 	(gr_text "FLT"
 		(at 150 115.2 0)
 		(layer "B.SilkS")
-		(uuid "7ae7f6e1-d347-4b67-881a-57b530240f0f")
+		(uuid "d759ca5c-270e-472d-a1f3-78f7120e72c5")
 		(effects
 			(font
 				(face "Arial")
@@ -18834,7 +18834,7 @@
 	(gr_text "GND"
 		(at 151 112.2 0)
 		(layer "B.SilkS")
-		(uuid "ad58b972-40f4-4a39-bf70-d5a66ae31248")
+		(uuid "bfe68d59-b2d4-4c2d-9740-e6d4e39f98fe")
 		(effects
 			(font
 				(face "Arial")
@@ -18848,7 +18848,7 @@
 	(gr_text "ODD JOBS  CERN-OHL-S-2.0"
 		(at 90 56.4 0)
 		(layer "B.SilkS")
-		(uuid "8e61e5da-f54a-4ae0-9397-3d0f8203eafd")
+		(uuid "53c18603-694a-4b28-b371-10a36e8f473e")
 		(effects
 			(font
 				(face "Arial")
@@ -18862,7 +18862,7 @@
 	(gr_text "S/N"
 		(at 139 54.6 0)
 		(layer "B.SilkS")
-		(uuid "8b49f7b1-98f2-4a7b-90bd-476cbb1deb0e")
+		(uuid "57774004-e901-418c-bb83-22d4386e457f")
 		(effects
 			(font
 				(face "Arial")
@@ -18876,7 +18876,7 @@
 	(gr_text "2026-11"
 		(at 69 65 0)
 		(layer "B.SilkS")
-		(uuid "3fcc6b96-ee47-470b-9320-024421dc6160")
+		(uuid "38674174-5f6d-4654-9359-64472dc0577f")
 		(effects
 			(font
 				(face "Arial")
@@ -18890,7 +18890,7 @@
 	(gr_text "KINO-D4-DC-D1"
 		(at 78 65 0)
 		(layer "B.SilkS")
-		(uuid "7fe5ef1b-9c5e-40ac-aa30-20abc8af907e")
+		(uuid "5ea58490-ffce-4e27-8e8a-861a65035504")
 		(effects
 			(font
 				(face "Arial")
@@ -18901,24 +18901,10 @@
 			(justify right bottom mirror)
 		)
 	)
-	(gr_text "PROTOTYPE"
-		(at 119.81 65 0)
-		(layer "B.SilkS")
-		(uuid "51e3ae77-5539-4343-8b6f-e6315789bae2")
-		(effects
-			(font
-				(face "Arial")
-				(size 1.4 1.4)
-				(thickness 0.2)
-				(bold yes)
-			)
-			(justify left bottom mirror)
-		)
-	)
 	(gr_text "REV D1"
-		(at 129.91 65 0)
+		(at 129.31 65 0)
 		(layer "B.SilkS")
-		(uuid "6695c65e-4e0a-4acb-b9ec-a6fb50118942")
+		(uuid "e94918ae-4c8e-4c67-a92e-397e2f635fea")
 		(effects
 			(font
 				(face "Arial")
@@ -18930,9 +18916,9 @@
 		)
 	)
 	(gr_text "DEV CARRIER"
-		(at 146.01 65 0)
+		(at 145.41 65 0)
 		(layer "B.SilkS")
-		(uuid "4040496a-9bf2-4b3b-8528-2d773f2c5d20")
+		(uuid "87d94fba-d4be-4e1a-bc7a-5d146fef4a7a")
 		(effects
 			(font
 				(face "Arial")
@@ -18946,7 +18932,7 @@
 	(gr_text "CAM 1"
 		(at 75.505 73.8 0)
 		(layer "B.SilkS")
-		(uuid "8e8a1a5b-52e4-485d-ac39-f0215d7702c3")
+		(uuid "5614f74b-96e5-4bc0-a21c-44527a75a0ed")
 		(effects
 			(font
 				(face "Arial")
@@ -18960,7 +18946,7 @@
 	(gr_text "CAM 2"
 		(at 97.505 73.8 0)
 		(layer "B.SilkS")
-		(uuid "b53c0aa2-0809-4c82-9ffa-db673c7f09a0")
+		(uuid "6bcd6047-8445-4d0f-b634-87967278c82c")
 		(effects
 			(font
 				(face "Arial")
@@ -18974,7 +18960,7 @@
 	(gr_text "CAM 3"
 		(at 119.505 73.8 0)
 		(layer "B.SilkS")
-		(uuid "ab90eed7-1696-4174-9abd-330f96240856")
+		(uuid "2dc901ff-78b6-4159-b8ff-22f84b10c8df")
 		(effects
 			(font
 				(face "Arial")
@@ -18988,7 +18974,7 @@
 	(gr_text "CAM 4"
 		(at 141.505 73.8 0)
 		(layer "B.SilkS")
-		(uuid "f9cdb448-cc6f-49a5-a1e5-78dc4bc6da15")
+		(uuid "3184ca9e-ebdc-4241-b254-593a41b419b0")
 		(effects
 			(font
 				(face "Arial")
@@ -18999,15 +18985,29 @@
 			(justify mirror)
 		)
 	)
+	(gr_text "PROTOTYPE"
+		(at 118.61 65 0)
+		(layer "B.SilkS" knockout)
+		(uuid "020192ff-b16b-456a-8d53-4e708c26f0aa")
+		(effects
+			(font
+				(face "Arial")
+				(size 1.4 1.4)
+				(thickness 0.4)
+				(bold yes)
+			)
+			(justify left bottom mirror)
+		)
+	)
 	(gr_text "KINO D4"
 		(at 163.41 65 0)
-		(layer "B.SilkS")
-		(uuid "ad7562ef-f129-4607-95b3-42fc6207b8bd")
+		(layer "B.SilkS" knockout)
+		(uuid "b9b8327d-33bf-434d-bfcc-8293da08c0d8")
 		(effects
 			(font
 				(face "Arial")
 				(size 2.4 2.4)
-				(thickness 0.2)
+				(thickness 0.6)
 				(bold yes)
 			)
 			(justify left bottom mirror)
@@ -19015,13 +19015,13 @@
 	)
 	(gr_text "SIDE B"
 		(at 73 59.4 0)
-		(layer "B.SilkS")
-		(uuid "0da009e4-5ae3-41a8-abb2-0453c441145e")
+		(layer "B.SilkS" knockout)
+		(uuid "155c3aa1-8c18-4520-9173-390a1c684a8f")
 		(effects
 			(font
 				(face "Arial")
 				(size 2.4 2.4)
-				(thickness 0.2)
+				(thickness 0.6)
 				(bold yes)
 			)
 			(justify right bottom mirror)
@@ -29457,76 +29457,76 @@
 		)
 	)
 	(group "D1 legend"
-		(uuid "e3d16d6c-58cc-4c19-b144-a24c2f761fa7")
-		(members "01608624-2668-4105-b8b2-a355283736b2" "03221cf1-b888-4dbf-a742-68b74d1fa664"
-			"03fa7716-4f75-4a7d-a9cb-5391329dcfff" "05193bf3-2e8f-4e22-ab70-e98d76b5045d"
-			"0534fb23-a956-4f40-88df-994d0bd17a69" "068cb9a0-5d4f-4fc3-a903-46abeda80108"
-			"06df3e5e-8fa9-4a1d-876c-34353542d3e8" "0a944cbf-29fc-4f57-b3ca-8e190f45ea94"
-			"0c38363a-32c9-49f2-b80f-e190bf4620b0" "0c4948f7-c954-4808-9220-ecc088eecfe3"
-			"0d849c5e-744f-401c-8922-38355da58a52" "0da009e4-5ae3-41a8-abb2-0453c441145e"
-			"10d0ca4d-0600-468b-b707-e984a6c5d28b" "178f455d-0f5f-4c10-8776-0aa573d233d7"
-			"1a1c1bd4-526a-440f-a2d4-41aca535eee7" "1b972477-77c1-4f59-a2f9-d177db6304c0"
-			"1bd35c65-0864-49ca-8dbf-bb1b0dac2c74" "1c1fc1c4-f725-4ec0-809a-2cf6ec11a808"
-			"1cf6df38-02d9-4368-8857-9d77c6fa2dde" "1e97a165-b4a9-4d43-a975-d95e39710659"
-			"1f81061a-0832-459c-b1a4-17dabae9a6fd" "206f4cb2-d1c2-412d-9626-dc4bc06dd76f"
-			"25adfbf6-d581-4d48-bf6f-c38c27bd5b94" "26e09330-39c0-42eb-b9fc-992f72b7ee7c"
-			"2a7b8c07-309f-4eac-b77f-1371b1980f37" "2cbe623f-04c5-4917-944b-4564f447af48"
-			"2eb1b78e-dcce-4b7b-9642-cbfb15f93358" "303fa21c-c7ad-4aac-a74a-c598c4d2c992"
-			"305b72a1-1021-41ed-bf77-3837fffd77fd" "3278f693-06c6-4b75-88c3-96f55af5714f"
-			"33f7e7bc-8554-4933-81ef-6a3b32ba1234" "3ef6cc75-fb0c-47e7-b19a-d69d13d5f254"
-			"3fcc6b96-ee47-470b-9320-024421dc6160" "4040496a-9bf2-4b3b-8528-2d773f2c5d20"
-			"48dea361-2b8b-4100-8eab-860a251a2e2c" "4993fb6a-c180-486c-9fa8-86296352861c"
-			"4a14181b-b3b9-48f7-84b7-0beed6269ac7" "4de74d9b-7dc8-43e6-af2d-cf66f037bec6"
-			"4e000d92-0125-4772-bd51-22dfb0595e96" "4e4b4612-3a6f-4d5a-abe0-a8c2a1568826"
-			"4f525517-9993-4bf8-834f-70107486806b" "4f603010-c67b-4bdf-a8d1-fc86a9c6fc49"
-			"51e3ae77-5539-4343-8b6f-e6315789bae2" "526c18df-11ca-4154-a902-151c3aebca83"
-			"52d07a8c-7917-4ef3-b267-86a6d7d5f218" "53badd3a-84cc-485a-9478-979b7f1acb7d"
-			"5b826eb0-b99a-452b-aaef-564f1d3db57a" "5bf8036e-f2c5-4359-8bd0-7d22875a970b"
-			"5c438afb-393b-45c8-928c-441f1763187c" "5fbdf9cc-e987-4051-a967-cd2ef1e90794"
-			"65453004-bcaf-4a6c-9cc5-ef5d97ccb9c9" "65df2045-17b9-4a59-b4c8-49ab25bec482"
-			"6695c65e-4e0a-4acb-b9ec-a6fb50118942" "68632883-6387-4eee-a482-ea86047f5274"
-			"6c5d2424-6620-4f55-a6ad-0a6ed887ec5e" "6f69efeb-8cd2-4b4f-ab4b-197a40267250"
-			"6f73b30e-bc43-4844-8b06-005b427e92bf" "7648de4d-336b-4436-98d5-aefb3496e736"
-			"76e3d40d-1b56-40ac-b32c-e6f560a06929" "78b73e45-92e6-4ee8-83bb-5215b671c7aa"
-			"7ae7f6e1-d347-4b67-881a-57b530240f0f" "7c2029f3-eced-49ff-b847-54704badca46"
-			"7fe5ef1b-9c5e-40ac-aa30-20abc8af907e" "80e0049a-68ec-4813-a9ca-5ba560969e44"
-			"815f6385-1b1d-493d-b440-4537ea02b0f4" "85622c3b-d0cb-4379-954f-53297bdf4164"
-			"85637b31-86cd-45c3-ae70-1c0b1a14a0cf" "88ca7b37-f112-4c6e-af48-4e1f9a43f112"
-			"891b6bab-3ec3-4d3f-bbd9-a598298c17b2" "8981bb0b-10df-4f2b-bdf8-6dafa54bef31"
-			"8b49f7b1-98f2-4a7b-90bd-476cbb1deb0e" "8c079b1e-b4a3-45aa-9dea-b8e126933211"
-			"8d9c2766-05ce-4289-9ad4-57183cfd95aa" "8df937da-3d78-4505-a599-8c97bcca64df"
-			"8e61e5da-f54a-4ae0-9397-3d0f8203eafd" "8e73e611-72d8-4139-b4ce-e9f2c6d19bea"
-			"8e8a1a5b-52e4-485d-ac39-f0215d7702c3" "9276d4b0-183a-43da-a83e-5d03b6aa43aa"
-			"93ff0b60-5ba1-4c59-9837-5533a2a89bc5" "9ce6d2fd-2382-49f4-98e0-90fa9282e03c"
-			"a16ec500-10a8-432e-85ba-b1e1ee1aa899" "a339c485-159e-4d56-aca4-14b0ce40a4a9"
-			"a4f2e2a8-fa7c-48b1-8970-da5908620223" "a5f7ad70-7f1d-4bed-9da8-70102bd7834b"
-			"a702ca8a-3d39-49b7-9fa1-45a98a47e361" "a70950c7-b6c5-4d0c-9cae-198f9b692f5f"
-			"a70aad69-5089-4901-ae5e-133bd89a0751" "a72b2dfe-9f1f-4e80-a123-5d6fceed18f1"
-			"aa48bf1e-4ab1-4d95-ab6d-5e17f413e6d6" "ab90eed7-1696-4174-9abd-330f96240856"
-			"ad58b972-40f4-4a39-bf70-d5a66ae31248" "ad7562ef-f129-4607-95b3-42fc6207b8bd"
-			"ae0d2c01-6844-4cb2-9e36-519b08090326" "af9ca6a5-a72d-4413-8dce-47eba4145be3"
-			"b0f6b8a4-8579-477e-8851-36a537e4c54c" "b313e356-ebcd-4401-9805-36c8ae3ef047"
-			"b41dc918-0ee1-4bd7-9d9d-fe5b6f4c2ddd" "b469d610-2a1c-4ac0-a9c3-3225482190a8"
-			"b53c0aa2-0809-4c82-9ffa-db673c7f09a0" "b68a771b-b02a-4903-b171-763ecedac87b"
-			"b7d09aa8-04cd-4982-8174-edfb9afc6c01" "bab4aa1d-97ab-472d-9120-e53938aea003"
-			"bbaed671-e375-45c5-9d49-9c77d28cc73d" "bc6b4728-64ec-4afe-84ef-9a3dcd442d9e"
-			"bfb73ea2-38c5-40e9-b1e3-99fa1553d060" "c01b134a-3011-4eae-a5d3-f64452867579"
-			"c48148e8-8c9e-4cd0-ac2c-bb67dc2783c0" "c819b7d4-4071-4b4c-845d-82a8d11187f1"
-			"cbd0cfc8-e5ee-4678-b8c0-66b84495758c" "cd0cb112-ce45-424b-96c6-0d9ca568eafb"
-			"cf192bfd-8322-4099-8e35-254aabc66fcf" "cff49d53-f85a-4ca0-9d49-7e6e9a97f79a"
-			"d2629596-5984-458c-a8d3-30f32173111d" "d64f4825-12ea-46bf-ae5d-97afe38bff8a"
-			"d86d5988-f3fe-4cb2-8b7c-ddb63b212909" "d8e46767-300b-40f4-b2dc-31c427068bff"
-			"daf48459-9877-409f-8198-b32a0ddf6bd9" "db80753b-68d4-445c-a679-cc2bae10be89"
-			"e42727ac-b9a9-4799-95d4-72fd7e2da747" "e5c114fd-6c0b-46c8-9666-40313b6cedd7"
-			"e75b8efa-4389-4e84-8553-54fc2ac26477" "e850444d-ff61-478c-9bf7-0b208f2e18c4"
-			"e8fe1d59-06a5-4dde-8ee7-de03cd0b8a5b" "ed8d28fb-232a-4103-9761-398fa6600cec"
-			"eddbc6fe-efd9-4c80-952b-ea66b96d21f6" "f44a6ed0-de99-4696-9a5c-06063237235c"
-			"f5539ce2-299f-416a-a779-67212f5701d0" "f6ecf2bb-6fba-4859-a7e5-c8f6d04b6138"
-			"f9065a58-a00d-4bd9-9729-2be8b7348de3" "f9cdb448-cc6f-49a5-a1e5-78dc4bc6da15"
-			"fa01b4d8-af1f-4f21-b6d4-a4abe7bde5e3" "fa33f9f1-865b-4569-b719-bcb2d8e158c9"
-			"fa58d68a-aa0a-4df0-8ea9-f6e7829c157d" "fa97382d-9367-4b61-977a-eecab3f8906a"
-			"fe3c594d-9d60-43c9-aa1e-18ec4eeada38" "ff9d8c35-9c0a-4853-b472-16e11e742ebd"
-			"fff651ff-e90b-43d6-8ada-6229addda381"
+		(uuid "b73a824b-6fca-4c32-b064-b3df17a702e3")
+		(members "016939b6-f6be-446e-853e-3f9f066d3409" "020192ff-b16b-456a-8d53-4e708c26f0aa"
+			"0411afe0-504a-44ed-bc58-0e857a664222" "055fedff-a149-4b42-a8a6-5fc27ba01171"
+			"070d42fd-d753-42e1-9447-325d50008537" "07d44db6-b643-43d7-baef-8c49caa3a193"
+			"0b234732-d5e6-464d-911e-e5231a00e187" "0e6e1415-5b21-4fe0-a73e-aa505d2364c9"
+			"0f519ca5-4916-4a09-9da6-1ae8c4858b64" "10150814-1582-4b5f-bb0c-b3bdb3b275a2"
+			"14947cc5-c2e6-466d-aff0-70837d77662b" "155c3aa1-8c18-4520-9173-390a1c684a8f"
+			"16c273de-5414-45ac-925a-5d6944d4a5fc" "179e2111-96a6-4a47-8409-eb150abb7a6d"
+			"18749764-d6d1-44d0-a4b7-f2a767d44b59" "1a4cf00b-13a3-4328-9808-c19f40314457"
+			"1f39f4be-4e4d-4cb4-9974-df0996af894a" "1f53e00e-1889-4520-96ae-2270cc8f5988"
+			"2063514e-e22d-42cb-8b46-f97660e67360" "2324693f-d91b-4b54-8cca-85063f9095d4"
+			"2982bfc2-31be-4d22-80e8-d00993655953" "2a5af1b7-1c60-48aa-8e84-28576a5e9a75"
+			"2b0def69-0d25-4eea-aa5b-76fc7e159c32" "2dc901ff-78b6-4159-b8ff-22f84b10c8df"
+			"307a5b0c-84b8-43d3-85db-43eeb28458aa" "31085161-2204-45da-9aca-de2e24a8dd7d"
+			"3184ca9e-ebdc-4241-b254-593a41b419b0" "32fb302f-2a42-426e-897c-2247d2ec0b1b"
+			"33ed736e-573d-48a7-bc34-843ec468b171" "36d56bd3-031b-47db-88a2-c6a25bcc5468"
+			"38674174-5f6d-4654-9359-64472dc0577f" "409443ad-1345-4295-a11a-dc12e4ede7d7"
+			"41668614-e08b-4c74-b544-aa1175887525" "41c185fa-ed52-4851-82e5-ffcc8e985622"
+			"42428bcc-e3b8-418a-ad85-bdd43f2ae8ef" "42df3e01-bedf-4aa7-9340-281e6574d7f3"
+			"436aa641-8326-4b9d-b283-2c47b340e0c4" "49a7cc7f-3b0b-4dbc-8c2d-d1c427272bd7"
+			"4a41db26-9e7b-4000-8c4e-ce535b655d37" "4d953e8e-ba6f-4dc0-9eb6-b1af87feccd8"
+			"4e26342b-9e43-4c14-bc85-eedcf418bc1f" "5081b52e-87b9-478b-ac4f-6f51afddaef2"
+			"52241a6b-d6b3-4492-93fa-cf50d766271a" "53c18603-694a-4b28-b371-10a36e8f473e"
+			"54aa73aa-8642-4c33-be89-ffe44a96de09" "555c4294-3ca0-45a3-922e-93c0b3408f9a"
+			"5614f74b-96e5-4bc0-a21c-44527a75a0ed" "5671a1b6-bba7-459a-8a31-1531f5e10605"
+			"575081ba-4a9d-4c44-8545-ba5bb3fb6b45" "57774004-e901-418c-bb83-22d4386e457f"
+			"59f032b5-1f1a-4525-b432-5be340ad6229" "5dd92634-0e18-49d8-8319-4bf2036fb6a8"
+			"5e2b2737-6568-4120-be36-4990aeee6208" "5e94497f-958a-4036-8151-bca63110ee8a"
+			"5ea58490-ffce-4e27-8e8a-861a65035504" "61ece7cb-86c8-46a8-9aae-c81fad985e08"
+			"6253ff5c-f6ae-462b-a77b-cabafe976152" "6460b181-15dd-4c06-be11-e160f5b64b70"
+			"65d0ecd3-d732-4e06-a1af-d95d1cdf4345" "6672644c-f251-493c-81ab-35165788474a"
+			"69b75af7-f890-403f-b411-137790c639a2" "6a89341a-932c-420a-b556-18dcae433a1b"
+			"6bcd6047-8445-4d0f-b634-87967278c82c" "6ca047d6-3a5f-43b1-a5c3-ffa6995c6258"
+			"6e64b7ab-4f2b-4dfb-b6d5-f033e5045044" "71a94fc3-550c-46bb-9f9e-afbb92f6a13b"
+			"71c66330-f4d2-48e5-9e6f-d602d33e7536" "75bd8ec4-b0b3-4fe8-83c4-aadaf5fd3dc3"
+			"7681eb7e-e055-4b03-ad06-ecce31dd3293" "76b7979f-eb6d-4fce-adc7-d7364d52e2c2"
+			"771c51dd-4e4f-4671-a19a-6bb91eb1d84d" "78d7071c-027a-452d-bb6d-03ee5cf51957"
+			"7c74dafc-4fbd-4cdc-af79-03446f889899" "7d873d09-7bb7-4a89-94e1-4e32bf8eb4a3"
+			"8034b384-5a94-416f-9a6c-4761a46098eb" "8694ca52-5db2-40fd-8ba2-234920806046"
+			"87d94fba-d4be-4e1a-bc7a-5d146fef4a7a" "8d232a1e-ca8b-46fc-a358-74c07b959c7b"
+			"9015aecb-f727-421e-ad9f-bfefcf10c691" "91fa07c2-9b55-4c34-945c-d4acbc7ae998"
+			"932913da-7538-40ce-8015-df77b0346f59" "93942776-094c-437f-bbb7-db71e882c3f7"
+			"9a3613e5-53b8-4a09-9b35-9e94fffd196b" "9b35e16c-c7a8-4361-9eee-b2dbcb60e922"
+			"9e4833f2-de19-46a5-ac85-92326445a429" "9f2d4f44-026b-4f17-bca2-418eaa81f067"
+			"9face606-7689-41ee-9353-60d981c3ff0a" "a0327b1d-6bc5-43fc-9dbf-3800a6c76896"
+			"a1d805e6-ae3e-43e9-9a66-54acdf7f12f0" "a23d6d6a-a8cc-421c-a9bd-9880fcd7533a"
+			"a29c8746-2426-4dc0-879c-6f704aba5a81" "a7d81403-259a-4951-a406-a9aa3737070a"
+			"b2339939-9b63-4c5b-8024-a6c7743f3dfc" "b2962b1e-7e10-460e-a47a-2b0b7ec105b1"
+			"b3fc27b6-f431-4bad-b635-35911e5b19e0" "b4114e10-5efe-4cd9-a4fe-ca8a694dbb2e"
+			"b466ad6d-c7d9-4b51-968b-0a3742886e55" "b5cddf4f-e9dd-4e0b-8ffb-676e6ffb5c0d"
+			"b9b8327d-33bf-434d-bfcc-8293da08c0d8" "ba45fad0-65b5-4ab3-9fa5-362ae03e8709"
+			"bba2e4a2-baa3-4764-9e4a-9b057e2fca2c" "beb45eab-2fec-43b8-96c0-7c1d76479c65"
+			"bfe68d59-b2d4-4c2d-9740-e6d4e39f98fe" "c041f42a-0470-4754-ae33-439a03957704"
+			"c07a1da5-0f52-4a62-aa48-cb5714949204" "c456fed3-0fa1-4145-925f-830bf5a74398"
+			"c4951d95-2566-4671-aaff-02c8c4907e60" "c540a245-5484-452c-9078-683acf3ea687"
+			"c5ee786b-b127-41c5-ac65-1683008d4184" "c74571f6-a887-4a18-a882-12f8691d4ee0"
+			"c8fdfdac-5157-4c72-ad9f-ff2f121c6402" "c995dbd0-1386-4910-9280-12c806816466"
+			"ccf87af3-33c6-4c6e-a598-e2d497375dab" "cd5216a1-3be6-4588-9cfb-3408c67bb93a"
+			"d2940d10-ce85-4954-af6a-6286a65bcb1c" "d3300c13-dbb3-45c0-9fa6-49b6d031edac"
+			"d40bc88b-f54a-45c3-ae83-376ea1e66092" "d4df17fc-d115-4c6d-9f2d-b7a5c56904bd"
+			"d759ca5c-270e-472d-a1f3-78f7120e72c5" "dda34e7e-70ef-4279-85e6-8efe2da470e7"
+			"de8d8682-1423-4b7c-95be-9fc622cd9b50" "e2a8fd4b-f6f6-4584-9c11-77d5a64b4970"
+			"e3857a8b-c0b2-475d-a9e0-bb8d09424d67" "e8c10b4c-feb7-45e7-8313-4d2722d60c66"
+			"e9249ce6-d73d-4221-9941-7d0251d693f8" "e94918ae-4c8e-4c67-a92e-397e2f635fea"
+			"eb221b6a-ae09-4d71-8260-5a2348131e60" "ed87d7b8-e2e3-43eb-9d96-e7ab38fa81a8"
+			"efb4728d-e90b-4001-a323-082bb5bfb986" "f09331dc-4ca0-4a89-98d2-b74cadb3cc0f"
+			"f2d947e3-cfe8-4c97-8146-066839cefbe6" "f447dec0-68a6-4fc0-a636-bcd556ec478b"
+			"f5b47b88-71db-48a7-8237-70553b2370ec" "f7f2d0b2-aca0-4ebd-9816-9a519dea7910"
+			"f83146f3-af69-4e19-9d28-23d2b4a6adb6" "f90073e9-975d-426c-a879-f9c0ad0b8e44"
+			"fd9fcf6d-3780-4da5-80cb-3ddfc7bf448b"
 		)
 	)
 	(embedded_fonts no)
