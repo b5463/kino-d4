@@ -2,6 +2,16 @@
 
 This log tracks released design-package versions inside the physical revision named in [`REVISION`](REVISION). Numbered engineering change notices carry the reason, evidence, and compatibility decision for each change.
 
+## 0.1.9 - 2026-11-05
+
+Status: dev carrier D1 design released for ordering after manual checks; carrier A0.2 unchanged.
+
+- New board `pcb/kino-d4-dev-carrier/`: A0.2's outline, M2 insert holes, camera centres and ribbon header, carrying only what the firmware drives (four UARTs, SYNC_OUT, CAM_PWR_EN, shutter, I2C, C6 service). USB-C 5 V in, one TPS2553 per node behind the shared enable, three status LEDs (5 V in, bank enabled, any fault), link headers for node USB, a 0 ohm current-measure link per node, 2.2k series resistors on the signal lines, a Qwiic port with DNP pull-up pads, a hand-fit 3 A polyfuse on the input, fiducials and scope-ground loops.
+- 2 layers, SMT on the bottom face only: 14 BOM lines, 11 from the JLC basic library, 12 hand-fit through-hole parts. The A0.2 quote (about 500 EUR for two assembled boards) was mostly fixed cost from double-sided assembly and unstocked parts.
+- Generated and routed by script (Freerouting, 0 unrouted); DRC 0, ERC 0; fab package in `outputs/fab-d1/`. Legend on both faces under the ODD JOBS standard.
+
+Engineering change notice: [ECN-0008](changes/ECN-0008-dev-carrier-d1.md). Tracking: [issue #250](https://github.com/b5463/kino-d4/issues/250).
+
 ## 0.1.8 - 2026-09-30
 
 Status: carrier A0.2 power rework under the ODD JOBS standard; no fabrication release.

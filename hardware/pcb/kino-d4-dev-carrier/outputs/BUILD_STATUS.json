@@ -1,0 +1,20 @@
+{
+  "board": "KINO_D4_Dev_Carrier_D1",
+  "checks": {
+    "drc_violations": 0,
+    "unconnected": 0,
+    "erc_violations": 0
+  },
+  "bom": {
+    "smt_lines": 15,
+    "smt_parts": 56,
+    "extended_lines": 3,
+    "handfit_parts": 16
+  },
+  "cpl": {
+    "placed": 56,
+    "sides": [
+      "Bottom"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+KINO D4 DEV CARRIER D1 - fabrication and assembly notes
+
+Board: 117.01 x 69.41 mm, 2 layers, 1.6 mm FR-4, 1 oz copper, HASL or ENIG, any mask colour.
+Minimum track and gap 0.15 mm, minimum drill 0.3 mm, no via-in-pad, no castellations.
+Assembly: SMT on the BOTTOM face only ("SIDE B" on the legend). 56 placements,
+15 BOM lines, 3 from the extended library.
+Placement coordinates: KiCad board origin, Y up, mm. Rotations are KiCad's: check the assembler's preview
+for the SOT-23-6 switches (U200-U500), the diodes and the LEDs before confirming.
+Hand-fit after assembly (BOM-D1-HANDFIT.csv): XIAO sockets, the P4 ribbon header, the C6 and remote headers,
+the four LINK headers, the shutter switch.
+The JLC order number goes on the text JLCJLCJLCJLC on the bottom silk.
+Checks at release: DRC 0 violations, 0 unconnected,
+ERC 0 violations.
