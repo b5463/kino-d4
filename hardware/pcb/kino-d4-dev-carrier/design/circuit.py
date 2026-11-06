@@ -104,8 +104,14 @@ res('02_power', 'R1001', '5.1k', 'USB_CC2', 'GND')
 cap('02_power', 'C1000', '22u', '5V_IN')
 cap('02_power', 'C1001', '22u', '5V_IN')
 cap('02_power', 'C1002', '100n', '5V_IN')
+# Board status, three LEDs at the bottom edge: 5 V in, camera bank enabled, any channel in fault.
 led('02_power', 'D1000', 'green', '5V_IN_LED', 'GND')
 res('02_power', 'R1002', '1k', '5V_IN', '5V_IN_LED')
+led('02_power', 'D1001', 'green', 'CAM_PWR_EN', 'CAM_EN_LED')
+res('02_power', 'R1003', '1k', 'CAM_EN_LED', 'GND', note='About 1 mA from GPIO31 while the bank is on.')
+led('02_power', 'D1002', 'red', 'FAULT_LED', 'FAULT_N')
+res('02_power', 'R1004', '1k', '5V_IN', 'FAULT_LED',
+    note='The four TPS2553 FAULT_N open drains share this net; the LED is their pull-up.')
 two('02_power', 'JP1000', 'P4 5V LINK', '5V_IN', 'P4_5V', 'Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm',
     fit='none', mpn='PCB feature (solder bridge, open)')
 
@@ -116,13 +122,14 @@ for n in range(1, 5):
     sh = f'0{n + 2}_camera{n}'
     b = 200 + 100 * (n - 1)
     c = lambda s: f'CAM{n}_{s}'
-    sheet(sh, f'Camera {n}', 'TPS2553 current limit 24k: about 1.0-1.2 A. Pull the LINK jumper before plugging node USB. '
+    sheet(sh, f'Camera {n}', 'TPS2553 current limit 24k: about 1.0-1.2 A; FAULT_N is shared with the other channels '
+          '(one red LED on the power sheet). Pull the LINK jumper before plugging node USB. '
           '2.2k series resistors keep a powered P4 from back-feeding an unpowered node through its pins.')
     xiao = {1: None, 2: c('SYNC'), 3: None, 4: None, 5: None, 6: None, 7: c('TX'), 8: c('RX'), 9: None, 10: None,
             11: None, 12: c('3V3'), 13: 'GND', 14: c('5V')}
     con(sh, f'J{b}', 'XIAO ESP32-S3 Sense socket', xiao, 'KINO_DEV:XIAO_Socket_15.24mm',
         mpn='2x Wurth 61300711821 (1x07 socket)', note='Same centres as A0.2: 22 mm pitch. Pin 2 D1 sync, 7 D6 TX, 8 D7 RX.')
-    add(sh, f'U{b}', 'TPS2553DBVR', {1: '5V_IN', 2: 'GND', 3: 'CAM_PWR_EN', 4: c('FAULT_N'), 5: c('ILIM'), 6: c('SW5V')},
+    add(sh, f'U{b}', 'TPS2553DBVR', {1: '5V_IN', 2: 'GND', 3: 'CAM_PWR_EN', 4: 'FAULT_N', 5: c('ILIM'), 6: c('SW5V')},
         switch_pins, 'Package_TO_SOT_SMD:SOT-23-6', lcsc='C55266', basic=False,
         source='https://www.ti.com/lit/ds/symlink/tps2553.pdf')
     res(sh, f'R{b}', '24k', c('ILIM'), 'GND')
@@ -133,10 +140,6 @@ for n in range(1, 5):
         mpn='1x02 2.54 mm pin header + shunt', note='Remove before connecting node USB.')
     cap(sh, f'C{b + 1}', '22u', c('5V'))
     cap(sh, f'C{b + 2}', '100n', c('5V'))
-    led(sh, f'D{b + 1}', 'red', c('FAULT_LED'), c('FAULT_N'))
-    res(sh, f'R{b + 1}', '1k', '5V_IN', c('FAULT_LED'))
-    led(sh, f'D{b + 2}', 'green', c('PWR_LED'), 'GND')
-    res(sh, f'R{b + 2}', '1k', c('5V'), c('PWR_LED'))
     res(sh, f'R{b + 3}', '2.2k', f'P4_TX{n}', c('RX'))
     res(sh, f'R{b + 4}', '2.2k', c('TX'), f'P4_RX{n}')
     res(sh, f'R{b + 5}', '2.2k', 'SYNC_MASTER', c('SYNC'))

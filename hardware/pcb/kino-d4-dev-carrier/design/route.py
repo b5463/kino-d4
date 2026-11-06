@@ -92,6 +92,9 @@ def finish(_=None):
     # The ribbon header's ground pins sit between the UART tracks: a solid connection
     # instead of starved thermal spokes (hand-soldered 2.54 mm pins, 2-layer board).
     b.FindFootprintByReference('J100').SetLocalZoneConnection(pcb.ZONE_CONNECTION_FULL)
+    # The edge LEDs sit in a strip of pour too narrow for two spokes.
+    for ref in ('D1000', 'D1001', 'D1002'):
+        b.FindFootprintByReference(ref).SetLocalZoneConnection(pcb.ZONE_CONNECTION_FULL)
     pours(b)
     tracks = sum(1 for t in b.GetTracks() if t.GetClass() == 'PCB_TRACK')
     vias = sum(1 for t in b.GetTracks() if t.GetClass() == 'PCB_VIA')

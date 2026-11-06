@@ -13,7 +13,8 @@ Status: design package 0.1.9, DRC 0, ERC 0, 0 unconnected, fab package in `outpu
 | Outline and mounting | 117.01 x 69.41 mm, four 2.2 mm NPTH for M2 | A0.2's outline and the P4 inner-insert pattern (61.9 x 54.8 mm, offset -9.3 mm). Holes H1-H4 at the coordinates in `kino-d4-carrier-a0/MECHANICAL.md`. 7 mm fastener allowance kept clear. |
 | P4 ribbon | J100, 2x13 keyed box header, bottom face | 1:1 to P4 JP1. Pin 15 (GPIO35, the boot strap) is open and marked NC. |
 | Camera sockets | J200-J500, two 1x07 sockets each, 22 mm pitch | Same centres as A0.2. Only D1 (sync), D6 (TX), D7 (RX), 3V3, GND and 5V are wired. |
-| Camera power | U200-U500 TPS2553, 24k ILIM | One switch per node, 1.0-1.2 A limit, all four enabled by CAM_PWR_EN (GPIO31, JP1 pin 10). R100 holds the bank off until firmware drives the pin. FAULT_N lights the red LED; the green LED shows the node's 5 V. SS34 blocks a node's own USB from feeding the bus. |
+| Camera power | U200-U500 TPS2553, 24k ILIM | One switch per node, 1.0-1.2 A limit, all four enabled by CAM_PWR_EN (GPIO31, JP1 pin 10). R100 holds the bank off until firmware drives the pin. The four FAULT_N open drains share one net. SS34 blocks a node's own USB from feeding the bus. |
+| Indicators | D1000 PWR (5 V in, green), D1001 CAM (bank enabled, green, from GPIO31 through 1k), D1002 FLT (any channel in fault, red; its 1k is the FAULT_N pull-up) | Board status only, no per-node LEDs. Bottom face, bottom edge left of the USB-C, so they show through the spacer gap with the carrier on the P4. Named on both faces. |
 | Link headers | JP200-JP500, 1x02 + shunt, top face | Pull the shunt before plugging a node's USB; refit after. |
 | Signals | 2.2k series on every P4-to-node and node-to-P4 line and on the four sync lines | Stops a powered P4 pin feeding an unpowered node through its protection diodes. No isolation buffers. |
 | 5 V input | J1000 USB-C, 5.1k on CC1/CC2, 2 x 22 uF | 5 V at up to 3 A from a Type-C source. No PD, no battery. JP1000 (solder bridge, open) joins 5V_IN to the P4's 5 V pins; close it only when one cable is meant to power the whole stack. |
@@ -26,7 +27,11 @@ Current budget: the 1.0 mm 5 V bus on 1 oz copper carries about 3 A for a 10 deg
 
 ## Legend
 
-Front ("SIDE A") is the face the XIAOs stand on: title band, ODD JOBS mark, CAM 1-4 with their LINK headers, the channel index strip under the sockets, SHUTTER, REMOTE, C6 SERVICE with pin names, P4 JP1 pin 1, NC on pin 15, 5V IN. Back ("SIDE B") is the assembled face: product identity and date, CAM labels, named test pads, QWIIC, an S/N box and the `JLCJLCJLCJLC` anchor for the order number. Stroke font, nothing under 0.8 mm, 0.15 mm strokes.
+Plain bench-board labelling, drawn by `design/silk.py`: a rule-lined identity bar, a rectangle around each functional block with its name, every pin named where a probe or a cable lands. Every item is a pin, a limit, a procedure or an identity field; nothing decorative.
+
+Front ("SIDE A"), the face the XIAOs stand on: the spec strip (host, nodes, UART, sync, enable, input); the ODD JOBS mark; the identity bar `KINO D4 / DEV CARRIER / REV D1 / 2026-11 / KINO-D4-DC-D1 / SIDE A`; one box per node, `CAM 1-4`, with `LINK`, `ILIM 1.2A`, pin 1 and the six wired socket pins named inside the rows (visible when the module is out); the link procedure right of CAM 4; `P4 JP1` with pin 1 and NC on pin 15; the `JP1 KEY` pin table; the `CONTROL GPIO28` box with the shutter, remote and C6 service pins named; the `POWER` box with `5V IN USB-C 3A MAX` and the `STATUS` row `PWR CAM FLT` over the edge LEDs.
+
+Back ("SIDE B"), the assembled face: the identity bar in the same reading order, S/N box, the `JLCJLCJLCJLC` anchor for the order number, the licence line, `CAM 1-4`, every test pad named, `5V LINK` at the solder bridge, `QWIIC`, the LED names. Stroke font for text, nothing under 0.8 mm, 0.15 mm strokes; every legend piece is a separate silk item so DRC checks the gaps.
 
 ## Files
 
@@ -57,7 +62,7 @@ The ODD JOBS symbol is read from `kino-d4-carrier-a0/brand/odd-jobs-symbol.json`
 
 ## Ordering
 
-JLCPCB, 2 layers, 1.6 mm, 1 oz, any finish. Economic assembly, bottom side only, 64 placements. Upload `outputs/fab-d1/` as the Gerber zip, `BOM-D1-JLC.csv` and `CPL-D1-JLC.csv`. Check the rotations of U200-U500, the four SS34 and the nine LEDs in the assembler's preview before confirming: the CPL carries KiCad's angles. Hand-fit the parts in `BOM-D1-HANDFIT.csv` after delivery: eight 1x07 sockets, the box header, the C6 and remote headers, four 1x02 link headers with shunts, one 6 mm switch.
+JLCPCB, 2 layers, 1.6 mm, 1 oz, any finish. Economic assembly, bottom side only, 52 placements. Upload `outputs/fab-d1/` as the Gerber zip, `BOM-D1-JLC.csv` and `CPL-D1-JLC.csv`. Check the rotations of U200-U500, the four SS34 and the three LEDs in the assembler's preview before confirming: the CPL carries KiCad's angles. Hand-fit the parts in `BOM-D1-HANDFIT.csv` after delivery: eight 1x07 sockets, the box header, the C6 and remote headers, four 1x02 link headers with shunts, one 6 mm switch.
 
 ## Checks before ordering
 
@@ -67,8 +72,8 @@ JLCPCB, 2 layers, 1.6 mm, 1 oz, any finish. Economic assembly, bottom side only,
 
 ## Bring-up
 
-1. No XIAOs, no P4: 5 V in on J1000. Green D1000 on. CAM_PWR_EN low: all camera 5 V pads 0 V.
-2. P4 on the ribbon, firmware up: `CAM_PWR_EN` high, four green LEDs on, each CAMn_5V pad at 5 V.
+1. No XIAOs, no P4: 5 V in on J1000. PWR on, CAM and FLT off. CAM_PWR_EN low: all camera 5 V pads 0 V.
+2. P4 on the ribbon, firmware up: `CAM_PWR_EN` high, CAM on, each CAMn_5V pad at 5 V.
 3. One XIAO at a time in each socket: the node answers on its UART (issue #148's single-node proof).
 4. Four nodes: all visible at once; SYNC on every TP*02 pad.
-5. Short a camera 5 V pad to GND through 1 ohm: that channel's red LED on, the other three unaffected.
+5. Short a camera 5 V pad to GND through 1 ohm: FLT on, that channel's 5 V pad at 0 V, the other three nodes still answering.

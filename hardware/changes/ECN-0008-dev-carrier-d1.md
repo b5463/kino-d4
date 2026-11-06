@@ -19,14 +19,15 @@ A new board, `hardware/pcb/kino-d4-dev-carrier/`, alongside A0.2 (which stays as
 
 - A0.2's outline, M2 insert holes, camera centres and J100 position, so it mounts and cables the same way.
 - Only the nets the firmware uses: four UARTs, SYNC_OUT, CAM_PWR_EN, SHUTTER_N, the P4 I2C, the C6 service lines.
-- Four TPS2553 camera switches with a shared enable (CAM_PWR_EN) and a fault LED each; link headers for node USB service; 2.2k series resistors in place of the TXU0304 buffers.
+- Four TPS2553 camera switches with a shared enable (CAM_PWR_EN) and a shared fault line (the four FAULT_N open drains wired-OR); link headers for node USB service; 2.2k series resistors in place of the TXU0304 buffers.
 - USB-C 5 V input with 5.1k CC pull-downs. No charger, battery, PD, haptic, IMU, RTC, temperature, current monitor, expander or power controller.
+- Three board-status LEDs at the bottom edge, visible through the spacer gap: 5 V in (PWR), camera bank enabled (CAM, from GPIO31), any channel in fault (FLT). No per-node LEDs.
 - Qwiic I2C port for breakouts while the feature firmware is written.
 - 2 layers, SMT on the bottom face only, 14 BOM lines (11 JLC basic), 12 hand-fit through-hole parts.
 
 ## Evidence
 
-- Generated from `design/circuit.py` and `design/placement.py`; routed with Freerouting 2.4.1 (0 unrouted after 7 passes); GND poured on both faces.
+- Generated from `design/circuit.py` and `design/placement.py`; routed with Freerouting 2.4.1 (0 unrouted); GND poured on both faces.
 - KiCad 10.0.6: DRC 0 violations, 0 unconnected; ERC 0. Reports in `outputs/`.
 - LCSC numbers and library class checked against the JLC parts API on 2026-11-05 (`design/circuit.py`).
 - No measurements: nothing has been built.
@@ -37,7 +38,7 @@ Mounts on the P4 inserts and takes the same 26-pin ribbon as A0.2. Firmware runs
 
 ## Safety and recovery
 
-5 V only, no battery. Each node is current-limited at 1.0-1.2 A; a short on one node drops that node and lights its red LED. The bank cannot power up before firmware drives GPIO31. JP1000 is open by default so the carrier's USB-C and the P4's own USB never meet unless closed on purpose. GPIO35 (JP1 pin 15) is left open and marked NC.
+5 V only, no battery. Each node is current-limited at 1.0-1.2 A; a short on one node drops that node and lights the FLT LED; the TX/RX test pads say which node. The bank cannot power up before firmware drives GPIO31. JP1000 is open by default so the carrier's USB-C and the P4's own USB never meet unless closed on purpose. GPIO35 (JP1 pin 15) is left open and marked NC.
 
 ## Files changed
 
