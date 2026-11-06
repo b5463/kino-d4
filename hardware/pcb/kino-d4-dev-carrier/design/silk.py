@@ -18,7 +18,7 @@ LEFT, CENTER, RIGHT = pcb.GR_TEXT_H_ALIGN_LEFT, pcb.GR_TEXT_H_ALIGN_CENTER, pcb.
 MODEL, REV, DATE = 'DEV CARRIER', 'D1', '2026-11'
 PN = 'KINO-D4-DC-D1'
 MARGIN, END = 3.6, WIDTH - 3.0   # the left and right margins every aligned block shares
-H1, H2, BODY = 2.4, 1.4, 1.0     # the type scale: board name and side; section names; everything else
+H1, H2, BODY = 3.2, 1.8, 1.0     # the type scale: board name and side; section names; everything else
 BASE = 64.6                      # the one baseline of the bottom row's labels
 
 
@@ -109,7 +109,7 @@ def identity(L, layer, side, end=END, side_end=END):
     # Left group, the product, by importance: name, revision, model. Arial Bold caps run about
     # 0.85 em; gaps are 3 mm. Right group, the record, right-aligned against the margin.
     L.text('KINO D4', m(MARGIN), y, H1, layer, jl, bold=True, baseline=True, tag=True)
-    for u, s in ((21.6, MODEL), (37.7, 'REV ' + REV), (48.4, 'PROTOTYPE')):   # one size for the whole group
+    for u, s in ((26.4, MODEL), (46.0, 'REV ' + REV), (58.4, 'PROTOTYPE')):   # one size for the whole group
         L.text(s, m(u), y, H2, layer, jl, bold=True, baseline=True, tag=s == 'PROTOTYPE')
     L.text(DATE, m(end), y, BODY, layer, jr, baseline=True)
     L.text(PN, m(end - 9.0), y, BODY, layer, jr, baseline=True)
@@ -118,7 +118,7 @@ def identity(L, layer, side, end=END, side_end=END):
 def front(L):
     F = pcb.F_SilkS
     # Top strip: the maker's mark in the left corner, the subtitle between the inserts.
-    L.mark(MARGIN, 2.0, 9.0, F)
+    L.mark(MARGIN, 1.2, 9.0, F)   # foot at 8.5: the same 3 mm to the KINO D4 tag as between the words
     L.text('4x XIAO ESP32-S3 SENSE  ON  ESP32-P4 JP1', 22.5, 6.4, BODY, F, LEFT)   # right of the H1 insert
     identity(L, F, 'SIDE A')
     # P4 ribbon header (on the back; the pins come through): designator, name, pin 1, the open boot-strap pin.
@@ -130,14 +130,14 @@ def front(L):
     for n, cx in enumerate(CAMERA_X, 1):
         b = 200 + 100 * (n - 1)
         L.text(f'CAM {n}', cx - 9.0, 20.1, H2, F, LEFT, bold=True, tag=True)
-        L.text(f'J{b}', cx - 9.0, 22.5, 1.0, F, LEFT)
-        L.text(f'LINK  JP{b}', cx + 3.81, 22.5, 1.0, F)
+        L.text(f'J{b}', cx - 9.0, 22.8, 1.0, F, LEFT)
+        L.text(f'LINK  JP{b}', cx + 3.81, 22.8, 1.0, F)
         L.text('XIAO ESP32-S3', cx, 25.3, 1.0, F)
         for dx, dy, s in XIAO_PINS:
             L.text(s, cx + dx - 1.7 * (1 if dx > 0 else -1), CAMERA_Y + dy, 1.0, F, RIGHT if dx > 0 else LEFT)
         L.pin1(cx - 9.3, CAMERA_Y - 7.62)
     # The column right of CAM 4, left-aligned on its own margin: the two facts the bench needs about the nodes.
-    for i, (s, bold) in enumerate((('NODE USB', True), ('PULL LINK', False), ('SHUNT FIRST', False),
+    for i, (s, bold) in enumerate((('LINK', True), ('PULL SHUNT', False), ('BEFORE USB', False),
                                    ('CAM 5V', True), ('1.2A LIMIT', False), ('SHARED EN', False))):
         L.text(s, 102.5, 20.4 + 2.2 * i + (2.0 if i >= 3 else 0), H2 if bold else BODY, F, LEFT, bold=bold)
     # GPIO map, bottom left, next to the header the GPIOs come from: two aligned columns.
