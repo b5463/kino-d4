@@ -6,7 +6,8 @@ J103,REMOTE SHUTTER,1x02 2.54 mm pin header,"Dry contact to GND, in parallel wit
 GL1,GND loop,0.8 mm tinned wire loop,Scope probe ground.
 GL2,GND loop,0.8 mm tinned wire loop,Scope probe ground.
 GL3,GND loop,0.8 mm tinned wire loop,Scope probe ground.
-F1000,PPTC 3A,"SMD1812P300TF (LCSC C21004, extended library: hand-fit)",Protects the board and the source if 5V_IN shorts; the TPS2553s only protect the nodes.
+F1000,PPTC 3A,"SMD1812P300TF (LCSC C21004, extended library: hand-fit)",Protects the board and the source if the rail shorts; the TPS2553s only protect the nodes.
+J1001,POWER MODULE,"JST B6B-XH-A (keyed, 3 A per contact)","Two contacts per rail. 1-2 VBUS out to the SW6106 input (the battery charges from the carrier USB-C), 3-4 GND, 5-6 the 5 V rail back from the SW6106 output. 20 AWG to the module."
 J200,XIAO ESP32-S3 Sense socket,2x Wurth 61300711821 (1x07 socket),"Same centres as A0.2: 22 mm pitch. Pin 2 D1 sync, 7 D6 TX, 8 D7 RX."
 JP200,LINK 1,1x02 2.54 mm pin header + shunt,Remove before connecting node USB.
 J300,XIAO ESP32-S3 Sense socket,2x Wurth 61300711821 (1x07 socket),"Same centres as A0.2: 22 mm pitch. Pin 2 D1 sync, 7 D6 TX, 8 D7 RX."

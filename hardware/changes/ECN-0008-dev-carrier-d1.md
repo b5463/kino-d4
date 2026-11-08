@@ -22,6 +22,7 @@ A new board, `hardware/pcb/kino-d4-dev-carrier/`, alongside A0.2 (which stays as
 - Four TPS2553 camera switches with a shared enable (CAM_PWR_EN) and a shared fault line (the four FAULT_N open drains wired-OR); link headers for node USB service; 2.2k series resistors in place of the TXU0304 buffers.
 - USB-C 5 V input with 5.1k CC pull-downs. No charger, battery, PD, haptic, IMU, RTC, temperature, current monitor, expander or power controller.
 - Three board-status LEDs at the bottom edge, visible through the spacer gap: 5 V in (PWR), camera bank enabled (CAM, from GPIO31), any channel in fault (FLT). No per-node LEDs.
+- Power module connector J1001, JST XH 6-way keyed, two 3 A contacts per rail (fused USB VBUS out to the SW6106 charger/boost input, 5 V rail back from its output) with JP1001 (USB > rail, closed as shipped): the battery charges from the carrier's USB-C and the stack runs from the rail. USBLC6-2SC6 on VBUS and CC. LM66100 ideal diode from the rail to the P4 5 V pins in place of the JP1000 bridge: the P4's own USB can never feed the rail (two extended lines).
 - Bench additions at no BOM-line cost: a 0 ohm current-measure link per node with a test pad either side, a FAULT_N test pad, DNP Qwiic pull-up pads, three fiducials, three wire-loop scope grounds. A 1812 polyfuse footprint on the input, hand-fitted (JLC polyfuses are extended-library parts).
 - Qwiic I2C port for breakouts while the feature firmware is written.
 - 2 layers, SMT on the bottom face only, 14 BOM lines (11 JLC basic), 12 hand-fit through-hole parts.
@@ -39,7 +40,7 @@ Mounts on the P4 inserts and takes the same 26-pin ribbon as A0.2. Firmware runs
 
 ## Safety and recovery
 
-5 V only, no battery. Each node is current-limited at 1.0-1.2 A; a short on one node drops that node and lights the FLT LED; the TX/RX test pads say which node. The bank cannot power up before firmware drives GPIO31. JP1000 is open by default so the carrier's USB-C and the P4's own USB never meet unless closed on purpose. GPIO35 (JP1 pin 15) is left open and marked NC.
+5 V only, no battery. Each node is current-limited at 1.0-1.2 A; a short on one node drops that node and lights the FLT LED; the TX/RX test pads say which node. The bank cannot power up before firmware drives GPIO31. An ideal diode (U1001) sits between the rail and the P4 5 V pins, so the carrier's rail and the P4's own USB never meet whichever is plugged. GPIO35 (JP1 pin 15) is left open and marked NC.
 
 ## Files changed
 

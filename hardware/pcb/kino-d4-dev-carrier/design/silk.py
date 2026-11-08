@@ -119,7 +119,10 @@ def front(L):
     F = pcb.F_SilkS
     # Top strip: the maker's mark in the left corner, the subtitle between the inserts.
     L.mark(MARGIN, 1.2, 9.0, F)   # foot at 8.5: the same 3 mm to the KINO D4 tag as between the words
-    L.text('4x XIAO ESP32-S3 SENSE  ON  ESP32-P4 JP1', 22.5, 6.4, BODY, F, LEFT)   # right of the H1 insert
+    # Right of the H1 insert: the subtitle and the two facts the bench needs about the nodes.
+    for i, s in enumerate(('4x XIAO ESP32-S3 SENSE  ON  ESP32-P4 JP1', 'LINK: PULL THE SHUNT BEFORE NODE USB',
+                           'CAM 5V: 1.2A LIMIT PER NODE, SHARED ENABLE')):
+        L.text(s, 22.5, 3.8 + 2.6 * i, BODY, F, LEFT)
     identity(L, F, 'SIDE A')
     # P4 ribbon header (on the back; the pins come through): designator, name, pin 1, the open boot-strap pin.
     L.text('1', 11.4, 18.0, 1.0, F)
@@ -136,30 +139,30 @@ def front(L):
         for dx, dy, s in XIAO_PINS:
             L.text(s, cx + dx - 1.7 * (1 if dx > 0 else -1), CAMERA_Y + dy, 1.0, F, RIGHT if dx > 0 else LEFT)
         L.pin1(cx - 9.3, CAMERA_Y - 7.62)
-    # The column right of CAM 4, left-aligned on its own margin: the two facts the bench needs about the nodes.
-    for i, (s, bold) in enumerate((('LINK', True), ('PULL SHUNT', False), ('BEFORE USB', False),
-                                   ('CAM 5V', True), ('1.2A LIMIT', False), ('SHARED EN', False))):
-        L.text(s, 102.5, 20.4 + 2.2 * i + (2.0 if i >= 3 else 0), H2 if bold else BODY, F, LEFT, bold=bold)
+    # The column right of CAM 4: the power-module connector, fused USB out to the SW6106, the 5 V rail back in.
+    L.text('J1001  POWER', 109.25, 18.4, 1.0, F)
+    for i, s in enumerate(('VBUS', 'GND', 'RAIL')):   # one name per contact pair, beside the housing
+        L.text(s, 104.6, 24.25 + 5.0 * i, 1.0, F, CENTER, 90)
     # GPIO map, bottom left, next to the header the GPIOs come from: two aligned columns.
     for i, (a, b) in enumerate((('CAM EN', 'GPIO31'), ('SYNC', 'GPIO32'), ('SHUTTER', 'GPIO28'))):
         L.text(a, MARGIN, 51.2 + 2.0 * i, 1.0, F, LEFT)
         L.text(b, 13.0, 51.2 + 2.0 * i, 1.0, F, LEFT)
     # Controls: the shutter, the remote contact, the C6 service header, each with its designator,
     # all on the bottom row's one baseline.
-    L.text('SW100  SHUTTER', 35.0, BASE, 1.0, F)
+    L.text('SW100  SHUTTER', 32.0, BASE, 1.0, F)
     for i, s in enumerate(('SW', 'GND')):
-        L.text(s, 49.0 + 2.54 * i, 61.0, 1.0, F, CENTER, 90)
-    L.text('J103  REMOTE', 50.3, BASE, 1.0, F)
+        L.text(s, 47.0 + 2.54 * i, 62.0, 1.0, F, CENTER, 90)
+    L.text('J103  REMOTE', 48.3, BASE, 1.0, F)
     for i, s in enumerate(('GND', '3V3', 'RX', 'TX', 'IO9', 'EN')):
-        L.text(s, 56.5 + 2.54 * i, 61.0, 1.0, F, CENTER, 90)
-    L.text('J101  C6 SERVICE', 62.85, BASE, 1.0, F)
+        L.text(s, 58.5 + 2.54 * i, 62.0, 1.0, F, CENTER, 90)
+    L.text('J101  C6 SERVICE', 64.85, BASE, 1.0, F)
     # Power: the input over the USB-C against the right margin, the status LEDs by name.
     L.text('5V IN', END, 55.0, H2, F, RIGHT, bold=True, baseline=True, tag=True)
     L.text('J1000  USB-C  3A MAX', END, 57.6, 1.0, F, RIGHT, baseline=True)
-    for x, s in ((92.0, 'PWR'), (96.0, 'CAM'), (100.0, 'FLT')):
+    for x, s in ((87.0, 'PWR'), (93.0, 'CAM'), (99.0, 'FLT')):
         L.circle(x, 66.6, 0.75, 0.2); L.text(s, x, BASE, 1.0, F)
     # Scope-probe ground loops.
-    for x, y in ((25.5, 59.0), (88.5, 57.4), (108.0, 46.4)):
+    for x, y in ((25.5, 59.0), (88.5, 57.4), (113.5, 43.4)):
         L.text('GND', x, y, 1.0, F)
 
 
@@ -169,8 +172,9 @@ def back(L):
     L.box(88.0, 3.4, 101.0, 9.6, 0.15, B); L.text('S/N', 89.0, 4.6, 1.0, B, LEFT)
     L.text('JLCJLCJLCJLC', 70.0, 6.4, 1.0, B)
     L.text('ODD JOBS  CERN-OHL-S-2.0', 40.0, 6.4, 1.0, B, LEFT)
-    # The 5 V link bridge beside the ribbon header (the header outline carries its own pin 1 chamfer).
-    L.text('JP1000  5V LINK', 19.5, 17.1, 1.0, B)
+    L.text('github.com/b5463/kino-d4', 40.0, 8.9, 1.0, B, LEFT)
+    # The ideal diode to the P4 5 V pins, beside the ribbon header (whose outline carries its own pin 1 chamfer).
+    L.text('U1001  RAIL > P4 5V', 20.5, 17.6, 1.0, B)
     for n, cx in enumerate(CAMERA_X, 1):
         L.text(f'CAM {n}', cx, 23.8, H2, B, CENTER, bold=True)
         for i, s in enumerate(('TX', 'RX', 'SY', '3V3', '5V', '5VJ')):   # 5VJ: jumper side of the measure link
@@ -178,12 +182,13 @@ def back(L):
     for y, s in ((33.5, 'EN'), (46.0, '3V3'), (49.0, '5V'), (52.0, 'SY'), (55.0, 'SH')):   # the J100 shroud ends at x 11.8
         L.text(s, 14.8, y, 1.0, B, RIGHT)
     L.text('GND', 4.0, 60.2, 1.0, B)
-    L.text('J102  QWIIC', 26.5, 62.6, 1.0, B)
+    L.text('J102  QWIIC', 14.5, 67.0, 1.0, B, LEFT)
+    L.text('PU DNP', 12.8, 57.6, 1.0, B)   # the Qwiic pull-up pads under it
     L.text('GND', 101.0, 62.2, 1.0, B)
-    L.text('FAULT', 97.0, 62.2, 1.0, B)
-    L.text('F1000  3A', 109.0, 49.6, 1.0, B)
-    L.text('I2C PU DNP', 47.0, 59.0, 1.0, B)
-    for x, s in ((92.0, 'PWR'), (96.0, 'CAM'), (100.0, 'FLT')):
+    L.text('FAULT', 96.0, 62.2, 1.0, B)
+    L.text('F1000', 113.5, 48.5, 1.0, B)
+    L.text('JP1001', 107.3, 47.0, 1.0, B, RIGHT)   # USB > rail bridge, closed as shipped
+    for x, s in ((87.0, 'PWR'), (93.0, 'CAM'), (99.0, 'FLT')):
         L.text(s, x, 65.2, 1.0, B)
 
 

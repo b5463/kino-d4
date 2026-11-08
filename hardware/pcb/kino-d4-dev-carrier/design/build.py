@@ -17,8 +17,9 @@ NAME = 'KINO_D4_Dev_Carrier_D1'
 REV, DATE = 'DEV CARRIER D1', '2026-11'
 STOCK = Path('C:/Program Files/KiCad/10.0/share/kicad/footprints')
 ROOT_ID = str(uuid5(NAMESPACE_URL, NAME))
-SUPPLIES = {'GND': 'J1000 USB-C ground / J100 P4 ground', '5V_IN': 'J1000 USB-C VBUS',
-            'P4_5V': 'J100 pins 2/4, P4 5 V', 'P4_3V3': 'J100 pins 1/3, P4 3.3 V', 'C6_3V3': 'J100 pin 18, C6 supply',
+SUPPLIES = {'GND': 'J1000 USB-C ground / J100 P4 ground', 'VBUS': 'J1000 USB-C VBUS',
+            '5V_IN': 'J1001 RAIL from the SW6106, or VBUS over JP1001',
+            'P4_3V3': 'J100 pins 1/3, P4 3.3 V', 'C6_3V3': 'J100 pin 18, C6 supply',
             **{f'CAM{n}_3V3': f'J{100 + 100 * n} XIAO onboard regulator' for n in range(1, 5)}}
 OFF = 50.0   # drawing offset, as A0
 
@@ -166,7 +167,7 @@ def project():
     default = next(c for c in ns['classes'] if c['name'] == 'Default')
     cls = lambda name, width: dict(default, name=name, track_width=width)
     ns['classes'] = [default, cls('CameraPower', 0.6), cls('MainPower', 1.0)]
-    power = ['5V_IN', 'P4_5V', 'GND']
+    power = ['VBUS_F', '5V_IN', 'P4_5V', 'GND']
     camera = ['VBUS'] + [f'CAM{n}_{s}' for n in range(1, 5) for s in ('SW5V', 'LINK', '5VJ', '5V')]
     ns['netclass_patterns'] = ([{'netclass': 'MainPower', 'pattern': n} for n in power]
                                + [{'netclass': 'CameraPower', 'pattern': n} for n in camera])

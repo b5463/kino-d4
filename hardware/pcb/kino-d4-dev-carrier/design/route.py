@@ -23,7 +23,7 @@ def pt(x, y): return pcb.VECTOR2I(round(x * 1e6), round(y * 1e6))
 # The DSN exporter writes one class with the default width, whatever the project's
 # netclass patterns say, so the power classes are written into the DSN here.
 # VBUS runs 0.6 mm: the USB-C pads are 0.6 mm wide at 0.8 mm pitch and a 1.0 mm track cannot enter them.
-CLASSES = {'MainPower': (1000, ['5V_IN', 'P4_5V']),
+CLASSES = {'MainPower': (1000, ['VBUS_F', '5V_IN', 'P4_5V']),
            'CameraPower': (600, ['VBUS'] + [f'CAM{n}_{s}' for n in range(1, 5) for s in ('SW5V', 'LINK', '5VJ', '5V')])}
 
 
@@ -118,13 +118,56 @@ def finish(_=None):
     b.FindFootprintByReference('J100').SetLocalZoneConnection(pcb.ZONE_CONNECTION_FULL)
     # The edge LEDs sit in a strip of pour too narrow for two spokes; the socket GND pins are
     # hand-soldered 2.54 mm pins between the UART tracks, as the ribbon header's.
-    for ref in ('D1000', 'D1001', 'D1002', 'J200', 'J300', 'J400', 'J500'):
+    # The USB-C shell and GND pads sit over the fixed VBUS bridge with no room for spokes either.
+    for ref in ('D1000', 'D1001', 'D1002', 'J200', 'J300', 'J400', 'J500', 'J1000'):
         b.FindFootprintByReference(ref).SetLocalZoneConnection(pcb.ZONE_CONNECTION_FULL)
     pours(b)
+    stitched = stitch(b)
     tracks = sum(1 for t in b.GetTracks() if t.GetClass() == 'PCB_TRACK')
     vias = sum(1 for t in b.GetTracks() if t.GetClass() == 'PCB_VIA')
     pcb.SaveBoard(str(BOARD), b)
-    print({'tracks': tracks, 'vias': vias, 'zones': len(b.Zones())})
+    print({'tracks': tracks, 'vias': vias, 'zones': len(b.Zones()), 'stitching_vias': stitched})
+
+
+def stitch(b):
+    """Tracks can cut a GND pour into islands. For every island of the back pour beyond the largest,
+    drop a GND via at a point that sits inside both pours with room for the via and its clearance,
+    then refill. Returns the number of vias added."""
+    zones = {z.GetZoneName(): z for z in b.Zones()}
+    back, front = zones['GND back'].GetFilledPolysList(pcb.B_Cu), zones['GND front'].GetFilledPolysList(pcb.F_Cu)
+    if back.OutlineCount() <= 1:
+        return 0
+    main = max(range(back.OutlineCount()), key=lambda i: back.Outline(i).Area())
+    room = pcb.FromMM(.65)   # 0.3 via radius + 0.3 clearance + margin
+    added = 0
+    for i in range(back.OutlineCount()):
+        if i == main:
+            continue
+        bb = back.Outline(i).BBox()
+        step = pcb.FromMM(.5)
+        hit = None
+        y = bb.GetTop() + room
+        while y < bb.GetBottom() - room and hit is None:
+            x = bb.GetLeft() + room
+            while x < bb.GetRight() - room:
+                p = pcb.VECTOR2I(x, y)
+                if back.Contains(p, i) and back.Outline(i).Distance(p) >= room and front.Contains(p) and \
+                        min(front.Outline(k).Distance(p) for k in range(front.OutlineCount()) if front.Contains(p, k)) >= room:
+                    hit = p
+                    break
+                x += step
+            y += step
+        if hit is None:
+            print('no room for a stitching via in back island', i)
+            continue
+        v = pcb.PCB_VIA(b)
+        v.SetViaType(pcb.VIATYPE_THROUGH); v.SetPosition(hit)
+        v.SetWidth(pcb.FromMM(.6)); v.SetDrill(pcb.FromMM(.3))
+        v.SetLayerPair(pcb.F_Cu, pcb.B_Cu); v.SetNet(b.GetNetInfo().GetNetItem('GND'))
+        b.Add(v); added += 1
+    if added:
+        pcb.ZONE_FILLER(b).Fill(b.Zones())
+    return added
 
 
 if __name__ == '__main__':

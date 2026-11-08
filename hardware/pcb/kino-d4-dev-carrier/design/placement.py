@@ -18,25 +18,28 @@ PLACE = {
     'C100': (16.0, 19.5, 90, 'B'),
     'R100': (16.0, 26.0, 90, 'B'),
     'R101': (16.0, 41.5, 90, 'B'),
-    'JP1000': (16.0, 14.0, 90, 'B'),
+    'U1001': (16.0, 14.0, 0, 'B'), 'C1003': (13.5, 14.0, 90, 'B'), 'C1004': (18.5, 14.0, 90, 'B'),   # ideal diode to the P4 5 V pins, beside the ribbon header
     'J1000': (109.0, 65.21, 180, 'B'),   # receptacle opens over the bottom edge, as A0.2
     'R1000': (104.0, 57.5, 90, 'B'),
-    'R1001': (114.0, 57.5, 90, 'B'),
+    'R1001': (114.2, 52.5, 90, 'B'),
+    'U1000': (114.2, 57.0, 90, 'B'),   # USBLC6 beside the receptacle's CC pads
+    'JP1001': (109.0, 47.0, 0, 'B'),   # USB > rail bridge, above the fuse
+    'J1001': (109.25, 23.0, 270, 'F'),  # JST XH 6-way to the SW6106 module, in the column right of CAM 4, pins 1..6 down from y 23
     'C1000': (106.5, 56.5, 90, 'B'),
     'C1001': (111.5, 56.5, 90, 'B'),
     'C1002': (109.0, 56.5, 90, 'B'),
     # Status LEDs at the bottom edge, left of the USB-C, so they show through the spacer gap with the carrier on the P4.
-    'D1000': (92.0, 67.0, 0, 'B'), 'D1001': (96.0, 67.0, 0, 'B'), 'D1002': (100.0, 67.0, 0, 'B'),
-    'R1002': (90.0, 63.5, 0, 'B'), 'R1003': (94.0, 63.5, 0, 'B'), 'R1004': (99.0, 63.5, 0, 'B'),   # each LED's resistor beside it
-    'F1000': (109.0, 52.5, 0, 'B'),   # input polyfuse between the USB-C VBUS pads and the 5V_IN caps
-    'TP107': (97.0, 60.0, 0, 'B'),    # FAULT_N
-    'R102': (45.0, 61.5, 90, 'B'), 'R103': (47.0, 61.5, 90, 'B'),   # Qwiic pull-ups, DNP, between the switch pad and J103
+    'D1000': (87.0, 67.0, 0, 'B'), 'D1001': (93.0, 67.0, 0, 'B'), 'D1002': (99.0, 67.0, 0, 'B'),
+    'R1002': (87.0, 63.5, 0, 'B'), 'R1003': (93.0, 63.5, 0, 'B'), 'R1004': (99.0, 63.5, 0, 'B'),   # each LED's resistor beside it
+    'F1000': (109.0, 51.5, 0, 'B'),   # input polyfuse between the USB-C VBUS pads and the 5V_IN caps
+    'TP107': (96.0, 60.0, 0, 'B'),    # FAULT_N
+    'R102': (12.0, 60.0, 90, 'B'), 'R103': (13.6, 60.0, 90, 'B'),   # Qwiic pull-ups, DNP, above J102
     'FID1': (4.0, 4.0, 0, 'B'), 'FID2': (113.0, 4.0, 0, 'B'), 'FID3': (113.0, 46.0, 0, 'B'),
-    'GL1': (25.5, 56.5, 0, 'F'), 'GL2': (88.5, 55.0, 0, 'F'), 'GL3': (108.0, 44.0, 0, 'F'),   # scope grounds, clear of the TP rows
-    'J102': (36.0, 64.6, 180, 'B'),    # cable leaves over the bottom edge
-    'SW100': (35.0, 56.0, 0, 'F'),
-    'J103': (49.0, 56.0, 90, 'F'),
-    'J101': (56.5, 56.0, 90, 'F'),
+    'GL1': (25.5, 56.5, 0, 'F'), 'GL2': (88.5, 55.0, 0, 'F'), 'GL3': (113.5, 41.0, 0, 'F'),   # scope grounds, clear of the TP rows
+    'J102': (9.0, 65.0, 180, 'B'),     # Qwiic under the ribbon header, cable leaves over the bottom edge
+    'SW100': (32.0, 57.0, 0, 'F'),
+    'J103': (47.0, 57.0, 90, 'F'),
+    'J101': (58.5, 57.0, 90, 'F'),
     'TP100': (16.0, 46.0, 0, 'B'), 'TP101': (16.0, 49.0, 0, 'B'), 'TP102': (16.0, 52.0, 0, 'B'),
     'TP103': (16.0, 33.5, 0, 'B'), 'TP104': (16.0, 55.0, 0, 'B'),
     'TP105': (101.0, 60.0, 0, 'B'), 'TP106': (4.0, 58.0, 0, 'B'),

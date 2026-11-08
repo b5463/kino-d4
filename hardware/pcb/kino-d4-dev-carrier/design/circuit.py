@@ -102,15 +102,28 @@ for i in range(1, 4):   # assembly fiducials on the SMT face
 
 # --- 5 V input ----------------------------------------------------------------------------
 sheet('02_power', '5 V input',
-      'USB-C sink at 5 V only: 5.1k Rd on CC1/CC2, up to 3 A from a Type-C source. No PD, no battery. '
-      'JP1000 (open) joins the dev carrier 5 V to the P4 5 V pins: close it only when exactly one USB cable powers the stack.')
+      'USB-C sink at 5 V only: 5.1k Rd on CC1/CC2, up to 3 A from a Type-C source, USBLC6 clamp on VBUS and CC, 3 A polyfuse. '
+      'J1001 hands the fused VBUS to the SW6106 charger/boost module (the battery charges from the carrier USB-C) and takes '
+      'the 5 V rail back from it. JP1001 (closed) feeds the rail from USB directly for a bench without the module: open it '
+      'when the SW6106 is in the loop. U1001 (ideal diode) feeds the rail to the P4 5 V pins and blocks the P4 USB from the rail.')
 usb = {'A1': 'GND', 'A12': 'GND', 'B1': 'GND', 'B12': 'GND', 'A4': 'VBUS', 'A9': 'VBUS', 'B4': 'VBUS', 'B9': 'VBUS',
        'A5': 'USB_CC1', 'B5': 'USB_CC2', 'A6': None, 'A7': None, 'B6': None, 'B7': None, 'A8': None, 'B8': None, 'SH': 'GND'}
 con('02_power', 'J1000', 'USB-C 5V', usb, 'KINO_DEV:USB_C_GCT_USB4105_KINO_GND0.05', fit='smt',
     mpn='GCT USB4105-GF-A', lcsc='C3020560', basic=False, note='Power only; data pins open. A0.2 land pattern.')
-two('02_power', 'F1000', 'PPTC 3A', 'VBUS', '5V_IN', 'Fuse:Fuse_1812_4532Metric', fit='hand',
+two('02_power', 'F1000', 'PPTC 3A', 'VBUS', 'VBUS_F', 'Fuse:Fuse_1812_4532Metric', fit='hand',
     mpn='SMD1812P300TF (LCSC C21004, extended library: hand-fit)',
-    note='Protects the board and the source if 5V_IN shorts; the TPS2553s only protect the nodes.')
+    note='Protects the board and the source if the rail shorts; the TPS2553s only protect the nodes.')
+add('02_power', 'U1000', 'USBLC6-2SC6', {1: 'USB_CC1', 2: 'GND', 3: 'USB_CC2', 4: 'USB_CC2', 5: 'VBUS', 6: 'USB_CC1'},
+    {1: ('IO1', 'passive'), 2: ('GND', 'power_in'), 3: ('IO2', 'passive'), 4: ('IO2', 'passive'), 5: ('VBUS', 'power_in'), 6: ('IO1', 'passive')},
+    'Package_TO_SOT_SMD:SOT-23-6', lcsc='C7519', basic=False, source='https://www.st.com/resource/en/datasheet/usblc6-2.pdf',
+    note='ESD clamp: VBUS (6 V) and both CC pins through the line channels.')
+two('02_power', 'JP1001', 'USB > RAIL', 'VBUS_F', '5V_IN', 'Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm',
+    fit='none', mpn='PCB feature (solder bridge, closed)',
+    note='Closed: the fused USB VBUS is the 5 V rail (bench, no battery module). Open when the SW6106 feeds the rail on J1001.')
+con('02_power', 'J1001', 'POWER MODULE', {1: 'VBUS_F', 2: 'VBUS_F', 3: 'GND', 4: 'GND', 5: '5V_IN', 6: '5V_IN'},
+    'Connector_JST:JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical', mpn='JST B6B-XH-A (keyed, 3 A per contact)',
+    note='Two contacts per rail. 1-2 VBUS out to the SW6106 input (the battery charges from the carrier USB-C), '
+         '3-4 GND, 5-6 the 5 V rail back from the SW6106 output. 20 AWG to the module.')
 res('02_power', 'R1000', '5.1k', 'USB_CC1', 'GND')
 res('02_power', 'R1001', '5.1k', 'USB_CC2', 'GND')
 cap('02_power', 'C1000', '22u', '5V_IN')
@@ -124,8 +137,15 @@ res('02_power', 'R1003', '1k', 'CAM_EN_LED', 'GND', note='About 1 mA from GPIO31
 led('02_power', 'D1002', 'red', 'FAULT_LED', 'FAULT_N')
 res('02_power', 'R1004', '1k', '5V_IN', 'FAULT_LED',
     note='The four TPS2553 FAULT_N open drains share this net; the LED is their pull-up.')
-two('02_power', 'JP1000', 'P4 5V LINK', '5V_IN', 'P4_5V', 'Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm',
-    fit='none', mpn='PCB feature (solder bridge, open)')
+# Rail to the P4 5 V pins through an ideal diode: the rail feeds the P4, the P4's own USB can never feed the rail,
+# and when both are present the higher one carries the P4 with no current between the two sources.
+add('02_power', 'U1001', 'LM66100DCKR', {1: '5V_IN', 2: 'GND', 3: 'P4_5V', 4: None, 5: 'GND', 6: 'P4_5V'},
+    {1: ('VIN', 'power_in'), 2: ('GND', 'power_in'), 3: ('CE_N', 'input'), 4: ('NC', 'passive'), 5: ('ST', 'passive'), 6: ('VOUT', 'power_out')},
+    'Package_TO_SOT_SMD:SOT-363_SC-70-6', lcsc='C2869734', basic=False, source='https://www.ti.com/lit/ds/symlink/lm66100.pdf',
+    note='CE tied to VOUT: reverse-current blocking, off within 35 mV typ of VOUT > VIN, on again at VIN > VOUT + 150 mV. '
+         '1.5 A continuous, 79 mOhm typ at 5 V: about 0.1 V drop at 1 A. ST to GND (not used).')
+cap('02_power', 'C1003', '1u', '5V_IN', note='LM66100 input, TI power supply recommendations.')
+cap('02_power', 'C1004', '1u', 'P4_5V')
 
 # --- Cameras ------------------------------------------------------------------------------
 switch_pins = {1: ('IN', 'power_in'), 2: ('GND', 'power_in'), 3: ('EN', 'input'), 4: ('FAULT_N', 'open_collector'),
