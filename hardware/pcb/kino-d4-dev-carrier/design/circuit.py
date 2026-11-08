@@ -79,12 +79,10 @@ con('01_p4', 'J102', 'QWIIC 3V3 I2C', {1: 'GND', 2: 'P4_3V3', 3: 'P4_SDA', 4: 'P
     'Connector_JST:JST_SH_SM04B-SRSS-TB_1x04-1MP_P1.00mm_Horizontal', fit='smt',
     mpn='SM04B-SRSS-TB(LF)(SN)', lcsc='C160404', basic=False,
     note='Qwiic/STEMMA QT pinout. Shares the P4 bus with the touch controller (0x5D); breakout pull-ups add in parallel.')
-add('01_p4', 'SW100', 'SHUTTER', {1: 'SHUTTER_N', 2: 'GND'}, {1: ('A', 'passive'), 2: ('B', 'passive')},
-    'Button_Switch_THT:SW_PUSH_6mm', fit='hand', mpn='6x6 mm THT tactile switch',
-    note='GPIO28 has the internal pull-up and 25 ms debounce in buttons.c; no resistor.')
-con('01_p4', 'J103', 'REMOTE SHUTTER', {1: 'SHUTTER_N', 2: 'GND'},
-    'Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical', mpn='1x02 2.54 mm pin header',
-    note='Dry contact to GND, in parallel with SW100.')
+con('01_p4', 'J103', 'SHUTTER', {1: 'SHUTTER_N', 2: 'GND'},
+    'Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical', mpn='JST B2B-XH-A (keyed 2-way socket)',
+    note='The shutter button lead plugs in here: a dry contact to GND. GPIO28 has the internal pull-up and the '
+         '25 ms debounce in buttons.c; no resistor. Keyed, so it cannot go in reversed.')
 res('01_p4', 'R102', '4.7k', 'P4_SDA', 'P4_3V3', fit='none',
     note='DNP. The P4 bus has the touch controller pull-ups; fit only for a breakout that has none.')
 res('01_p4', 'R103', '4.7k', 'P4_SCL', 'P4_3V3', fit='none', note='DNP, as R102.')

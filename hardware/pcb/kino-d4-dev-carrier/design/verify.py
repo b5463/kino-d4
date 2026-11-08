@@ -82,8 +82,7 @@ def intent(pads):
           and {pin('U1000', 1), pin('U1000', 3)} == {'USB_CC1', 'USB_CC2'})
     check('camera bank held off from reset, against the 45k internal pull-up', pin('R100', 1) == 'CAM_PWR_EN' and pin('R100', 2) == 'GND' and part['R100']['value'] == '4.7k')
     check('sync held low from reset', pin('R101', 1) == 'SYNC_MASTER' and pin('R101', 2) == 'GND')
-    check('shutter: switch and remote both pull SHUTTER_N to GND', {pin('SW100', 1), pin('SW100', 2)} == {'SHUTTER_N', 'GND'}
-          and {pin('J103', 1), pin('J103', 2)} == {'SHUTTER_N', 'GND'})
+    check('shutter socket pulls SHUTTER_N to GND', {pin('J103', 1), pin('J103', 2)} == {'SHUTTER_N', 'GND'})
     check('Qwiic pinout GND 3V3 SDA SCL', [pin('J102', i) for i in (1, 2, 3, 4)] == ['GND', 'P4_3V3', 'P4_SDA', 'P4_SCL'])
     check('Qwiic pull-ups are DNP', part['R102']['fit'] == 'none' and part['R103']['fit'] == 'none')
 
@@ -121,8 +120,9 @@ def copper(b):
     # The 1.0 mm bus nets carry up to 3 A and must not change layers through a single 0.3 mm via: every via
     # needs a joined twin within 2.5 mm, except a branch that only reaches a test pad. The 0.6 mm node nets
     # carry one node (1.2 A max), which a single 0.3 mm via handles; their singles are listed, not failed.
-    # Branches that carry no load current: test pads, the rail clamp D1003, the USB clamp U1000.
-    tps = [p.GetPosition() for fp in b.GetFootprints() if fp.GetReference().startswith('TP') or fp.GetReference() in ('D1003', 'U1000') for p in fp.Pads()]
+    # Branches off the 3 A bus: test pads, the clamps D1003 and U1000, and the ideal-diode input (the P4's
+    # 1.5 A at most, which a single 0.3 mm via carries).
+    tps = [p.GetPosition() for fp in b.GetFootprints() if fp.GetReference().startswith('TP') or fp.GetReference() in ('D1003', 'U1000', 'U1001', 'C1003') for p in fp.Pads()]
     vias = {}
     for t in b.GetTracks():
         if t.GetClass() == 'PCB_VIA' and t.GetNetname() in widths:

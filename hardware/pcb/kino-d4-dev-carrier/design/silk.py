@@ -144,15 +144,12 @@ def front(L):
     # GPIO map under the ribbon shroud, left of the H3 fastener allowance.
     for i, s in enumerate(('CAM EN GPIO31', 'SYNC GPIO32', 'SHUTTER GPIO28')):
         L.text(s, MARGIN, 55.9 + 1.8 * i, 1.0, F, LEFT)
-    # Controls: the shutter, the remote contact, the C6 service header, each with its designator,
+    # Controls: the shutter socket and the C6 service header, each with its designator and pins,
     # all on the bottom row's one baseline.
-    L.text('SW100  SHUTTER', 32.0, BASE, 1.0, F)
-    for i, s in enumerate(('SW', 'GND')):
-        L.text(s, 47.0 + 2.54 * i, 62.0, 1.0, F, CENTER, 90)
-    L.text('J103  REMOTE', 48.3, BASE, 1.0, F)
+    L.text('J103  SHUTTER', 39.25, BASE, 1.0, F)
     for i, s in enumerate(('GND', '3V3', 'RX', 'TX', 'IO9', 'EN')):
-        L.text(s, 58.5 + 2.54 * i, 62.0, 1.0, F, CENTER, 90)
-    L.text('J101  C6 SERVICE', 64.85, BASE, 1.0, F)
+        L.text(s, 52.0 + 2.54 * i, 62.2, 1.0, F, CENTER, 90)
+    L.text('J101  C6 SERVICE', 58.35, BASE, 1.0, F)
     # Power: the input over the USB-C against the right margin, the status LEDs by name.
     L.text('5V IN', END, 55.0, H2, F, RIGHT, bold=True, baseline=True, tag=True)
     L.text('J1000  USB-C  3A MAX', END, 57.6, 1.0, F, RIGHT, baseline=True)

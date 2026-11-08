@@ -1,8 +1,7 @@
 Designator,Value,Part,Note
 J100,P4 JP1 - 26 pin IDC,Wurth 61202621621 (any keyed 2x13 2.54 mm box header),Same position as A0.2 J100; keyed ribbon to P4 JP1.
 J101,C6 service,1x06 2.54 mm pin header,"C6_3V3 is the C6 supply: sense only, do not feed."
-SW100,SHUTTER,6x6 mm THT tactile switch,GPIO28 has the internal pull-up and 25 ms debounce in buttons.c; no resistor.
-J103,REMOTE SHUTTER,1x02 2.54 mm pin header,"Dry contact to GND, in parallel with SW100."
+J103,SHUTTER,JST B2B-XH-A (keyed 2-way socket),"The shutter button lead plugs in here: a dry contact to GND. GPIO28 has the internal pull-up and the 25 ms debounce in buttons.c; no resistor. Keyed, so it cannot go in reversed."
 GL1,GND loop,0.8 mm tinned wire loop,Scope probe ground.
 GL2,GND loop,0.8 mm tinned wire loop,Scope probe ground.
 GL3,GND loop,0.8 mm tinned wire loop,Scope probe ground.
