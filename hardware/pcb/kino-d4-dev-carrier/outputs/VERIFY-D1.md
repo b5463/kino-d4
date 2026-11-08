@@ -64,23 +64,23 @@
 | nothing but silk inside the 7 mm fastener allowance | pass | 4 holes clear |
 | tallest part on the P4 face recorded | pass | J100 shroud 9.1 mm; a mated IDC plug adds about 6 mm |
 | C10758 SMAJ5.0A | pass | expand, stock 12272, recorded extended |
-| C14663 100n | pass | base, stock 34012427, recorded basic |
-| C15849 1u | pass | base, stock 12931330, recorded basic |
-| C160404 QWIIC 3V3 I2C | pass | expand, stock 55369, recorded extended |
-| C21189 0R | pass | base, stock 19074914, recorded basic |
-| C21190 1k | pass | base, stock 27004177, recorded basic |
-| C2286 LED red | pass | base, stock 6579177, recorded basic |
-| C2297 LED green | pass | base, stock 1946154, recorded basic |
-| C23162 4.7k | pass | base, stock 15972826, recorded basic |
-| C23179 470R | pass | base, stock 4118472, recorded basic |
-| C23186 5.1k | pass | base, stock 20324158, recorded basic |
+| C14663 100n | pass | base, stock 34011377, recorded basic |
+| C15849 1u | pass | base, stock 12931466, recorded basic |
+| C160404 QWIIC 3V3 I2C | pass | expand, stock 55364, recorded extended |
+| C21189 0R | pass | base, stock 19074814, recorded basic |
+| C21190 1k | pass | base, stock 27003933, recorded basic |
+| C2286 LED red | pass | base, stock 6579152, recorded basic |
+| C2297 LED green | pass | base, stock 1946107, recorded basic |
+| C23162 4.7k | pass | base, stock 15972806, recorded basic |
+| C23179 470R | pass | base, stock 4118467, recorded basic |
+| C23186 5.1k | pass | base, stock 20324178, recorded basic |
 | C23352 24k | pass | base, stock 587554, recorded basic |
 | C2869734 LM66100DCKR | pass | expand, stock 6857, recorded extended |
 | C3020560 USB-C 5V | pass | expand, stock 19112, recorded extended |
-| C4190 2.2k | pass | base, stock 5080497, recorded basic |
-| C45783 22u | pass | base, stock 3545251, recorded basic |
+| C4190 2.2k | pass | base, stock 5080477, recorded basic |
+| C45783 22u | pass | base, stock 3545257, recorded basic |
 | C55266 TPS2553DBVR | pass | expand, stock 57725, recorded extended |
-| C7519 USBLC6-2SC6 | pass | expand, stock 40770, recorded extended |
+| C7519 USBLC6-2SC6 | pass | expand, stock 40771, recorded extended |
 | C8678 SS34 | pass | base, stock 3042603, recorded basic |
 | gerber layers and drill present | pass | .csv, .drl, .gbl, .gbo, .gbp, .gbr, .gbrjob, .gbs, .gm1, .gtl, .gto, .gtp, .gts, .txt |
 | CPL lists every SMT part once and nothing else | pass | 61 rows |

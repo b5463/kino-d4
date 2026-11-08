@@ -169,20 +169,30 @@ def front(L):
 def back(L):
     B = pcb.B_SilkS
     identity(L, B, 'SIDE B', WIDTH - 19.0, WIDTH - 23.0)   # clear of the ribbon header and the H1 insert
-    L.box(88.0, 3.4, 101.0, 9.6, 0.15, B); L.text('S/N', 89.0, 4.6, 1.0, B, LEFT)
-    L.text('JLCJLCJLCJLC', 70.0, 6.4, 1.0, B)
-    L.text('ODD JOBS  CERN-OHL-S-2.0', 40.0, 6.4, 1.0, B, LEFT)
-    L.text('github.com/b5463/kino-d4', 40.0, 8.9, 1.0, B, LEFT)
+    # Top strip in reading order (u = view coordinate, m(u) its board x; RIGHT reads view-left-aligned on
+    # the mirrored face): the S/N box on the left margin, the order anchor, the record as one block.
+    m = lambda u: WIDTH - u
+    L.box(m(16.6), 3.4, m(MARGIN), 9.6, 0.15, B); L.text('S/N', m(4.6), 4.8, 1.0, B, RIGHT)
+    L.text('JLCJLCJLCJLC', m(20.0), 4.8, 1.0, B, RIGHT)
+    for i, s in enumerate(('ODD JOBS', 'CERN-OHL-S-2.0', 'github.com/b5463/kino-d4')):
+        L.text(s, m(40.0), 3.8 + 2.6 * i, 1.0, B, RIGHT)
     # The ideal diode to the P4 5 V pins, beside the ribbon header (whose outline carries its own pin 1 chamfer).
     L.text('U1001  RAIL > P4 5V', 20.5, 17.6, 1.0, B)
     for n, cx in enumerate(CAMERA_X, 1):
-        L.text(f'CAM {n}', cx, 23.8, H2, B, CENTER, bold=True)
+        L.text(f'CAM {n}', cx, 23.8, H2, B, CENTER, bold=True, tag=True)
         for i, s in enumerate(('TX', 'RX', 'SY', '3V3', '5V', '5VJ')):   # 5VJ: jumper side of the measure link
             L.text(s, cx - 6.0 + 3.0 * i, 49.3, 1.0, B)
     for y, s in ((33.5, 'EN'), (46.0, '3V3'), (49.0, '5V'), (52.0, 'SY'), (55.0, 'SH')):   # the J100 shroud ends at x 11.8
         L.text(s, 14.8, y, 1.0, B, RIGHT)
     L.text('GND', 4.0, 60.2, 1.0, B)
-    L.text('J102  QWIIC', 14.5, 67.0, 1.0, B, LEFT)
+    L.text('J102  QWIIC   GND 3V3 SDA SCL', 14.5, 67.0, 1.0, B, LEFT)   # pin order from the cable side
+    L.text('J100  P4 JP1', 7.3, 11.6, 1.0, B)   # the ribbon header shroud below it; its chamfer marks pin 1
+    # The power corner, read in the order the current flows, left-aligned on the view margin.
+    for i, s in enumerate(('USB-C IN', '> U1000 ESD', '> F1000 3A', '> JP1001', '> RAIL')):
+        L.text(s, m(6.5), 37.2 + 1.7 * i, 1.0, B, RIGHT)   # inboard of the GL3 loop
+    L.text('J1000', 109.0, 59.0, 1.0, B)
+    for i, s in enumerate(('VBUS', 'GND', 'RAIL')):   # J1001 contacts, named where the pins come through
+        L.text(s, 111.8, 24.25 + 5.0 * i, 1.0, B, CENTER, 90)
     L.text('PU DNP', 12.8, 57.6, 1.0, B)   # the Qwiic pull-up pads under it
     L.text('GND', 101.0, 62.2, 1.0, B)
     L.text('FAULT', 96.0, 62.2, 1.0, B)

@@ -170,6 +170,8 @@ def twin_vias(b):
     offsets = [(d * c, d * s) for d in (1.0, 1.4, 1.8, 2.2) for c, s in ((1, 0), (-1, 0), (0, 1), (0, -1), (.71, .71), (-.71, .71), (.71, -.71), (-.71, -.71))]
     for v in [v for v in vias if v.GetNetname() in POWER_NETS]:
         a, net = v.GetPosition(), v.GetNetname()
+        if any(o is not v and o.GetNetname() == net and (o.GetPosition() - a).EuclideanNorm() <= pcb.FromMM(2.5) for o in vias):
+            continue   # already paired (a re-run of finish)
         for dx, dy in offsets:
             p = pcb.VECTOR2I(a.x + pcb.FromMM(dx), a.y + pcb.FromMM(dy))
             if clear(p, net) and path_clear(v, p):

@@ -35,7 +35,7 @@ PLACE = {
     'F1000': (109.0, 51.5, 0, 'B'),   # input polyfuse between the USB-C VBUS pads and the 5V_IN caps
     'TP107': (96.0, 60.0, 0, 'B'),    # FAULT_N
     'R102': (12.0, 60.0, 90, 'B'), 'R103': (13.6, 60.0, 90, 'B'),   # Qwiic pull-ups, DNP, above J102
-    'FID1': (4.0, 4.0, 0, 'B'), 'FID2': (113.0, 4.0, 0, 'B'), 'FID3': (113.0, 46.0, 0, 'B'),
+    'FID1': (4.0, 4.0, 0, 'B'), 'FID2': (84.0, 4.0, 0, 'B'), 'FID3': (113.0, 46.0, 0, 'B'),
     'GL1': (25.5, 56.5, 0, 'F'), 'GL2': (88.5, 55.0, 0, 'F'), 'GL3': (113.5, 41.0, 0, 'F'),   # scope grounds, clear of the TP rows
     'J102': (9.0, 65.0, 180, 'B'),     # Qwiic under the ribbon header, cable leaves over the bottom edge
     'SW100': (32.0, 57.0, 0, 'F'),
