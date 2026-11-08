@@ -121,7 +121,8 @@ def copper(b):
     # The 1.0 mm bus nets carry up to 3 A and must not change layers through a single 0.3 mm via: every via
     # needs a joined twin within 2.5 mm, except a branch that only reaches a test pad. The 0.6 mm node nets
     # carry one node (1.2 A max), which a single 0.3 mm via handles; their singles are listed, not failed.
-    tps = [p.GetPosition() for fp in b.GetFootprints() if fp.GetReference().startswith('TP') for p in fp.Pads()]
+    # Branches that carry no load current: test pads, the rail clamp D1003, the USB clamp U1000.
+    tps = [p.GetPosition() for fp in b.GetFootprints() if fp.GetReference().startswith('TP') or fp.GetReference() in ('D1003', 'U1000') for p in fp.Pads()]
     vias = {}
     for t in b.GetTracks():
         if t.GetClass() == 'PCB_VIA' and t.GetNetname() in widths:
@@ -130,7 +131,7 @@ def copper(b):
                     and not any((tp - p).EuclideanNorm() <= pcb.FromMM(2.5) for tp in tps)] for net, ps in vias.items()}
     bus = [f'{net} ({mm(p.x):.1f},{mm(p.y):.1f})' for net, ps in single.items() if widths[net] >= 1.0 for p in ps]
     node = [f'{net} ({mm(p.x):.1f},{mm(p.y):.1f})' for net, ps in single.items() if widths[net] < 1.0 for p in ps]
-    check('bus-net vias doubled (3 A path)', not bus, '; '.join(bus) or f'{sum(len(v) for n, v in vias.items() if widths[n] >= 1.0)} vias, all paired or on a test-pad branch')
+    check('bus-net vias doubled (3 A path)', not bus, '; '.join(bus) or f'{sum(len(v) for n, v in vias.items() if widths[n] >= 1.0)} vias, all paired or on a test-pad or clamp branch')
     check('node-net single vias carry one node only', True, f'{len(node)} single: ' + '; '.join(node) if node else 'none')
     rows = []
     for net, w in widths.items():
@@ -164,7 +165,7 @@ def mechanics(b):
                 hits.append(f'{ref} in H{i} allowance')
     check('nothing but silk inside the 7 mm fastener allowance', not hits, '; '.join(hits) or '4 holes clear')
     back = max((HEIGHTS.get(r, 0) for r, v in PLACE.items() if v[3] == 'B'), default=0)
-    check('tallest part on the P4 face recorded', back == 9.1, f'J100 shroud {back} mm; a mated IDC plug adds about 6 mm')
+    check('tallest part on the P4 face recorded', back == 4.3, f'{back} mm (J102 Qwiic); J100 is on the top face, only the P4-side ribbon plug is in the gap')
 
 
 # --- 6. parts ------------------------------------------------------------------------------

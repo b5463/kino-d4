@@ -141,7 +141,7 @@ def twin_vias(b):
     tracks = [t for t in b.GetTracks() if t.GetClass() == 'PCB_TRACK']
     vias = [t for t in b.GetTracks() if t.GetClass() == 'PCB_VIA']
     pads = [(p, p.GetBoundingBox()) for fp in b.GetFootprints() for p in fp.Pads()]
-    clr, r = pcb.FromMM(.15), pcb.FromMM(.3)
+    clr, r = pcb.FromMM(.25), pcb.FromMM(.3)   # 0.15 rule plus margin for the 0.2 mm path sampling
 
     def clear(p, net, ignore=()):
         if not (pcb.FromMM(OFF + .9) < p.x < pcb.FromMM(OFF + WIDTH - .9) and pcb.FromMM(OFF + .9) < p.y < pcb.FromMM(OFF + HEIGHT - .9)):

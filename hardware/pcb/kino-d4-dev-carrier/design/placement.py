@@ -14,7 +14,10 @@ CAMERA_Y = 34.705
 
 # ref: (x, y, rotation_deg, side)
 PLACE = {
-    'J100': (8.54, 18.0, 180, 'B'),
+    # J100 on the top face: the ribbon leaves over the left edge and folds down to JP1 beneath, so only the
+    # P4-side plug is in the gap. The fold rotates the far socket about the edge, which swaps the two columns:
+    # pin 1 sits at JP1's even-column x (6.0), rows unchanged. Verify pin 1 against the ribbon before ordering.
+    'J100': (6.0, 18.0, 0, 'F'),
     'C100': (16.0, 19.5, 90, 'B'),
     'R100': (16.0, 26.0, 90, 'B'),
     'R101': (16.0, 41.5, 90, 'B'),
