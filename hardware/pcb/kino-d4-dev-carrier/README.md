@@ -110,6 +110,7 @@ Back ("SIDE B"), the assembled face and the one the engineer probes with the car
 | `design/silk.py` | The legend on both faces |
 | `design/release.py` | Gerbers, drill, BOM, CPL, hand-fit list, DRC/ERC reports, `outputs/BUILD_STATUS.json` |
 | `design/verify.py` | The pre-build checks: nets, polarity and intent, pin maps against the firmware, power copper, keep-outs, JLC parts, fab package; writes `outputs/VERIFY-D1.md` |
+| `design/print3d.py` | `outputs/D1-print.stl`, the board with connector, socket and switch models plus boxes for the XIAO modules, camera boards, the mated ribbon plug and the JST housing; no pins, loops or passives. For a clearance print against the P4. |
 | `KINO_D4_Dev_Carrier_D1.kicad_pcb` | The routed board |
 | `outputs/fab-d1/` | The order package |
 | `KINO_DEV.pretty/` | The XIAO socket and USB-C lands, copied from `kino-d4-carrier-a0/KINO_A0.pretty/` |
@@ -124,6 +125,8 @@ python design/route.py import WORK
 python design/silk.py
 python design/release.py
 python design/verify.py
+kicad-cli pcb export stl --no-dnp --component-filter "J*,JP*,SW*" --subst-models -o outputs/D1-3d-base.stl KINO_D4_Dev_Carrier_D1.kicad_pcb
+python design/print3d.py
 ```
 
 The ODD JOBS symbol is read from `kino-d4-carrier-a0/brand/odd-jobs-symbol.json` at build time; it is not copied into this directory.
@@ -135,6 +138,7 @@ JLCPCB, 2 layers, 1.6 mm, 1 oz, any finish. Economic assembly, bottom side only 
 ## Checks before ordering
 
 - [ ] Print the 1:1 mounting template from `kino-d4-carrier-a0/outputs/` and lay it on the P4: the inner-insert offset is drawing-derived (MECHANICAL.md).
+- [ ] Print `outputs/D1-print.stl` (1:1, front face up, 0.2 mm layers; the board is 1.6 mm and the bodies are boxes, so no supports) and stand it on the P4 on the intended standoffs: ribbon plug and fold over the left edge, USB-C plug under the board, XIAO USB-C plug beside the LINK header with a module seated, JST cable exit. Body heights are from datasheets and the Seeed drawings, not measured.
 - [ ] Pin 1: with the real ribbon folded over the left edge, socket A on J100 and socket B on JP1, the stripe must land on JP1 pin 1. J100 pin 1 is placed at JP1's even-column x on the reasoning that the fold swaps the columns; if the stripe lands on pin 2 instead, rotate J100 180 degrees in `placement.py` (pin 1 to x 8.54) before ordering.
 - [ ] Spacer height: measure the P4's JP1 header plus a mated IDC socket with strain relief; 15 mm standoffs under 14 mm, otherwise 20 mm.
 - [ ] XIAO USB-C plug clears the LINK header and the neighbouring module with a node seated (plug overmold about 12.4 x 6.5 mm).

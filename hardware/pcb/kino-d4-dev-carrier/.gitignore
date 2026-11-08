@@ -3,3 +3,4 @@ __pycache__/
 *.lck
 *-backups/
 fp-info-cache
+outputs/D1-3d-base.stl
