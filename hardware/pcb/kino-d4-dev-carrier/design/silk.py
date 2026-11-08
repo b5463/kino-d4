@@ -155,6 +155,9 @@ def front(L):
     L.text('J1000  USB-C  3A MAX', END, 57.6, 1.0, F, RIGHT, baseline=True)
     for x, s in ((87.0, 'PWR'), (93.0, 'CAM'), (99.0, 'FLT')):
         L.circle(x, 66.6, 0.75, 0.2); L.text(s, x, BASE, 1.0, F)
+    # Top-face test pads: the P4 signals, the rail and FAULT, reachable with the carrier mounted.
+    for i, (x, s) in enumerate(zip((3.5, 6.5, 9.5, 12.5, 24.0, 27.0, 30.0, 33.0), ('3V3', '5V', 'SYNC', 'EN', 'SHUT', 'GND', 'FLT', 'RAIL'))):
+        L.text(s, x, 65.6, 1.0, F, CENTER, 90)
     # Scope-probe ground loops.
     for x, y in ((25.5, 59.0), (88.5, 57.4), (113.5, 43.4)):
         L.text('GND', x, y, 1.0, F)
@@ -184,7 +187,7 @@ def back(L):
     L.text('1', 6.0, 15.4, 1.0, B)               # pin 1 (the pin of JP1 pin 1 after the fold)
     L.text('NC', 3.0, 35.78, 1.0, B)             # pin 15, GPIO35, open
     # The power corner, read in the order the current flows, left-aligned on the view margin.
-    for i, s in enumerate(('USB-C IN', '> U1000 ESD', '> F1000 3A', '> JP1001', '> RAIL')):
+    for i, s in enumerate(('USB-C IN', '> U1000 ESD', '> F1000 3A', '> JP1001 RAIL', '> U1002 J1001')):
         L.text(s, m(6.5), 37.2 + 1.7 * i, 1.0, B, RIGHT)   # inboard of the GL3 loop
     L.text('J1000', 109.0, 59.0, 1.0, B)
     for i, s in enumerate(('VBUS', 'GND', 'RAIL')):   # J1001 contacts, named where the pins come through

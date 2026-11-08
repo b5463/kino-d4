@@ -27,6 +27,7 @@ PLACE = {
     'R1001': (114.2, 52.5, 90, 'B'),
     'U1000': (114.2, 57.0, 90, 'B'),   # USBLC6 beside the receptacle's CC pads
     'JP1001': (109.0, 47.0, 0, 'B'),   # USB > rail bridge, above the fuse
+    'U1002': (93.0, 55.5, 0, 'B'), 'Q1000': (97.0, 55.5, 0, 'B'), 'C1005': (93.0, 53.0, 0, 'B'),   # VBUS ideal diode toward J1001, between the CAM4 pads and the LED row
     'D1003': (104.0, 29.0, 90, 'B'),    # rail clamp beside J1001
     'J1001': (109.25, 23.0, 270, 'F'),  # JST XH 6-way to the SW6106 module, in the column right of CAM 4, pins 1..6 down from y 23
     'C1000': (106.5, 56.5, 90, 'B'),
@@ -46,6 +47,8 @@ PLACE = {
     'TP100': (16.0, 46.0, 0, 'B'), 'TP101': (16.0, 49.0, 0, 'B'), 'TP102': (16.0, 52.0, 0, 'B'),
     'TP103': (16.0, 33.5, 0, 'B'), 'TP104': (16.0, 55.0, 0, 'B'),
     'TP105': (101.0, 60.0, 0, 'B'), 'TP106': (4.0, 58.0, 0, 'B'),
+    # Top-face pads: 3V3 5V SYNC EN SHUT GND FLT RAIL, one row under the GPIO map and across to the shutter socket.
+    **{f'TP{110 + i}': (x, 62.5, 0, 'F') for i, x in enumerate((3.5, 6.5, 9.5, 12.5, 24.0, 27.0, 30.0, 33.0))},
 }
 
 for n, cx in enumerate(CAMERA_X, 1):
@@ -56,7 +59,8 @@ for n, cx in enumerate(CAMERA_X, 1):
         f'U{b}': (cx, 27.5, 0, 'B'),
         f'C{b}': (cx - 3.6, 27.5, 90, 'B'),
         f'R{b}': (cx + 3.6, 27.5, 90, 'B'),
-        f'D{b}': (cx, 32.2, 0, 'B'),
+        f'U{b + 1}': (cx + 1.2, 32.0, 0, 'B'),   # ideal diode where the SS34 was
+        f'C{b + 3}': (cx - 2.2, 32.0, 90, 'B'),
         # One row at 3 mm pitch, all upright: the 22 uF, the 100 nF and the current-measure link.
         f'C{b + 1}': (cx - 2.4, 36.6, 90, 'B'),
         f'C{b + 2}': (cx + 0.6, 36.6, 90, 'B'),

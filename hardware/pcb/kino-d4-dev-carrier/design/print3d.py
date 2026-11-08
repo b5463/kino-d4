@@ -31,6 +31,7 @@ ENVELOPE = {
     'LED_SMD:LED_0805_2012Metric': (2.0, 1.25, 1.1, 0, 0),
     'Diode_SMD:D_SMA': (4.3, 2.6, 2.3, 0, 0),
     'Package_TO_SOT_SMD:SOT-23-6': (2.9, 1.6, 1.15, 0, 0),
+    'Package_TO_SOT_SMD:SOT-23': (2.9, 1.3, 1.1, 0, 0),
     'Package_TO_SOT_SMD:SOT-363_SC-70-6': (2.0, 1.25, 1.0, 0, 0),
     'Fuse:Fuse_1812_4532Metric': (4.5, 3.2, 1.6, 0, 0),
     'KINO_DEV:USB_C_GCT_USB4105_KINO_GND0.05': (8.94, 7.35, 3.26, 0, 0),

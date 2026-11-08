@@ -56,8 +56,8 @@ def intent(pads):
 
     for n in range(1, 5):
         b = 200 + 100 * (n - 1)
-        check(f'SS34 D{b} blocks node USB from the bank', pin(f'D{b}', 1) == f'CAM{n}_LINK' and pin(f'D{b}', 2) == f'CAM{n}_SW5V',
-              f"K={pin(f'D{b}', 1)} A={pin(f'D{b}', 2)}")
+        check(f'ideal diode U{b + 1}: switch in, link out, CE on VOUT', pin(f'U{b + 1}', 1) == f'CAM{n}_SW5V' and pin(f'U{b + 1}', 6) == f'CAM{n}_LINK'
+              and pin(f'U{b + 1}', 3) == f'CAM{n}_LINK' and pin(f'U{b + 1}', 2) == 'GND')
         check(f'TPS2553 U{b} wiring', pin(f'U{b}', 1) == '5V_IN' and pin(f'U{b}', 3) == 'CAM_PWR_EN' and pin(f'U{b}', 4) == 'FAULT_N'
               and pin(f'U{b}', 6) == f'CAM{n}_SW5V' and pin(f'R{b}', 1) == f'CAM{n}_ILIM' and part[f'R{b}']['value'] == '24k')
         check(f'node {n} link, measure link and socket 5 V in series',
@@ -70,14 +70,18 @@ def intent(pads):
     leds = {'D1000': ('GND', '5V_IN_LED'), 'D1001': ('CAM_EN_LED', 'CAM_PWR_EN'), 'D1002': ('FAULT_N', 'FAULT_LED')}
     for ref, (k, a) in leds.items():
         check(f'LED {ref} polarity', pin(ref, 1) == k and pin(ref, 2) == a, f"K={pin(ref, 1)} A={pin(ref, 2)}")
-    check('FAULT_N has exactly one pull-up (the FLT LED chain)', {r for r in pads['FAULT_N'] if not r.startswith('U')} == {'D1002.1', 'TP107.1'})
+    check('FAULT_N has exactly one pull-up (the FLT LED chain)', {r for r in pads['FAULT_N'] if not r.startswith('U')} == {'D1002.1', 'TP107.1', 'TP116.1'})
     check('ideal diode U1001: rail in, P4 5 V out, CE on VOUT',
           pin('U1001', 1) == '5V_IN' and pin('U1001', 6) == 'P4_5V' and pin('U1001', 3) == 'P4_5V' and pin('U1001', 2) == 'GND')
-    check('no other path from the rail to P4_5V', sorted(pads['P4_5V']) == sorted(['J100.2', 'J100.4', 'U1001.3', 'U1001.6', 'C1004.1', 'TP101.1']),
+    check('no other path from the rail to P4_5V', sorted(pads['P4_5V']) == sorted(['J100.2', 'J100.4', 'U1001.3', 'U1001.6', 'C1004.1', 'TP101.1', 'TP111.1']),
           ', '.join(sorted(pads['P4_5V'])))
     check('USB-C VBUS: clamp, fuse, then the bridge and the module connector',
           pin('U1000', 5) == 'VBUS' and {pin('F1000', 1), pin('F1000', 2)} == {'VBUS', 'VBUS_F'}
-          and {pin('JP1001', 1), pin('JP1001', 2)} == {'VBUS_F', '5V_IN'} and pin('J1001', 1) == 'VBUS_F' and pin('J1001', 5) == '5V_IN')
+          and {pin('JP1001', 1), pin('JP1001', 2)} == {'VBUS_F', '5V_IN'} and pin('J1001', 1) == 'VBUS_M' and pin('J1001', 5) == '5V_IN')
+    check('VBUS ideal diode toward the module: LM74700 anode on VBUS_F, cathode on J1001, EN on anode, N-FET S/D/G',
+          pin('U1002', 6) == 'VBUS_F' and pin('U1002', 4) == 'VBUS_M' and pin('U1002', 3) == 'VBUS_F'
+          and pin('Q1000', 2) == 'VBUS_F' and pin('Q1000', 3) == 'VBUS_M' and pin('Q1000', 1) == pin('U1002', 5)
+          and {pin('C1005', 1), pin('C1005', 2)} == {pin('U1002', 1), 'VBUS_F'})
     check('CC pull-downs 5.1k and clamped', part['R1000']['value'] == '5.1k' and part['R1001']['value'] == '5.1k'
           and {pin('U1000', 1), pin('U1000', 3)} == {'USB_CC1', 'USB_CC2'})
     check('camera bank held off from reset, against the 45k internal pull-up', pin('R100', 1) == 'CAM_PWR_EN' and pin('R100', 2) == 'GND' and part['R100']['value'] == '4.7k')
@@ -112,7 +116,7 @@ def pinmaps():
 
 # --- 4. copper -----------------------------------------------------------------------------
 def copper(b):
-    widths = {'5V_IN': 1.0, 'P4_5V': 1.0, 'VBUS_F': 1.0, 'VBUS': 0.6, **{f'CAM{n}_{s}': 0.6 for n in range(1, 5) for s in ('SW5V', 'LINK', '5VJ', '5V')}}
+    widths = {'5V_IN': 1.0, 'P4_5V': 1.0, 'VBUS_F': 1.0, 'VBUS_M': 1.0, 'VBUS': 0.6, **{f'CAM{n}_{s}': 0.6 for n in range(1, 5) for s in ('SW5V', 'LINK', '5VJ', '5V')}}
     by_net = {}
     for t in b.GetTracks():
         if t.GetClass() == 'PCB_TRACK':
@@ -120,9 +124,9 @@ def copper(b):
     # The 1.0 mm bus nets carry up to 3 A and must not change layers through a single 0.3 mm via: every via
     # needs a joined twin within 2.5 mm, except a branch that only reaches a test pad. The 0.6 mm node nets
     # carry one node (1.2 A max), which a single 0.3 mm via handles; their singles are listed, not failed.
-    # Branches off the 3 A bus: test pads, the clamps D1003 and U1000, and the ideal-diode input (the P4's
+    # Branches off the 3 A bus: test pads, the clamps D1003 and U1000, the PWR LED resistor, the ideal-diode input (the P4's
     # 1.5 A at most, which a single 0.3 mm via carries).
-    tps = [p.GetPosition() for fp in b.GetFootprints() if fp.GetReference().startswith('TP') or fp.GetReference() in ('D1003', 'U1000', 'U1001', 'C1003') for p in fp.Pads()]
+    tps = [p.GetPosition() for fp in b.GetFootprints() if fp.GetReference().startswith('TP') or fp.GetReference() in ('D1003', 'U1000', 'U1001', 'C1003', 'U1002', 'C1005', 'R1002') for p in fp.Pads()]
     vias = {}
     for t in b.GetTracks():
         if t.GetClass() == 'PCB_VIA' and t.GetNetname() in widths:

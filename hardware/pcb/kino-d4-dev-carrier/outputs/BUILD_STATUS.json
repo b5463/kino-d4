@@ -6,13 +6,13 @@
     "erc_violations": 0
   },
   "bom": {
-    "smt_lines": 19,
-    "smt_parts": 61,
-    "extended_lines": 6,
+    "smt_lines": 20,
+    "smt_parts": 68,
+    "extended_lines": 7,
     "handfit_parts": 16
   },
   "cpl": {
-    "placed": 61,
+    "placed": 68,
     "sides": [
       "Bottom"
     ]

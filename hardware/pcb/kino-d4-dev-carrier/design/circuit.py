@@ -93,6 +93,9 @@ cap('01_p4', 'C100', '100n', 'P4_3V3')
 for i, net in enumerate(['P4_3V3', 'P4_5V', 'SYNC_MASTER', 'CAM_PWR_EN', 'SHUTTER_N', 'GND', 'GND']):
     tp('01_p4', f'TP{100 + i}', net)
 tp('01_p4', 'TP107', 'FAULT_N')
+# The same signals again on the top face, reachable with the carrier mounted.
+for i, net in enumerate(['P4_3V3', 'P4_5V', 'SYNC_MASTER', 'CAM_PWR_EN', 'SHUTTER_N', 'GND', 'FAULT_N', '5V_IN']):
+    tp('01_p4', f'TP{110 + i}', net)
 for i in range(1, 4):   # scope-probe grounds: a wire loop each, hand-fitted
     con('01_p4', f'GL{i}', 'GND loop', {1: 'GND'}, 'TestPoint:TestPoint_Loop_D2.50mm_Drill1.0mm',
         mpn='0.8 mm tinned wire loop', note='Scope probe ground.')
@@ -119,9 +122,19 @@ add('02_power', 'U1000', 'USBLC6-2SC6', {1: 'USB_CC1', 2: 'GND', 3: 'USB_CC2', 4
 two('02_power', 'JP1001', 'USB > RAIL', 'VBUS_F', '5V_IN', 'Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm',
     fit='none', mpn='PCB feature (solder bridge, closed)',
     note='Closed: the fused USB VBUS is the 5 V rail (bench, no battery module). Open when the SW6106 feeds the rail on J1001.')
-con('02_power', 'J1001', 'POWER MODULE', {1: 'VBUS_F', 2: 'VBUS_F', 3: 'GND', 4: 'GND', 5: '5V_IN', 6: '5V_IN'},
+# Ideal diode from the fused VBUS toward the module: the SW6106's own input port is the same node as J1001 1-2,
+# so a charger on that port would otherwise back-drive the carrier's USB-C. LM74700 + N-FET, EN tied to ANODE.
+add('02_power', 'U1002', 'LM74700QDBVRQ1', {1: 'VCAP1002', 2: 'GND', 3: 'VBUS_F', 4: 'VBUS_M', 5: 'GATE1002', 6: 'VBUS_F'},
+    {1: ('VCAP', 'passive'), 2: ('GND', 'power_in'), 3: ('EN', 'input'), 4: ('CATHODE', 'passive'), 5: ('GATE', 'output'), 6: ('ANODE', 'passive')},
+    'Package_TO_SOT_SMD:SOT-23-6', lcsc='C2941042', basic=False, source='https://www.ti.com/lit/ds/symlink/lm74700-q1.pdf',
+    note='Forward regulation 20 mV across the FET, off at -11 mV. 4-60 V in. Blocks the module port from feeding J1000.')
+add('02_power', 'Q1000', 'AO3400A', {1: 'GATE1002', 2: 'VBUS_F', 3: 'VBUS_M'}, {1: ('G', 'input'), 2: ('S', 'passive'), 3: ('D', 'passive')},
+    'Package_TO_SOT_SMD:SOT-23', lcsc='C20917', mpn='AO3400A', note='N-channel, 30 V, 5.7 A, 26 mOhm; 0.23 W at 3 A, a warm SOT-23.')
+two('02_power', 'C1005', '100n', 'VCAP1002', 'VBUS_F', 'Capacitor_SMD:C_0603_1608Metric', mpn='CC0603KRX7R9BB104', lcsc='C14663',
+    note='LM74700 charge-pump capacitor, VCAP to ANODE.')
+con('02_power', 'J1001', 'POWER MODULE', {1: 'VBUS_M', 2: 'VBUS_M', 3: 'GND', 4: 'GND', 5: '5V_IN', 6: '5V_IN'},
     'Connector_JST:JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical', mpn='JST B6B-XH-A (keyed, 3 A per contact)',
-    note='Two contacts per rail. 1-2 VBUS out to the SW6106 input (the battery charges from the carrier USB-C), '
+    note='Two contacts per rail. 1-2 VBUS out through U1002 to the SW6106 input (the battery charges from the carrier USB-C), '
          '3-4 GND, 5-6 the 5 V rail back from the SW6106 output. 20 AWG to the module.')
 res('02_power', 'R1000', '5.1k', 'USB_CC1', 'GND')
 res('02_power', 'R1001', '5.1k', 'USB_CC2', 'GND')
@@ -157,7 +170,7 @@ for n in range(1, 5):
     b = 200 + 100 * (n - 1)
     c = lambda s: f'CAM{n}_{s}'
     sheet(sh, f'Camera {n}', 'TPS2553 current limit 24k: about 1.0-1.2 A; FAULT_N is shared with the other channels '
-          '(one red LED on the power sheet). Pull the LINK jumper before plugging node USB. '
+          '(one red LED on the power sheet). LM66100 ideal diode to the link header. Pull the LINK jumper before plugging node USB. '
           '2.2k series resistors keep a powered P4 from back-feeding an unpowered node through its pins.')
     xiao = {1: None, 2: c('SYNC'), 3: None, 4: None, 5: None, 6: None, 7: c('TX'), 8: c('RX'), 9: None, 10: None,
             11: None, 12: c('3V3'), 13: 'GND', 14: c('5V')}
@@ -168,8 +181,13 @@ for n in range(1, 5):
         source='https://www.ti.com/lit/ds/symlink/tps2553.pdf')
     res(sh, f'R{b}', '24k', c('ILIM'), 'GND')
     cap(sh, f'C{b}', '1u', '5V_IN')
-    two(sh, f'D{b}', 'SS34', c('LINK'), c('SW5V'), 'Diode_SMD:D_SMA', names=('K', 'A'), mpn='SS34', lcsc='C8678',
-        note='Blocks node USB from back-feeding the bank.')
+    # Ideal diode from the switch to the link header: about 0.1 V at the 1.2 A limit instead of a Schottky's 0.4 V,
+    # and the node's own USB can never feed the bank (CE on VOUT: off within 35 mV of VOUT > VIN).
+    add(sh, f'U{b + 1}', 'LM66100DCKR', {1: c('SW5V'), 2: 'GND', 3: c('LINK'), 4: None, 5: 'GND', 6: c('LINK')},
+        {1: ('VIN', 'power_in'), 2: ('GND', 'power_in'), 3: ('CE_N', 'input'), 4: ('NC', 'passive'), 5: ('ST', 'passive'), 6: ('VOUT', 'power_out')},
+        'Package_TO_SOT_SMD:SOT-363_SC-70-6', lcsc='C2869734', basic=False, source='https://www.ti.com/lit/ds/symlink/lm66100.pdf',
+        note='1.5 A continuous, above the 1.2 A channel limit; 79 mOhm typ. Same part as U1001.')
+    cap(sh, f'C{b + 3}', '1u', c('SW5V'), note='LM66100 input.')
     con(sh, f'JP{b}', f'LINK {n}', {1: c('LINK'), 2: c('5VJ')}, 'Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical',
         mpn='1x02 2.54 mm pin header + shunt', note='Remove before connecting node USB.')
     res(sh, f'R{b + 6}', '0R', c('5VJ'), c('5V'),

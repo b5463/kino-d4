@@ -167,7 +167,7 @@ def project():
     default = next(c for c in ns['classes'] if c['name'] == 'Default')
     cls = lambda name, width: dict(default, name=name, track_width=width)
     ns['classes'] = [default, cls('CameraPower', 0.6), cls('MainPower', 1.0)]
-    power = ['VBUS_F', '5V_IN', 'P4_5V', 'GND']
+    power = ['VBUS_F', 'VBUS_M', '5V_IN', 'P4_5V', 'GND']
     camera = ['VBUS'] + [f'CAM{n}_{s}' for n in range(1, 5) for s in ('SW5V', 'LINK', '5VJ', '5V')]
     ns['netclass_patterns'] = ([{'netclass': 'MainPower', 'pattern': n} for n in power]
                                + [{'netclass': 'CameraPower', 'pattern': n} for n in camera])

@@ -23,7 +23,7 @@ def pt(x, y): return pcb.VECTOR2I(round(x * 1e6), round(y * 1e6))
 # The DSN exporter writes one class with the default width, whatever the project's
 # netclass patterns say, so the power classes are written into the DSN here.
 # VBUS runs 0.6 mm: the USB-C pads are 0.6 mm wide at 0.8 mm pitch and a 1.0 mm track cannot enter them.
-CLASSES = {'MainPower': (1000, ['VBUS_F', '5V_IN', 'P4_5V']),
+CLASSES = {'MainPower': (1000, ['VBUS_F', 'VBUS_M', '5V_IN', 'P4_5V']),
            'CameraPower': (600, ['VBUS'] + [f'CAM{n}_{s}' for n in range(1, 5) for s in ('SW5V', 'LINK', '5VJ', '5V')])}
 
 
@@ -119,7 +119,7 @@ def finish(_=None):
     # The edge LEDs sit in a strip of pour too narrow for two spokes; the socket GND pins are
     # hand-soldered 2.54 mm pins between the UART tracks, as the ribbon header's.
     # The USB-C shell and GND pads sit over the fixed VBUS bridge with no room for spokes either.
-    for ref in ('D1000', 'D1001', 'D1002', 'J200', 'J300', 'J400', 'J500', 'J1000'):
+    for ref in ('D1000', 'D1001', 'D1002', 'J200', 'J300', 'J400', 'J500', 'J1000', 'U1002'):
         b.FindFootprintByReference(ref).SetLocalZoneConnection(pcb.ZONE_CONNECTION_FULL)
     twins = twin_vias(b)
     pours(b)
@@ -130,7 +130,7 @@ def finish(_=None):
     print({'tracks': tracks, 'vias': vias, 'zones': len(b.Zones()), 'twin_vias': twins, 'stitching_vias': stitched})
 
 
-POWER_NETS = {'5V_IN', 'P4_5V', 'VBUS_F', 'VBUS'} | {f'CAM{n}_{s}' for n in range(1, 5) for s in ('SW5V', 'LINK', '5VJ', '5V')}
+POWER_NETS = {'5V_IN', 'P4_5V', 'VBUS_F', 'VBUS_M', 'VBUS'} | {f'CAM{n}_{s}' for n in range(1, 5) for s in ('SW5V', 'LINK', '5VJ', '5V')}
 
 
 def twin_vias(b):
@@ -167,7 +167,7 @@ def twin_vias(b):
         return all(clear(pcb.VECTOR2I(a.x + (p.x - a.x) * i // n, a.y + (p.y - a.y) * i // n), net, (v,)) for i in range(1, n))
 
     added = 0
-    offsets = [(d * c, d * s) for d in (1.0, 1.4, 1.8, 2.2) for c, s in ((1, 0), (-1, 0), (0, 1), (0, -1), (.71, .71), (-.71, .71), (.71, -.71), (-.71, -.71))]
+    offsets = [(d * c, d * s) for d in (1.0, 1.4, 1.8, 2.2, 2.6, 3.0) for c, s in ((1, 0), (-1, 0), (0, 1), (0, -1), (.71, .71), (-.71, .71), (.71, -.71), (-.71, -.71))]
     for v in [v for v in vias if v.GetNetname() in POWER_NETS]:
         a, net = v.GetPosition(), v.GetNetname()
         if any(o is not v and o.GetNetname() == net and (o.GetPosition() - a).EuclideanNorm() <= pcb.FromMM(2.5) for o in vias):
