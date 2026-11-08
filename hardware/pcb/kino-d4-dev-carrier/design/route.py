@@ -42,6 +42,14 @@ def classes(dsn):
     return out[:i] + extra + out[i:]
 
 
+def via(b, net, a):
+    v = pcb.PCB_VIA(b)
+    v.SetViaType(pcb.VIATYPE_THROUGH); v.SetPosition(pt(OFF + a[0], OFF + a[1]))
+    v.SetWidth(pcb.FromMM(.6)); v.SetDrill(pcb.FromMM(.3))
+    v.SetLayerPair(pcb.F_Cu, pcb.B_Cu); v.SetNet(b.GetNetInfo().GetNetItem(net))
+    b.Add(v)
+
+
 def track(b, net, a, c, w, layer=pcb.B_Cu):
     t = pcb.PCB_TRACK(b)
     t.SetStart(pt(OFF + a[0], OFF + a[1])); t.SetEnd(pt(OFF + c[0], OFF + c[1]))
@@ -61,6 +69,20 @@ def export(work):
     # ... and from the bridge up to the fuse, left of C1000 (Freerouting treats the fixed bridge as an obstacle).
     for a, c in (((106.6, 60.0), (105.1, 58.5)), ((105.1, 58.5), (105.1, 54.3)), ((105.1, 54.3), (106.86, 52.5))):
         track(b, 'VBUS', a, c, .6)
+    # ... and from the bridge's right end to the USBLC6 VBUS pad (pad 5, facing the bridge at 270 deg): boxed in by the CC lines.
+    for a, c in (((111.4, 60.0), (113.8, 60.0)), ((113.8, 60.0), (114.2, 59.6)), ((114.2, 59.6), (114.2, 58.14))):
+        track(b, 'VBUS', a, c, .6)
+    # The LM74700 CATHODE pin only senses: 0.3 mm from U1002 pad 4 over Q1000's source pad to its drain pad,
+    # laid here because a 1.0 mm MainPower track cannot enter a SOT-23-6 pad.
+    # It crosses on the front: a wire over the top on the back would box Q1000's source pad against the 1.0 mm VBUS_F.
+    # It crosses on the front to a via below Q1000, so the back above Q1000 stays open for the 1.0 mm VBUS_F into the source pad.
+    track(b, 'VBUS_M', (94.1375, 54.55), (94.1375, 53.3), .3)
+    via(b, 'VBUS_M', (94.1375, 53.3)); via(b, 'VBUS_M', (99.4375, 57.3))
+    track(b, 'VBUS_M', (94.1375, 53.3), (99.4375, 57.3), .3, pcb.F_Cu)
+    track(b, 'VBUS_M', (99.4375, 57.3), (99.4375, 55.5), .3)
+    # ANODE pin 6 the same way: 0.3 mm under Q1000's gate pad into C1006's VBUS_F pad, so GATE has a straight run between.
+    for a, c in (((94.1375, 56.45), (94.1375, 58.9)), ((94.1375, 58.9), (95.6, 59.3)), ((95.6, 59.3), (96.22, 59.3))):
+        track(b, 'VBUS_F', a, c, .3)
     pcb.SaveBoard(str(BOARD), b)
     path = work / 'd1.dsn'
     assert pcb.ExportSpecctraDSN(b, str(path)), 'DSN export failed'
@@ -119,7 +141,7 @@ def finish(_=None):
     # The edge LEDs sit in a strip of pour too narrow for two spokes; the socket GND pins are
     # hand-soldered 2.54 mm pins between the UART tracks, as the ribbon header's.
     # The USB-C shell and GND pads sit over the fixed VBUS bridge with no room for spokes either.
-    for ref in ('D1000', 'D1001', 'D1002', 'J200', 'J300', 'J400', 'J500', 'J1000', 'U1002'):
+    for ref in ('D1000', 'D1001', 'D1002', 'J200', 'J300', 'J400', 'J500', 'J1000', 'J1001', 'J103', 'U1002', 'C203'):
         b.FindFootprintByReference(ref).SetLocalZoneConnection(pcb.ZONE_CONNECTION_FULL)
     twins = twin_vias(b)
     pours(b)

@@ -25,9 +25,10 @@ PLACE = {
     'J1000': (109.0, 65.21, 180, 'B'),   # receptacle opens over the bottom edge, as A0.2
     'R1000': (104.0, 57.5, 90, 'B'),
     'R1001': (114.2, 52.5, 90, 'B'),
-    'U1000': (114.2, 57.0, 90, 'B'),   # USBLC6 beside the receptacle's CC pads
+    'U1000': (114.2, 57.0, 270, 'B'),  # USBLC6 beside the receptacle's CC pads, VBUS pad toward the bridge
     'JP1001': (109.0, 47.0, 0, 'B'),   # USB > rail bridge, above the fuse
-    'U1002': (93.0, 55.5, 0, 'B'), 'Q1000': (97.0, 55.5, 0, 'B'), 'C1005': (93.0, 53.0, 0, 'B'),   # VBUS ideal diode toward J1001, between the CAM4 pads and the LED row
+    'U1002': (93.0, 55.5, 0, 'B'), 'Q1000': (98.5, 55.5, 0, 'B'), 'C1005': (89.2, 55.5, 90, 'B'),
+'C1006': (97.0, 59.3, 0, 'B'), 'C1007': (102.0, 55.5, 90, 'B'),   # anode and cathode capacitors at the FET   # VBUS ideal diode toward J1001, between the CAM4 pads and the LED row
     'D1003': (104.0, 29.0, 90, 'B'),    # rail clamp beside J1001
     'J1001': (109.25, 23.0, 270, 'F'),  # JST XH 6-way to the SW6106 module, in the column right of CAM 4, pins 1..6 down from y 23
     'C1000': (106.5, 56.5, 90, 'B'),
@@ -37,10 +38,10 @@ PLACE = {
     'D1000': (87.0, 67.0, 0, 'B'), 'D1001': (93.0, 67.0, 0, 'B'), 'D1002': (99.0, 67.0, 0, 'B'),
     'R1002': (87.0, 63.5, 0, 'B'), 'R1003': (93.0, 63.5, 0, 'B'), 'R1004': (99.0, 63.5, 0, 'B'),   # each LED's resistor beside it
     'F1000': (109.0, 51.5, 0, 'B'),   # input polyfuse between the USB-C VBUS pads and the 5V_IN caps
-    'TP107': (96.0, 60.0, 0, 'B'),    # FAULT_N
+    'TP107': (91.5, 60.0, 0, 'B'),    # FAULT_N
     'R102': (12.0, 60.0, 90, 'B'), 'R103': (13.6, 60.0, 90, 'B'),   # Qwiic pull-ups, DNP, above J102
     'FID1': (4.0, 4.0, 0, 'B'), 'FID2': (84.0, 4.0, 0, 'B'), 'FID3': (113.0, 46.0, 0, 'B'),
-    'GL1': (25.5, 56.5, 0, 'F'), 'GL2': (88.5, 55.0, 0, 'F'), 'GL3': (113.5, 41.0, 0, 'F'),   # scope grounds, clear of the TP rows
+    'GL1': (25.5, 56.5, 0, 'F'), 'GL2': (81.5, 56.0, 0, 'F'), 'GL3': (113.5, 41.0, 0, 'F'),   # scope grounds, clear of the TP rows
     'J102': (9.0, 65.0, 180, 'B'),     # Qwiic under the ribbon header, cable leaves over the bottom edge
     'J103': (38.0, 57.0, 0, 'F'),     # JST XH 2-way for the shutter lead, pins along +x; one axis with J101
     'J101': (52.0, 57.0, 90, 'F'),

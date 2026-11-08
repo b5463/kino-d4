@@ -81,7 +81,10 @@ def intent(pads):
     check('VBUS ideal diode toward the module: LM74700 anode on VBUS_F, cathode on J1001, EN on anode, N-FET S/D/G',
           pin('U1002', 6) == 'VBUS_F' and pin('U1002', 4) == 'VBUS_M' and pin('U1002', 3) == 'VBUS_F'
           and pin('Q1000', 2) == 'VBUS_F' and pin('Q1000', 3) == 'VBUS_M' and pin('Q1000', 1) == pin('U1002', 5)
-          and {pin('C1005', 1), pin('C1005', 2)} == {pin('U1002', 1), 'VBUS_F'})
+          and {pin('C1005', 1), pin('C1005', 2)} == {pin('U1002', 1), 'VBUS_F'}
+     and {pin('C1006', 1), pin('C1006', 2)} == {'VBUS_F', 'GND'} and {pin('C1007', 1), pin('C1007', 2)} == {'VBUS_M', 'GND'})
+check('Q1000 gate rating covers the LM74700 drive (13.9 V max): a 20 V-gate part',
+      next(p for p in PARTS if p['ref'] == 'Q1000')['value'] in ('IRLML0030TRPBF', 'DMN3404L-7'))
     check('CC pull-downs 5.1k and clamped', part['R1000']['value'] == '5.1k' and part['R1001']['value'] == '5.1k'
           and {pin('U1000', 1), pin('U1000', 3)} == {'USB_CC1', 'USB_CC2'})
     check('camera bank held off from reset, against the 45k internal pull-up', pin('R100', 1) == 'CAM_PWR_EN' and pin('R100', 2) == 'GND' and part['R100']['value'] == '4.7k')
@@ -126,7 +129,7 @@ def copper(b):
     # carry one node (1.2 A max), which a single 0.3 mm via handles; their singles are listed, not failed.
     # Branches off the 3 A bus: test pads, the clamps D1003 and U1000, the PWR LED resistor, the ideal-diode input (the P4's
     # 1.5 A at most, which a single 0.3 mm via carries).
-    tps = [p.GetPosition() for fp in b.GetFootprints() if fp.GetReference().startswith('TP') or fp.GetReference() in ('D1003', 'U1000', 'U1001', 'C1003', 'U1002', 'C1005', 'R1002') for p in fp.Pads()]
+    tps = [p.GetPosition() for fp in b.GetFootprints() if fp.GetReference().startswith('TP') or fp.GetReference() in ('D1003', 'U1000', 'U1001', 'C1003', 'U1002', 'C1005', 'C1006', 'C1007', 'R1002') for p in fp.Pads()]
     vias = {}
     for t in b.GetTracks():
         if t.GetClass() == 'PCB_VIA' and t.GetNetname() in widths:

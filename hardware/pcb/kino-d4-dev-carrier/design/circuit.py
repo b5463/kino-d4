@@ -124,14 +124,20 @@ two('02_power', 'JP1001', 'USB > RAIL', 'VBUS_F', '5V_IN', 'Jumper:SolderJumper-
     note='Closed: the fused USB VBUS is the 5 V rail (bench, no battery module). Open when the SW6106 feeds the rail on J1001.')
 # Ideal diode from the fused VBUS toward the module: the SW6106's own input port is the same node as J1001 1-2,
 # so a charger on that port would otherwise back-drive the carrier's USB-C. LM74700 + N-FET, EN tied to ANODE.
+# Holds only with JP1001 open: closed, the rail node bypasses U1002 (bench configuration, no module).
+# The LM74700 drives the gate to 13 V typical, 13.9 V max above the anode: the FET needs a 20 V gate rating (AO3400A is 12 V).
 add('02_power', 'U1002', 'LM74700QDBVRQ1', {1: 'VCAP1002', 2: 'GND', 3: 'VBUS_F', 4: 'VBUS_M', 5: 'GATE1002', 6: 'VBUS_F'},
     {1: ('VCAP', 'passive'), 2: ('GND', 'power_in'), 3: ('EN', 'input'), 4: ('CATHODE', 'passive'), 5: ('GATE', 'output'), 6: ('ANODE', 'passive')},
     'Package_TO_SOT_SMD:SOT-23-6', lcsc='C2941042', basic=False, source='https://www.ti.com/lit/ds/symlink/lm74700-q1.pdf',
     note='Forward regulation 20 mV across the FET, off at -11 mV. 4-60 V in. Blocks the module port from feeding J1000.')
-add('02_power', 'Q1000', 'AO3400A', {1: 'GATE1002', 2: 'VBUS_F', 3: 'VBUS_M'}, {1: ('G', 'input'), 2: ('S', 'passive'), 3: ('D', 'passive')},
-    'Package_TO_SOT_SMD:SOT-23', lcsc='C20917', mpn='AO3400A', note='N-channel, 30 V, 5.7 A, 26 mOhm; 0.23 W at 3 A, a warm SOT-23.')
-two('02_power', 'C1005', '100n', 'VCAP1002', 'VBUS_F', 'Capacitor_SMD:C_0603_1608Metric', mpn='CC0603KRX7R9BB104', lcsc='C14663',
-    note='LM74700 charge-pump capacitor, VCAP to ANODE.')
+add('02_power', 'Q1000', 'IRLML0030TRPBF', {1: 'GATE1002', 2: 'VBUS_F', 3: 'VBUS_M'}, {1: ('G', 'input'), 2: ('S', 'passive'), 3: ('D', 'passive')},
+    'Package_TO_SOT_SMD:SOT-23', lcsc='C67272', basic=False, mpn='IRLML0030TRPBF',
+    source='https://www.infineon.com/assets/row/public/documents/24/49/irlml0030pbf-1.pdf',
+    note='N-channel, 30 V, VGS +-20 V, 5.3 A, 27 mOhm at 10 V; 0.24 W at 3 A, a warm SOT-23. Source on the anode, drain on the cathode.')
+two('02_power', 'C1005', '1u', 'VCAP1002', 'VBUS_F', 'Capacitor_SMD:C_0603_1608Metric', mpn='CL10A105KB8NNNC', lcsc='C15849',
+    note='LM74700 charge-pump capacitor, VCAP to ANODE. 0.1 uF is the datasheet minimum; 1 uF keeps that after 12 V of DC bias.')
+cap('02_power', 'C1006', '1u', 'VBUS_F', note='LM74700 anode capacitor (22 nF minimum); the only local capacitance when JP1001 is open.')
+cap('02_power', 'C1007', '1u', 'VBUS_M', note='LM74700 cathode capacitor (0.1 uF minimum); the module leads are 20 AWG, not local.')
 con('02_power', 'J1001', 'POWER MODULE', {1: 'VBUS_M', 2: 'VBUS_M', 3: 'GND', 4: 'GND', 5: '5V_IN', 6: '5V_IN'},
     'Connector_JST:JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical', mpn='JST B6B-XH-A (keyed, 3 A per contact)',
     note='Two contacts per rail. 1-2 VBUS out through U1002 to the SW6106 input (the battery charges from the carrier USB-C), '

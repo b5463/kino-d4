@@ -7,12 +7,12 @@
   },
   "bom": {
     "smt_lines": 20,
-    "smt_parts": 68,
-    "extended_lines": 7,
+    "smt_parts": 70,
+    "extended_lines": 8,
     "handfit_parts": 16
   },
   "cpl": {
-    "placed": 68,
+    "placed": 70,
     "sides": [
       "Bottom"
     ]

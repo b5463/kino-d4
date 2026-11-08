@@ -159,7 +159,7 @@ def front(L):
     for i, (x, s) in enumerate(zip((3.5, 6.5, 9.5, 12.5, 24.0, 27.0, 30.0, 33.0), ('3V3', '5V', 'SYNC', 'EN', 'SHUT', 'GND', 'FLT', 'RAIL'))):
         L.text(s, x, 65.6, 1.0, F, CENTER, 90)
     # Scope-probe ground loops.
-    for x, y in ((25.5, 59.0), (88.5, 57.4), (113.5, 43.4)):
+    for x, y in ((25.5, 59.0), (81.5, 58.4), (113.5, 43.4)):
         L.text('GND', x, y, 1.0, F)
 
 
@@ -194,7 +194,7 @@ def back(L):
         L.text(s, 111.8, 24.25 + 5.0 * i, 1.0, B, CENTER, 90)
     L.text('PU DNP', 12.8, 57.6, 1.0, B)   # the Qwiic pull-up pads under it
     L.text('GND', 101.0, 62.2, 1.0, B)
-    L.text('FAULT', 96.0, 62.2, 1.0, B)
+    L.text('FAULT', 91.5, 62.2, 1.0, B)
     L.text('F1000', 113.5, 48.5, 1.0, B)
     L.text('D1003  TVS', 104.0, 25.2, 1.0, B)
     L.text('JP1001', 107.3, 47.0, 1.0, B, RIGHT)   # USB > rail bridge, closed as shipped
