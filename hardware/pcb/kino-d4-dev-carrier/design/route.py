@@ -121,12 +121,69 @@ def finish(_=None):
     # The USB-C shell and GND pads sit over the fixed VBUS bridge with no room for spokes either.
     for ref in ('D1000', 'D1001', 'D1002', 'J200', 'J300', 'J400', 'J500', 'J1000'):
         b.FindFootprintByReference(ref).SetLocalZoneConnection(pcb.ZONE_CONNECTION_FULL)
+    twins = twin_vias(b)
     pours(b)
     stitched = stitch(b)
     tracks = sum(1 for t in b.GetTracks() if t.GetClass() == 'PCB_TRACK')
     vias = sum(1 for t in b.GetTracks() if t.GetClass() == 'PCB_VIA')
     pcb.SaveBoard(str(BOARD), b)
-    print({'tracks': tracks, 'vias': vias, 'zones': len(b.Zones()), 'stitching_vias': stitched})
+    print({'tracks': tracks, 'vias': vias, 'zones': len(b.Zones()), 'twin_vias': twins, 'stitching_vias': stitched})
+
+
+POWER_NETS = {'5V_IN', 'P4_5V', 'VBUS_F', 'VBUS'} | {f'CAM{n}_{s}' for n in range(1, 5) for s in ('SW5V', 'LINK', '5VJ', '5V')}
+
+
+def twin_vias(b):
+    """A 0.3 mm drill carries about what a 0.7 mm 1 oz track does; a power net must not change layers
+    through one. For every via on a power net, add a second one beside it where the copper allows
+    (0.15 mm clearance to other nets, 0.25 mm hole to hole, 0.5 mm to the edge). Returns the count."""
+    from placement import WIDTH, HEIGHT
+    tracks = [t for t in b.GetTracks() if t.GetClass() == 'PCB_TRACK']
+    vias = [t for t in b.GetTracks() if t.GetClass() == 'PCB_VIA']
+    pads = [(p, p.GetBoundingBox()) for fp in b.GetFootprints() for p in fp.Pads()]
+    clr, r = pcb.FromMM(.15), pcb.FromMM(.3)
+
+    def clear(p, net, ignore=()):
+        if not (pcb.FromMM(OFF + .9) < p.x < pcb.FromMM(OFF + WIDTH - .9) and pcb.FromMM(OFF + .9) < p.y < pcb.FromMM(OFF + HEIGHT - .9)):
+            return False
+        for t in tracks:
+            if t.GetNetname() != net and pcb.SEG(t.GetStart(), t.GetEnd()).Distance(p) < r + t.GetWidth() // 2 + clr:
+                return False
+        for v in vias:
+            if v in ignore:
+                continue
+            if (v.GetPosition() - p).EuclideanNorm() < (r + r + clr if v.GetNetname() != net else pcb.FromMM(.75)):
+                return False
+        for pad, bb in pads:
+            box = pcb.BOX2I(bb.GetOrigin(), bb.GetSize()); box.Inflate(r + clr + (0 if pad.GetNetname() == net else pcb.FromMM(.1)))
+            if box.Contains(p):
+                return False
+        return True
+
+    def path_clear(v, p):
+        """The joining track, 0.6 mm wide on both layers: sample it every 0.2 mm, ignoring the via it starts from."""
+        a, net = v.GetPosition(), v.GetNetname()
+        n = max(2, int((p - a).EuclideanNorm() / pcb.FromMM(.2)))
+        return all(clear(pcb.VECTOR2I(a.x + (p.x - a.x) * i // n, a.y + (p.y - a.y) * i // n), net, (v,)) for i in range(1, n))
+
+    added = 0
+    offsets = [(d * c, d * s) for d in (1.0, 1.4, 1.8, 2.2) for c, s in ((1, 0), (-1, 0), (0, 1), (0, -1), (.71, .71), (-.71, .71), (.71, -.71), (-.71, -.71))]
+    for v in [v for v in vias if v.GetNetname() in POWER_NETS]:
+        a, net = v.GetPosition(), v.GetNetname()
+        for dx, dy in offsets:
+            p = pcb.VECTOR2I(a.x + pcb.FromMM(dx), a.y + pcb.FromMM(dy))
+            if clear(p, net) and path_clear(v, p):
+                t = pcb.PCB_VIA(b)
+                t.SetViaType(pcb.VIATYPE_THROUGH); t.SetPosition(p); t.SetWidth(pcb.FromMM(.6)); t.SetDrill(pcb.FromMM(.3))
+                t.SetLayerPair(pcb.F_Cu, pcb.B_Cu); t.SetNet(v.GetNet())
+                b.Add(t); vias.append(t); added += 1
+                for layer in (pcb.F_Cu, pcb.B_Cu):   # the pair is one via electrically only once copper joins it
+                    s = pcb.PCB_TRACK(b); s.SetStart(a); s.SetEnd(p); s.SetWidth(pcb.FromMM(.6)); s.SetLayer(layer); s.SetNet(v.GetNet())
+                    b.Add(s); tracks.append(s)
+                break
+        else:
+            print('no room for a twin via on', v.GetNetname(), 'at', round(v.GetPosition().x / 1e6 - OFF, 2), round(v.GetPosition().y / 1e6 - OFF, 2))
+    return added
 
 
 def stitch(b):

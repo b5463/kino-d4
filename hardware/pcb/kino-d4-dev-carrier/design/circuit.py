@@ -27,8 +27,8 @@ def add(sh, ref, value, nets, pin_defs, footprint, mpn='', lcsc='', basic=True, 
 
 
 # JLC basic-library passives, 0603 1 % thick film unless stated.
-RES = {'0R': 'C21189', '1k': 'C21190', '2.2k': 'C4190', '4.7k': 'C23162', '5.1k': 'C23186', '24k': 'C23352', '100k': 'C25803'}
-RES_MPN = {'0R': '0603WAF0000T5E', '1k': '0603WAF1001T5E', '2.2k': '0603WAF2201T5E', '4.7k': '0603WAF4701T5E',
+RES = {'0R': 'C21189', '470R': 'C23179', '1k': 'C21190', '2.2k': 'C4190', '4.7k': 'C23162', '5.1k': 'C23186', '24k': 'C23352', '100k': 'C25803'}
+RES_MPN = {'0R': '0603WAF0000T5E', '470R': '0603WAF4700T5E', '1k': '0603WAF1001T5E', '2.2k': '0603WAF2201T5E', '4.7k': '0603WAF4701T5E',
            '5.1k': '0603WAF5101T5E', '24k': '0603WAF2402T5E', '100k': '0603WAF1003T5E'}
 CAPS = {'100n': ('CC0603KRX7R9BB104', 'C14663', '0603'), '1u': ('CL10A105KB8NNNC', 'C15849', '0603'),
         '22u': ('CL21A226MAQNNNE', 'C45783', '0805')}
@@ -88,8 +88,9 @@ con('01_p4', 'J103', 'REMOTE SHUTTER', {1: 'SHUTTER_N', 2: 'GND'},
 res('01_p4', 'R102', '4.7k', 'P4_SDA', 'P4_3V3', fit='none',
     note='DNP. The P4 bus has the touch controller pull-ups; fit only for a breakout that has none.')
 res('01_p4', 'R103', '4.7k', 'P4_SCL', 'P4_3V3', fit='none', note='DNP, as R102.')
-res('01_p4', 'R100', '100k', 'CAM_PWR_EN', 'GND', note='Camera bank off while GPIO31 is Hi-Z from reset.')
-res('01_p4', 'R101', '100k', 'SYNC_MASTER', 'GND', note='GPIO32 is Hi-Z from reset; holds the shared sync low.')
+res('01_p4', 'R100', '4.7k', 'CAM_PWR_EN', 'GND',
+    note='Camera bank off while GPIO31 is Hi-Z from reset, and still off (0.3 V) against the P4 45k internal pull-up if firmware ever enables it.')
+res('01_p4', 'R101', '4.7k', 'SYNC_MASTER', 'GND', note='GPIO32 is Hi-Z from reset; holds the shared sync low against the 45k internal pull-up too.')
 cap('01_p4', 'C100', '100n', 'P4_3V3')
 for i, net in enumerate(['P4_3V3', 'P4_5V', 'SYNC_MASTER', 'CAM_PWR_EN', 'SHUTTER_N', 'GND', 'GND']):
     tp('01_p4', f'TP{100 + i}', net)
@@ -133,7 +134,7 @@ cap('02_power', 'C1002', '100n', '5V_IN')
 led('02_power', 'D1000', 'green', '5V_IN_LED', 'GND')
 res('02_power', 'R1002', '1k', '5V_IN', '5V_IN_LED')
 led('02_power', 'D1001', 'green', 'CAM_PWR_EN', 'CAM_EN_LED')
-res('02_power', 'R1003', '1k', 'CAM_EN_LED', 'GND', note='About 1 mA from GPIO31 while the bank is on.')
+res('02_power', 'R1003', '470R', 'CAM_EN_LED', 'GND', note='About 2.5 mA from GPIO31 while the bank is on: visible through the spacer gap.')
 led('02_power', 'D1002', 'red', 'FAULT_LED', 'FAULT_N')
 res('02_power', 'R1004', '1k', '5V_IN', 'FAULT_LED',
     note='The four TPS2553 FAULT_N open drains share this net; the LED is their pull-up.')
@@ -145,6 +146,9 @@ add('02_power', 'U1001', 'LM66100DCKR', {1: '5V_IN', 2: 'GND', 3: 'P4_5V', 4: No
     note='CE tied to VOUT: reverse-current blocking, off within 35 mV typ of VOUT > VIN, on again at VIN > VOUT + 150 mV. '
          '1.5 A continuous, 79 mOhm typ at 5 V: about 0.1 V drop at 1 A. ST to GND (not used).')
 cap('02_power', 'C1003', '1u', '5V_IN', note='LM66100 input, TI power supply recommendations.')
+two('02_power', 'D1003', 'SMAJ5.0A', 'GND', '5V_IN', 'Diode_SMD:D_SMA', names=('K', 'A'), mpn='SMAJ5.0A', lcsc='C10758', basic=False,
+    note='Rail clamp at J1001: 6.4 V breakdown, 9.2 V at 43 A. Catches SW6106 output overshoot and hot-plug transients; '
+         'it does not survive a sustained 9 V, so nothing on the module output may negotiate PD.')
 cap('02_power', 'C1004', '1u', 'P4_5V')
 
 # --- Cameras ------------------------------------------------------------------------------

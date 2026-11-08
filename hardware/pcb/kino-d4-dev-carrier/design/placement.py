@@ -24,6 +24,7 @@ PLACE = {
     'R1001': (114.2, 52.5, 90, 'B'),
     'U1000': (114.2, 57.0, 90, 'B'),   # USBLC6 beside the receptacle's CC pads
     'JP1001': (109.0, 47.0, 0, 'B'),   # USB > rail bridge, above the fuse
+    'D1003': (104.0, 29.0, 90, 'B'),    # rail clamp beside J1001
     'J1001': (109.25, 23.0, 270, 'F'),  # JST XH 6-way to the SW6106 module, in the column right of CAM 4, pins 1..6 down from y 23
     'C1000': (106.5, 56.5, 90, 'B'),
     'C1001': (111.5, 56.5, 90, 'B'),
@@ -49,7 +50,7 @@ for n, cx in enumerate(CAMERA_X, 1):
     b = 200 + 100 * (n - 1)
     PLACE.update({
         f'J{b}': (cx, CAMERA_Y, 0, 'F'),
-        f'JP{b}': (cx + 5.08, 19.5, 270, 'F'),
+        f'JP{b}': (cx + 11.0, 19.5, 0, 'F'),   # in the gap between sockets, clear of the XIAO's USB-C plug (cx +- 6.2)
         f'U{b}': (cx, 27.5, 0, 'B'),
         f'C{b}': (cx - 3.6, 27.5, 90, 'B'),
         f'R{b}': (cx + 3.6, 27.5, 90, 'B'),

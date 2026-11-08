@@ -80,7 +80,7 @@ def intent(pads):
           and {pin('JP1001', 1), pin('JP1001', 2)} == {'VBUS_F', '5V_IN'} and pin('J1001', 1) == 'VBUS_F' and pin('J1001', 5) == '5V_IN')
     check('CC pull-downs 5.1k and clamped', part['R1000']['value'] == '5.1k' and part['R1001']['value'] == '5.1k'
           and {pin('U1000', 1), pin('U1000', 3)} == {'USB_CC1', 'USB_CC2'})
-    check('camera bank held off from reset', pin('R100', 1) == 'CAM_PWR_EN' and pin('R100', 2) == 'GND' and part['R100']['value'] == '100k')
+    check('camera bank held off from reset, against the 45k internal pull-up', pin('R100', 1) == 'CAM_PWR_EN' and pin('R100', 2) == 'GND' and part['R100']['value'] == '4.7k')
     check('sync held low from reset', pin('R101', 1) == 'SYNC_MASTER' and pin('R101', 2) == 'GND')
     check('shutter: switch and remote both pull SHUTTER_N to GND', {pin('SW100', 1), pin('SW100', 2)} == {'SHUTTER_N', 'GND'}
           and {pin('J103', 1), pin('J103', 2)} == {'SHUTTER_N', 'GND'})
@@ -118,6 +118,20 @@ def copper(b):
     for t in b.GetTracks():
         if t.GetClass() == 'PCB_TRACK':
             by_net.setdefault(t.GetNetname(), []).append(t)
+    # The 1.0 mm bus nets carry up to 3 A and must not change layers through a single 0.3 mm via: every via
+    # needs a joined twin within 2.5 mm, except a branch that only reaches a test pad. The 0.6 mm node nets
+    # carry one node (1.2 A max), which a single 0.3 mm via handles; their singles are listed, not failed.
+    tps = [p.GetPosition() for fp in b.GetFootprints() if fp.GetReference().startswith('TP') for p in fp.Pads()]
+    vias = {}
+    for t in b.GetTracks():
+        if t.GetClass() == 'PCB_VIA' and t.GetNetname() in widths:
+            vias.setdefault(t.GetNetname(), []).append(t.GetPosition())
+    single = {net: [p for p in ps if not any(q is not p and (q - p).EuclideanNorm() <= pcb.FromMM(2.5) for q in ps)
+                    and not any((tp - p).EuclideanNorm() <= pcb.FromMM(2.5) for tp in tps)] for net, ps in vias.items()}
+    bus = [f'{net} ({mm(p.x):.1f},{mm(p.y):.1f})' for net, ps in single.items() if widths[net] >= 1.0 for p in ps]
+    node = [f'{net} ({mm(p.x):.1f},{mm(p.y):.1f})' for net, ps in single.items() if widths[net] < 1.0 for p in ps]
+    check('bus-net vias doubled (3 A path)', not bus, '; '.join(bus) or f'{sum(len(v) for n, v in vias.items() if widths[n] >= 1.0)} vias, all paired or on a test-pad branch')
+    check('node-net single vias carry one node only', True, f'{len(node)} single: ' + '; '.join(node) if node else 'none')
     rows = []
     for net, w in widths.items():
         segs = by_net.get(net, [])

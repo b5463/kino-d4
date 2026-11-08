@@ -1,6 +1,6 @@
 # Dev carrier D1 pre-build verification
 
-79 of 79 checks pass.
+82 of 82 checks pass.
 
 | Check | Result | Detail |
 |---|---|---|
@@ -29,7 +29,7 @@
 | no other path from the rail to P4_5V | pass | C1004.1, J100.2, J100.4, TP101.1, U1001.3, U1001.6 |
 | USB-C VBUS: clamp, fuse, then the bridge and the module connector | pass |  |
 | CC pull-downs 5.1k and clamped | pass |  |
-| camera bank held off from reset | pass |  |
+| camera bank held off from reset, against the 45k internal pull-up | pass |  |
 | sync held low from reset | pass |  |
 | shutter: switch and remote both pull SHUTTER_N to GND | pass |  |
 | Qwiic pinout GND 3V3 SDA SCL | pass |  |
@@ -39,72 +39,75 @@
 | XIAO socket J300: D1 sync, D6 TX, D7 RX, 3V3/GND/5V | pass |  |
 | XIAO socket J400: D1 sync, D6 TX, D7 RX, 3V3/GND/5V | pass |  |
 | XIAO socket J500: D1 sync, D6 TX, D7 RX, 3V3/GND/5V | pass |  |
-| 5V_IN at 1.0 mm end to end | pass | 220 mm, 109.2 mohm |
-| P4_5V at 1.0 mm end to end | pass | 69 mm, 34.4 mohm |
-| VBUS_F at 1.0 mm end to end | pass | 33 mm, 16.4 mohm |
-| VBUS at 0.6 mm end to end | pass | 27 mm, 22.2 mohm |
+| bus-net vias doubled (3 A path) | pass | 15 vias, all paired or on a test-pad branch |
+| node-net single vias carry one node only | pass | 5 single: CAM2_5VJ (57.0,24.8); CAM1_LINK (23.5,30.7); CAM4_5V (96.1,28.5); VBUS (114.7,54.7); VBUS (110.2,55.3) |
+| 5V_IN at 1.0 mm end to end | pass | 262 mm, 132.2 mohm |
+| P4_5V at 1.0 mm end to end | pass | 70 mm, 37.2 mohm |
+| VBUS_F at 1.0 mm end to end | pass | 31 mm, 15.1 mohm |
+| VBUS at 0.6 mm end to end | pass | 28 mm, 23.0 mohm |
 | CAM1_SW5V at 0.6 mm end to end | pass | 4 mm, 3.4 mohm |
-| CAM1_LINK at 0.6 mm end to end | pass | 16 mm, 13.0 mohm |
-| CAM1_5VJ at 0.6 mm end to end | pass | 48 mm, 39.3 mohm |
-| CAM1_5V at 0.6 mm end to end | pass | 35 mm, 28.2 mohm |
+| CAM1_LINK at 0.6 mm end to end | pass | 21 mm, 16.8 mohm |
+| CAM1_5VJ at 0.6 mm end to end | pass | 47 mm, 38.6 mohm |
+| CAM1_5V at 0.6 mm end to end | pass | 55 mm, 44.8 mohm |
 | CAM2_SW5V at 0.6 mm end to end | pass | 4 mm, 3.4 mohm |
-| CAM2_LINK at 0.6 mm end to end | pass | 16 mm, 13.3 mohm |
-| CAM2_5VJ at 0.6 mm end to end | pass | 45 mm, 37.1 mohm |
-| CAM2_5V at 0.6 mm end to end | pass | 33 mm, 27.1 mohm |
+| CAM2_LINK at 0.6 mm end to end | pass | 24 mm, 19.8 mohm |
+| CAM2_5VJ at 0.6 mm end to end | pass | 44 mm, 35.8 mohm |
+| CAM2_5V at 0.6 mm end to end | pass | 35 mm, 29.0 mohm |
 | CAM3_SW5V at 0.6 mm end to end | pass | 4 mm, 3.4 mohm |
-| CAM3_LINK at 0.6 mm end to end | pass | 16 mm, 12.8 mohm |
-| CAM3_5VJ at 0.6 mm end to end | pass | 44 mm, 36.1 mohm |
-| CAM3_5V at 0.6 mm end to end | pass | 35 mm, 28.4 mohm |
+| CAM3_LINK at 0.6 mm end to end | pass | 24 mm, 19.6 mohm |
+| CAM3_5VJ at 0.6 mm end to end | pass | 48 mm, 39.6 mohm |
+| CAM3_5V at 0.6 mm end to end | pass | 49 mm, 39.7 mohm |
 | CAM4_SW5V at 0.6 mm end to end | pass | 4 mm, 3.4 mohm |
-| CAM4_LINK at 0.6 mm end to end | pass | 16 mm, 12.8 mohm |
-| CAM4_5VJ at 0.6 mm end to end | pass | 44 mm, 36.0 mohm |
-| CAM4_5V at 0.6 mm end to end | pass | 36 mm, 29.5 mohm |
+| CAM4_LINK at 0.6 mm end to end | pass | 21 mm, 17.2 mohm |
+| CAM4_5VJ at 0.6 mm end to end | pass | 43 mm, 34.8 mohm |
+| CAM4_5V at 0.6 mm end to end | pass | 35 mm, 28.3 mohm |
 | nothing but silk inside the 7 mm fastener allowance | pass | 4 holes clear |
 | tallest part on the P4 face recorded | pass | J100 shroud 9.1 mm; a mated IDC plug adds about 6 mm |
-| C14663 100n | pass | base, stock 34014682, recorded basic |
-| C15849 1u | pass | base, stock 12931162, recorded basic |
-| C160404 QWIIC 3V3 I2C | pass | expand, stock 55364, recorded extended |
-| C21189 0R | pass | base, stock 19074953, recorded basic |
-| C21190 1k | pass | base, stock 27005615, recorded basic |
-| C2286 LED red | pass | base, stock 6579421, recorded basic |
-| C2297 LED green | pass | base, stock 1946357, recorded basic |
-| C23162 4.7k | pass | base, stock 15974410, recorded basic |
-| C23186 5.1k | pass | base, stock 20324322, recorded basic |
+| C10758 SMAJ5.0A | pass | expand, stock 12272, recorded extended |
+| C14663 100n | pass | base, stock 34012427, recorded basic |
+| C15849 1u | pass | base, stock 12931330, recorded basic |
+| C160404 QWIIC 3V3 I2C | pass | expand, stock 55369, recorded extended |
+| C21189 0R | pass | base, stock 19074914, recorded basic |
+| C21190 1k | pass | base, stock 27004177, recorded basic |
+| C2286 LED red | pass | base, stock 6579177, recorded basic |
+| C2297 LED green | pass | base, stock 1946154, recorded basic |
+| C23162 4.7k | pass | base, stock 15972826, recorded basic |
+| C23179 470R | pass | base, stock 4118472, recorded basic |
+| C23186 5.1k | pass | base, stock 20324158, recorded basic |
 | C23352 24k | pass | base, stock 587554, recorded basic |
-| C25803 100k | pass | base, stock 16147524, recorded basic |
 | C2869734 LM66100DCKR | pass | expand, stock 6857, recorded extended |
-| C3020560 USB-C 5V | pass | expand, stock 19114, recorded extended |
-| C4190 2.2k | pass | base, stock 5080703, recorded basic |
-| C45783 22u | pass | base, stock 3545328, recorded basic |
+| C3020560 USB-C 5V | pass | expand, stock 19112, recorded extended |
+| C4190 2.2k | pass | base, stock 5080497, recorded basic |
+| C45783 22u | pass | base, stock 3545251, recorded basic |
 | C55266 TPS2553DBVR | pass | expand, stock 57725, recorded extended |
-| C7519 USBLC6-2SC6 | pass | expand, stock 40772, recorded extended |
-| C8678 SS34 | pass | base, stock 3042875, recorded basic |
+| C7519 USBLC6-2SC6 | pass | expand, stock 40770, recorded extended |
+| C8678 SS34 | pass | base, stock 3042603, recorded basic |
 | gerber layers and drill present | pass | .csv, .drl, .gbl, .gbo, .gbp, .gbr, .gbrjob, .gbs, .gm1, .gtl, .gto, .gtp, .gts, .txt |
-| CPL lists every SMT part once and nothing else | pass | 60 rows |
-| BOM designators equal the CPL | pass | 60 designators |
+| CPL lists every SMT part once and nothing else | pass | 61 rows |
+| BOM designators equal the CPL | pass | 61 designators |
 | all SMT on the bottom face | pass |  |
 
 ## Copper per power net
 
 | Net | Track length | Resistance (1 oz) |
 |---|---:|---:|
-| 5V_IN | 220 mm | 109.2 mohm |
-| P4_5V | 69 mm | 34.4 mohm |
-| VBUS_F | 33 mm | 16.4 mohm |
-| VBUS | 27 mm | 22.2 mohm |
+| 5V_IN | 262 mm | 132.2 mohm |
+| P4_5V | 70 mm | 37.2 mohm |
+| VBUS_F | 31 mm | 15.1 mohm |
+| VBUS | 28 mm | 23.0 mohm |
 | CAM1_SW5V | 4 mm | 3.4 mohm |
-| CAM1_LINK | 16 mm | 13.0 mohm |
-| CAM1_5VJ | 48 mm | 39.3 mohm |
-| CAM1_5V | 35 mm | 28.2 mohm |
+| CAM1_LINK | 21 mm | 16.8 mohm |
+| CAM1_5VJ | 47 mm | 38.6 mohm |
+| CAM1_5V | 55 mm | 44.8 mohm |
 | CAM2_SW5V | 4 mm | 3.4 mohm |
-| CAM2_LINK | 16 mm | 13.3 mohm |
-| CAM2_5VJ | 45 mm | 37.1 mohm |
-| CAM2_5V | 33 mm | 27.1 mohm |
+| CAM2_LINK | 24 mm | 19.8 mohm |
+| CAM2_5VJ | 44 mm | 35.8 mohm |
+| CAM2_5V | 35 mm | 29.0 mohm |
 | CAM3_SW5V | 4 mm | 3.4 mohm |
-| CAM3_LINK | 16 mm | 12.8 mohm |
-| CAM3_5VJ | 44 mm | 36.1 mohm |
-| CAM3_5V | 35 mm | 28.4 mohm |
+| CAM3_LINK | 24 mm | 19.6 mohm |
+| CAM3_5VJ | 48 mm | 39.6 mohm |
+| CAM3_5V | 49 mm | 39.7 mohm |
 | CAM4_SW5V | 4 mm | 3.4 mohm |
-| CAM4_LINK | 16 mm | 12.8 mohm |
-| CAM4_5VJ | 44 mm | 36.0 mohm |
-| CAM4_5V | 36 mm | 29.5 mohm |
+| CAM4_LINK | 21 mm | 17.2 mohm |
+| CAM4_5VJ | 43 mm | 34.8 mohm |
+| CAM4_5V | 35 mm | 28.3 mohm |

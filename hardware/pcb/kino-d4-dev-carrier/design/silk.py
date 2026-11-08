@@ -134,7 +134,7 @@ def front(L):
         b = 200 + 100 * (n - 1)
         L.text(f'CAM {n}', cx - 9.0, 19.5, H2, F, LEFT, bold=True, tag=True)   # on the link header's centre line
         L.text(f'J{b}', cx - 9.0, 22.8, 1.0, F, LEFT)
-        L.text(f'LINK  JP{b}', cx + 3.81, 22.8, 1.0, F)
+        L.text('LINK', cx + 11.0, 17.0, 1.0, F)   # the header sits in the gap between sockets; JPn00 is in the README
         L.text('XIAO ESP32-S3', cx, 25.3, 1.0, F)
         for dx, dy, s in XIAO_PINS:
             L.text(s, cx + dx - 1.7 * (1 if dx > 0 else -1), CAMERA_Y + dy, 1.0, F, RIGHT if dx > 0 else LEFT)
@@ -142,7 +142,7 @@ def front(L):
     # The column right of CAM 4: the power-module connector, fused USB out to the SW6106, the 5 V rail back in.
     L.text('J1001  POWER', 109.25, 18.4, 1.0, F)
     for i, s in enumerate(('VBUS', 'GND', 'RAIL')):   # one name per contact pair, beside the housing
-        L.text(s, 104.6, 24.25 + 5.0 * i, 1.0, F, CENTER, 90)
+        L.text(s, 114.2, 24.25 + 5.0 * i, 1.0, F, CENTER, 90)   # right of the housing, clear of JP500
     # GPIO map, bottom left, next to the header the GPIOs come from: two aligned columns.
     for i, (a, b) in enumerate((('CAM EN', 'GPIO31'), ('SYNC', 'GPIO32'), ('SHUTTER', 'GPIO28'))):
         L.text(a, MARGIN, 51.2 + 2.0 * i, 1.0, F, LEFT)
@@ -187,6 +187,7 @@ def back(L):
     L.text('GND', 101.0, 62.2, 1.0, B)
     L.text('FAULT', 96.0, 62.2, 1.0, B)
     L.text('F1000', 113.5, 48.5, 1.0, B)
+    L.text('D1003  TVS', 104.0, 25.2, 1.0, B)
     L.text('JP1001', 107.3, 47.0, 1.0, B, RIGHT)   # USB > rail bridge, closed as shipped
     for x, s in ((87.0, 'PWR'), (93.0, 'CAM'), (99.0, 'FLT')):
         L.text(s, x, 65.2, 1.0, B)
