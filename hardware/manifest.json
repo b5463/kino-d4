@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "product": "KINO D4",
   "hardwareRevision": "D4-V1",
-  "designVersion": "0.1.8",
+  "designVersion": "0.1.9",
   "status": "prototype",
   "sourceLocation": "https://github.com/b5463/kino-d4",
   "license": "CERN-OHL-S-2.0",
@@ -38,6 +38,12 @@
       "path": "hardware/pcb/kino-d4-carrier-a0",
       "revision": 3,
       "status": "a0.2-power-rework-not-for-fabrication",
+      "fabricationReleased": false
+    },
+    "devCarrierD1": {
+      "path": "hardware/pcb/kino-d4-dev-carrier",
+      "revision": 1,
+      "status": "d1-design-released-manual-checks-before-order",
       "fabricationReleased": false
     }
   },

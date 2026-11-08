@@ -1,0 +1,17 @@
+Designator,Value,Part,Note
+J100,P4 JP1 - 26 pin IDC,Wurth 61202621621 (any keyed 2x13 2.54 mm box header),Same position as A0.2 J100; keyed ribbon to P4 JP1.
+J101,C6 service,1x06 2.54 mm pin header,"C6_3V3 is the C6 supply: sense only, do not feed."
+J103,SHUTTER,JST B2B-XH-A (keyed 2-way socket),"The shutter button lead plugs in here: a dry contact to GND. GPIO28 has the internal pull-up and the 25 ms debounce in buttons.c; no resistor. Keyed, so it cannot go in reversed."
+GL1,GND loop,0.8 mm tinned wire loop,Scope probe ground.
+GL2,GND loop,0.8 mm tinned wire loop,Scope probe ground.
+GL3,GND loop,0.8 mm tinned wire loop,Scope probe ground.
+F1000,PPTC 3A,"SMD1812P300TF (LCSC C21004, extended library: hand-fit)",Protects the board and the source if the rail shorts; the TPS2553s only protect the nodes.
+J1001,POWER MODULE,"JST B6B-XH-A (keyed, 3 A per contact)","Two contacts per rail. 1-2 VBUS out through U1002 to the SW6106 input (the battery charges from the carrier USB-C), 3-4 GND, 5-6 the 5 V rail back from the SW6106 output. 20 AWG to the module."
+J200,XIAO ESP32-S3 Sense socket,2x Wurth 61300711821 (1x07 socket),"Same centres as A0.2: 22 mm pitch. Pin 2 D1 sync, 7 D6 TX, 8 D7 RX."
+JP200,LINK 1,1x02 2.54 mm pin header + shunt,Remove before connecting node USB.
+J300,XIAO ESP32-S3 Sense socket,2x Wurth 61300711821 (1x07 socket),"Same centres as A0.2: 22 mm pitch. Pin 2 D1 sync, 7 D6 TX, 8 D7 RX."
+JP300,LINK 2,1x02 2.54 mm pin header + shunt,Remove before connecting node USB.
+J400,XIAO ESP32-S3 Sense socket,2x Wurth 61300711821 (1x07 socket),"Same centres as A0.2: 22 mm pitch. Pin 2 D1 sync, 7 D6 TX, 8 D7 RX."
+JP400,LINK 3,1x02 2.54 mm pin header + shunt,Remove before connecting node USB.
+J500,XIAO ESP32-S3 Sense socket,2x Wurth 61300711821 (1x07 socket),"Same centres as A0.2: 22 mm pitch. Pin 2 D1 sync, 7 D6 TX, 8 D7 RX."
+JP500,LINK 4,1x02 2.54 mm pin header + shunt,Remove before connecting node USB.

@@ -1,0 +1,6 @@
+__pycache__/
+*.kicad_prl
+*.lck
+*-backups/
+fp-info-cache
+outputs/D1-3d-base.stl

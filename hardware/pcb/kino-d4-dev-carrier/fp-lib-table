@@ -1,0 +1,1 @@
+(fp_lib_table (version 7) (lib (name "KINO_DEV") (type "KiCad") (uri "${KIPRJMOD}/KINO_DEV.pretty") (options "") (descr "A0.2 socket and USB-C lands")))
