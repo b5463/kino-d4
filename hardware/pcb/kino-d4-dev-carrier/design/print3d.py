@@ -77,7 +77,7 @@ def main():
     assert abs((hi[0] - lo[0]) - WIDTH) < 20 and abs(lo[0] - OFF) < 1, 'unexpected x frame'
     assert abs(hi[1] + OFF) < 1 and abs(lo[1] + OFF + HEIGHT) < 1, 'unexpected y frame (expected y = -board y)'
     extra = b''.join(box(*b) for b in BODIES)
-    header = b'KINO D4 dev carrier D1, board with connector and module bodies for a clearance print'.ljust(80, b' ')
+    header = b'KINO D4 dev carrier D1 clearance print: board, connectors, module bodies'[:80].ljust(80, b' ')   # exactly 80 bytes
     OUT.write_bytes(header + struct.pack('<I', n + len(BODIES) * 12) + body + extra)
     print({'base_triangles': n, 'bodies': len(BODIES), 'out': str(OUT), 'bytes': OUT.stat().st_size})
 
