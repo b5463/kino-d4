@@ -110,7 +110,7 @@ Back ("SIDE B"), the assembled face and the one the engineer probes with the car
 | `design/silk.py` | The legend on both faces |
 | `design/release.py` | Gerbers, drill, BOM, CPL, hand-fit list, DRC/ERC reports, `outputs/BUILD_STATUS.json` |
 | `design/verify.py` | The pre-build checks: nets, polarity and intent, pin maps against the firmware, power copper, keep-outs, JLC parts, fab package; writes `outputs/VERIFY-D1.md` |
-| `design/print3d.py` | `outputs/D1-print.stl`: the board body from KiCad (outline, holes) and every component as a box at its datasheet envelope, SMD parts included, on both faces. The J100 shroud is hollow with its key notch so a real IDC socket drops in. No pins, no mated plugs, no XIAO modules. For a clearance print against the P4. |
+| `design/print3d.py` | `outputs/D1-print.stl`: the board body from KiCad (outline, holes) and every component as a box at its datasheet envelope, SMD parts included, on both faces. The J100 shroud is hollow with its key notch so a real IDC socket drops in. No pins, no mated plugs, no XIAO modules. For a clearance print against the P4. `slab` writes `outputs/D1-slab.stl`: the outline, the four M2 holes, the hollow J100 shroud and the eight socket rows as 1.2 mm holes (real 1x07 strips push in), nothing else. `fit` adds the cable side to the slab (`outputs/D1-fit.stl`: J1001, J103, J101, the four LINK headers). `parts` writes `outputs/D1-fit-parts.stl`: twelve spacer posts (15, 17.5, 20 mm, M2 bore), a 505573 pouch dummy (5 x 55 x 73, lead tab on a short edge) and a 28 x 28 x 11.4 power-module dummy, loose on one bed. |
 | `KINO_D4_Dev_Carrier_D1.kicad_pcb` | The routed board |
 | `outputs/fab-d1/` | The order package |
 | `KINO_DEV.pretty/` | The XIAO socket and USB-C lands, copied from `kino-d4-carrier-a0/KINO_A0.pretty/` |
@@ -127,6 +127,9 @@ python design/release.py
 python design/verify.py
 kicad-cli pcb export stl --board-only -o outputs/D1-3d-base.stl KINO_D4_Dev_Carrier_D1.kicad_pcb
 python design/print3d.py
+python design/print3d.py slab
+python design/print3d.py fit
+python design/print3d.py parts
 ```
 
 The ODD JOBS symbol is read from `kino-d4-carrier-a0/brand/odd-jobs-symbol.json` at build time; it is not copied into this directory.
@@ -138,6 +141,7 @@ JLCPCB, 2 layers, 1.6 mm, 1 oz, any finish. Economic assembly, bottom side only 
 ## Checks before ordering
 
 - [ ] Print the 1:1 mounting template from `kino-d4-carrier-a0/outputs/` and lay it on the P4: the inner-insert offset is drawing-derived (MECHANICAL.md).
+- [ ] Print `outputs/D1-fit.stl` and `outputs/D1-fit-parts.stl` first (flat, no supports, PLA): push eight 1x07 socket strips into the slab and seat four XIAOs; plug the real IDC socket into the shroud and fold the ribbon over the left edge to JP1; stand the slab on the P4 on the printed posts and pick the height (15, 17.5 or 20 mm) at which the folded ribbon, the P4's own USB-C plug and the carrier's back-side parts (4.3 mm, J102) all clear; plug the JST and C6 leads and dress them around the modules. Then try the battery: the pouch dummy and the module dummy under the slab in the post gap, beside the P4, and on top between the modules; record which wins and where the PH2.0 lead and the J1001 lead run. Nothing on this print is measured: pouch and module sizes are seller figures.
 - [ ] Print `outputs/D1-print.stl` (1:1, front face up, 0.2 mm layers, PLA; every part is a box on the 1.5 mm plate, so nothing above the board needs support. The USB-C, Qwiic and SMD envelopes hang below the board: print on tree supports under the board, or slice the model 3.5 mm up on supports) and stand it on the P4 on the intended standoffs: your IDC socket into the hollow J100 shroud and the ribbon fold over the left edge, a USB-C plug under the board, a XIAO on its sockets with its USB-C plug beside the LINK header, the JST leads at J1001 and J103. Body sizes are datasheet envelopes, not measured.
 - [ ] Pin 1: with the real ribbon folded over the left edge, socket A on J100 and socket B on JP1, the stripe must land on JP1 pin 1. J100 pin 1 is placed at JP1's even-column x on the reasoning that the fold swaps the columns; if the stripe lands on pin 2 instead, rotate J100 180 degrees in `placement.py` (pin 1 to x 8.54) before ordering.
 - [ ] Spacer height: measure the P4's JP1 header plus a mated IDC socket with strain relief; 15 mm standoffs under 14 mm, otherwise 20 mm.
