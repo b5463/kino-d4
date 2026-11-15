@@ -10,7 +10,7 @@ drops in.
                                          and the eight 1x07 socket rows as 1.2 mm holes (real socket strips push in);
                                          nothing else, for the ribbon fold and the XIAO fit before the quote.
   python design/print3d.py fit        -> outputs/D1-fit.stl: the slab plus the cable-side connectors
-  python design/print3d.py parts      -> outputs/D1-fit-parts.stl: spacer posts, pouch and power-module dummies
+  python design/print3d.py pouch      -> outputs/D1-pouch.stl: the 505573 pouch dummy, for the battery placement
 
 STL frame (checked against the exported board body): x = board x + 50, y = -(board y + 50),
 board body from z 0 (P4 face) up to its top face (about 1.5 mm, read from the file). Front
@@ -157,13 +157,9 @@ def slab_base(out):
 # headers that sit beside the XIAO USB plugs.
 CABLE_REFS = {'J100', 'J1001', 'J103', 'J101', 'JP200', 'JP300', 'JP400', 'JP500'}
 
-# Bench stack and battery, from docs/HARDWARE.md and the A0 mechanical record (seller and size-code
-# figures, to be measured): 505573 pouch 5 x 55 x 73 mm with a PH2.0 lead on a short edge; SW6106
-# module 28 x 28 x 11.4 mm; carrier-to-P4 spacers 15-20 mm on the four M2 inserts.
+# The battery, from docs/HARDWARE.md (a size-code figure, to be measured): 505573 pouch 5 x 55 x 73 mm
+# with a PH2.0 lead on a short edge. It connects to the P4, so no power-module dummy; the bench spacers exist.
 POUCH = (73.0, 55.0, 5.0)
-POWER_MODULE = (28.0, 28.0, 11.4)
-SPACER_HEIGHTS = (15.0, 17.5, 20.0)
-SPACER_OD, SPACER_BORE = 6.0, 2.4   # square post, M2 clearance bore
 
 
 def slab():
@@ -184,31 +180,14 @@ def fit():
     write(ROOT / 'outputs/D1-fit.stl', b'KINO D4 dev carrier D1 fit: slab with the cable-side connectors')
 
 
-def post(cx, cy, h):
-    """A square spacer post with a through bore, four walls."""
-    o, i = SPACER_OD / 2, SPACER_BORE / 2
-    BODIES.append((cx - o, cy - o, cx + o, cy - i, 0, h))
-    BODIES.append((cx - o, cy + i, cx + o, cy + o, 0, h))
-    BODIES.append((cx - o, cy - i, cx - i, cy + i, 0, h))
-    BODIES.append((cx + i, cy - i, cx + o, cy + i, 0, h))
-
-
-def parts():
-    """Loose bench parts on one bed, all from z 0: twelve spacer posts (four of each height), the
-    pouch dummy with its lead tab, the power-module dummy. Split to objects in the slicer."""
+def pouch():
+    """The pouch dummy alone, from z 0, with its lead tab on one short edge."""
     global BASE_TRIS, BASE_N
     BASE_TRIS, BASE_N = b'', 0
-    y0 = HEIGHT + 12.0   # below the board's frame, so the two files can be loaded together
-    for col, h in enumerate(SPACER_HEIGHTS):
-        for row in range(4):
-            post(4.0 + col * 10.0, y0 + 4.0 + row * 10.0, h)
     pw, pl, ph = POUCH
-    px = 40.0
-    body(px + pw / 2, y0 + pl / 2, pw, pl, 0, ph)
-    body(px + pw + 4.0, y0 + pl / 2, 8.0, 6.0, 0, 3.0)   # PH2.0 lead exit, short edge; mark the real one when measured
-    mw, ml, mh = POWER_MODULE
-    body(px + pw + 16.0 + mw / 2, y0 + ml / 2, mw, ml, 0, mh)
-    write(ROOT / 'outputs/D1-fit-parts.stl', b'KINO D4 dev carrier D1 fit parts: spacers 15/17.5/20, 505573 pouch, SW6106 module dummies')
+    body(pw / 2, HEIGHT + 12.0 + pl / 2, pw, pl, 0, ph)   # below the board's frame, so the files can be loaded together
+    body(pw + 4.0, HEIGHT + 12.0 + pl / 2, 8.0, 6.0, 0, 3.0)   # PH2.0 lead exit; mark the real edge when measured
+    write(ROOT / 'outputs/D1-pouch.stl', b'KINO D4 dev carrier D1: 505573 pouch dummy 73 x 55 x 5 with lead tab')
 
 
 def read_base(path):
@@ -246,4 +225,4 @@ def main():
 
 if __name__ == '__main__':
     import sys
-    {'slab': slab, 'fit': fit, 'parts': parts}.get(sys.argv[1] if sys.argv[1:] else '', main)()
+    {'slab': slab, 'fit': fit, 'pouch': pouch}.get(sys.argv[1] if sys.argv[1:] else '', main)()
