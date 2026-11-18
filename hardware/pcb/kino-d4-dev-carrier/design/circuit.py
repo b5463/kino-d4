@@ -70,8 +70,10 @@ p4 = {1: 'P4_3V3', 2: 'P4_5V', 3: 'P4_3V3', 4: 'P4_5V', 5: 'GND', 6: 'GND', 7: '
       9: 'P4_RX1', 10: 'CAM_PWR_EN', 11: 'P4_TX2', 12: 'P4_TX4', 13: 'P4_RX2', 14: 'P4_RX4', 15: None,
       16: 'GND', 17: 'P4_TX3', 18: 'C6_3V3', 19: 'SYNC_MASTER', 20: 'C6_RX', 21: 'SHUTTER_N', 22: 'C6_TX',
       23: 'P4_SDA', 24: 'C6_IO9', 25: 'P4_SCL', 26: 'C6_EN'}
-con('01_p4', 'J100', 'P4 JP1 - 26 pin IDC', p4, 'Connector_IDC:IDC-Header_2x13_P2.54mm_Vertical',
-    mpn='Wurth 61202621621 (any keyed 2x13 2.54 mm box header)', note='Same position as A0.2 J100; keyed ribbon to P4 JP1.')
+con('01_p4', 'J100', 'P4 JP1 - 2x13 socket', p4, 'KINO_DEV:PinSocket_2x13_P2.54mm_Vertical_Pad1.5',
+    mpn='2x13 2.54 mm female header, 8.5 mm housing (Samtec SSW-113-01-T-D or any)',
+    note='On the P4 face, mates JP1 directly: no ribbon. Board to board 11.0 mm (2.5 mm header base + 8.5 mm socket); '
+         'its position is provisional until the slab print sits on the real P4 (placement.P4_JP1).')
 con('01_p4', 'J101', 'C6 service', {1: 'GND', 2: 'C6_3V3', 3: 'C6_RX', 4: 'C6_TX', 5: 'C6_IO9', 6: 'C6_EN'},
     'Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical', mpn='1x06 2.54 mm pin header',
     note='C6_3V3 is the C6 supply: sense only, do not feed.')
@@ -90,10 +92,10 @@ res('01_p4', 'R100', '4.7k', 'CAM_PWR_EN', 'GND',
     note='Camera bank off while GPIO31 is Hi-Z from reset, and still off (0.3 V) against the P4 45k internal pull-up if firmware ever enables it.')
 res('01_p4', 'R101', '4.7k', 'SYNC_MASTER', 'GND', note='GPIO32 is Hi-Z from reset; holds the shared sync low against the 45k internal pull-up too.')
 cap('01_p4', 'C100', '100n', 'P4_3V3')
-for i, net in enumerate(['P4_3V3', 'P4_5V', 'SYNC_MASTER', 'CAM_PWR_EN', 'SHUTTER_N', 'GND', 'GND']):
-    tp('01_p4', f'TP{100 + i}', net)
+tp('01_p4', 'TP105', 'GND')   # at the power corner, by the FAULT pad
 tp('01_p4', 'TP107', 'FAULT_N')
-# The same signals again on the top face, reachable with the carrier mounted.
+# The P4 signals on the top face, reachable with the carrier mounted and off it (the socket's pin tails
+# come through there too; the back-face copies that stood in the left margin are gone).
 for i, net in enumerate(['P4_3V3', 'P4_5V', 'SYNC_MASTER', 'CAM_PWR_EN', 'SHUTTER_N', 'GND', 'FAULT_N', '5V_IN']):
     tp('01_p4', f'TP{110 + i}', net)
 for i in range(1, 4):   # scope-probe grounds: a wire loop each, hand-fitted

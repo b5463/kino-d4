@@ -7,7 +7,7 @@
     (symbol "SUPPLY_DRIVE_0_1" (polyline (pts (xy 0 0) (xy 0 2.54) (xy -1.27 3.81) (xy 0 5.08) (xy 1.27 3.81) (xy 0 2.54)) (stroke (width 0.15) (type default)) (fill (type none))))
     (symbol "SUPPLY_DRIVE_1_1" (pin power_out line (at 0 0 90) (length 0) (name "SUPPLY" (effects (font (size 1 1)))) (number "1" (effects (font (size 1 1))))))))
 (text "KINO D4 / DEV CARRIER D1" (at 20 15 0) (effects (font (size 3 3)) (justify left top)) (uuid "e2694a16-c8c6-59b0-be3d-689574fc1539"))
-(text "Low-cost bench carrier: four XIAO sockets on the P4 JP1 ribbon, USB-C 5 V, one camera bank switch. See README.md." (at 20 25 0) (effects (font (size 1.4 1.4)) (justify left top)) (uuid "73922171-7759-552d-88bc-97b87d4c47bb"))
+(text "Low-cost bench carrier: four XIAO sockets stacked on the P4 JP1 header, USB-C 5 V, one camera bank switch. See README.md." (at 20 25 0) (effects (font (size 1.4 1.4)) (justify left top)) (uuid "d62d2d1d-35df-50f5-9c63-80b0ae7990a9"))
 (sheet (at 25 45) (size 110 30) (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
         (stroke (width 0.25) (type solid)) (fill (color 0 0 0 0)) (uuid "3232a404-6196-5458-99d2-26d3fe79de97")
         (property "Sheetname" "P4 header, controls and I2C" (at 25 44 0) (effects (font (size 1.2 1.2)) (justify left bottom)))

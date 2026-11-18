@@ -1,5 +1,5 @@
 Designator,Value,Part,Note
-J100,P4 JP1 - 26 pin IDC,Wurth 61202621621 (any keyed 2x13 2.54 mm box header),Same position as A0.2 J100; keyed ribbon to P4 JP1.
+J100,P4 JP1 - 2x13 socket,"2x13 2.54 mm female header, 8.5 mm housing (Samtec SSW-113-01-T-D or any)","On the P4 face, mates JP1 directly: no ribbon. Board to board 11.0 mm (2.5 mm header base + 8.5 mm socket); its position is provisional until the slab print sits on the real P4 (placement.P4_JP1)."
 J101,C6 service,1x06 2.54 mm pin header,"C6_3V3 is the C6 supply: sense only, do not feed."
 J103,SHUTTER,JST B2B-XH-A (keyed 2-way socket),"The shutter button lead plugs in here: a dry contact to GND. GPIO28 has the internal pull-up and the 25 ms debounce in buttons.c; no resistor. Keyed, so it cannot go in reversed."
 GL1,GND loop,0.8 mm tinned wire loop,Scope probe ground.

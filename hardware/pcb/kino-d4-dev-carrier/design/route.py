@@ -35,7 +35,9 @@ def classes(dsn):
     for name, (width, members) in CLASSES.items():
         assert set(members) <= set(nets), (name, set(members) - set(nets))
         nets = [n for n in nets if n not in members]
-        extra += f'    (class {name} {" ".join(members)}\n' + re.sub(r'\(width [\d.]+\)', f'(width {width})', body) + '    )\n'
+        rule = re.sub(r'\(width [\d.]+\)', f'(width {width})', body)
+        rule = re.sub(r'\(clearance [\d.]+\)(?!\s*\(type)', '(clearance 200)', rule)   # power nets keep the 0.2 mm gap
+        extra += f'    (class {name} {" ".join(members)}\n' + rule + '    )\n'
     start, end = m.span(1)
     out = dsn[:start] + ' '.join(nets) + dsn[end:]
     i = out.index('\n    )\n', m.start()) + len('\n    )\n')
@@ -83,6 +85,21 @@ def export(work):
     # ANODE pin 6 the same way: 0.3 mm under Q1000's gate pad into C1006's VBUS_F pad, so GATE has a straight run between.
     for a, c in (((94.1375, 56.45), (94.1375, 58.9)), ((94.1375, 58.9), (95.6, 59.3)), ((95.6, 59.3), (96.22, 59.3))):
         track(b, 'VBUS_F', a, c, .3)
+    # Freerouting keeps the 0.5 mm copper-to-edge rule on the outline but not on the USB window (an inner
+    # cutout), and lays tracks along its edge; a rule area 0.5 mm outside the window, exported as a keepout,
+    # holds them off. The import drops it again with the zones; the pours keep the edge rule on their own.
+    from placement import USB_WINDOW
+    k = pcb.ZONE(b)
+    k.SetIsRuleArea(True); k.SetDoNotAllowTracks(True); k.SetDoNotAllowVias(True); k.SetDoNotAllowZoneFills(True)
+    k.SetDoNotAllowPads(False); k.SetDoNotAllowFootprints(False)
+    k.SetLayerSet(pcb.LSET.AllCuMask(2))
+    k.SetZoneName('USB window edge clearance')
+    o = k.Outline(); o.NewOutline()
+    x1, y1, x2, y2 = USB_WINDOW
+    m = .5
+    for x, y in ((x1 - m, y1 - m), (x2 + m, y1 - m), (x2 + m, y2 + m), (x1 - m, y2 + m)):
+        o.Append(pt(OFF + x, OFF + y))
+    b.Add(k)
     pcb.SaveBoard(str(BOARD), b)
     path = work / 'd1.dsn'
     assert pcb.ExportSpecctraDSN(b, str(path)), 'DSN export failed'
@@ -91,7 +108,7 @@ def export(work):
 
 
 def pours(b):
-    from placement import WIDTH, HEIGHT
+    from placement import EDGE
     gnd = b.GetNetInfo().GetNetItem('GND')
     for layer in (pcb.F_Cu, pcb.B_Cu):
         z = pcb.ZONE(b)
@@ -106,8 +123,9 @@ def pours(b):
         z.SetZoneName(f'GND {"front" if layer == pcb.F_Cu else "back"}')
         o = z.Outline()
         o.NewOutline()
-        m = .5   # inside the 0.5 mm copper-to-edge rule
-        for x, y in ((m, m), (WIDTH - m, m), (WIDTH - m, HEIGHT - m), (m, HEIGHT - m)):
+        m = .5   # inside the 0.5 mm copper-to-edge rule; the filler clips the USB window itself
+        x1, y1, x2, y2 = EDGE
+        for x, y in ((x1 + m, y1 + m), (x2 - m, y1 + m), (x2 - m, y2 - m), (x1 + m, y2 - m)):
             o.Append(pt(OFF + x, OFF + y))
         b.Add(z)
     pcb.ZONE_FILLER(b).Fill(b.Zones())
@@ -135,13 +153,13 @@ def finish(_=None):
     for t in b.GetTracks():
         if t.GetClass() == 'PCB_TRACK' and t.GetWidth() < pcb.FromMM(.15):
             t.SetWidth(pcb.FromMM(.15))
-    # The ribbon header's ground pins sit between the UART tracks: a solid connection
+    # The JP1 socket's ground pins sit between the UART tracks: a solid connection
     # instead of starved thermal spokes (hand-soldered 2.54 mm pins, 2-layer board).
     b.FindFootprintByReference('J100').SetLocalZoneConnection(pcb.ZONE_CONNECTION_FULL)
     # The edge LEDs sit in a strip of pour too narrow for two spokes; the socket GND pins are
-    # hand-soldered 2.54 mm pins between the UART tracks, as the ribbon header's.
+    # hand-soldered 2.54 mm pins between the UART tracks, as the JP1 socket's.
     # The USB-C shell and GND pads sit over the fixed VBUS bridge with no room for spokes either.
-    for ref in ('D1000', 'D1001', 'D1002', 'J200', 'J300', 'J400', 'J500', 'J1000', 'J1001', 'J103', 'U1002', 'C203'):
+    for ref in ('D1000', 'D1001', 'D1002', 'J200', 'J300', 'J400', 'J500', 'J1000', 'J1001', 'J103', 'U1002', 'C203', 'C303', 'C403', 'C503', 'GL1', 'GL2', 'GL3'):
         b.FindFootprintByReference(ref).SetLocalZoneConnection(pcb.ZONE_CONNECTION_FULL)
     twins = twin_vias(b)
     pours(b)
@@ -159,14 +177,18 @@ def twin_vias(b):
     """A 0.3 mm drill carries about what a 0.7 mm 1 oz track does; a power net must not change layers
     through one. For every via on a power net, add a second one beside it where the copper allows
     (0.15 mm clearance to other nets, 0.25 mm hole to hole, 0.5 mm to the edge). Returns the count."""
-    from placement import WIDTH, HEIGHT
+    from placement import EDGE, USB_WINDOW
     tracks = [t for t in b.GetTracks() if t.GetClass() == 'PCB_TRACK']
     vias = [t for t in b.GetTracks() if t.GetClass() == 'PCB_VIA']
     pads = [(p, p.GetBoundingBox()) for fp in b.GetFootprints() for p in fp.Pads()]
     clr, r = pcb.FromMM(.25), pcb.FromMM(.3)   # 0.15 rule plus margin for the 0.2 mm path sampling
 
     def clear(p, net, ignore=()):
-        if not (pcb.FromMM(OFF + .9) < p.x < pcb.FromMM(OFF + WIDTH - .9) and pcb.FromMM(OFF + .9) < p.y < pcb.FromMM(OFF + HEIGHT - .9)):
+        x1, y1, x2, y2 = EDGE
+        if not (pcb.FromMM(OFF + x1 + .9) < p.x < pcb.FromMM(OFF + x2 - .9) and pcb.FromMM(OFF + y1 + .9) < p.y < pcb.FromMM(OFF + y2 - .9)):
+            return False
+        x1, y1, x2, y2 = USB_WINDOW
+        if pcb.FromMM(OFF + x1 - .9) < p.x < pcb.FromMM(OFF + x2 + .9) and pcb.FromMM(OFF + y1 - .9) < p.y < pcb.FromMM(OFF + y2 + .9):
             return False
         for t in tracks:
             if t.GetNetname() != net and pcb.SEG(t.GetStart(), t.GetEnd()).Distance(p) < r + t.GetWidth() // 2 + clr:
@@ -189,7 +211,9 @@ def twin_vias(b):
         return all(clear(pcb.VECTOR2I(a.x + (p.x - a.x) * i // n, a.y + (p.y - a.y) * i // n), net, (v,)) for i in range(1, n))
 
     added = 0
-    offsets = [(d * c, d * s) for d in (1.0, 1.4, 1.8, 2.2, 2.6, 3.0) for c, s in ((1, 0), (-1, 0), (0, 1), (0, -1), (.71, .71), (-.71, .71), (.71, -.71), (-.71, -.71))]
+    import math
+    # verify.py counts a twin within 2.5 mm; search 16 directions out to 2.4.
+    offsets = [(d * math.cos(k * math.pi / 8), d * math.sin(k * math.pi / 8)) for d in (1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4) for k in range(16)]
     for v in [v for v in vias if v.GetNetname() in POWER_NETS]:
         a, net = v.GetPosition(), v.GetNetname()
         if any(o is not v and o.GetNetname() == net and (o.GetPosition() - a).EuclideanNorm() <= pcb.FromMM(2.5) for o in vias):

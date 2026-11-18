@@ -17,7 +17,7 @@ import urllib.request
 from pathlib import Path
 import pcbnew as pcb
 from circuit import PARTS
-from placement import HOLES, FASTENER_KEEP_OUT, PLACE
+from placement import HOLES, FASTENER_KEEP_OUT, PLACE, P4_JP1
 
 ROOT = Path(__file__).resolve().parent.parent
 REPO = ROOT.parent.parent.parent
@@ -73,7 +73,7 @@ def intent(pads):
     check('FAULT_N has exactly one pull-up (the FLT LED chain)', {r for r in pads['FAULT_N'] if not r.startswith('U')} == {'D1002.1', 'TP107.1', 'TP116.1'})
     check('ideal diode U1001: rail in, P4 5 V out, CE on VOUT',
           pin('U1001', 1) == '5V_IN' and pin('U1001', 6) == 'P4_5V' and pin('U1001', 3) == 'P4_5V' and pin('U1001', 2) == 'GND')
-    check('no other path from the rail to P4_5V', sorted(pads['P4_5V']) == sorted(['J100.2', 'J100.4', 'U1001.3', 'U1001.6', 'C1004.1', 'TP101.1', 'TP111.1']),
+    check('no other path from the rail to P4_5V', sorted(pads['P4_5V']) == sorted(['J100.2', 'J100.4', 'U1001.3', 'U1001.6', 'C1004.1', 'TP111.1']),
           ', '.join(sorted(pads['P4_5V'])))
     check('USB-C VBUS: clamp, fuse, then the bridge and the module connector',
           pin('U1000', 5) == 'VBUS' and {pin('F1000', 1), pin('F1000', 2)} == {'VBUS', 'VBUS_F'}
@@ -82,9 +82,9 @@ def intent(pads):
           pin('U1002', 6) == 'VBUS_F' and pin('U1002', 4) == 'VBUS_M' and pin('U1002', 3) == 'VBUS_F'
           and pin('Q1000', 2) == 'VBUS_F' and pin('Q1000', 3) == 'VBUS_M' and pin('Q1000', 1) == pin('U1002', 5)
           and {pin('C1005', 1), pin('C1005', 2)} == {pin('U1002', 1), 'VBUS_F'}
-     and {pin('C1006', 1), pin('C1006', 2)} == {'VBUS_F', 'GND'} and {pin('C1007', 1), pin('C1007', 2)} == {'VBUS_M', 'GND'})
-check('Q1000 gate rating covers the LM74700 drive (13.9 V max): a 20 V-gate part',
-      next(p for p in PARTS if p['ref'] == 'Q1000')['value'] in ('IRLML0030TRPBF', 'DMN3404L-7'))
+          and {pin('C1006', 1), pin('C1006', 2)} == {'VBUS_F', 'GND'} and {pin('C1007', 1), pin('C1007', 2)} == {'VBUS_M', 'GND'})
+    check('Q1000 gate rating covers the LM74700 drive (13.9 V max): a 20 V-gate part',
+          next(p for p in PARTS if p['ref'] == 'Q1000')['value'] in ('IRLML0030TRPBF', 'DMN3404L-7'))
     check('CC pull-downs 5.1k and clamped', part['R1000']['value'] == '5.1k' and part['R1001']['value'] == '5.1k'
           and {pin('U1000', 1), pin('U1000', 3)} == {'USB_CC1', 'USB_CC2'})
     check('camera bank held off from reset, against the 45k internal pull-up', pin('R100', 1) == 'CAM_PWR_EN' and pin('R100', 2) == 'GND' and part['R100']['value'] == '4.7k')
@@ -101,16 +101,24 @@ JP1_NAME = {'3V3': 'P4_3V3', '5V': 'P4_5V', 'GND': 'GND', 'ESP_3V3': 'C6_3V3', '
             'GPIO33': 'P4_RX3', 'GPIO31': 'CAM_PWR_EN', 'GPIO30': 'P4_TX4', 'GPIO29': 'P4_RX4', 'GPIO32': 'SYNC_MASTER', 'GPIO28': 'SHUTTER_N'}
 
 
-def pinmaps():
+def pinmaps(b):
     src = (REPO / 'firmware/p4/main/board_d4v1.h').read_text(encoding='utf-8')
     rows = re.findall(r'^//\s+(\d+)\s+(\S+)\s+(\S+)\s+(\d+)\s*$', src, re.M)
     table = {}
-    for a, left, right, b in rows:
-        table[int(a)] = left; table[int(b)] = right
+    for a, left, right, c in rows:
+        table[int(a)] = left; table[int(c)] = right
     j100 = next(p for p in PARTS if p['ref'] == 'J100')['nets']
     bad = [f'pin {i}: header {name} -> {JP1_NAME.get(name)!r}, board {j100.get(str(i))!r}'
            for i, name in sorted(table.items()) if JP1_NAME.get(name) != j100.get(str(i))]
     check('J100 matches the measured JP1 table (26 pins)', len(table) == 26 and not bad, '; '.join(bad) or '26 pins agree')
+    # The socket mates the header directly, so its pads must draw JP1 as the P4's back shows it: pin 1 on the
+    # datum, pin 2 one pitch to the right, pin 3 one pitch down (board frame, seen from the front).
+    j = b.FindFootprintByReference('J100')
+    at = {p.GetNumber(): (round(mm(p.GetPosition().x), 2), round(mm(p.GetPosition().y), 2)) for p in j.Pads()}
+    want = {'1': P4_JP1, '2': (P4_JP1[0] + 2.54, P4_JP1[1]), '3': (P4_JP1[0], P4_JP1[1] + 2.54), '26': (P4_JP1[0] + 2.54, P4_JP1[1] + 30.48)}
+    off = [f'pad {k} at {at[k]}, want {v}' for k, v in want.items() if abs(at[k][0] - v[0]) > .01 or abs(at[k][1] - v[1]) > .01]
+    check('J100 socket on the back draws JP1 pin for pin (1 on the datum, 2 right, 3 down)', j.IsFlipped() and not off,
+          '; '.join(off) or f'pin 1 at {at["1"]} on the P4 face, pin 2 at +2.54 x, pin 26 at +2.54 x +30.48 y')
     for n in range(1, 5):
         j = next(p for p in PARTS if p['ref'] == f'J{200 + 100 * (n - 1)}')['nets']
         check(f'XIAO socket J{200 + 100 * (n - 1)}: D1 sync, D6 TX, D7 RX, 3V3/GND/5V',
@@ -144,7 +152,10 @@ def copper(b):
     for net, w in widths.items():
         segs = by_net.get(net, [])
         # A pad entry may neck down for up to 3 mm (one pin's current into a SOT or receptacle pad); nothing longer may.
-        thin = [s for s in segs if s.GetWidth() < pcb.FromMM(w) - 10 and s.GetLength() > pcb.FromMM(3.0)]
+        # The one exception: the LM74700's CATHODE pin only senses, and route.py lays its 0.3 mm run from U1002
+        # pad 4 over Q1000 to the drain pad by hand (6.6 mm across the front); no load current flows in it.
+        thin = [s for s in segs if s.GetWidth() < pcb.FromMM(w) - 10 and s.GetLength() > pcb.FromMM(3.0)
+                and not (net == 'VBUS_M' and s.GetWidth() == pcb.FromMM(.3))]
         length = sum(s.GetLength() for s in segs) / 1e6
         r = sum(s.GetLength() / 1e6 * RHO_OZ / (s.GetWidth() / 1e6) for s in segs)
         rows.append((net, length, r))
@@ -154,7 +165,7 @@ def copper(b):
 
 
 # --- 5. mechanics --------------------------------------------------------------------------
-HEIGHTS = {'J100': 9.1, 'J1000': 3.3, 'J102': 4.3, 'C1000': 1.3, 'C1001': 1.3, 'F1000': 1.6, 'U200': 1.2}
+HEIGHTS = {'J100': 8.5, 'J1000': 3.3, 'J102': 4.3, 'C1000': 1.3, 'C1001': 1.3, 'F1000': 1.6, 'U200': 1.2}
 
 
 def mechanics(b):
@@ -172,7 +183,7 @@ def mechanics(b):
                 hits.append(f'{ref} in H{i} allowance')
     check('nothing but silk inside the 7 mm fastener allowance', not hits, '; '.join(hits) or '4 holes clear')
     back = max((HEIGHTS.get(r, 0) for r, v in PLACE.items() if v[3] == 'B'), default=0)
-    check('tallest part on the P4 face recorded', back == 4.3, f'{back} mm (J102 Qwiic); J100 is on the top face, only the P4-side ribbon plug is in the gap')
+    check('tallest part on the P4 face recorded', back == 8.5, f'{back} mm (J100 socket: it sets the 11.0 mm stack with the header base); next J102 at 4.3 mm')
 
 
 # --- 6. parts ------------------------------------------------------------------------------
@@ -215,7 +226,7 @@ def fab(b):
 
 def main():
     b = pcb.LoadBoard(str(BOARD))
-    pads = nets(); intent(pads); pinmaps(); rows = copper(b); mechanics(b); parts(); fab(b)
+    pads = nets(); intent(pads); pinmaps(b); rows = copper(b); mechanics(b); parts(); fab(b)
     failed = [r for r in results if not r[1]]
     lines = ['# Dev carrier D1 pre-build verification', '', f'{len(results) - len(failed)} of {len(results)} checks pass.', '',
              '| Check | Result | Detail |', '|---|---|---|']

@@ -5,17 +5,19 @@ The schematic writer follows kino-d4-carrier-a0/design/build.py: one symbol per 
 """
 import json
 import shutil
+import math
 from pathlib import Path
 from uuid import uuid5, NAMESPACE_URL
 import pcbnew as pcb
 from circuit import PARTS, SHEETS
-from placement import PLACE, WIDTH, HEIGHT, HOLES, FASTENER_KEEP_OUT
+from placement import PLACE, HOLES, FASTENER_KEEP_OUT, EDGE, USB_WINDOW, CORNER_R
 
 ROOT = Path(__file__).resolve().parent.parent
 A0 = ROOT.parent / 'kino-d4-carrier-a0'
 NAME = 'KINO_D4_Dev_Carrier_D1'
 REV, DATE = 'DEV CARRIER D1', '2026-11'
 STOCK = Path('C:/Program Files/KiCad/10.0/share/kicad/footprints')
+SOCKET_FP = 'PinSocket_2x13_P2.54mm_Vertical_Pad1.5'   # J100: the stock socket with 1.5 mm pads, written to KINO_DEV.pretty
 ROOT_ID = str(uuid5(NAMESPACE_URL, NAME))
 SUPPLIES = {'GND': 'J1000 USB-C ground / J100 P4 ground', 'VBUS': 'J1000 USB-C VBUS',
             '5V_IN': 'J1001 RAIL from the SW6106, or VBUS over JP1001',
@@ -120,7 +122,7 @@ def schematics():
         symbols.extend(libsym(p, False) for p in parts)
     root = [header(ROOT_ID, 'KINO D4 - dev carrier D1'), '(lib_symbols ' + supply_symbol() + ')',
             text('KINO D4 / ' + REV, 20, 15, 3),
-            text('Low-cost bench carrier: four XIAO sockets on the P4 JP1 ribbon, USB-C 5 V, one camera bank switch. See README.md.', 20, 25, 1.4)]
+            text('Low-cost bench carrier: four XIAO sockets stacked on the P4 JP1 header, USB-C 5 V, one camera bank switch. See README.md.', 20, 25, 1.4)]
     for i, (key, info) in enumerate(SHEETS.items()):
         x, y = 25 + (i % 3) * 130, 45 + (i // 3) * 50
         root.append(f'''(sheet (at {x} {y}) (size 110 30) (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
@@ -152,6 +154,14 @@ def footprints():
     dest.mkdir(exist_ok=True)
     for name in ('XIAO_Socket_15.24mm', 'USB_C_GCT_USB4105_KINO_GND0.05'):
         shutil.copyfile(A0 / 'KINO_A0.pretty' / (name + '.kicad_mod'), dest / (name + '.kicad_mod'))
+    # The P4 socket with 1.5 mm pads on the stock 1.0 mm drill (0.25 mm ring; the stock 1.7 leaves 0.84 mm
+    # between pads, one track; 1.04 takes two at the 0.15 gap). The stock footprint otherwise.
+    fp = pcb.FootprintLoad(str(STOCK / 'Connector_PinSocket_2.54mm.pretty'), 'PinSocket_2x13_P2.54mm_Vertical')
+    for a in fp.Pads():
+        a.SetSize(pcb.VECTOR2I(pcb.FromMM(1.5), pcb.FromMM(1.5)))
+    fp.SetFPID(pcb.LIB_ID('KINO_DEV', SOCKET_FP))
+    fp.SetLibDescription(fp.GetLibDescription() + ', 1.5 mm pads (KINO D4 dev carrier)')
+    pcb.FootprintSave(str(dest), fp)
     (ROOT / 'fp-lib-table').write_text('(fp_lib_table (version 7) (lib (name "KINO_DEV") (type "KiCad") '
                                        '(uri "${KIPRJMOD}/KINO_DEV.pretty") (options "") (descr "A0.2 socket and USB-C lands")))\n')
 
@@ -165,7 +175,11 @@ def project():
     pro['board']['layer_presets'] = []
     ns = pro['net_settings']
     default = next(c for c in ns['classes'] if c['name'] == 'Default')
-    cls = lambda name, width: dict(default, name=name, track_width=width)
+    # Signals at the 0.15 mm JLC gap (the template had 0.2): with J100's 1.5 mm pads that gives two 0.2 mm
+    # tracks a layer in every gap around and through the socket, where one left the UART nets unrouted.
+    # The power classes keep 0.2.
+    default = dict(default, clearance=0.15)
+    cls = lambda name, width: dict(default, name=name, track_width=width, clearance=0.2)
     ns['classes'] = [default, cls('CameraPower', 0.6), cls('MainPower', 1.0)]
     power = ['VBUS_F', 'VBUS_M', '5V_IN', 'P4_5V', 'GND']
     camera = ['VBUS'] + [f'CAM{n}_{s}' for n in range(1, 5) for s in ('SW5V', 'LINK', '5VJ', '5V')]
@@ -191,6 +205,9 @@ def board():
     ds.m_MinClearance, ds.m_TrackMinWidth, ds.m_ViasMinSize = pcb.FromMM(.15), pcb.FromMM(.15), pcb.FromMM(.6)
     ds.m_MinThroughDrill, ds.m_HoleClearance, ds.m_HoleToHoleMin = pcb.FromMM(.2), pcb.FromMM(.2), pcb.FromMM(.25)
     ds.m_CopperEdgeClearance, ds.m_SilkClearance, ds.m_ViasMinAnnularWidth = pcb.FromMM(.5), pcb.FromMM(.15), pcb.FromMM(.1)
+    # The board's own default class is what the DSN export and kicad-cli's DRC read: signals at the 0.15 mm gap
+    # (see project()); route.py writes the power classes into the DSN at 0.2.
+    ds.m_NetSettings.GetDefaultNetclass().SetClearance(pcb.FromMM(.15))
     nets = {}
     for name in sorted({n for p in PARTS for n in p['nets'].values() if n}):
         nets[name] = pcb.NETINFO_ITEM(brd, name); brd.Add(nets[name])
@@ -234,9 +251,19 @@ def board():
         fp.SetReference(f'H{i}'); fp.SetValue('M2'); fp.Value().SetVisible(False); fp.Reference().SetLayer(pcb.F_Fab)
         fp.SetAttributes(fp.GetAttributes() | pcb.FP_EXCLUDE_FROM_BOM | pcb.FP_EXCLUDE_FROM_POS_FILES | pcb.FP_BOARD_ONLY)
         fp.SetPosition(pt(OFF + x, OFF + y)); brd.Add(fp)
-    corners = [(OFF, OFF), (OFF + WIDTH, OFF), (OFF + WIDTH, OFF + HEIGHT), (OFF, OFF + HEIGHT)]
+    x1, y1, x2, y2 = USB_WINDOW   # the window over the P4's USB-C ports, square-cornered
+    corners = [(OFF + x1, OFF + y1), (OFF + x2, OFF + y1), (OFF + x2, OFF + y2), (OFF + x1, OFF + y2)]
     for a, b in zip(corners, corners[1:] + corners[:1]):
         seg(brd, a, b, pcb.Edge_Cuts)
+    x1, y1, x2, y2 = (v + OFF for v in EDGE)   # the outline, CORNER_R at every corner: four lines and four arcs
+    r = CORNER_R
+    seg(brd, (x1 + r, y1), (x2 - r, y1), pcb.Edge_Cuts); seg(brd, (x2, y1 + r), (x2, y2 - r), pcb.Edge_Cuts)
+    seg(brd, (x2 - r, y2), (x1 + r, y2), pcb.Edge_Cuts); seg(brd, (x1, y2 - r), (x1, y1 + r), pcb.Edge_Cuts)
+    d = r * (1 - math.sqrt(0.5))
+    for start, mid, end in (((x2 - r, y1), (x2 - d, y1 + d), (x2, y1 + r)), ((x2, y2 - r), (x2 - d, y2 - d), (x2 - r, y2)),
+                            ((x1 + r, y2), (x1 + d, y2 - d), (x1, y2 - r)), ((x1, y1 + r), (x1 + d, y1 + d), (x1 + r, y1))):
+        a = pcb.PCB_SHAPE(brd); a.SetShape(pcb.SHAPE_T_ARC); a.SetArcGeometry(pt(*start), pt(*mid), pt(*end))
+        a.SetWidth(pcb.FromMM(.1)); a.SetLayer(pcb.Edge_Cuts); brd.Add(a)
     for x, y in HOLES:   # M2 fastener allowance, review layer only
         c = pcb.PCB_SHAPE(brd); c.SetShape(pcb.SHAPE_T_CIRCLE); c.SetCenter(pt(OFF + x, OFF + y))
         c.SetEnd(pt(OFF + x + FASTENER_KEEP_OUT / 2, OFF + y)); c.SetWidth(pcb.FromMM(.1)); c.SetLayer(pcb.Dwgs_User); brd.Add(c)

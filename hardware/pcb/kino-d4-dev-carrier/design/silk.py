@@ -98,8 +98,9 @@ XIAO_PINS = ((-7.62, -5.08, 'SYNC'), (-7.62, 7.62, 'TX'), (7.62, 7.62, 'RX'),
 
 def identity(L, layer, side, end=END, side_end=END, u0=MARGIN):
     """One line with a rule under it: product, model, revision, date, part number, side. Laid out in
-    reading coordinates u (left to right as the face is viewed); on the back u maps to WIDTH - u so
-    it reads in the same order from either face. The back line stops before the ribbon header column."""
+    reading coordinates u (left to right as the face is viewed); on the back u maps to WIDTH - u (the
+    frame's centre is the board's centre) so
+    it reads in the same order from either face. The back line stops before the H1 insert."""
     back = layer == pcb.B_SilkS
     m = (lambda u: WIDTH - u) if back else (lambda u: u)
     jl, jr = (RIGHT, LEFT) if back else (LEFT, RIGHT)
@@ -108,7 +109,7 @@ def identity(L, layer, side, end=END, side_end=END, u0=MARGIN):
     y = 15.0   # one baseline for every size; the rule 1.1 mm under it
     # Left group, the product, by importance: name, revision, model. Arial Bold caps run about
     # 0.85 em; gaps are 3 mm. Right group, the record, right-aligned against the margin.
-    L.text('KINO D4', m(u0), y, H1, layer, jl, bold=True, baseline=True, tag=True)   # u0: the front line starts right of the J100 shroud
+    L.text('KINO D4', m(u0), y, H1, layer, jl, bold=True, baseline=True, tag=True)
     for u, s in ((u0 + 22.8, MODEL), (u0 + 42.4, 'REV ' + REV), (u0 + 54.8, 'PROTOTYPE')):   # one size for the whole group
         L.text(s, m(u), y, H2, layer, jl, bold=True, baseline=True, tag=s == 'PROTOTYPE')
     L.text(DATE, m(end), y, BODY, layer, jr, baseline=True)
@@ -123,25 +124,26 @@ def front(L):
     for i, s in enumerate(('4x XIAO ESP32-S3 SENSE  ON  ESP32-P4 JP1', 'LINK: PULL THE SHUNT BEFORE NODE USB',
                            'CAM 5V: 1.2A LIMIT PER NODE, SHARED ENABLE')):
         L.text(s, 22.5, 3.8 + 2.6 * i, BODY, F, LEFT)
-    identity(L, F, 'SIDE A', u0=13.0)   # the J100 shroud takes x 2.7-11.8 from y 12.8 down
-    # P4 ribbon header on this face: designator and name beside the shroud (its chamfer marks pin 1).
-    L.text('J100  P4 JP1', 13.2, 33.0, 1.0, F, CENTER, 90)
+    identity(L, F, 'SIDE A')
+    # The P4 socket is on the other face; its pin tails come through here, right of the USB window.
+    L.text('J100  P4 JP1', 106.1, 36.5, 1.0, F, CENTER, 90)
+    L.text('P4 USB', 95.8, 18.6, 1.0, F)   # over the window the P4's own plugs come through
     # Each node: name and designator, link header with its designator, pin 1, the module name and the
     # socket pins named inside the rows (seen when the module is out).
     for n, cx in enumerate(CAMERA_X, 1):
         b = 200 + 100 * (n - 1)
-        L.text(f'CAM {n}', cx - 9.0, 19.5, H2, F, LEFT, bold=True, tag=True)   # on the link header's centre line
-        L.text(f'J{b}', cx - 9.0, 22.8, 1.0, F, LEFT)
-        L.text('LINK', cx + 11.0, 17.0, 1.0, F)   # the header sits in the gap between sockets; JPn00 is in the README
+        L.text(f'CAM {n}', cx - 7.8, 19.5, H2, F, LEFT, bold=True, tag=True)   # on the link header's centre line, right of it
+        L.text(f'J{b}', cx - 7.8, 22.8, 1.0, F, LEFT)
+        L.text('LINK', cx - 11.0, 17.0, 1.0, F)   # over the header; JPn00 is in the README
         L.text('XIAO ESP32-S3', cx, 25.3, 1.0, F)
         for dx, dy, s in XIAO_PINS:
             L.text(s, cx + dx - 1.7 * (1 if dx > 0 else -1), CAMERA_Y + dy, 1.0, F, RIGHT if dx > 0 else LEFT)
         L.pin1(cx - 9.3, CAMERA_Y - 7.62)
     # The column right of CAM 4: the power-module connector, fused USB out to the SW6106, the 5 V rail back in.
-    L.text('J1001  POWER', 109.25, 18.4, 1.0, F)
+    L.text('J1001  POWER', 110.5, 18.4, 1.0, F)
     for i, s in enumerate(('VBUS', 'GND', 'RAIL')):   # one name per contact pair, beside the housing
-        L.text(s, 114.2, 24.25 + 5.0 * i, 1.0, F, CENTER, 90)   # right of the housing, clear of JP500
-    # GPIO map under the ribbon shroud, left of the H3 fastener allowance.
+        L.text(s, 115.4, 24.25 + 5.0 * i, 1.0, F, CENTER, 90)   # right of the housing
+    # GPIO map on the left margin, left of the H3 fastener allowance.
     for i, s in enumerate(('CAM EN GPIO31', 'SYNC GPIO32', 'SHUTTER GPIO28')):
         L.text(s, MARGIN, 55.9 + 1.8 * i, 1.0, F, LEFT)
     # Controls: the shutter socket and the C6 service header, each with its designator and pins,
@@ -151,55 +153,55 @@ def front(L):
         L.text(s, 52.0 + 2.54 * i, 62.2, 1.0, F, CENTER, 90)
     L.text('J101  C6 SERVICE', 58.35, BASE, 1.0, F)
     # Power: the input over the USB-C against the right margin, the status LEDs by name.
-    L.text('5V IN', END, 55.0, H2, F, RIGHT, bold=True, baseline=True, tag=True)
-    L.text('J1000  USB-C  3A MAX', END, 57.6, 1.0, F, RIGHT, baseline=True)
+    L.text('5V IN', 109.0, 64.9, 1.4, F, CENTER, bold=True)   # between the receptacle's shell pins, on the bottom row
+    L.text('J1000  USB-C  3A MAX', 116.5, 53.0, 1.0, F, CENTER, 90)   # up the right margin, beside the probe column
     for x, s in ((87.0, 'PWR'), (93.0, 'CAM'), (99.0, 'FLT')):
-        L.circle(x, 66.6, 0.75, 0.2); L.text(s, x, BASE, 1.0, F)
-    # Top-face test pads: the P4 signals, the rail and FAULT, reachable with the carrier mounted.
-    for i, (x, s) in enumerate(zip((3.5, 6.5, 9.5, 12.5, 24.0, 27.0, 30.0, 33.0), ('3V3', '5V', 'SYNC', 'EN', 'SHUT', 'GND', 'FLT', 'RAIL'))):
-        L.text(s, x, 65.6, 1.0, F, CENTER, 90)
+        L.circle(x, 67.3, 0.75, 0.2); L.text(s, x, BASE, 1.0, F)
+    # Top-face test pads: 3V3 and 5V in the top strip by the socket's top pins; the rest one column under
+    # J1001 beside the socket, each named to its left.
+    L.text('3V3', 107.0, 11.5, 1.0, F, LEFT); L.text('5V', 113.5, 11.5, 1.0, F, LEFT)
+    for i, s in enumerate(('SYNC', 'EN', 'SHUT', 'GND', 'FLT', 'RAIL')):
+        L.text(s, 110.3, 43.0 + 2.54 * i, 1.0, F, RIGHT)
     # Scope-probe ground loops.
-    for x, y in ((25.5, 59.0), (81.5, 58.4), (113.5, 43.4)):
+    for x, y in ((25.5, 59.0), (81.5, 58.4), (96.5, 60.3)):
         L.text('GND', x, y, 1.0, F)
 
 
 def back(L):
     B = pcb.B_SilkS
-    identity(L, B, 'SIDE B', WIDTH - 19.0, WIDTH - 23.0)   # clear of the ribbon header and the H1 insert
+    identity(L, B, 'SIDE B', WIDTH - 19.0, WIDTH - 23.0)   # clear of the H1 insert
     # Top strip in reading order (u = view coordinate, m(u) its board x; RIGHT reads view-left-aligned on
     # the mirrored face): the S/N box on the left margin, the order anchor, the record as one block.
     m = lambda u: WIDTH - u
-    L.box(m(16.6), 3.4, m(MARGIN), 9.6, 0.15, B); L.text('S/N', m(4.6), 4.8, 1.0, B, RIGHT)
+    L.box(m(15.4), 3.4, m(MARGIN), 9.6, 0.15, B); L.text('S/N', m(4.6), 4.8, 1.0, B, RIGHT)   # C100 left of it
     L.text('JLCJLCJLCJLC', m(20.0), 4.8, 1.0, B, RIGHT)
     for i, s in enumerate(('ODD JOBS', 'CERN-OHL-S-2.0', 'github.com/b5463/kino-d4')):
         L.text(s, m(40.0), 3.8 + 2.6 * i, 1.0, B, RIGHT)
-    # The ideal diode to the P4 5 V pins, beside the ribbon header (whose outline carries its own pin 1 chamfer).
-    L.text('U1001  RAIL > P4 5V', 20.5, 17.6, 1.0, B)
+    # The ideal diode to the P4 5 V pins, in the top strip left of the S/N box.
+    L.text('U1001  P4 5V', 87.5, 7.5, 1.0, B)   # left of the diode group, on its line; KINO D4 reaches x 94
     for n, cx in enumerate(CAMERA_X, 1):
         L.text(f'CAM {n}', cx, 23.8, H2, B, CENTER, bold=True, tag=True)
         for i, s in enumerate(('TX', 'RX', 'SY', '3V3', '5V', '5VJ')):   # 5VJ: jumper side of the measure link
             L.text(s, cx - 6.0 + 3.0 * i, 49.3, 1.0, B)
-    for y, s in ((33.5, 'EN'), (46.0, '3V3'), (49.0, '5V'), (52.0, 'SY'), (55.0, 'SH')):   # P4 pads at x 16
-        L.text(s, 14.8, y, 1.0, B, RIGHT)
-    L.text('GND', 4.0, 60.2, 1.0, B)
-    L.text('J102  QWIIC   GND 3V3 SDA SCL', 14.5, 67.0, 1.0, B, LEFT)   # pin order from the cable side
-    L.text('J100  P4 JP1', 7.3, 11.6, 1.0, B)   # the header is on the other face; its pins come through here
-    L.text('1', 6.0, 15.4, 1.0, B)               # pin 1 (the pin of JP1 pin 1 after the fold)
-    L.text('NC', 3.0, 35.78, 1.0, B)             # pin 15, GPIO35, open
+    L.text('J102  QWIIC   GND 3V3 SDA SCL', 14.5, 67.7, 1.0, B, LEFT)   # pin order from the cable side
+    # The P4 socket: name along its right side over the escape lane (the footprint's own chamfer marks
+    # pin 1), the open pin 15 named beside its row.
+    L.text('J100  P4 JP1', 106.6, 27.0, 1.0, B, CENTER, 90)
+    L.text('NC', 106.6, 37.245, 1.0, B, CENTER)   # pin 15, GPIO35, open: on its row, under the pull-down column
     # The power corner, read in the order the current flows, left-aligned on the view margin.
     for i, s in enumerate(('USB-C IN', '> U1000 ESD', '> F1000 3A', '> JP1001 RAIL', '> U1002 J1001')):
-        L.text(s, m(6.5), 37.2 + 1.7 * i, 1.0, B, RIGHT)   # inboard of the GL3 loop
+        L.text(s, 116.2, 37.2 + 1.7 * i, 1.0, B, RIGHT)   # right of the J100 socket, under J1001's pins
     L.text('J1000', 109.0, 59.0, 1.0, B)
     for i, s in enumerate(('VBUS', 'GND', 'RAIL')):   # J1001 contacts, named where the pins come through
-        L.text(s, 111.8, 24.25 + 5.0 * i, 1.0, B, CENTER, 90)
+        L.text(s, 113.0, 24.25 + 5.0 * i, 1.0, B, CENTER, 90)
     L.text('PU DNP', 12.8, 57.6, 1.0, B)   # the Qwiic pull-up pads under it
     L.text('GND', 101.0, 62.2, 1.0, B)
     L.text('FAULT', 91.5, 62.2, 1.0, B)
     L.text('F1000', 113.5, 48.5, 1.0, B)
-    L.text('D1003  TVS', 104.0, 25.2, 1.0, B)
-    L.text('JP1001', 107.3, 47.0, 1.0, B, RIGHT)   # USB > rail bridge, closed as shipped
+    L.text('TVS', 114.5, 21.9, 1.0, B)   # under the diode, right of J1001's first pin: the identity line runs over it
+    L.text('JP1001', 114.0, 45.6, 1.0, B)   # USB > rail bridge, closed as shipped
     for x, s in ((87.0, 'PWR'), (93.0, 'CAM'), (99.0, 'FLT')):
-        L.text(s, x, 65.2, 1.0, B)
+        L.text(s, x, 65.9, 1.0, B)
 
 
 def main():
