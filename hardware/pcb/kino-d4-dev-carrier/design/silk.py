@@ -134,7 +134,7 @@ def front(L):
         b = 200 + 100 * (n - 1)
         L.text(f'CAM {n}', cx - 7.8, 19.5, H2, F, LEFT, bold=True, tag=True)   # on the link header's centre line, right of it
         L.text(f'J{b}', cx - 7.8, 22.8, 1.0, F, LEFT)
-        L.text('LINK', cx - 11.0, 17.0, 1.0, F)   # over the header; JPn00 is in the README
+        L.text('LINK', cx - 11.0, 24.7, 1.0, F)   # under the header, over the pin-1 bracket (the identity line sits over CAM 1's)
         L.text('XIAO ESP32-S3', cx, 25.3, 1.0, F)
         for dx, dy, s in XIAO_PINS:
             L.text(s, cx + dx - 1.7 * (1 if dx > 0 else -1), CAMERA_Y + dy, 1.0, F, RIGHT if dx > 0 else LEFT)
@@ -153,8 +153,9 @@ def front(L):
         L.text(s, 52.0 + 2.54 * i, 62.2, 1.0, F, CENTER, 90)
     L.text('J101  C6 SERVICE', 58.35, BASE, 1.0, F)
     # Power: the input over the USB-C against the right margin, the status LEDs by name.
-    L.text('5V IN', 109.0, 64.9, 1.4, F, CENTER, bold=True)   # between the receptacle's shell pins, on the bottom row
-    L.text('J1000  USB-C  3A MAX', 116.5, 53.0, 1.0, F, CENTER, 90)   # up the right margin, beside the probe column
+    # Over the receptacle (its shell pins come through at y 62.8 to 67.9), under the probe column's last pad.
+    L.text('5V IN', END, 59.5, H2, F, RIGHT, bold=True, baseline=True)   # no tag box: the RAIL pad's ring is 0.3 mm above
+    L.text('USB-C  3A MAX', END, 61.8, 1.0, F, RIGHT, baseline=True)   # J1000 is named on its own face; shell pins from 62.3
     for x, s in ((87.0, 'PWR'), (93.0, 'CAM'), (99.0, 'FLT')):
         L.circle(x, 67.3, 0.75, 0.2); L.text(s, x, BASE, 1.0, F)
     # Top-face test pads: 3V3 and 5V in the top strip by the socket's top pins; the rest one column under
@@ -178,7 +179,7 @@ def back(L):
     for i, s in enumerate(('ODD JOBS', 'CERN-OHL-S-2.0', 'github.com/b5463/kino-d4')):
         L.text(s, m(40.0), 3.8 + 2.6 * i, 1.0, B, RIGHT)
     # The ideal diode to the P4 5 V pins, in the top strip left of the S/N box.
-    L.text('U1001  P4 5V', 87.5, 7.5, 1.0, B)   # left of the diode group, on its line; KINO D4 reaches x 94
+    L.text('U1001  P4 5V', 89.5, 10.0, 1.0, B)   # under the diode group's left end; KINO D4 reaches x 94
     for n, cx in enumerate(CAMERA_X, 1):
         L.text(f'CAM {n}', cx, 23.8, H2, B, CENTER, bold=True, tag=True)
         for i, s in enumerate(('TX', 'RX', 'SY', '3V3', '5V', '5VJ')):   # 5VJ: jumper side of the measure link
