@@ -280,19 +280,21 @@ def outline(n=8):
     return pts
 
 
-def plate_tris(holes, window=None, pockets=()):
+def plate_tris(holes, window=None, pockets=(), mark=True):
     """The plate body: outline with the window and the holes, the mark (and any extra pockets) POCKET deep into the top."""
     import json
     circle = lambda x, y, d, n=48: [stl(x + d / 2 * math.cos(2 * math.pi * i / n), y + d / 2 * math.sin(2 * math.pi * i / n)) for i in range(n)]
     from placement import USB_WINDOW
     rings = [outline(), rect(*(window or USB_WINDOW))] + [circle(x, y, d) for x, y, d in holes]
-    m = json.loads(MARK.read_text(encoding='utf-8'))
-    s = MARK_W / (m['pixel_bounds'][2] - 1)
-    mark = [stl(MARK_AT[0] + a * s, MARK_AT[1] + c * s) for a, c in m['points']]
     cx, cy = stl((EDGE[0] + EDGE[2]) / 2, (EDGE[1] + EDGE[3]) / 2)
     s = SHRINK[MATERIAL]
     grow = lambda r: [(cx + (x - cx) * s, cy + (y - cy) * s) for x, y in r]   # shrink compensation, about the plate's centre
-    rings, top = [grow(r) for r in rings], [grow(r) for r in [mark] + list(pockets)]
+    rings = [grow(r) for r in rings]
+    if not mark and not pockets:   # the flat plate: one shell, nothing on it
+        return b''.join(extrude(rings, 0.0, PLATE_T))
+    m = json.loads(MARK.read_text(encoding='utf-8'))
+    s = MARK_W / (m['pixel_bounds'][2] - 1)
+    top = [grow(r) for r in ([[stl(MARK_AT[0] + a * s, MARK_AT[1] + c * s) for a, c in m['points']]] if mark else []) + list(pockets)]
     # Two shells sharing the pocket floor: the full plate under it, the top layer with the pockets cut out.
     return b''.join(extrude(rings, 0.0, PLATE_T - POCKET + 0.05) + extrude(rings + top, PLATE_T - POCKET, PLATE_T))
 
@@ -337,7 +339,13 @@ def gauge():
     plates(GAUGE, 'D1-gauge', GAUGE_WINDOW, ticks())
 
 
-def plates(which=PLATES, stem='D1-plate', window=None, pockets=()):
+def flat():
+    """The flat check plate: the outline, the USB window, the four M2 holes and every socket hole, nothing else
+    on either face; drawn larger by the filament's shrink (`flat petg`). For the last fit check before ordering."""
+    plates((('', SOCKETS, 'outline, USB window, M2 holes, J100 and XIAO socket holes, nothing else'),), 'D1-flat', mark=False)
+
+
+def plates(which=PLATES, stem='D1-plate', window=None, pockets=(), mark=True):
     """The fit plate: the slab with the ODD JOBS symbol pocketed into its top face. Flat, no supports;
     the 3MF carries it in blue. PLATES can hold more than one (name suffix, kept refs, note); they go
     side by side on one bed."""
@@ -350,8 +358,8 @@ def plates(which=PLATES, stem='D1-plate', window=None, pockets=()):
     for n, (name, keep, what) in enumerate(PLATES, 1):
         holes = Path(tempfile.mkdtemp(prefix='d1-plate-')) / 'holes.json'   # pcbnew loads one board per process
         subprocess.run([sys.executable, __file__, '_holes', str(holes), *sorted(keep)], check=True, capture_output=True)
-        data = plate_tris(json.loads(holes.read_text()), window, pockets)
-        out = ROOT / f'outputs/D1-plate{name}.stl'
+        data = plate_tris(json.loads(holes.read_text()), window, pockets, mark)
+        out = ROOT / f'outputs/{stem}{name}.stl'
         out.write_bytes(f'KINO D4 dev carrier D1 plate: {what}'.encode()[:80].ljust(80, b' ') + struct.pack('<I', len(data) // 50) + data)
         print({'plate': name, 'holes': len(json.loads(holes.read_text())), 'triangles': len(data) // 50, 'out': str(out), 'bytes': out.stat().st_size})
         tris[name] = data
@@ -679,4 +687,4 @@ if __name__ == '__main__':
         import json; Path(sys.argv[2]).write_text(json.dumps(plate_holes(set(sys.argv[3:])))); sys.exit(0)
     if sys.argv[2:3] and sys.argv[2] in SHRINK:
         MATERIAL = sys.argv[2]
-    {'slab': slab, 'fit': fit, 'pouch': pouch, 'plates': plates, 'gauge': gauge, 'assembly': assembly}.get(sys.argv[1] if sys.argv[1:] else '', main)()
+    {'slab': slab, 'fit': fit, 'pouch': pouch, 'plates': plates, 'gauge': gauge, 'flat': flat, 'assembly': assembly}.get(sys.argv[1] if sys.argv[1:] else '', main)()
