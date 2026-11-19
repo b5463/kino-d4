@@ -68,25 +68,25 @@
 | nothing but silk inside the 7 mm fastener allowance | pass | 4 holes clear |
 | tallest part on the P4 face recorded | pass | 8.5 mm (J100 socket: it sets the 11.0 mm stack with the header base); next J102 at 4.3 mm |
 | C10758 SMAJ5.0A | pass | expand, stock 11585, recorded extended |
-| C14663 100n | pass | base, stock 53637064, recorded basic |
-| C15849 1u | pass | base, stock 12071476, recorded basic |
-| C160404 QWIIC 3V3 I2C | pass | expand, stock 9379, recorded extended |
-| C21189 0R | pass | base, stock 15893556, recorded basic |
-| C21190 1k | pass | base, stock 30433234, recorded basic |
-| C2286 LED red | pass | base, stock 8585530, recorded basic |
-| C2297 LED green | pass | base, stock 3068250, recorded basic |
-| C23162 4.7k | pass | base, stock 15765999, recorded basic |
-| C23179 470R | pass | base, stock 4183372, recorded basic |
-| C23186 5.1k | pass | base, stock 18624466, recorded basic |
-| C23352 24k | pass | base, stock 669337, recorded basic |
-| C2869734 LM66100DCKR | pass | expand, stock 27663, recorded extended |
-| C2941042 LM74700QDBVRQ1 | pass | expand, stock 9544, recorded extended |
-| C3020560 USB-C 5V | pass | expand, stock 13430, recorded extended |
-| C4190 2.2k | pass | base, stock 4226309, recorded basic |
-| C45783 22u | pass | base, stock 3633623, recorded basic |
-| C55266 TPS2553DBVR | pass | expand, stock 44404, recorded extended |
+| C14663 100n | pass | base, stock 53999007, recorded basic |
+| C15849 1u | pass | base, stock 12070192, recorded basic |
+| C160404 QWIIC 3V3 I2C | pass | expand, stock 9299, recorded extended |
+| C21189 0R | pass | base, stock 15892771, recorded basic |
+| C21190 1k | pass | base, stock 30430867, recorded basic |
+| C2286 LED red | pass | base, stock 8585082, recorded basic |
+| C2297 LED green | pass | base, stock 3067494, recorded basic |
+| C23162 4.7k | pass | base, stock 15764877, recorded basic |
+| C23179 470R | pass | base, stock 4183007, recorded basic |
+| C23186 5.1k | pass | base, stock 18623892, recorded basic |
+| C23352 24k | pass | base, stock 669317, recorded basic |
+| C2869734 LM66100DCKR | pass | expand, stock 27638, recorded extended |
+| C2941042 LM74700QDBVRQ1 | pass | expand, stock 9514, recorded extended |
+| C3020560 USB-C 5V | pass | expand, stock 13345, recorded extended |
+| C4190 2.2k | pass | base, stock 4225613, recorded basic |
+| C45783 22u | pass | base, stock 3632941, recorded basic |
+| C55266 TPS2553DBVR | pass | expand, stock 44384, recorded extended |
 | C67272 IRLML0030TRPBF | pass | expand, stock 59977, recorded extended |
-| C7519 USBLC6-2SC6 | pass | expand, stock 30392, recorded extended |
+| C7519 USBLC6-2SC6 | pass | expand, stock 30118, recorded extended |
 | gerber layers and drill present | pass | .csv, .drl, .gbl, .gbo, .gbp, .gbr, .gbrjob, .gbs, .gm1, .gtl, .gto, .gtp, .gts, .txt |
 | CPL lists every SMT part once and nothing else | pass | 70 rows |
 | BOM designators equal the CPL | pass | 70 designators |

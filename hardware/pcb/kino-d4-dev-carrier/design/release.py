@@ -70,8 +70,10 @@ def cpl():
     for fp in b.GetFootprints():
         if fit.get(fp.GetReference()) != 'smt':
             continue
+        # The Gerber frame: KiCad's absolute origin, y up, the board at 50,50. The assembler lays the CPL over
+        # the Gerbers in one frame; a CPL in the board frame (50 off) was auto-aligned one camera pitch off.
         pos = fp.GetPosition()
-        rows.append([fp.GetReference(), f'{pos.x / 1e6 - 50:.3f}mm', f'{-(pos.y / 1e6 - 50):.3f}mm',
+        rows.append([fp.GetReference(), f'{pos.x / 1e6:.3f}mm', f'{-pos.y / 1e6:.3f}mm',
                      'Bottom' if fp.IsFlipped() else 'Top', f'{fp.GetOrientationDegrees():.1f}'])
     rows.sort()
     with (FAB / 'CPL-D1-JLC.csv').open('w', newline='', encoding='utf-8') as f:
@@ -89,7 +91,7 @@ Board: 118.40 x 70.80 mm, 3 mm corner radius, 2 layers, 1.6 mm FR-4, 1 oz copper
 Minimum track and gap 0.15 mm, minimum drill 0.3 mm, no via-in-pad, no castellations.
 Assembly: SMT on the BOTTOM face only ("SIDE B" on the legend). {summary['cpl']['placed']} placements,
 {summary['bom']['smt_lines']} BOM lines, {summary['bom']['extended_lines']} from the extended library.
-Placement coordinates: KiCad board origin, Y up, mm. Rotations are KiCad's: check the assembler's preview
+Placement coordinates: the Gerber frame (KiCad absolute origin, the board outline at x 49.3 to 167.7, y -120.1 to -49.3), Y up, mm. Rotations are KiCad's: check the assembler's preview
 for the SOT-23-6 switches (U200-U500), the diodes and the LEDs before confirming.
 Hand-fit after assembly (BOM-D1-HANDFIT.csv): XIAO sockets, the P4 JP1 socket, the C6 and remote headers,
 the four LINK headers, the shutter switch.
