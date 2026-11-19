@@ -69,7 +69,9 @@ PLACE = {
     'JP1001': (109.0, 47.0, 0, 'B'),   # USB > rail bridge, above the fuse
     'U1002': (93.0, 55.5, 0, 'B'), 'Q1000': (98.5, 55.5, 0, 'B'), 'C1005': (89.2, 55.5, 90, 'B'),
 'C1006': (97.0, 59.3, 0, 'B'), 'C1007': (102.0, 55.5, 90, 'B'),   # anode and cathode capacitors at the FET   # VBUS ideal diode toward J1001, between the CAM4 pads and the LED row
-    'D1003': (113.5, 19.0, 0, 'B'),     # rail clamp above J1001's pins, under the identity line
+    # Rail clamp above J1001's pins, under the identity line. Turned 180 with the net swap of 2026-11-19 so the
+    # cathode pad sits where the 5V_IN copper already ended: the routed session imports unchanged.
+    'D1003': (113.5, 19.0, 180, 'B'),
     'J1001': (110.5, 23.0, 270, 'F'),   # JST XH 6-way to the SW6106 module, right of the J100 socket, pins 1..6 down from y 23
     'C1000': (106.5, 56.5, 90, 'B'),
     'C1001': (111.5, 56.5, 90, 'B'),

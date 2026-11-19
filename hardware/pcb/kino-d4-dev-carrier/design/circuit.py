@@ -165,8 +165,10 @@ add('02_power', 'U1001', 'LM66100DCKR', {1: '5V_IN', 2: 'GND', 3: 'P4_5V', 4: No
     note='CE tied to VOUT: reverse-current blocking, off within 35 mV typ of VOUT > VIN, on again at VIN > VOUT + 150 mV. '
          '1.5 A continuous, 79 mOhm typ at 5 V: about 0.1 V drop at 1 A. ST to GND (not used).')
 cap('02_power', 'C1003', '1u', '5V_IN', note='LM66100 input, TI power supply recommendations.')
-two('02_power', 'D1003', 'SMAJ5.0A', 'GND', '5V_IN', 'Diode_SMD:D_SMA', names=('K', 'A'), mpn='SMAJ5.0A', lcsc='C10758', basic=False,
-    note='Rail clamp at J1001: 6.4 V breakdown, 9.2 V at 43 A. Catches SW6106 output overshoot and hot-plug transients; '
+# Cathode (pin 1, the bar) on the rail, anode on GND: reverse-biased below 6.4 V. The first file had it the other
+# way, a forward diode across the rail, caught in JLC's placement preview on 2026-11-19 (verify.py checks it now).
+two('02_power', 'D1003', 'SMAJ5.0A', '5V_IN', 'GND', 'Diode_SMD:D_SMA', names=('K', 'A'), mpn='SMAJ5.0A', lcsc='C10758', basic=False,
+    note='Rail clamp at J1001, cathode on the rail: 6.4 V breakdown, 9.2 V at 43 A. Catches SW6106 output overshoot and hot-plug transients; '
          'it does not survive a sustained 9 V, so nothing on the module output may negotiate PD.')
 cap('02_power', 'C1004', '1u', 'P4_5V')
 

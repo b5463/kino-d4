@@ -70,6 +70,8 @@ def intent(pads):
     leds = {'D1000': ('GND', '5V_IN_LED'), 'D1001': ('CAM_EN_LED', 'CAM_PWR_EN'), 'D1002': ('FAULT_N', 'FAULT_LED')}
     for ref, (k, a) in leds.items():
         check(f'LED {ref} polarity', pin(ref, 1) == k and pin(ref, 2) == a, f"K={pin(ref, 1)} A={pin(ref, 2)}")
+    check('TVS D1003 polarity: cathode (pin 1) on the rail, anode on GND', pin('D1003', 1) == '5V_IN' and pin('D1003', 2) == 'GND',
+          f"K={pin('D1003', 1)} A={pin('D1003', 2)}")
     check('FAULT_N has exactly one pull-up (the FLT LED chain)', {r for r in pads['FAULT_N'] if not r.startswith('U')} == {'D1002.1', 'TP107.1', 'TP116.1'})
     check('ideal diode U1001: rail in, P4 5 V out, CE on VOUT',
           pin('U1001', 1) == '5V_IN' and pin('U1001', 6) == 'P4_5V' and pin('U1001', 3) == 'P4_5V' and pin('U1001', 2) == 'GND')

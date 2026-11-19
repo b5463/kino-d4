@@ -1,6 +1,6 @@
 # Dev carrier D1 pre-build verification
 
-87 of 87 checks pass.
+88 of 88 checks pass.
 
 | Check | Result | Detail |
 |---|---|---|
@@ -24,6 +24,7 @@
 | LED D1000 polarity | pass | K=GND A=5V_IN_LED |
 | LED D1001 polarity | pass | K=CAM_EN_LED A=CAM_PWR_EN |
 | LED D1002 polarity | pass | K=FAULT_N A=FAULT_LED |
+| TVS D1003 polarity: cathode (pin 1) on the rail, anode on GND | pass | K=5V_IN A=GND |
 | FAULT_N has exactly one pull-up (the FLT LED chain) | pass |  |
 | ideal diode U1001: rail in, P4 5 V out, CE on VOUT | pass |  |
 | no other path from the rail to P4_5V | pass | C1004.1, J100.2, J100.4, TP111.1, U1001.3, U1001.6 |
@@ -43,7 +44,7 @@
 | XIAO socket J400: D1 sync, D6 TX, D7 RX, 3V3/GND/5V | pass |  |
 | XIAO socket J500: D1 sync, D6 TX, D7 RX, 3V3/GND/5V | pass |  |
 | bus-net vias doubled (3 A path) | pass | 26 vias, all paired or on a test-pad or clamp branch |
-| node-net single vias carry one node only | pass | 2 single: CAM1_5VJ (18.3,34.0); CAM2_5V (41.1,36.6) |
+| node-net single vias carry one node only | pass | 2 single: CAM2_5V (41.1,36.6); CAM1_5VJ (18.3,34.0) |
 | 5V_IN at 1.0 mm end to end | pass | 321 mm, 162.8 mohm |
 | P4_5V at 1.0 mm end to end | pass | 42 mm, 22.4 mohm |
 | VBUS_F at 1.0 mm end to end | pass | 42 mm, 26.9 mohm |
@@ -68,25 +69,25 @@
 | nothing but silk inside the 7 mm fastener allowance | pass | 4 holes clear |
 | tallest part on the P4 face recorded | pass | 8.5 mm (J100 socket: it sets the 11.0 mm stack with the header base); next J102 at 4.3 mm |
 | C10758 SMAJ5.0A | pass | expand, stock 11585, recorded extended |
-| C14663 100n | pass | base, stock 53999007, recorded basic |
-| C15849 1u | pass | base, stock 12070192, recorded basic |
+| C14663 100n | pass | base, stock 53996787, recorded basic |
+| C15849 1u | pass | base, stock 12070074, recorded basic |
 | C160404 QWIIC 3V3 I2C | pass | expand, stock 9299, recorded extended |
-| C21189 0R | pass | base, stock 15892771, recorded basic |
-| C21190 1k | pass | base, stock 30430867, recorded basic |
-| C2286 LED red | pass | base, stock 8585082, recorded basic |
-| C2297 LED green | pass | base, stock 3067494, recorded basic |
-| C23162 4.7k | pass | base, stock 15764877, recorded basic |
-| C23179 470R | pass | base, stock 4183007, recorded basic |
-| C23186 5.1k | pass | base, stock 18623892, recorded basic |
+| C21189 0R | pass | base, stock 15892661, recorded basic |
+| C21190 1k | pass | base, stock 30430701, recorded basic |
+| C2286 LED red | pass | base, stock 8585080, recorded basic |
+| C2297 LED green | pass | base, stock 3067462, recorded basic |
+| C23162 4.7k | pass | base, stock 15764677, recorded basic |
+| C23179 470R | pass | base, stock 4182947, recorded basic |
+| C23186 5.1k | pass | base, stock 18623883, recorded basic |
 | C23352 24k | pass | base, stock 669317, recorded basic |
 | C2869734 LM66100DCKR | pass | expand, stock 27638, recorded extended |
 | C2941042 LM74700QDBVRQ1 | pass | expand, stock 9514, recorded extended |
 | C3020560 USB-C 5V | pass | expand, stock 13345, recorded extended |
 | C4190 2.2k | pass | base, stock 4225613, recorded basic |
-| C45783 22u | pass | base, stock 3632941, recorded basic |
+| C45783 22u | pass | base, stock 3632851, recorded basic |
 | C55266 TPS2553DBVR | pass | expand, stock 44384, recorded extended |
 | C67272 IRLML0030TRPBF | pass | expand, stock 59977, recorded extended |
-| C7519 USBLC6-2SC6 | pass | expand, stock 30118, recorded extended |
+| C7519 USBLC6-2SC6 | pass | expand, stock 29992, recorded extended |
 | gerber layers and drill present | pass | .csv, .drl, .gbl, .gbo, .gbp, .gbr, .gbrjob, .gbs, .gm1, .gtl, .gto, .gtp, .gts, .txt |
 | CPL lists every SMT part once and nothing else | pass | 70 rows |
 | BOM designators equal the CPL | pass | 70 designators |
