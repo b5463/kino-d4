@@ -106,7 +106,7 @@ const onePart = (name, m) => check(`${name} is one part`, m.decompose().length =
   check("the module's PCB has the plate to land on", Z.plateInner - Z.senseTop >= P.camModulePcbT + 0.3,
     `${r2(Z.plateInner - Z.senseTop)} mm from the Sense board's top to the plate's inner face, for a ${P.camModulePcbT} mm module PCB and its fold`);
   check("the face covers the shell's front, inset from the outline", FACE.outline.every((v, i) => Math.abs(Math.abs(v - XY.outer[i]) - P.faceInset) < 1e-9) && FACE.back === Z.plateFront,
-    `${r2(FACE.outline[2] - FACE.outline[0])} x ${r2(FACE.outline[3] - FACE.outline[1])} face on the plate, ${P.faceBase} mm thick with an R${P.faceEdgeR} edge`);
+    `${r2(FACE.outline[2] - FACE.outline[0])} x ${r2(FACE.outline[3] - FACE.outline[1])} face on the plate, ${P.faceBase} mm thick with a ${P.faceEdgeR} mm chamfer`);
   check("plan corner leaves wall on the diagonal", P.cornerR <= (P.wall + P.carrierClear) * (1 + Math.SQRT2) - 1.0,
     `R${P.cornerR} outer corner against the cavity's near-square corner: ${r2(P.cornerR - (P.cornerR - P.wall - P.carrierClear) * Math.SQRT2)} mm of wall on the diagonal, ${r2(P.cornerR - (P.cornerR - P.wall - P.carrierClear) * Math.SQRT2 - P.grooveD)} under a groove`);
   check("the face steps in from the shell and still covers the pins", P.faceInset >= 0.5 && P.faceInset + P.facePinD / 2 + 0.4 <= P.wall / 2,
@@ -233,7 +233,7 @@ check("layer grooves leave the wall", P.wall - P.grooveD >= 4.0, `${P.grooveD} m
   check("shutter plunger stem is positive", T.stem > 2.0, `${r2(T.stem)} mm stem; press face ${P.shutterProud} mm proud of the top face plus the dome`);
   check("retainer passes its bore and seats on the pod", P.shutterRetainerCupD + 0.2 <= P.shutterAssemblyAccessD && P.shutterRetainerPlateD > P.shutterAssemblyAccessD && P.shutterRetainerPlateD <= P.shutterPodW - 2 && P.shutterActuatorFlangeD + 0.2 <= P.shutterAssemblyAccessD,
     `${P.shutterRetainerCupD} cup and ${P.shutterActuatorFlangeD} flange through ${P.shutterAssemblyAccessD}; ${P.shutterRetainerPlateD} plate on a ${P.shutterPodW} pod`);
-  check("the deck carries the button and nothing else", P.deckPlateauX < X - P.shutterCollarD / 2 - 2, `plateau from X ${P.deckPlateauX}; the collar at X ${r2(X - P.shutterCollarD / 2)}; the name is inside, on the face`);
+  check("the deck carries the button and nothing else, grooved whole", P.deckRing >= 1.0 && P.deckRing <= 3.0, `grooves over the whole deck; a ${P.deckRing} mm ring round the ${P.shutterCollarD} collar; the name is inside, on the face`);
 }
 for (const [i, [x0, y0, x1, y1]] of S.strapSlots.entries()) {
   openProbe(`strap slot ${i} open through the frame`, box(x0 + 0.1, y0 + 0.1, Z.frameRear - 0.3, x1 - 0.1, y1 - 0.1, Z.glass + 0.3), `${P.strapSlot[0]} x ${P.strapSlot[1]} mm through the frame's border`, frame);

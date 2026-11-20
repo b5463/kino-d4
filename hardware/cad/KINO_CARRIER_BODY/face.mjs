@@ -69,16 +69,14 @@ export function buildFace() {
   const F = FACE;
   const [fx0, fy0, fx1, fy1] = F.outline;
   const solids = [], cuts = [];
-  // The plate, its edge a quarter round: a hull of insetting slices on a
-  // quarter circle, every slice face up-and-out in print. Nothing below F.back.
+  // The plate, its front edge a 45 degree chamfer of faceEdgeR: one hull.
+  // Rounds in plan, chamfers in Z: a quarter round here terraced at 0.2 mm
+  // layers (1.17, 0.46, 0.33 mm steps on the first edge a hand meets); the
+  // chamfer steps one layer each and reads as the grooves do.
   {
-    const R = P.faceEdgeR, n = 8, slices = [];
-    for (let k = 0; k <= n; k++) {
-      const th = (Math.PI / 2) * (k / n);
-      const ins = R * (1 - Math.cos(th));
-      const z = Math.min(F.front - 0.01, F.front - R * (1 - Math.sin(th)));
-      slices.push(roundedRectZ(fx0 + ins, fy0 + ins, z, fx1 - fx0 - 2 * ins, fy1 - fy0 - 2 * ins, 0.01, Math.max(0.5, F.outlineR - ins)));
-    }
+    const R = P.faceEdgeR, slices = [];
+    slices.push(roundedRectZ(fx0 + R, fy0 + R, F.front - 0.01, fx1 - fx0 - 2 * R, fy1 - fy0 - 2 * R, 0.01, Math.max(0.5, F.outlineR - R)));
+    slices.push(roundedRectZ(fx0, fy0, F.front - R - 0.01, fx1 - fx0, fy1 - fy0, 0.01, F.outlineR));
     // The back outer edge chamfered bedChamfer in the same hull: the elephant
     // foot would otherwise show as a bright lip under the pillow round and eat
     // the charcoal reveal. Exactly 45 degrees (the gate counts 44 as overhang).
@@ -113,8 +111,17 @@ export function buildFace() {
     const sym = sy0.area() > 0 ? sy0 : new CrossSection([pts.slice().reverse()], "Positive");
     cuts.push(fuse([wm.extrude(P.innerMarkD + 1), model.extrude(P.innerMarkD + 1), sym.extrude(P.innerMarkD + 1)]).translate([0, 0, F.back - 1]));
   }
-  // The horizon: edge to edge, open at both ends through the round.
+  // The horizon: edge to edge, open at both ends through the chamfer, its
+  // two lips chamfered (upper 0.8, lower 0.4) so the line catches light from
+  // every angle; a flat-floored slot had no highlight. Cut from the top of a
+  // back-down print, so no overhang.
   cuts.push(box(fx0 - 2, F.horizon[0], F.trackTop, fx1 + 2, F.horizon[1], F.front + 2));
+  {
+    const prismX = (x, len, ...ptsYZ) => Manifold.hull(ptsYZ.map(([y, z]) => cube(x, y - 0.01, z - 0.01, len, 0.02, 0.02)));
+    const [ct, cb] = P.horizonChamfer, [h0, h1] = F.horizon;
+    cuts.push(prismX(fx0 - 2, fx1 - fx0 + 4, [h1 - 0.01, F.front + 0.01], [h1 + ct, F.front + 0.01], [h1 - 0.01, F.front - ct]));
+    cuts.push(prismX(fx0 - 2, fx1 - fx0 + 4, [h0 + 0.01, F.front + 0.01], [h0 - cb, F.front + 0.01], [h0 + 0.01, F.front - cb]));
+  }
   // The grip: the horizon's right end, deeper.
   cuts.push(box(P.gripX0, F.horizon[0], F.front - P.gripD, fx1 + 2, F.horizon[1], F.front + 2));
   // The recessed panel: the cover's track, cut below the groove's floor.
@@ -126,16 +133,21 @@ export function buildFace() {
   // The lip's slot through the roof, the roof's full height: from the panel's
   // bottom rim up into the horizon, so every bridge line of the roof lands on
   // a wall at both ends (a slot that stopped short left free-ended bridges).
+  // Its X is the lip's: from coverLipLeft off the bar's left edge, past the
+  // wordmark's end, so the slot frames plain bar.
   const lw0 = P.coverLip[0] + 2 * P.lipSlotClear;
-  cuts.push(box((p0x + p1x) / 2 - lw0 / 2, p0y + 1.0, F.trackTop - 0.01, (p0x + p1x) / 2 + lw0 / 2, F.horizon[0] + 0.5, F.front + 2));
+  const lipX0 = p0x + P.sliderClr + P.coverLipLeft;
+  cuts.push(box(lipX0 - P.lipSlotClear, p0y + 1.0, F.trackTop - 0.01, lipX0 + P.coverLip[0] + P.lipSlotClear, F.horizon[0] + 0.5, F.front + 2));
   // The keeper: the block in the gap, less keeperClr on its fitted sides, the
   // track's stop, flush with the face's front; glued in once the cover is in.
   // Its back edges are chamfered against the elephant foot.
   const kx0 = p0x + P.keeperClr, kx1 = p1x - P.keeperClr, ky0 = gapY0 + 0.3, ky1 = p0y - P.keeperClr, c = P.bedChamfer;
-  const keeper = status("keeper", Manifold.hull([
+  // Cut from the plate's own solid, so the face's edge chamfer runs through
+  // it: a flat-fronted block stood proud of the chamfer at its lower corner.
+  const keeper = status("keeper", solids[0].intersect(Manifold.hull([
     box(kx0 + c, ky0 + c, F.floorZ, kx1 - c, ky1 - c, F.floorZ + 0.01),
-    box(kx0, ky0, F.floorZ + c + 0.01, kx1, ky1, F.front),
-  ]));
+    box(kx0, ky0, F.floorZ + c + 0.01, kx1, ky1, F.front + 1),
+  ])));
   cuts.push(gapCut);
   // Lens cells: bore, then two stepped cones opening forward.
   for (const lx of P.cameraXs) {
@@ -143,6 +155,8 @@ export function buildFace() {
       // The view cone never outgrows the bore inside the plate: one bore
       // (two zero-taper cones on top of it left degenerate triangles).
       cuts.push(cylZ(lx, F.lensY, F.back - 1, F.boreR, F.floorZ - F.back + 1.02));
+      // A 45 degree rim at the mouth, in the track floor: eyes, not holes.
+      cuts.push(coneZ(lx, F.lensY, F.floorZ - P.cellSink, F.boreR, F.boreR + P.cellSink + 0.01, P.cellSink + 0.01, 64));
     } else {
       cuts.push(cylZ(lx, F.lensY, F.back - 1, F.boreR, F.zBore - F.back + 1));
       cuts.push(coneZ(lx, F.lensY, F.zBore - 0.01, F.boreR, F.midR, F.zMid - F.zBore + 0.01));
@@ -186,7 +200,7 @@ export function buildFace() {
   // The lip stands coverLipAboveFace proud of the face, closed and stowed.
   const [lw, lh] = P.coverLip;
   const lipProud = (F.front - sFront) + P.coverLipAboveFace;
-  const lip = roundedRectZ((sx0 + sx1) / 2 - lw / 2, sy1 - lh, sFront - 0.4, lw, lh, lipProud + 0.4, 0.6);
+  const lip = roundedRectZ(sx0 + P.coverLipLeft, sy1 - lh, sFront - 0.4, lw, lh, lipProud + 0.4, 0.6);
   // The brand's wordmark, raised off the bar, left-aligned as the brand sets its plate.
   const ms = P.markW / MAKER.widthMm, mw = P.markW, mh = MAKER.heightMm * ms;
   const bandY0 = sy0 + 1.0, bandY1 = sy1 - lh - 0.8;

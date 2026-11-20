@@ -12,7 +12,7 @@
 // grooves on its right border and the ODD JOBS symbol engraved on its left,
 // both recesses because its rear face is the bed.
 import fs from "node:fs";
-import { Manifold, CrossSection, cube, box, cylZ, coneZ, fuse, rbox, status } from "./lib.mjs";
+import { Manifold, CrossSection, cube, box, cylZ, coneZ, cylY, fuse, rbox, status } from "./lib.mjs";
 import { P, Z, XY } from "./params.mjs";
 import { shutterPod } from "./shutter.mjs";
 
@@ -25,16 +25,19 @@ export const SHELL = (() => {
   // Strap: two slots per lower corner through the frame, over a channel in
   // the bottom wall's end between them. Slot X from the body's left edge,
   // mirrored at the right; Y inside the bottom wall's width.
-  const slotY = [oy0 + P.frameEdgeR + 0.2, oy0 + P.frameEdgeR + 0.2 + P.strapSlot[1]];
-  const strapSlots = [];
-  for (const side of [-1, 1]) for (const sx of P.strapSlotXs) {
-    const x0 = side < 0 ? ox0 + sx : ox1 - sx - P.strapSlot[0];
-    strapSlots.push([x0, slotY[0], x0 + P.strapSlot[0], slotY[1]]);
+  // A second pair at the top corners when strapTop: a neck cord then hangs
+  // the camera upright, button up; the bottom pair is the wrist loop.
+  const slotYs = [[oy0 + P.frameEdgeR + 0.2, oy0 + P.frameEdgeR + 0.2 + P.strapSlot[1]]];
+  if (P.strapTop) slotYs.push([oy1 - P.frameEdgeR - 0.2 - P.strapSlot[1], oy1 - P.frameEdgeR - 0.2]);
+  const strapSlots = [], strapChannels = [];
+  for (const slotY of slotYs) {
+    for (const side of [-1, 1]) for (const sx of P.strapSlotXs) {
+      const x0 = side < 0 ? ox0 + sx : ox1 - sx - P.strapSlot[0];
+      strapSlots.push([x0, slotY[0], x0 + P.strapSlot[0], slotY[1]]);
+    }
+    strapChannels.push([ox0 + P.strapSlotXs[0], slotY[0], ox0 + P.strapSlotXs[1] + P.strapSlot[0], slotY[1]]);
+    strapChannels.push([ox1 - P.strapSlotXs[1] - P.strapSlot[0], slotY[0], ox1 - P.strapSlotXs[0], slotY[1]]);
   }
-  const strapChannels = [
-    [ox0 + P.strapSlotXs[0], slotY[0], ox0 + P.strapSlotXs[1] + P.strapSlot[0], slotY[1]],
-    [ox1 - P.strapSlotXs[1] - P.strapSlot[0], slotY[0], ox1 - P.strapSlotXs[0], slotY[1]],
-  ];
   const pinXY = [
     ...P.facePinsTop.map((x) => [x, XY.wallMidY[1]]), ...P.facePinsBottom.map((x) => [x, XY.wallMidY[0]]),
     [ox0 + P.wall / 2, P.facePinsSideY], [ox1 - P.wall / 2, P.facePinsSideY],
@@ -92,19 +95,16 @@ export function buildShell() {
       ]);
       grooves.push(outerAt(-0.01, z - h, z + h).subtract(diamond));
     }
-    // All the way round, the deck included: the body is one thing. The deck
-    // is grooved left of deckPlateauX and one smooth plateau from there to
-    // the right wall, round the corner, carrying the name and the button.
-    const plateau = box(P.deckPlateauX, oy1 - P.cornerR - 0.5, Z.glass - 2, ox1 + 2, oy1 + 2, Z.plateFront + 2);
+    // All the way round, the deck included: the body is one thing, one idea
+    // carried through. One smooth ring of deckRing round the shutter collar.
+    const ring = cylY(P.shutterX, oy1 - P.wall - 2, P.shutterZ, P.shutterCollarD / 2 + P.deckRing, P.wall + 4);
     void MODEL;
-    shell = shell.subtract(fuse(grooves).subtract(plateau));
-    // The horizon carried round: the face's groove continues across both
-    // side walls from the front to the rear frame, at the bar's height.
+    shell = shell.subtract(fuse(grooves).subtract(ring));
+    // The horizon carried round the LEFT wall only, from the front to the rear
+    // frame at the bar's height. On the right the band erased the ribs under
+    // the two fingers that hold the camera: the line ends where the hand begins.
     const [hy0, hy1] = [XY.lensY - P.sliderH / 2 - P.horizonPad, XY.lensY + P.sliderH / 2 + P.horizonPad];
-    shell = shell.subtract(fuse([
-      box(ox0 - 1, hy0, Z.glass + 0.01, ox0 + P.horizonWallD, hy1, Z.plateFront + 1),
-      box(ox1 - P.horizonWallD, hy0, Z.glass + 0.01, ox1 + 1, hy1, Z.plateFront + 1),
-    ]));
+    shell = shell.subtract(box(ox0 - 1, hy0, Z.glass + 0.01, ox0 + P.horizonWallD, hy1, Z.plateFront + 1));
   }
 
   const pod = shutterPod();
@@ -138,6 +138,11 @@ export function buildShell() {
     // Exactly 45 degrees (the 0.01 overshoot in the radius, not the height).
     cuts.push(coneZ(lx, ly, Z.plateFront - P.lensBoreChamfer, P.lensBoreD / 2, P.lensBoreD / 2 + P.lensBoreChamfer + 0.01, P.lensBoreChamfer + 0.01, 64));
   }
+  // The rear outer edge chamfered bedChamfer too (the top edge in print,
+  // uniform steps): with the frame's bed edge chamfered the same, the joint
+  // is a drawn V on the groove rhythm instead of a 0.2 mm step under the palm.
+  cuts.push(outerAt(-1, Z.glass - 1, Z.glass + P.bedChamfer + 0.01).subtract(Manifold.hull([
+    outerAt(P.bedChamfer, Z.glass - 1, Z.glass), outerAt(0, Z.glass + P.bedChamfer, Z.glass + P.bedChamfer + 0.01)])));
   // The front outer edge chamfered: the bed edge, under the face's reveal.
   cuts.push(outerAt(-1, Z.plateFront - P.bedChamfer, Z.plateFront + 1).subtract(Manifold.hull([
     outerAt(P.bedChamfer, Z.plateFront, Z.plateFront + 0.01), outerAt(0, Z.plateFront - P.bedChamfer - 0.01, Z.plateFront - P.bedChamfer)])));
@@ -185,20 +190,18 @@ export function buildFrame() {
   const S = SHELL;
   const [ox0, oy0, ox1, oy1] = XY.outer;
   const [pcx, pcy] = XY.p4Centre;
-  // The outer edge rounded over frameEdgeR toward the rear: a hull of
-  // insetting slices on a quarter circle. Printed rear face UP, so the round
-  // faces up and the engraving and grooves are top-surface recesses.
-  const slices = [];
-  const R = P.frameEdgeR, n = Math.max(8, P.frameEdgeSteps);
-  for (let k = 0; k <= n; k++) {
-    const th = (Math.PI / 2) * (k / n);
-    const ins = R * (1 - Math.cos(th));
-    // Clamped a hair under the glass plane: with the round over the frame's
-    // full thickness the last slice otherwise lands 0.01 mm into the shell.
-    const z = Math.min(Z.glass - 0.02, Math.max(Z.frameRear, Z.frameRear + R * (1 - Math.sin(th))));
-    slices.push(rbox(ox0 + ins, oy0 + ins, z, ox1 - ins, oy1 - ins, z + 0.01, Math.max(0.5, P.cornerR - ins)));
-  }
-  slices.push(rbox(ox0, oy0, Z.glass - 0.01, ox1, oy1, Z.glass, P.cornerR));
+  // The outer edge chamfered frameEdgeR toward the rear and bedChamfer toward
+  // the shell: one hull of four slices. Printed rear face UP, so the rear
+  // chamfer faces up in even 0.2 steps and the engraving and grooves are
+  // top-surface recesses; the bed chamfer meets the shell's rear chamfer as
+  // a drawn V.
+  const R = P.frameEdgeR, bc = P.bedChamfer;
+  const slices = [
+    rbox(ox0 + R, oy0 + R, Z.frameRear, ox1 - R, oy1 - R, Z.frameRear + 0.01, Math.max(0.5, P.cornerR - R)),
+    rbox(ox0, oy0, Z.frameRear + R, ox1, oy1, Z.frameRear + R + 0.01, P.cornerR),
+    rbox(ox0, oy0, Z.glass - bc - 0.02, ox1, oy1, Z.glass - bc - 0.01, P.cornerR),   // rise exactly bc to the inset slice: 44 degrees counts as overhang
+    rbox(ox0 + bc, oy0 + bc, Z.glass - 0.01, ox1 - bc, oy1 - bc, Z.glass, Math.max(0.5, P.cornerR - bc)),
+  ];
   // The thumb pad stands off the rear face (raised is free: the rear is up
   // in print), with the body's own grooves across it: texture, not a rocker.
   const padZ0 = Z.frameRear - P.thumbPadProud;
@@ -215,10 +218,10 @@ export function buildFrame() {
   for (const x of P.frameScrewXs) for (const y of XY.wallMidY) {
     cuts.push(cylZ(x, y, Z.frameRear - 3, P.frameScrewHoleD / 2, P.rearFrameT + 4, 24));
   }
-  for (let y = P.thumbPadY[0] + 2.4; y + 0.8 <= P.thumbPadY[1] - 2.0; y += P.grooveP) {
-    cuts.push(box(P.thumbPadX[0] - 1, y, padZ0 - 1, P.thumbPadX[1] + 1, y + 0.8, padZ0 + P.grooveD));
+  for (let y = P.thumbPadY[0] + 2.4; y + P.thumbGroove[0] <= P.thumbPadY[1] - 2.0; y += P.grooveP) {
+    cuts.push(box(P.thumbPadX[0] - 1, y, padZ0 - 1, P.thumbPadX[1] + 1, y + P.thumbGroove[0], padZ0 + P.thumbGroove[1]));
   }
-  // The strap slots through the frame's border at both lower corners.
+  // The strap slots through the frame's border at the corners.
   for (const [x0, y0, x1, y1] of S.strapSlots) cuts.push(box(x0, y0, Z.frameRear - 3, x1, y1, Z.glass + 1));
   // The ODD JOBS symbol, engraved on the left border, deep enough to read as
   // shadow, with a shallower step outside its outline. Pixel rows run down.

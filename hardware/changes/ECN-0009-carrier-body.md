@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; seventh cut generated and gated, nothing printed; the night colourway prints first |
+| Status | Design in progress; eighth cut generated and gated, nothing printed; the night colourway prints first |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -146,18 +146,50 @@ owner's printer. Two parts:
   the cover's flush at 1.5 mm, bed temperatures, five coupons) is in the
   package README. Face 6.0 (horizon 1.5 + track 3.0 + 1.25 under the
   floor); 128.4 x 80.8 x 62.7 mm, the body 10.0 of it.
+- **After the award cameras** (eighth cut, 2026-11-21; the owner: printable
+  and recognisable, read the winners first, then run the judges again).
+  The juries' words for the camera winners of Red Dot, iF and Good Design
+  2014 to 2026 and the reviews that followed them into use were read and
+  set down in the package README (one idea carried through; a silhouette
+  drawn from memory; the ritual visible; reduce controls, never grip; no
+  strap is a fault; decoration in costume is marked down; the jury holds
+  the print). Two jurors and a print foreman then judged the seventh cut's
+  renders and files against them. Taken: the deck grooved whole with a
+  1.5 mm ring round the collar (the plateau carried a name that was gone);
+  rounds in plan, chamfers in Z (the face's R3.5 pillow terraced 1.17,
+  0.46, 0.33 mm at 0.2 layers along the first edge a hand meets: now a
+  2 mm 45 degree chamfer; the frame's R1.5 now 1.2; the R18 dome, a 3.4 mm
+  disc and rings under the finger, now a flat cap with a 0.5 edge); the
+  grip 3.5 deep and the horizon carried round the left wall only, so the
+  ribs run unbroken under the fingers on the right; the horizon's lips
+  chamfered 0.8 and 0.4 so the line reads from the front; the cover's lip
+  30 wide at 40 to 70 mm off the bar's left end and 1.0 proud, so the slot
+  frames plain bar (a letter showed) and the slide is visible as a slide;
+  0.8 mm rims on the cells (eyes, not a microphone array); the collar 0.4
+  deep and round (an arrow at 1.6); a second strap pair at the top corners
+  (a neck cord hung the camera inverted) and 3.0 x 2.4 slots for a 2.5 mm
+  cord; the shell's rear edge and the frame's bed edge chamfered 0.4 so
+  the joint is a drawn V on the groove rhythm; every bed chamfer 0.4 (two
+  whole layers); the groove waist on a whole layer at Z -6.6; the keeper
+  cut from the face's solid; thumb grooves 1.0 x 0.6; the roof's clearance
+  0.3; the frame screws at X 17 to clear the top tunnels; the print plan's
+  flush at 2.00 mm, purge, seams, 0.12 layers on the frame, no ironing.
+  Not taken: a keeper pin (3.6 mm wide block), rear screw counterbores
+  (the wall cannot give 0.4), a fake lens tell on the closed front (the
+  four cells behind one bar are the signature; closed, the button says
+  camera). Face 6.1; 128.4 x 80.8 x 62.8 mm, the body 10.1 of it.
 
 Depth, re-added by a gate every build: 2.5 frame + 13.8 module + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
-(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 6.0 face
-= 62.7 mm, against the field body's 74.5 over its lens bar. The body is 10.0
+(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 6.1 face
+= 62.8 mm, against the field body's 74.5 over its lens bar. The body is 10.1
 of it; the XIAO connectors (11.0) are the one
 stack term the bench can shorten, with low-profile sockets and bare pins. The plate's inner face lands at Z 35.4
 from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-151 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
+159 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
 front on the pocket floor, the face inset from the outline and over the
 pins, the plan corner's wall on the diagonal, the roof over the stow zone
 clear of the cover and its mark, the lip's slot, the keeper clear of the
@@ -192,7 +224,32 @@ zero-taper cones left on a bore that no longer needed them (four degenerate
 triangles), a pocket probe sized for two ribbed walls when the pocket has
 one per axis, a straight-line cone probe that overshot the real cone at
 the track floor, and chamfers drawn with their 0.01 overshoot in the height
-(44 degrees, counted as overhang) instead of the radius.
+(44 degrees, counted as overhang) instead of the radius. In the eighth: the
+frame's bed chamfer drawn 0.39 high (61 mm^2 at 44 degrees), and the
+panel datum moving 1.5 mm with the face's edge (the mid-travel probe
+touched a detent) until `bandBottomInset` was re-based on the chamfer.
+
+## Sources read for the eighth cut
+
+The owner asked (2026-11-20) that the body be printable and recognisable and
+that the award winners be studied before the judges ran again. Read:
+[Sigma BF, Red Dot Best of the Best 2026](https://press.sigmaphoto.com/corporate/05/sigma-bf-wins-red-dot-best-of-the-best-in-red-dot-award-product-design-2026/),
+[Sigma BF, iF Gold 2026](https://press.sigmaphoto.com/corporate/03/sigma-bf-camera-wins-if-design-award-2026-gold/),
+[Sigma BF, Good Design Gold 2025](https://press.sigmaphoto.com/corporate/10/sigma-bf-camera-wins-good-design-gold-award-and-minister-of-economy-trade-and-industry-award/),
+[Sigma BF reviews: "minimal to a fault"](https://www.engadget.com/cameras/sigma-bf-hands-on-minimal-to-a-fault-144024445.html) and
+[PetaPixel](https://petapixel.com/2025/03/06/sigma-bf-review-riding-the-knifes-edge-of-too-simple/),
+[Fujifilm GFX100RF, Red Dot](https://www.red-dot.org/project/fujifilm-gfx100rf-89157),
+[Leica T, Red Dot](https://www.red-dot.org/project/leica-t-33976) and
+[its touchscreen reviews](https://www.dpreview.com/reviews/leica-t-typ701),
+[Instax mini Evo Brown, Red Dot Best of the Best 2024](https://www.red-dot.org/ko/magazine/fujifilm-instax-mini-evotm-brown),
+[Ricoh GR IV, Good Design 2025](https://www.digitalcameraworld.com/photography/awards-and-competitions/cult-compact-camera-wins-major-design-award-for-its-redefined-minimalist-style),
+[Red Dot judging criteria](https://www.red-dot.org/pd/red-dot-jury-1),
+[Fujifilm X half reviews](https://www.dpreview.com/reviews/2988698485/1),
+[Hasselblad X1D reviews](https://www.techradar.com/reviews/hasselblad-x1d-review),
+[Camp Snap](https://www.techradar.com/cameras/compact-cameras/camp-snap-camera-review),
+[Paper Shoot](https://www.digitalcameraworld.com/uk/reviews/paper-shoot-paper-camera-review),
+[Kodak Charmera](https://petapixel.com/2025/12/20/kodak-charmera-review-reto-makes-a-retro-redo/).
+The lessons are in the package README ("What the award cameras taught").
 
 ## Compatibility
 
