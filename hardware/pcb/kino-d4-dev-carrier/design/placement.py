@@ -28,10 +28,10 @@ CORNER_R = 3.0                  # the outline's corner radius; the inserts sit 7
 # only mount with the modules outward, had the USB window off the ports, and the flat plate had lined up
 # only when set on upside down. So every feature read from the drawing is mirrored about the short-axis
 # centre line y = 34.705 (the inserts and the header pattern are symmetric about it; the ports are not).
-# The ports below are the mirrored positions. Which end of JP1 holds pin 1 the mirror leaves open: the
-# header pattern cannot tell, and a standard-numbered header can only mate the socket as drawn (pin 1 at
-# this datum) or as its 180-degree turn (pin 1 at (103.92, 49.945), the far column, the far end). The
-# meter decides before routing: JP1's 3V3 corner pin, with 5 V beside it in the same row (README).
+# The ports below are the mirrored positions. Which end of JP1 holds pin 1 the mirror left open (the
+# header pattern cannot tell; the only other candidate was the 180-degree turn, pin 1 at (103.92, 49.945)).
+# Settled by meter on 2026-11-20: 3.3 V on this pin, 5 V beside it in the same row. Pin 1 is as filed:
+# the column nearer the USB-C ports, the end away from the lone third port.
 P4_JP1 = (101.38, 19.465)
 # The P4's two vertical USB-C receptacles (openings face the carrier), same drawing, mirrored: 8.9 x 3.2 mm
 # openings, long axis along y, 10.94 mm apart. A third 8.3 x 3.3 mm port is drawn at (95.2, 49.4),
