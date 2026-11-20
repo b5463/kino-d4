@@ -72,18 +72,27 @@ owner's printer. Two parts:
   bar) and dropped it is the four-mark. Three filaments, one part each. A rim
   pocket (the face flush inside walls run past the plate) was drawn first and
   thrown out: face down, the recessed plate is 10,000 mm^2 of overhang.
+- **Not a box** (fourth cut, the owner's call on the first render): plan
+  corners R10 (2.65 mm of wall on the diagonal, gated; the carrier's
+  near-square corner forbids more), the face a full-front 3.5 mm pillow with
+  an R3.5 round over the walls' ends, the rear frame 5 mm with an R4 round
+  and printed rear face up for it, the band pill-ended, the rivets and the
+  shutter cap domed (R18), the strap tab rounded about its hole, a reveal
+  line where the layer grooves stop so the top deck reads as a cap. 128.0 x
+  80.4 x 66.7 mm over the band.
 
-Depth, re-added by a gate every build: 3.0 frame + 13.8 module + 3.3 inserts
+Depth, re-added by a gate every build: 5.0 frame + 13.8 module + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
-(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 2.5 face base +
-4.0 lens band = 63.7 mm over the band, against the field body's 74.5 over its
+(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 3.5 face +
+4.0 lens band = 66.7 mm over the band, against the field body's 74.5 over its
 lens bar. The plate's inner face lands at Z 35.4
 from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-122 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
-front on the pocket floor, the face inside its margin, the marks and pads on
+123 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
+front on the pocket floor, the face over the whole front, the plan corner's
+wall on the diagonal, the marks and pads on
 their decks, the shutter bore's roof inside the pod, the field cone clear of the shell, the face and
 the stowed cover at every station, the closed cover blanketing every cell,
 the cover held by its detents closed and open and free between, the keeper

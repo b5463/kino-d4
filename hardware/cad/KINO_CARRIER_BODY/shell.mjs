@@ -22,7 +22,7 @@ export const SHELL = (() => {
   const [cx0, cy0, cx1, cy1] = XY.cavity;
   const [ox0, oy0, ox1, oy1] = XY.outer;
   const lugProud = 2 * P.strapLugWall + P.strapHoleD;
-  const lugHole = [ox1 + lugProud - P.strapLugWall - P.strapHoleD / 2, P.strapLugY0 + P.strapLugLen / 2];
+  const lugHole = [ox1 + lugProud - P.strapLugLen / 2, P.strapLugY0 + P.strapLugLen / 2];   // the tab's half-round is centred on the hole
   // The face sits ON the plate inside a flat charcoal margin the width of the
   // wall. Walls running past the plate to pocket the face were tried first:
   // printed face down, the recessed plate hung 2.5 mm over the bed as
@@ -76,7 +76,12 @@ export function buildShell() {
       ]);
       grooves.push(outerAt(-0.01, z - h, z + h).subtract(diamond));
     }
-    shell = shell.subtract(fuse(grooves).intersect(box(ox0 - 2, oy0 - 2, Z.glass - 1, ox1 + 2, oy1 - 8.0, Z.plateFront + 1)));
+    shell = shell.subtract(fuse(grooves).intersect(box(ox0 - 2, oy0 - 2, Z.glass - 1, ox1 + 2, oy1 - P.deckLine, Z.plateFront + 1)));
+    // The deck reveal: a shallow line round the body where the grooves stop,
+    // so the top deck reads as a cap. Vertical in print, no overhang.
+    const reveal = outerAt(-0.01, Z.glass - 1, Z.plateFront + 1).subtract(outerAt(P.deckRevealD, Z.glass - 2, Z.plateFront + 2))
+      .intersect(box(ox0 - 2, oy1 - P.deckLine, Z.glass - 1, ox1 + 2, oy1 - P.deckLine + P.deckRevealW, Z.plateFront + 1));
+    shell = shell.subtract(reveal);
   }
 
   const pod = shutterPod();
@@ -88,8 +93,9 @@ export function buildShell() {
   }
   // The strap lug on the right wall, its +Z side sloped past 45 degrees back
   // to the wall so the print (face down) has nothing hanging.
+  // A rounded tab: its outer end is a half-round about the cord hole.
   adds.push(Manifold.hull([
-    box(ox1 - 0.5, P.strapLugY0, P.strapLugZ0, ox1 + S.lugProud, P.strapLugY0 + P.strapLugLen, P.strapLugZ0 + P.strapLugH),
+    cylZ(S.lugHole[0], S.lugHole[1], P.strapLugZ0, P.strapLugLen / 2, P.strapLugH, 48),
     box(ox1 - 0.5, P.strapLugY0, P.strapLugZ0, ox1 + 0.01, P.strapLugY0 + P.strapLugLen, P.strapLugZ0 + P.strapLugH + S.lugProud * 1.05),
   ]));
   shell = shell.add(fuse(adds));
@@ -130,7 +136,19 @@ export function buildFrame() {
   const S = SHELL;
   const [ox0, oy0, ox1, oy1] = XY.outer;
   const [pcx, pcy] = XY.p4Centre;
-  const frame = rbox(ox0, oy0, Z.frameRear, ox1, oy1, Z.glass, P.cornerR);
+  // The outer edge rounded over frameEdgeR toward the rear: a hull of
+  // insetting slices on a quarter circle. Printed rear face UP, so the round
+  // faces up and the engraving and grooves are top-surface recesses.
+  const slices = [];
+  const R = P.frameEdgeR, n = P.frameEdgeSteps;
+  for (let k = 0; k <= n; k++) {
+    const th = (Math.PI / 2) * (k / n);
+    const ins = R * (1 - Math.cos(th));
+    const z = Math.max(Z.frameRear, Z.frameRear + R * (1 - Math.sin(th)));
+    slices.push(rbox(ox0 + ins, oy0 + ins, z, ox1 - ins, oy1 - ins, z + 0.01, Math.max(0.5, P.cornerR - ins)));
+  }
+  slices.push(rbox(ox0, oy0, Z.glass - 0.01, ox1, oy1, Z.glass, P.cornerR));
+  const frame = Manifold.hull(slices);
   const cuts = [box(pcx - S.windowHalf[0], pcy - S.windowHalf[1], Z.frameRear - 1, pcx + S.windowHalf[0], pcy + S.windowHalf[1], Z.glass + 1)];
   for (const x of P.frameScrewXs) for (const y of XY.wallMidY) {
     cuts.push(cylZ(x, y, Z.frameRear - 1, P.frameScrewHoleD / 2, P.rearFrameT + 2, 24));

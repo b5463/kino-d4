@@ -22,7 +22,7 @@ lenses at positive Z. The chain is re-added by a gate every build.
 
 | Term | mm | Z after | Source |
 |---|---:|---:|---|
-| rear frame | 3.0 | -16.8 | chosen |
+| rear frame | 5.0 | -18.8 | chosen; carries its R4 edge round |
 | P4 module, glass front to PCB back | 13.8 | 0.0 | OFFICIAL_CAD |
 | P4 inserts | 3.3 | 3.3 | MEASURED |
 | M2 spacers | 8.0 | 11.3 | the bench set; the J100 socket floats 0.3 mm off home |
@@ -31,9 +31,9 @@ lenses at positive Z. The chain is re-added by a gate every build.
 | XIAO male header insulator | 2.5 | 23.9 | **PROVISIONAL**: the headers soldered to the owner's XIAOs; the carrier's assembly print left this out |
 | XIAO back face to the lens front | 15.0 | 38.9 | Seeed's assembled Sense stack |
 | plate ahead of the lens | 1.5 | 40.4 | chosen; the shell's front |
-| face base | 2.5 | 42.9 | |
-| lens band | 4.0 | 46.9 | |
-| **body, over the lens band** | **63.7** | | |
+| face | 3.5 | 43.9 | its edge an R3.5 pillow round |
+| lens band | 4.0 | 47.9 | |
+| **body, over the lens band** | **66.7** | | |
 
 The module's PCB face is the Z datum for the camera, as in the field body: it
 lands on the plate's inner face at Z 35.4 (the Sense board's top is at 31.5, so
@@ -44,7 +44,9 @@ and the lens front is the pocket floor. If the real header insulator is not
 move with it; `xiaoHeaderInsulator` in `params.mjs` is the one number to change.
 
 Plan: the carrier's 118.40 x 70.80 outline plus 0.3 mm a side of cavity plus
-4.5 mm walls, 128.0 x 80.4 mm, R6 corners; 134.5 wide over the strap lug. The
+4.5 mm walls, 128.0 x 80.4 mm, R10 corners (the most the plan allows: the
+carrier's near-square corner sits inside the wall, and R10 leaves 2.65 mm on
+the diagonal, gated); 134.5 wide over the strap lug. The
 lens row is 28.45 mm above the carrier's bottom edge (the heads sit 6.95 mm
 below the socket centres, toward the pin-7 end), at X 17.2, 39.2, 61.2, 83.2
 from the carrier's left edge. The block is 9 mm left of centre; the right side
@@ -80,13 +82,13 @@ ideas"). Three filaments, each on its own part:
 
 | File | What | Filament | Print |
 |---|---|---|---|
-| `print/KINO_CARRIER_SHELL.stl` | front plate with the four pockets and bores, all four walls to the display plane, V-grooves around the side and bottom walls, four screw pillars, the shutter pod, the strap lug, the LED slots, the USB-C opening, the frame pilots | charcoal | face down, PETG, 0.20 mm, no support (gated) |
-| `print/KINO_CARRIER_REAR_FRAME.stl` | the frame around the display, 95.6 x 58.2 window, thumb grooves on the right border, the ODD JOBS symbol engraved on the left, four counterbored M2 holes | charcoal | rear face down |
-| `print/KINO_CARRIER_FACE.stl` | the face: a 2.5 mm plate on the shell's front inside a 4.5 mm charcoal margin, the lens band with four stepped cells and the cover's track, the finger pad's ribs, "odd jobs" raised, two rivet bosses | cream (day) or cobalt (night) | back down |
+| `print/KINO_CARRIER_SHELL.stl` | front plate with the four pockets and bores, all four walls to the display plane with R10 plan corners, V-grooves around the side and bottom walls under a deck reveal, four screw pillars, the shutter pod, the rounded strap tab, the LED slots, the USB-C opening, the frame pilots | charcoal | face down, PETG, 0.20 mm, no support (gated) |
+| `print/KINO_CARRIER_REAR_FRAME.stl` | the 5 mm frame around the display with its outer edge rounded R4, 95.6 x 58.2 window, thumb grooves on the right border, the ODD JOBS symbol engraved on the left, four counterbored M2 holes | charcoal | rear face UP, so the round faces up; the counterbore shoulders are 0.9 mm bridges |
+| `print/KINO_CARRIER_FACE.stl` | the face: a 3.5 mm plate over the whole front, the walls' ends included, its edge an R3.5 pillow round; the pill-ended lens band with four stepped cells and the cover's track; the finger pad's ribs in a pill field; "odd jobs" raised; two domed rivets | cream (day) or cobalt (night) | back down |
 | `print/KINO_CARRIER_LENS_COVER.stl` | the sliding cover, 86.8 x 16.5 x 2, the kino D4 wordmark raised 0.6, a thumb ridge | charcoal | back down |
 | `print/KINO_CARRIER_COVER_KEEPER.stl` | the block that closes the cover's track at the band's bottom rim | as the face | as laid, glued in after the cover is in |
 | `print/KINO_CARRIER_FACE_PINS.stl` | four stepped pins, 3.8 x 5.5 into the shell's driver shafts, 3.5 x 3 into the face's back | any | standing; press fits, tune on the coupon |
-| `print/KINO_CARRIER_SHUTTER_BUTTON.stl` | the plunger (14 mm dished cap, 2 mm proud) and the switch retainer (6 x 6 x 4.3 mm tactile switch) | pink | flange down |
+| `print/KINO_CARRIER_SHUTTER_BUTTON.stl` | the plunger (14 mm cap with a convex R18 dome, 2 mm rim plus 1.4 of dome proud) and the switch retainer (6 x 6 x 4.3 mm tactile switch) | pink | flange down |
 
 Where it comes from, and what each thing is for:
 
@@ -111,17 +113,24 @@ Where it comes from, and what each thing is for:
   bottom walls, parallel to the layers, stopped 8 mm short of the top so the
   deck reads as a cap. 49 degree flanks, so the face-down print has no
   overhang.
-- **The rivets.** The two bosses on the upper deck are the upper pin holes'
+- **The rivets.** The two domes on the upper deck are the upper pin holes'
   material (the plate alone is thinner than the hole is deep). They stay
   because they read as rivets, and the lower two holes sit under the track.
+- **Not a box.** The owner's call on the first ODD JOBS render. The plan
+  corners went to R10, the face to a full-front pillow with an R3.5 round,
+  the rear frame to 5 mm with an R4 round (printed rear face up for it), the
+  band pill-ended, the rivets and the shutter cap domed, the strap tab
+  rounded about its hole. Everything else the walls forbid: the plan corner
+  cannot pass about R10.6 with the carrier's square corner inside the wall,
+  and the shell's front edge is on the bed, so its softness is the face's.
 
 ### The face and the cover
 
 The shell's front plate prints on the bed, so it can carry no relief; the
-face does. It stands 2.5 mm proud of the plate inside the charcoal margin,
-chamfered 0.5 at its edge, and one thing stands proud of it: the lens band,
-4 mm proud, chamfered 1.5, from X 3.2 to 97.2, its bottom at the face's
-bottom edge. The band's recessed panel (2.2 deep) is the cover's track:
+face does. It covers the whole front, the walls' ends included, 3.5 mm thick
+with its edge rounded over the full thickness, and one thing stands proud of
+it: the lens band, 4 mm proud, chamfered 1.5, pill-ended, from X 3.2 to
+97.2, its bottom at the inner edge of the face's round. The band's recessed panel (2.2 deep) is the cover's track:
 dovetail lips on both walls, two detent pairs, the cover entering through a
 gap in the bottom rim that the keeper closes, 0.1 mm a side, the cover riding
 on two 2.5 mm lands. The four cells are two stepped cones cut from the 82
@@ -137,8 +146,8 @@ every cell (the firmware's cover-closed test needs all four dark).
 
 A rim pocket, the face flush inside walls that run past the plate, was the
 first draft of this cut: printed face down, the recessed plate hung 2.5 mm
-over the bed as 10,000 mm^2 of overhang. The proud face inside a flat margin
-is the same look the printer can make.
+over the bed as 10,000 mm^2 of overhang. A proud face inside a flat margin
+came next; the full-front pillow replaced it when the body read as a box.
 
 ### The shutter
 
@@ -175,7 +184,7 @@ are each part in print orientation from `render-stl.py`.
 
 ## Gates
 
-`node generate-carrier-body.mjs` writes `.candidate/` and runs 122 gates,
+`node generate-carrier-body.mjs` writes `.candidate/` and runs 123 gates,
 throwing on the first failure (`KINO_SOFT_GATES=1` collects them): the depth
 chain re-added over the lens band, the lens front on the pocket floor, the
 module PCB with the plate to land on, the battery bay tall enough for the cell

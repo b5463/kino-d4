@@ -33,7 +33,7 @@ import { cube, box, cylZ, coneZ, cylY, fuse, vol, rbox, toBed, r2, overhangArea,
 import { P, Z, XY } from "./params.mjs";
 import { SHELL, buildShell, buildFrame } from "./shell.mjs";
 import { FACE, buildFace } from "./face.mjs";
-import { SHUTTER, buildShutterButton } from "./shutter.mjs";
+import { SHUTTER, buildShutterButton, capPreview } from "./shutter.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const outDir = path.join(here, ".candidate");
@@ -101,7 +101,7 @@ const onePart = (name, m) => check(`${name} is one part`, m.decompose().length =
     ["P4 inserts", P.p4InsertH], ["spacers", P.spacer], ["carrier PCB", P.carrierT],
     ["XIAO socket", P.socketH], ["XIAO header insulator (PROVISIONAL)", P.xiaoHeaderInsulator],
     ["XIAO back face to lens front", P.camStackH], ["plate ahead of the lens", P.platePocketAhead],
-    ["face, on the plate", P.faceBase], ["lens band", P.bandProud],
+    ["face, over the front", P.faceBase], ["lens band", P.bandProud],
   ];
   const sum = terms.reduce((t, [, v]) => t + v, 0);
   const depth = FACE.bandFront - Z.frameRear;
@@ -111,9 +111,10 @@ const onePart = (name, m) => check(`${name} is one part`, m.decompose().length =
     `XIAO back at Z=${r2(Z.xiaoBack)} + ${P.camStackH} = lens front Z=${r2(Z.lensFront)}; pocket ${Z.camPocketDepth} deep from the plate's inner face at Z=${r2(Z.plateInner)}`);
   check("the module's PCB has the plate to land on", Z.plateInner - Z.senseTop >= P.camModulePcbT + 0.3,
     `${r2(Z.plateInner - Z.senseTop)} mm from the Sense board's top to the plate's inner face, for a ${P.camModulePcbT} mm module PCB and its fold`);
-  const margin = Math.min(FACE.outline[0] - ox0, ox1 - FACE.outline[2], FACE.outline[1] - oy0, oy1 - FACE.outline[3]);
-  check("the face stands on the plate inside a charcoal margin", margin >= P.wall - 0.01 && FACE.back === Z.plateFront,
-    `${r2(margin)} mm of the shell's front shows around a ${r2(FACE.outline[2] - FACE.outline[0])} x ${r2(FACE.outline[3] - FACE.outline[1])} face, ${P.faceBase} mm proud`);
+  check("the face covers the shell's front, walls included", FACE.outline.every((v, i) => Math.abs(v - XY.outer[i]) < 1e-9) && FACE.back === Z.plateFront,
+    `${r2(FACE.outline[2] - FACE.outline[0])} x ${r2(FACE.outline[3] - FACE.outline[1])} face on the plate, ${P.faceBase} mm thick with an R${P.faceEdgeR} edge; the shell's bed-side edge is under it`);
+  check("plan corner leaves wall on the diagonal", P.cornerR <= (P.wall + P.carrierClear) * (1 + Math.SQRT2) - 1.0,
+    `R${P.cornerR} outer corner against the cavity's near-square corner: ${r2(P.cornerR - (P.cornerR - P.wall - P.carrierClear) * Math.SQRT2)} mm of wall on the diagonal`);
 }
 {
   const [bx0, by0, bx1, by1] = P.batteryBay;
@@ -225,7 +226,7 @@ check("strap lug clears the USB opening and the shutter pod", P.strapLugY0 > S.u
 // cosmetic or bearing face on the bed.
 const prints = {
   "KINO_CARRIER_SHELL.stl": toBed(shell.rotate([180, 0, 0])),
-  "KINO_CARRIER_REAR_FRAME.stl": toBed(frame),
+  "KINO_CARRIER_REAR_FRAME.stl": toBed(frame.rotate([180, 0, 0])),
   "KINO_CARRIER_FACE.stl": toBed(face),
   "KINO_CARRIER_LENS_COVER.stl": toBed(cover),
   "KINO_CARRIER_COVER_KEEPER.stl": toBed(keeper),
@@ -235,9 +236,8 @@ const prints = {
 const allowance = {
   "KINO_CARRIER_SHELL.stl": [P.ledXs.length * P.ledSlot[0] * (cy0 - oy0) + P.carrierHoles.length * Math.PI * ((P.accessShaftD / 2) ** 2 - (P.screwBore / 2) ** 2) + (P.shutterCollarD / 2) * (Math.PI / 2) * (P.shutterCollarDepth + 0.2) + 20,
     "the LED slot bridges, the four screw-foot shoulders, the shutter collar's 1.6 mm recess, and up to 20 mm^2 of exact 45 degree gable that rounds past the threshold; the layer grooves are 49 degrees"],
-  "KINO_CARRIER_REAR_FRAME.stl": [P.frameScrewXs.length * XY.wallMidY.length * Math.PI * ((P.frameHeadD / 2) ** 2 - (P.frameScrewHoleD / 2) ** 2)
-    + Math.ceil((P.thumbPadY[1] - P.thumbPadY[0]) / P.thumbGroovePitch) * P.thumbGrooveW * (P.thumbPadX[1] - P.thumbPadX[0]) + P.symbolRearH * P.symbolRearH * 1.25 + 2,
-    "recesses in the bed face: the four counterbore shoulders, the thumb grooves and the engraved symbol, none deeper than 1.6 mm"],
+  "KINO_CARRIER_REAR_FRAME.stl": [P.frameScrewXs.length * XY.wallMidY.length * Math.PI * ((P.frameHeadD / 2) ** 2 - (P.frameScrewHoleD / 2) ** 2) + 2,
+    "the four counterbore shoulders (0.9 mm rings over the bore), rear face up so the edge round faces up"],
   "KINO_CARRIER_FACE.stl": [P.carrierHoles.length * Math.PI * (P.pinFaceD / 2) ** 2 + 3, "the four blind pin holes' ends (3.5 mm bridges)"],
   "KINO_CARRIER_LENS_COVER.stl": [8, "the 0.2 mm ledges at the edge relief"],
   "KINO_CARRIER_COVER_KEEPER.stl": [1, "nothing"],
@@ -259,13 +259,7 @@ files["KINO_CARRIER_STACK_DUMMY.stl"] = writeStl(outDir, "KINO_CARRIER_STACK_DUM
 for (const [name, m] of [["shell", shell], ["frame", frame], ["face", face], ["cover", cover], ["cover-open", coverOpen], ["keeper", keeper]]) {
   writeStl(outDir, `preview-${name}.stl`, m);
 }
-{
-  // The plunger in place: its flange on the pod's inner side is hidden; show the cap over the collar.
-  const capZ = P.shutterZ, cap = fuse([
-    cylZ(0, 0, 0, P.shutterPressCapD / 2, SHUTTER.stem + 1.6, 64),
-  ]).rotate([-90, 0, 0]).translate([P.shutterX, oy1 - P.shutterCollarDepth - 1.6 + 0.01, capZ]);
-  writeStl(outDir, "preview-shutter.stl", cap);
-}
+writeStl(outDir, "preview-shutter.stl", capPreview());
 files["KINO_CARRIER_ASSEMBLED_PREVIEW.stl"] = writeStl(outDir, "KINO_CARRIER_ASSEMBLED_PREVIEW.stl", fuse([shell, frame, dummy, face, cover, keeper]));
 files["KINO_CARRIER_OPEN_PREVIEW.stl"] = writeStl(outDir, "KINO_CARRIER_OPEN_PREVIEW.stl", fuse([shell, frame, dummy, face, coverOpen, keeper]));
 const report = {

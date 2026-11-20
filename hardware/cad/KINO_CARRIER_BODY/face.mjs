@@ -26,17 +26,17 @@ export const FACE = (() => {
   const bandFront = front + P.bandProud;
   const floorZ = bandFront - P.panelDepth;
   const inset = P.bandChamfer + P.bandRim;
-  const [cx0, cy0, cx1, cy1] = XY.cavity;
-  const outline = [cx0 + P.faceClear, cy0 + P.faceClear, cx1 - P.faceClear, cy1 - P.faceClear];
-  const outlineR = P.carrierR + P.carrierClear - P.faceClear;
+  const outline = XY.outer;          // the face fills the front, over the walls' ends
+  const outlineR = P.cornerR;
   const lensY = XY.lensY;
   const closedY0 = lensY - P.sliderH / 2, closedY1 = closedY0 + P.sliderH;
-  // The band's bottom rim is the face's bottom edge; the cover stows down to it.
-  const panelY0 = outline[1] + P.bandBottomInset;
+  // The band's bottom rim is the face's bottom edge, inside its pillow round;
+  // the cover stows down to it.
+  const panelY0 = outline[1] + P.faceEdgeR + P.bandBottomInset;
   const openY0 = panelY0 + 0.5;
   const travel = closedY0 - openY0;
   const panel = [P.bandX[0] + inset, panelY0, P.bandX[1] - inset, closedY1 + 0.5];
-  const band = [P.bandX[0], outline[1] - 0.01, P.bandX[1], panel[3] + inset];
+  const band = [P.bandX[0], outline[1] + P.faceEdgeR, P.bandX[1], panel[3] + inset];
   const tanF = Math.tan(((P.camFovDeg / 2 + P.fovMarginDeg) * Math.PI) / 180);
   const boreR = P.lensBoreD / 2;
   const coneR = (z) => Math.max(boreR, (z - Z.pupil) * tanF);
@@ -59,20 +59,26 @@ export function buildFace() {
   const F = FACE;
   const [fx0, fy0, fx1, fy1] = F.outline;
   const solids = [], cuts = [];
-  // The plate, inside the rim, with a small chamfer on its front edge.
-  solids.push(Manifold.hull([
-    roundedRectZ(fx0, fy0, F.back, fx1 - fx0, fy1 - fy0, 0.01, F.outlineR),
-    roundedRectZ(fx0, fy0, F.front - P.faceChamfer - 0.01, fx1 - fx0, fy1 - fy0, 0.01, F.outlineR),
-    roundedRectZ(fx0 + P.faceChamfer, fy0 + P.faceChamfer, F.front - 0.01, fx1 - fx0 - 2 * P.faceChamfer, fy1 - fy0 - 2 * P.faceChamfer, 0.01, Math.max(0.5, F.outlineR - P.faceChamfer)),
-  ]));
-  // The lens band: proud of the plate, chamfered all round, its bottom at the
-  // plate's bottom edge.
+  // The plate over the whole front, its edge a quarter round over the full
+  // thickness: a hull of insetting slices on a quarter circle, every slice
+  // face up-and-out in print. Nothing below F.back.
+  {
+    const R = P.faceEdgeR, n = 8, slices = [];
+    for (let k = 0; k <= n; k++) {
+      const th = (Math.PI / 2) * (k / n);
+      const ins = R * (1 - Math.cos(th));
+      const z = Math.min(F.front - 0.01, F.front - R * (1 - Math.sin(th)));
+      slices.push(roundedRectZ(fx0 + ins, fy0 + ins, z, fx1 - fx0 - 2 * ins, fy1 - fy0 - 2 * ins, 0.01, Math.max(0.5, F.outlineR - ins)));
+    }
+    slices.push(roundedRectZ(fx0, fy0, F.back, fx1 - fx0, fy1 - fy0, 0.01, F.outlineR));
+    solids.push(Manifold.hull(slices));
+  }
+  // The lens band: proud of the plate, chamfered all round, pill-ended, its
+  // bottom at the inner edge of the plate's round.
   {
     const [x0, y0, x1, y1] = F.band;
-    // Rooted below the plate's edge chamfer, or its foot stands 0.3 mm proud
-    // of the chamfered bottom edge as a lip facing the bed.
     solids.push(Manifold.hull([
-      roundedRectZ(x0, y0, F.front - P.faceChamfer - 0.3, x1 - x0, y1 - y0, 0.01, P.bandR),
+      roundedRectZ(x0, y0, F.front - 0.3, x1 - x0, y1 - y0, 0.01, P.bandR),
       roundedRectZ(x0 + P.bandChamfer, y0 + P.bandChamfer, F.bandFront - 0.01, x1 - x0 - 2 * P.bandChamfer, y1 - y0 - 2 * P.bandChamfer, 0.01, Math.max(0.8, P.bandR - P.bandChamfer)),
     ]));
   }
@@ -81,13 +87,20 @@ export function buildFace() {
   for (const [hx, hy] of P.carrierHoles) {
     cuts.push(cylZ(hx, hy, F.back - 1, P.pinFaceD / 2, P.pinFaceL + 1, 32));
     if (hy > P.carrierH / 2) {
-      solids.push(cylZ(hx, hy, F.front - 0.3, P.pinBossD / 2, P.pinBossH + 0.3 - P.pinBossChamfer, 48));
-      solids.push(coneZ(hx, hy, F.front + P.pinBossH - P.pinBossChamfer - 0.01, P.pinBossD / 2, P.pinBossD / 2 - P.pinBossChamfer, P.pinBossChamfer + 0.01, 48));
+      // A rivet: a short cylinder under a spherical cap.
+      const r = P.pinBossD / 2, capH = P.pinBossH * 0.6, cylH = P.pinBossH - capH;
+      const capR = P.pinBossCapR, capBase = Math.sqrt(capR * capR - (capR - capH) ** 2);
+      solids.push(cylZ(hx, hy, F.front - 0.3, r, cylH + 0.3, 48));
+      solids.push(Manifold.sphere(capR, 96).translate([hx, hy, F.front + cylH + capH - capR]).intersect(cylZ(hx, hy, F.front + cylH - 0.01, Math.min(r, capBase), capH + 0.02, 48)));
     }
   }
-  // Finger pad: horizontal ribs, raised, right of the band.
-  for (let y = P.fingerPadY[0]; y + P.fingerRibW <= P.fingerPadY[1] + 1e-9; y += P.fingerRibPitch) {
-    solids.push(box(P.fingerPadX[0], y, F.front - 0.3, P.fingerPadX[1], y + P.fingerRibW, F.front + P.fingerRibH));
+  // Finger pad: horizontal ribs, raised, right of the band, in a pill field.
+  {
+    const ribs = [];
+    for (let y = P.fingerPadY[0]; y + P.fingerRibW <= P.fingerPadY[1] + 1e-9; y += P.fingerRibPitch) {
+      ribs.push(box(P.fingerPadX[0], y, F.front - 0.3, P.fingerPadX[1], y + P.fingerRibW, F.front + P.fingerRibH));
+    }
+    solids.push(fuse(ribs).intersect(rbox(P.fingerPadX[0], P.fingerPadY[0], F.front - 1, P.fingerPadX[1], P.fingerPadY[1], F.front + 2, P.fingerPadR)));
   }
   // The maker's mark, raised on the upper deck.
   const makerScale = P.makerW / MAKER.widthMm;

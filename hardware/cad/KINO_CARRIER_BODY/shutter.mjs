@@ -48,20 +48,34 @@ export function shutterPod() {
   return { adds, cuts };
 }
 
+// The cap as it stands in the collar, for the colour previews: the rim
+// shutterProud above the top face, the dome on it. Body frame.
+export function capPreview() {
+  const S = SHUTTER;
+  const h = P.shutterCollarDepth + P.shutterProud;
+  const cap = fuse([
+    cylZ(0, 0, 0, P.shutterPressCapD / 2, h, 64),
+    Manifold.sphere(P.shutterDomeR, 96).translate([0, 0, h + P.shutterDomeH - P.shutterDomeR]).intersect(cylZ(0, 0, h - 0.5, P.shutterPressFaceD / 2, P.shutterDomeH + 0.5)),
+  ]);
+  return cap.rotate([-90, 0, 0]).translate([P.shutterX, S.oy1 - P.shutterCollarDepth, P.shutterZ]);
+}
+
 // The plunger and the retainer, in their own print frame (flange on the bed).
 export function buildShutterButton() {
   const S = SHUTTER;
   const flangeH = 1.6;
   const noseStraightH = S.stem - P.shutterPressCapH;
   const actuatorHeight = flangeH + S.stem;
-  const dishRadius = (P.shutterDishD ** 2 / 4 + P.shutterDishDepth ** 2) / (2 * P.shutterDishDepth);
-  const dishCenterZ = actuatorHeight + dishRadius - P.shutterDishDepth;
-  const actuatorBlank = fuse([
+  // A convex dome on the cap: a sphere of shutterDomeR whose cap rises
+  // shutterDomeH above the rim, clipped to the cap's own cylinder.
+  const dome = Manifold.sphere(P.shutterDomeR, 96).translate([0, 0, actuatorHeight + P.shutterDomeH - P.shutterDomeR])
+    .intersect(cylZ(0, 0, actuatorHeight - 0.5, P.shutterPressFaceD / 2, P.shutterDomeH + 0.5));
+  const actuator = fuse([
     cylZ(0, 0, 0, P.shutterActuatorFlangeD / 2, flangeH),
     cylZ(0, 0, flangeH, P.shutterPressCapD / 2, noseStraightH),
     Manifold.cylinder(P.shutterPressCapH, P.shutterPressCapD / 2, P.shutterPressFaceD / 2, 64).translate([0, 0, flangeH + noseStraightH]),
-  ]);
-  const actuator = actuatorBlank.subtract(Manifold.sphere(dishRadius, 80).translate([0, 0, dishCenterZ])).translate([9, 9, 0]);
+    dome,
+  ]).translate([9, 9, 0]);
 
   const rcx = 32, rcy = P.shutterRetainerPlateD / 2, plateH = 1.6;
   const retainerBlank = fuse([

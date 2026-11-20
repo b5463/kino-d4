@@ -91,28 +91,33 @@ export const P = Object.freeze({
   // ---- The shell -----------------------------------------------------------
   wall: 4.5,                 // thick enough for the rear frame's pilots in the wall ends
   plate: 5.0,                // the front plate: pocket depth + platePocketAhead
-  cornerR: 6.0,
+  cornerR: 10.0,             // near the most the plan allows: the carrier's R3 corners sit inside the wall, and at R10 the wall on the diagonal is 2.65 mm (gated)
+  deckLine: 8.0,             // the top deck reads as a cap: the layer grooves stop here and a reveal runs round
+  deckRevealW: 0.8,
+  deckRevealD: 0.4,
+  frameEdgeR: 4.0,           // the rear frame's outer edge, a quarter round (printed rear face up)
+  frameEdgeSteps: 6,
   bossD: 6.0,                // the stack-screw pillars, inside the 7 mm keep-out
   bossRib: 2.0,              // the rib tying each pillar to the wall
   bossFoot: 3.8,             // pillar material the screw head bears on
   screwBore: 2.4,            // M2 clearance
   accessShaftD: 4.0,         // the driver's way in from the front; an M2 pan head is 3.8
-  rearFrameT: 3.0,
+  rearFrameT: 5.0,           // thick enough to carry its R4 edge round
   framePilotD: 1.7,          // M2 thread-forming into PETG
   framePilotDepth: 6.0,
   frameScrewHoleD: 2.4,
   frameHeadD: 4.2,
-  frameHeadDepth: 1.6,
+  frameHeadDepth: 3.0,       // M2 x 8 reaches 6 mm into the pilot through a 5 mm frame
   frameScrewXs: [14.0, 76.0],  // clear of the LED slots and the USB opening on the bottom wall
   usbGable: 45,              // degrees, the opening's roof in print
 
   // ---- The face shell: the form lives here, printed back-face down --------
   // ODD JOBS: a charcoal ribbed shell, a cream (day) or cobalt (night) face
-  // set INSIDE the shell's rim, a pink shutter, quiet markings. The shell's
-  // walls run faceBase past the plate and the face sits in that pocket.
-  faceBase: 2.5,             // the face plate, flush with the shell's rim
-  faceClear: 0.15,           // per side, in the rim pocket
-  faceChamfer: 0.5,          // the face's front edge
+  // over the whole front with a pillow edge, a pink shutter, quiet markings.
+  // The face covers the plate and the walls' front ends (the concept's v18
+  // front: the fascia fills the front, the charcoal is the sides and the cap).
+  faceBase: 3.5,             // the face plate
+  faceEdgeR: 3.5,            // its front edge, a quarter round over the full thickness
   // Finger pad: raised ribs on the face, right of the band, where the middle
   // finger of the right hand wraps the body.
   fingerPadX: [102.0, 115.0],
@@ -120,6 +125,7 @@ export const P = Object.freeze({
   fingerRibW: 1.2,
   fingerRibPitch: 2.6,
   fingerRibH: 0.8,
+  fingerPadR: 6.0,           // the rib field's corners
   // The maker's mark, "odd jobs", traced from the logo, raised on the upper deck.
   makerW: 26.0,
   makerAt: [6.0, 46.5],      // lower-left corner
@@ -149,8 +155,8 @@ export const P = Object.freeze({
   pinFaceD: 3.5,
   pinFaceL: 3.0,             // the two lower holes sit under the cover's track floor, 4.3 mm behind it
   pinBossD: 7.0,             // on the upper deck, where the base alone is thinner than the pin hole is deep
-  pinBossH: 1.5,
-  pinBossChamfer: 0.5,
+  pinBossH: 1.5,             // in all: a short cylinder under a spherical cap
+  pinBossCapR: 7.0,
   // The lens band: proud of the base, chamfered, with a recessed panel that is
   // the cover's track. Its Y extent is DERIVED from the cover's travel.
   bandX: [3.2, 97.2],
@@ -158,7 +164,7 @@ export const P = Object.freeze({
   bandChamfer: 1.5,
   bandRim: 2.0,              // flat rim between the chamfer and the panel
   bandBottomInset: 3.4,      // the band's bottom rim, from the face's bottom edge to the panel; the keeper lives in it
-  bandR: 5.0,
+  bandR: 12.0,               // pill ends
   panelDepth: 2.2,           // cover 2.0 plus 0.2 set back from the band's front
   lensRingStep: 0.6,         // each ring of a cell stands this far proud of the field cone
   // The cover: the field body's bench-tuned track, restated. Drops to open.
@@ -198,9 +204,9 @@ export const P = Object.freeze({
   shutterPressCapD: 14.0,
   shutterPressFaceD: 13.0,
   shutterPressCapH: 0.9,
-  shutterProud: 2.0,
-  shutterDishD: 10.0,
-  shutterDishDepth: 0.5,
+  shutterProud: 2.0,         // the cap's rim above the top face; the dome adds shutterDomeH
+  shutterDomeR: 18.0,        // a convex dome, not the field body's dish
+  shutterDomeH: 1.4,
   shutterCollarD: 20.0,
   shutterCollarDepth: 1.6,
   shutterAssemblyAccessD: 17.0,
