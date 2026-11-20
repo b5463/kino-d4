@@ -8,8 +8,7 @@ export const RELEASE_SET = [
   { file: "KINO_CARRIER_REAR_FRAME.stl", dir: "print", parts: 1 },
   { file: "KINO_CARRIER_FACE.stl", dir: "print", parts: 1 },
   { file: "KINO_CARRIER_LENS_COVER.stl", dir: "print", parts: 1 },
-  { file: "KINO_CARRIER_COVER_KEEPER.stl", dir: "print", parts: 1 },
-  { file: "KINO_CARRIER_FACE_PINS.stl", dir: "print", parts: 4 },
+  { file: "KINO_CARRIER_APRON.stl", dir: "print", parts: 1 },
   { file: "KINO_CARRIER_SHUTTER_BUTTON.stl", dir: "print", parts: 2 },
 ];
 export const RELEASE_DIRS = ["print"];
@@ -27,7 +26,6 @@ export const RELEASE_PROCESS = {
   "KINO_CARRIER_REAR_FRAME.stl": "FDM, PETG, 0.20 mm, rear face down, no support",
   "KINO_CARRIER_FACE.stl": "FDM, PETG, 0.20 mm, back down, no support",
   "KINO_CARRIER_LENS_COVER.stl": "FDM, PETG, 0.20 mm, back down, no support",
-  "KINO_CARRIER_COVER_KEEPER.stl": "FDM, PETG, 0.20 mm, as laid, glued into the rim gap after the cover is in",
-  "KINO_CARRIER_FACE_PINS.stl": "FDM, PETG, 0.20 mm, standing; press fits, tune on the coupon",
+  "KINO_CARRIER_APRON.stl": "FDM, PETG in the face's filament, 0.20 mm, as laid; glued over the stow zone after the cover is in",
   "KINO_CARRIER_SHUTTER_BUTTON.stl": "FDM, PETG, 0.20 mm, flange down",
 };

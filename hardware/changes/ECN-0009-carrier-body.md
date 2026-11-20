@@ -83,20 +83,41 @@ owner's printer. Two parts:
   thinness: frame 3.0 (R3), face 2.5 (R2.5), band 3.5, the lower pin holes
   2.5 deep so they stay under the track floor. 128.0 x 80.4 x 63.2 mm over
   the band.
+- **After two cold reviews** (fifth cut, 2026-11-20; an engineer's read of
+  the files and renders, and a customer's read of the renders): an apron in
+  the face's filament roofs the cover's stow zone so the closed front is a
+  bar over a door, not an empty pocket; the cover's track is cut into a
+  3.5 mm face under a 1 mm rim (the rivets and their pin holes are gone; six
+  1.75 mm filament pins in the walls' front ends hold the face instead of a
+  2.5 mm press fit); a 2.5 mm grip pad on the face's right carries the
+  finger ribs; the cover's corners are R3 with a 3 mm lip on its top edge
+  for the thumb; "kino D4" on the cover grows to 52 mm and is printed in the
+  face's filament for contrast; "odd jobs" moves to the top deck, engraved;
+  the pinch ribs become 0.8 x 0.3 triangles (0.4 mm columns do not print);
+  the layer grooves go to 0.5 mm at 2.4 mm pitch; the strap tabs move to
+  the lower rear corners, one each side; the rear frame is 2.5 mm with a
+  chamfered window edge for the thumb, a raised thumb pad, plain screw
+  holes with the pan heads proud, and an R1.5 round; the band's corners are
+  R9, gated to keep rim around the panel's corners. Not taken: stowing the
+  cover upward, which would centre the band; drop-to-open was settled on the
+  bench coupon. 128.0 x 80.4 x 61.2 mm over the band, 63.5 over the grip,
+  the body 8.5 of it.
 
-Depth, re-added by a gate every build: 3.0 frame + 13.8 module + 3.3 inserts
+Depth, re-added by a gate every build: 2.5 frame + 13.8 module + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
-(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 2.5 face +
-3.5 lens band = 63.2 mm over the band, against the field body's 74.5 over its
-lens bar. The body is 10.5 of it; the XIAO connectors (11.0) are the one
+(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 3.5 face +
+1.0 band rim = 61.2 mm over the band, against the field body's 74.5 over its
+lens bar. The body is 8.5 of it; the XIAO connectors (11.0) are the one
 stack term the bench can shorten, with low-profile sockets and bare pins. The plate's inner face lands at Z 35.4
 from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-123 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
+139 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
 front on the pocket floor, the face over the whole front, the plan corner's
-wall on the diagonal, the marks and pads on
+wall on the diagonal, the band's rim around the panel's corners, the apron
+clear of the cover at every position and the stop under it, the six pin
+holes open and blind, the window's chamfer, the marks and pads on
 their decks, the shutter bore's roof inside the pod, the field cone clear of the shell, the face and
 the stowed cover at every station, the closed cover blanketing every cell,
 the cover held by its detents closed and open and free between, the keeper
@@ -111,7 +132,7 @@ pocket, bore, shaft, foot, slot, opening and pilot probed open, every pillar
 inside the carrier's 7 mm fastener keep-out, the carrier's sweep from the rear
 clear up to the feet, the frame window over the whole active area, both prints
 support-free off the bed (each print's allowed bridges listed in its gate),
-all on the bed. `validate-stl.mjs`: 7 files, manifold, at their part counts.
+all on the bed. `validate-stl.mjs`: 6 files, manifold, at their part counts.
 No independent scan yet; `promote.mjs` says so every run. Found by the gates
 while the face was written: a face hull 0.01 mm into the shell (100 mm^3), a
 straight frustum probe that bulged past the bore, a 6 mm band that put the

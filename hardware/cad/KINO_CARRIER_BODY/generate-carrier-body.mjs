@@ -9,20 +9,19 @@
 // picture does not shake on its ribbon. The face shell carries the form.
 //
 // ODD JOBS, as the brand's camera concept draws it: a charcoal shell with the
-// layer texture on its walls, a cream (day) or cobalt (night) face set inside
-// the shell's rim, a pink shutter, quiet markings. Three filaments, one part
+// layer texture on its walls, a cream (day) or cobalt (night) face with a
+// pillow edge, a pink shutter, quiet markings. Three filaments, one part
 // each. See shell.mjs, face.mjs, shutter.mjs.
 //
 // PETG, FDM, no support:
-//   KINO_CARRIER_SHELL.stl           charcoal; front plate, four walls, pillars, shutter pod, strap lug; face down
-//   KINO_CARRIER_REAR_FRAME.stl      charcoal; the frame around the display; rear face down
+//   KINO_CARRIER_SHELL.stl           charcoal; front plate, four walls, pillars, shutter pod, strap tabs; face down
+//   KINO_CARRIER_REAR_FRAME.stl      charcoal; the frame around the display; rear face up
 //   KINO_CARRIER_FACE.stl            cream or cobalt; the face shell; back down
-//   KINO_CARRIER_LENS_COVER.stl      charcoal; the sliding cover; back down
-//   KINO_CARRIER_COVER_KEEPER.stl    as the face; the block that closes the cover's track
-//   KINO_CARRIER_FACE_PINS.stl       four stepped pins, face to shell
+//   KINO_CARRIER_LENS_COVER.stl      charcoal; the sliding cover, its wordmark in the face's filament; back down
+//   KINO_CARRIER_APRON.stl           as the face; the door over the stow zone and the track's stop, glued
 //   KINO_CARRIER_SHUTTER_BUTTON.stl  pink; plunger and switch retainer
-// plus KINO_CARRIER_STACK_DUMMY.stl, the electronics as blocks, for the
-// assembled preview and the interference gates. It is not a part.
+// plus six pins cut from 1.75 mm filament, and KINO_CARRIER_STACK_DUMMY.stl,
+// the electronics as blocks, for the previews and the interference gates.
 //
 //   node generate-carrier-body.mjs     writes .candidate/, gates throw on the first failure
 //   KINO_SOFT_GATES=1 node ...         collects failures instead
@@ -42,13 +41,6 @@ fs.mkdirSync(outDir, { recursive: true });
 const [cx0, cy0, cx1, cy1] = XY.cavity;
 const [ox0, oy0, ox1, oy1] = XY.outer;
 const S = SHELL;
-
-function buildPins() {
-  return fuse([0, 1, 2, 3].map((i) => fuse([
-    cylZ(i * 8, 0, 0, P.pinShellD / 2, P.pinShellL, 48),
-    cylZ(i * 8, 0, P.pinShellL - 0.01, P.pinFaceD / 2, P.pinFaceL + 0.01, 48),
-  ])));
-}
 
 function buildDummy() {
   const [px0, py0, px1, py1] = XY.p4;
@@ -75,9 +67,8 @@ function buildDummy() {
 const { bare, shell } = buildShell();
 const frame = buildFrame();
 const dummy = buildDummy();
-const { face, cover, keeper, markBox, makerBox } = buildFace();
+const { face, cover, apron, markBox, apronZ } = buildFace();
 const button = buildShutterButton();
-const pins = buildPins();
 const coverOpen = cover.translate([0, -FACE.travel, 0]);
 const coverMid = cover.translate([0, -FACE.travel / 2, 0]);
 
@@ -101,20 +92,29 @@ const onePart = (name, m) => check(`${name} is one part`, m.decompose().length =
     ["P4 inserts", P.p4InsertH], ["spacers", P.spacer], ["carrier PCB", P.carrierT],
     ["XIAO socket", P.socketH], ["XIAO header insulator (PROVISIONAL)", P.xiaoHeaderInsulator],
     ["XIAO back face to lens front", P.camStackH], ["plate ahead of the lens", P.platePocketAhead],
-    ["face, over the front", P.faceBase], ["lens band", P.bandProud],
+    ["face, over the front", P.faceBase], ["lens band rim", P.bandProud],
   ];
   const sum = terms.reduce((t, [, v]) => t + v, 0);
   const depth = FACE.bandFront - Z.frameRear;
   check("depth chain adds up to the body depth", Math.abs(sum - depth) < 1e-9,
-    terms.map(([n, v]) => `${n} ${v}`).join(" + ") + ` = ${r2(sum)} mm; body ${r2(depth)} over the lens band, ${r2(Z.plateFront - Z.frameRear)} to the shell's front`);
+    terms.map(([n, v]) => `${n} ${v}`).join(" + ") + ` = ${r2(sum)} mm; body ${r2(depth)} over the band, ${r2(FACE.front + P.gripProud + P.fingerRibH - Z.frameRear)} over the grip's ribs`);
   check("the lens front is the pocket floor", Math.abs((Z.plateInner + Z.camPocketDepth) - Z.lensFront) < 1e-9,
     `XIAO back at Z=${r2(Z.xiaoBack)} + ${P.camStackH} = lens front Z=${r2(Z.lensFront)}; pocket ${Z.camPocketDepth} deep from the plate's inner face at Z=${r2(Z.plateInner)}`);
   check("the module's PCB has the plate to land on", Z.plateInner - Z.senseTop >= P.camModulePcbT + 0.3,
     `${r2(Z.plateInner - Z.senseTop)} mm from the Sense board's top to the plate's inner face, for a ${P.camModulePcbT} mm module PCB and its fold`);
   check("the face covers the shell's front, walls included", FACE.outline.every((v, i) => Math.abs(v - XY.outer[i]) < 1e-9) && FACE.back === Z.plateFront,
-    `${r2(FACE.outline[2] - FACE.outline[0])} x ${r2(FACE.outline[3] - FACE.outline[1])} face on the plate, ${P.faceBase} mm thick with an R${P.faceEdgeR} edge; the shell's bed-side edge is under it`);
+    `${r2(FACE.outline[2] - FACE.outline[0])} x ${r2(FACE.outline[3] - FACE.outline[1])} face on the plate, ${P.faceBase} mm thick with an R${P.faceEdgeR} edge`);
   check("plan corner leaves wall on the diagonal", P.cornerR <= (P.wall + P.carrierClear) * (1 + Math.SQRT2) - 1.0,
-    `R${P.cornerR} outer corner against the cavity's near-square corner: ${r2(P.cornerR - (P.cornerR - P.wall - P.carrierClear) * Math.SQRT2)} mm of wall on the diagonal`);
+    `R${P.cornerR} outer corner against the cavity's near-square corner: ${r2(P.cornerR - (P.cornerR - P.wall - P.carrierClear) * Math.SQRT2)} mm of wall on the diagonal, ${r2(P.cornerR - (P.cornerR - P.wall - P.carrierClear) * Math.SQRT2 - P.grooveD)} under a groove`);
+  check("the track floor leaves face under it", P.faceBase + P.bandProud - P.panelDepth - P.coverRailProud >= P.panelFloorMin,
+    `${r2(P.faceBase + P.bandProud - P.panelDepth - P.coverRailProud)} mm of plate under the relieved floor; nothing else is cut there`);
+  // The band's pill corners must keep rim around the panel's corners: the
+  // panel corner's distance to the band's corner-arc centre, against the arc.
+  const [bx0, by0, bx1, by1] = FACE.band, [px0, py0, px1, py1] = FACE.panel, R = P.bandR;
+  const rimAtCorner = Math.min(...[[px0, py0, bx0 + R, by0 + R], [px1, py0, bx1 - R, by0 + R], [px0, py1, bx0 + R, by1 - R], [px1, py1, bx1 - R, by1 - R]]
+    .map(([x, y, cx, cy]) => R - Math.hypot(x - cx, y - cy)));
+  check("the band's corners keep rim around the panel's corners", rimAtCorner >= 1.0,
+    `${r2(rimAtCorner)} mm of rim at the nearest corner, band R${R} against a panel inset ${r2(P.bandChamfer + P.bandRim)}`);
 }
 {
   const [bx0, by0, bx1, by1] = P.batteryBay;
@@ -125,16 +125,15 @@ const onePart = (name, m) => check(`${name} is one part`, m.decompose().length =
   check("battery bay clears the four spacers", spacerGap >= 1.0, `${r2(bx1 - bx0)} x ${r2(by1 - by0)} mm in plan, ${r2(spacerGap)} mm from the nearest 3.5 mm spacer; a 55 x 73 pouch does not fit this plan`);
   check("battery bay is inside the carrier outline", bx0 >= 0 && by0 >= 0 && bx1 <= P.carrierW && by1 <= P.carrierH, "the cell never meets a wall");
 }
-for (const [n, m] of [["shell", shell], ["rear frame", frame], ["face", face], ["cover", cover], ["keeper", keeper]]) onePart(n, m);
+for (const [n, m] of [["shell", shell], ["rear frame", frame], ["face", face], ["cover", cover], ["apron", apron]]) onePart(n, m);
 check("shutter button file is two parts", button.decompose().length === 2, `${button.decompose().length}: plunger and retainer`);
-check("pins file is four parts", pins.decompose().length === 4, `${pins.decompose().length}`);
 check("shell and frame do not overlap", vol(shell, frame) < 1e-6, `${vol(shell, frame).toFixed(4)} mm^3 shared`);
-check("face sits on the shell without overlap", vol(shell, face) < 1e-6, `${vol(shell, face).toFixed(4)} mm^3 shared; the pins are the only thing in the shafts`);
+check("face sits on the shell without overlap", vol(shell, face) < 1e-6, `${vol(shell, face).toFixed(4)} mm^3 shared`);
 check("stack dummy clears the shell (ribs aside)", vol(bare, dummy) < 1e-3, `${vol(bare, dummy).toFixed(4)} mm^3 of electronics inside the shell's material`);
 check("stack dummy clears the frame", vol(frame, dummy) < 1e-6, `${vol(frame, dummy).toFixed(4)} mm^3`);
 {
   const crush = vol(shell, dummy);
-  check("pinch ribs bite the heads and nothing else does", crush > 0.5 && crush < 20, `${crush.toFixed(2)} mm^3 of rib inside the nominal heads`);
+  check("pinch ribs bite the heads and nothing else does", crush > 1.0 && crush < 40, `${crush.toFixed(2)} mm^3 of rib inside the nominal heads: 16 triangular ribs ${P.camRibBase} wide, ${P.camRibProud} proud`);
 }
 for (const [lx, ly] of S.lensXY) {
   const pocket = S.headPocket;
@@ -143,7 +142,7 @@ for (const [lx, ly] of S.lensXY) {
     cube(lx - pocket / 2 + 2 * P.camRibProud + 0.15, ly - pocket / 2 + 2 * P.camRibProud + 0.15, Z.plateInner + 0.1, clear, clear, Z.camPocketDepth - 0.2),
     `${pocket.toFixed(2)} mm pocket, ${clear.toFixed(2)} mm free between the rib tips and the datum walls, ${Z.camPocketDepth} mm deep`);
   check(`camera pocket at X ${lx} has pinch ribs`,
-    vol(shell, cube(lx - pocket / 2, ly - pocket / 2 + 1.0, Z.plateInner + 0.3, P.camRibProud * 1.5, pocket - 2.0, 0.5)) > 0.05, `${P.camRibSpan.length} ribs per axis, ${P.camRibProud} mm proud`);
+    vol(shell, cube(lx - pocket / 2, ly - pocket / 2 + 1.0, Z.plateInner + 0.3, P.camRibProud * 0.8, pocket - 2.0, 0.5)) > 0.05, `${P.camRibSpan.length} ribs per axis, ${P.camRibProud} mm proud, ${P.camRibBase} at the wall`);
   openProbe(`lens bore at X ${lx} open through the plate`, cylZ(lx, ly, Z.plateInner + 0.1, P.lensBoreD / 2 - 0.1, P.plate - 0.2, 48), `${P.lensBoreD} mm bore to the plate's front face`);
   const zTop = FACE.floorZ + P.sliderT + 0.3;
   const cone = fuse([
@@ -153,19 +152,24 @@ for (const [lx, ly] of S.lensXY) {
   openProbe(`field cone at X ${lx} clears the shell`, cone, `${P.camFovDeg + 2 * P.fovMarginDeg} degrees from a pupil ${P.camPupilBackFromLens} mm behind the lens face`);
   openProbe(`field cone at X ${lx} clears the face`, cone, `cell ${r2(2 * FACE.outerR)} mm at the panel floor, rings ${P.lensRingStep} mm proud of the cone`, face);
   openProbe(`field cone at X ${lx} clears the open cover`, cone, `cover stowed ${r2(FACE.travel)} mm down; its top edge at Y ${r2(FACE.openY1)} against the cone's bottom at Y ${r2(ly - FACE.coneR(zTop))}`, coverOpen);
+  openProbe(`field cone at X ${lx} clears the apron`, cone, `apron top at Y ${r2(FACE.apronTop)}`, apron);
   check(`closed cover blankets the cell at X ${lx}`, vol(cover, cylZ(lx, ly, FACE.floorZ + 0.1, FACE.outerR, 1.0, 48)) > 0.9 * Math.PI * FACE.outerR ** 2,
     `cover ${P.sliderH} tall over a ${r2(2 * FACE.outerR)} mm cell; the firmware's cover-closed test needs all four dark`);
 }
 for (const [hx, hy] of P.carrierHoles) {
-  openProbe(`driver reaches the screw at (${hx}, ${hy})`, cylZ(hx, hy, S.shaftFloorZ + 0.05, P.accessShaftD / 2 - 0.1, Z.plateFront - S.shaftFloorZ + 0.5, 32), `${P.accessShaftD} mm shaft from the plate's front to the foot at Z=${r2(S.shaftFloorZ)}`);
+  openProbe(`driver reaches the screw at (${hx}, ${hy})`, cylZ(hx, hy, S.shaftFloorZ + 0.05, P.accessShaftD / 2 - 0.1, Z.plateFront - S.shaftFloorZ + 0.5, 32), `${P.accessShaftD} mm shaft from the plate's front to the foot at Z=${r2(S.shaftFloorZ)}; the face comes off first`);
   openProbe(`screw passes the foot at (${hx}, ${hy})`, cylZ(hx, hy, S.bossFootZ - 0.5, P.screwBore / 2 - 0.1, P.bossFoot + 0.4, 24), `${P.screwBore} mm bore through ${P.bossFoot} mm of foot`);
   const foot = cylZ(hx, hy, S.bossFootZ, P.bossD / 2 - 0.1, 0.5, 24).subtract(cylZ(hx, hy, S.bossFootZ - 1, P.screwBore / 2 + 0.1, 3, 24));
   check(`foot stands on the carrier at (${hx}, ${hy})`, vol(shell, foot) > foot.volume() * 0.9, `pillar ${P.bossD} mm, inside the ${P.fastenerKeepOutD} mm fastener keep-out`);
-  openProbe(`face pin hole at (${hx}, ${hy}) open`, cylZ(hx, hy, FACE.back - 0.2, P.pinFaceD / 2 - 0.1, P.pinFaceL - 0.2, 24), `${P.pinFaceD} mm, ${P.pinFaceL} deep into the face's back`, face);
-  const ahead = cylZ(hx, hy, FACE.back + P.pinFaceL + 0.05, P.pinFaceD / 2 - 0.1, 1.0, 24);
-  check(`face pin hole at (${hx}, ${hy}) is blind`, vol(face, ahead) > ahead.volume() * 0.95, `at least 1.0 mm of face ahead of the hole`);
-  check(`pin at (${hx}, ${hy}) reaches past the plate into the shaft`, P.pinShellL >= 3.0 && P.pinShellD <= P.accessShaftD, `${P.pinShellD} mm pin in the ${P.accessShaftD} mm shaft, ${P.pinShellL} mm of it; ${P.pinFaceD} mm in the face, ${P.pinFaceL} mm`);
 }
+// The six face pins: a hole in the wall end and a hole in the face's back at each station.
+for (const [px, py] of S.pinXY) {
+  openProbe(`face pin hole in the wall end at (${r2(px)}, ${r2(py)}) open`, cylZ(px, py, Z.plateFront - P.facePinWall + 0.1, P.facePinD / 2 - 0.1, P.facePinWall - 0.1 + 0.3, 16), `${P.facePinD} mm, ${P.facePinWall} deep in a ${P.wall} mm wall`);
+  openProbe(`face pin hole in the face at (${r2(px)}, ${r2(py)}) open`, cylZ(px, py, FACE.back - 0.3, P.facePinD / 2 - 0.1, P.facePinFace - 0.1 + 0.3, 16), `${P.facePinFace} deep into the face's back`, face);
+  const ahead = cylZ(px, py, FACE.back + P.facePinFace + 0.05, P.facePinD / 2 - 0.1, 1.0, 16);
+  check(`face pin hole at (${r2(px)}, ${r2(py)}) is blind`, vol(face, ahead) > ahead.volume() * 0.95, `at least 1.0 mm of face ahead of it; the plate is ${P.faceBase}`);
+}
+check("the walls carry the pin holes", (P.wall - P.facePinD) / 2 >= 1.2, `${r2((P.wall - P.facePinD) / 2)} mm a side`);
 openProbe("the carrier slides in from the rear up to the pillar feet",
   rbox(-0.05, -0.05, Z.glass + 0.1, P.carrierW + 0.05, P.carrierH + 0.05, S.bossFootZ - 0.05, P.carrierR), `${P.carrierClear} mm a side; the feet at Z=${r2(S.bossFootZ)} are the stop; the shutter pod ends at Z=${P.shutterPodBottomZ}`);
 openProbe("USB-C plug passes the bottom wall",
@@ -176,33 +180,38 @@ for (const lx of P.ledXs) openProbe(`LED slot at X ${lx} open`, box(lx - P.ledSl
   openProbe("the frame shows the whole active area with margin",
     box(pcx - S.windowHalf[0] + 0.05, pcy - S.windowHalf[1] + 0.05, Z.frameRear - 0.5, pcx + S.windowHalf[0] - 0.05, pcy + S.windowHalf[1] - 0.05, Z.glass + 0.5),
     `${r2(2 * S.windowHalf[0])} x ${r2(2 * S.windowHalf[1])} window over ${P.activeArea[0]} x ${P.activeArea[1]} (active area centred: PROVISIONAL)`, frame);
-  const lap = [(P.p4W - 2 * S.windowHalf[0]) / 2, (P.p4H - 2 * S.windowHalf[1]) / 2];
-  check("the frame overlaps the module's border on every side", lap[0] >= 3 && lap[1] >= 3, `${r2(lap[0])} mm in X, ${r2(lap[1])} mm in Y`);
-  check("thumb pad and symbol stay on the frame's borders", P.thumbPadX[0] >= pcx + S.windowHalf[0] + 1 && P.thumbPadX[1] <= ox1 - 1.5 && P.symbolRearAt[0] >= ox0 + 1.5 && P.symbolRearAt[0] + P.symbolRearH * 1.23 <= pcx - S.windowHalf[0] - 1,
-    `window from X ${r2(pcx - S.windowHalf[0])} to ${r2(pcx + S.windowHalf[0])}; thumb grooves X ${P.thumbPadX[0]} to ${P.thumbPadX[1]}; symbol from X ${P.symbolRearAt[0]}, ${P.symbolRearH} mm tall`);
+  openProbe("the window's chamfer is cut",
+    box(pcx - S.windowHalf[0] - P.frameWindowChamfer + 0.3, pcy - S.windowHalf[1] - P.frameWindowChamfer + 0.3, Z.frameRear - 0.5, pcx + S.windowHalf[0] + P.frameWindowChamfer - 0.3, pcy + S.windowHalf[1] + P.frameWindowChamfer - 0.3, Z.frameRear + 0.2),
+    `${P.frameWindowChamfer} mm at 45 degrees, widening toward the rear, for the thumb`, frame);
+  const lap = [(P.p4W - 2 * S.windowHalf[0]) / 2 - P.frameWindowChamfer, (P.p4H - 2 * S.windowHalf[1]) / 2 - P.frameWindowChamfer];
+  check("the frame overlaps the module's border on every side past the chamfer", lap[0] >= 3 && lap[1] >= 2, `${r2(lap[0])} mm in X, ${r2(lap[1])} mm in Y`);
+  check("thumb pad and symbol stay on the frame's borders", P.thumbPadX[0] >= pcx + S.windowHalf[0] + P.frameWindowChamfer + 1 && P.thumbPadX[1] <= ox1 - P.frameEdgeR - 0.5 && P.symbolRearAt[0] >= ox0 + P.frameEdgeR && P.symbolRearAt[0] + P.symbolRearH * 1.23 <= pcx - S.windowHalf[0] - P.frameWindowChamfer - 1,
+    `window from X ${r2(pcx - S.windowHalf[0])} to ${r2(pcx + S.windowHalf[0])}; thumb pad X ${P.thumbPadX[0]} to ${P.thumbPadX[1]}; symbol from X ${P.symbolRearAt[0]}, ${P.symbolRearH} mm tall`);
 }
 for (const x of P.frameScrewXs) for (const y of XY.wallMidY) {
   openProbe(`frame pilot at (${x}, ${r2(y)}) open`, cylZ(x, y, Z.glass - 0.2, P.framePilotD / 2 - 0.1, P.framePilotDepth, 16), `${P.framePilotD} mm pilot ${P.framePilotDepth} mm into the wall end`);
-  openProbe(`frame screw hole at (${x}, ${r2(y)}) open`, cylZ(x, y, Z.frameRear - 0.2, P.frameScrewHoleD / 2 - 0.1, P.rearFrameT + 0.4, 16), `${P.frameScrewHoleD} mm through the frame`, frame);
+  openProbe(`frame screw hole at (${x}, ${r2(y)}) open`, cylZ(x, y, Z.frameRear - 0.2, P.frameScrewHoleD / 2 - 0.1, P.rearFrameT + 0.4, 16), `${P.frameScrewHoleD} mm through the frame; the M2 pan head sits proud on the back`, frame);
 }
 check("wall carries the frame pilots", (P.wall - P.framePilotD) / 2 >= 1.2, `${r2((P.wall - P.framePilotD) / 2)} mm a side`);
 check("layer grooves leave the wall", P.wall - P.grooveD >= 4.0, `${P.grooveD} mm V-grooves at ${P.grooveP} mm pitch in a ${P.wall} mm wall`);
-// The cover in its track.
+// The cover in its track, and the apron over it.
 {
   const closed = vol(face, cover), open = vol(face, coverOpen), mid = vol(face, coverMid);
   check("cover closed: held by the detent and nothing else", closed > 0.01 && closed < 1.0, `${closed.toFixed(3)} mm^3 of bump inside the cover's edge crests`);
   check("cover open: held by the detent and nothing else", open > 0.01 && open < 1.0, `${open.toFixed(3)} mm^3`);
   check("cover mid-travel: free in the track", mid < 1e-3, `${mid.toFixed(4)} mm^3; the edge relief clears the bumps between the crests`);
   check("cover travel is positive and the cover stows above the rim", FACE.travel > 10 && FACE.openY0 >= FACE.panel[1] + 0.4, `${r2(FACE.travel)} mm down from Y ${r2(FACE.closedY0)}; stowed bottom edge at Y ${r2(FACE.openY0)}, panel from Y ${r2(FACE.panel[1])}`);
-  check("keeper fills the rim gap and nothing else", vol(face, keeper) < 1e-6 && keeper.volume() > 30, `${r2(keeper.volume())} mm^3, ${P.keeperClr} mm a side in the gap; glued in once the cover is in`);
-  const kb = keeper.boundingBox();
-  check("keeper sits under the stowed cover's bottom edge", kb.max[1] <= FACE.openY0 - 0.3, `keeper top at Y ${r2(kb.max[1])}, cover bottom when stowed at ${r2(FACE.openY0)}: the positive stop`);
-  check("wordmark fits the cover's band", markBox.y > FACE.closedY0 + P.coverRidgeGap + P.coverRidge[1] && markBox.y + markBox.h < FACE.closedY1 - 0.8 && markBox.w < (FACE.panel[2] - FACE.panel[0]) - 10,
-    `${r2(markBox.w)} x ${r2(markBox.h)} mm raised ${P.markProud}, strokes about ${r2(1.2 * P.markScale)} mm at this scale (one nozzle line is 0.45)`);
-  check("maker's mark sits on the upper deck clear of the band and the bosses", makerBox.y > FACE.band[3] + 1.5 && makerBox.y + makerBox.h < P.carrierHoles[0][1] - P.pinBossD / 2 - 1.0 && makerBox.x + makerBox.w < P.fingerPadX[0] - 2,
-    `${r2(makerBox.w)} x ${r2(makerBox.h)} mm at (${makerBox.x}, ${makerBox.y}), raised ${P.makerProud}; band top at Y ${r2(FACE.band[3])}, bosses from Y ${r2(P.carrierHoles[0][1] - P.pinBossD / 2)}`);
-  check("finger pad stays on the face, clear of the band and the boss", P.fingerPadX[0] > P.bandX[1] + 2 && P.fingerPadX[1] < FACE.outline[2] - 2 && P.fingerPadY[1] < FACE.outline[3] - 2,
-    `ribs X ${P.fingerPadX[0]} to ${P.fingerPadX[1]}, Y ${P.fingerPadY[0]} to ${P.fingerPadY[1]}; face to X ${r2(FACE.outline[2])}`);
+  for (const [n, c] of [["closed", cover], ["open", coverOpen], ["mid", coverMid]]) {
+    check(`apron clears the cover ${n}`, vol(apron, c) < 1e-6, `${vol(apron, c).toFixed(4)} mm^3; the apron's back is ${P.apronClear} mm in front of the cover`);
+  }
+  check("apron sits on the face without overlap", vol(apron, face) < 1e-6, `${vol(apron, face).toFixed(4)} mm^3; it fills the rim gap and lies on the band's rim`);
+  check("apron is the track's stop under the stowed cover", apron.boundingBox().max[1] >= FACE.openY0 + 2 && FACE.apronTop <= FACE.openY1 - P.coverLip[1] - P.apronGapBelowBar + 1e-9,
+    `apron from Y ${r2(apron.boundingBox().min[1])} to ${r2(FACE.apronTop)}; stowed cover from ${r2(FACE.openY0)}, its lip from ${r2(FACE.openY1 - P.coverLip[1])}; closed, ${r2(FACE.closedY0 - FACE.apronTop)} mm of floor shows between the apron and the bar`);
+  check("wordmark fits under the lip", markBox.y > FACE.closedY0 + 0.8 && markBox.y + markBox.h < FACE.closedY1 - P.coverLip[1] - 0.6 && markBox.w < (FACE.panel[2] - FACE.panel[0]) - 10,
+    `${r2(markBox.w)} x ${r2(markBox.h)} mm raised ${P.markProud}; strokes about ${r2(1.25 * P.markScale)} mm at this scale (estimated from the 80 mm trace), floor ${P.markMinStroke}`);
+  check("wordmark strokes clear one nozzle line with margin", 1.25 * P.markScale >= P.markMinStroke, `about ${r2(1.25 * P.markScale)} mm; print its last ${P.markProud} mm in the face's filament`);
+  check("grip stays on the face, clear of the band", P.gripX[0] > P.bandX[1] + 2 && P.gripX[1] < FACE.outline[2] - P.faceEdgeR - 1 && P.gripY[0] > FACE.outline[1] + P.faceEdgeR && P.gripY[1] < FACE.outline[3] - P.faceEdgeR - 1 && P.fingerPadX[0] >= P.gripX[0] + P.gripChamfer && P.fingerPadX[1] <= P.gripX[1] - P.gripChamfer,
+    `grip X ${P.gripX[0]} to ${P.gripX[1]}, Y ${P.gripY[0]} to ${P.gripY[1]}, ${P.gripProud} proud; ribs inside its flat top`);
 }
 // The shutter.
 {
@@ -215,33 +224,36 @@ check("layer grooves leave the wall", P.wall - P.grooveD >= 4.0, `${P.grooveD} m
   check("shutter pod stays above the carrier", P.shutterPodBottomZ >= Z.carrierFront + 1.0, `pod bottom Z=${P.shutterPodBottomZ}, carrier front Z=${r2(Z.carrierFront)}`);
   check("shutter bore's teardrop roof stays inside the pod", Zc - Math.SQRT2 * P.shutterAssemblyAccessD / 2 >= P.shutterPodBottomZ && Zc + P.shutterAssemblyAccessD / 2 <= Z.plateInner + 0.3,
     `axis Z=${Zc}, access bore ${P.shutterAssemblyAccessD}: roof apex at Z=${r2(Zc - Math.SQRT2 * P.shutterAssemblyAccessD / 2)}, top at ${r2(Zc + P.shutterAssemblyAccessD / 2)}; pod Z ${P.shutterPodBottomZ} to ${r2(Z.plateInner + 0.3)}`);
-  check("shutter plunger stem is positive", T.stem > 2.0, `${r2(T.stem)} mm stem; press face ${P.shutterProud} mm proud of the top face`);
+  check("shutter plunger stem is positive", T.stem > 2.0, `${r2(T.stem)} mm stem; press face ${P.shutterProud} mm proud of the top face plus the dome`);
   check("retainer passes its bore and seats on the pod", P.shutterRetainerCupD + 0.2 <= P.shutterAssemblyAccessD && P.shutterRetainerPlateD > P.shutterAssemblyAccessD && P.shutterRetainerPlateD <= P.shutterPodW - 2 && P.shutterActuatorFlangeD + 0.2 <= P.shutterAssemblyAccessD,
     `${P.shutterRetainerCupD} cup and ${P.shutterActuatorFlangeD} flange through ${P.shutterAssemblyAccessD}; ${P.shutterRetainerPlateD} plate on a ${P.shutterPodW} pod`);
+  check("maker's mark sits on the deck left of the shutter", P.makerAt[0] + P.makerW <= X - P.shutterCollarD / 2 - 2 && P.makerAt[1] > Z.carrierFront && P.makerAt[1] + 5 < Z.plateFront - 2,
+    `"odd jobs" ${P.makerW} mm wide engraved ${P.makerDepth} deep at X ${P.makerAt[0]} to ${P.makerAt[0] + P.makerW}, Z from ${P.makerAt[1]}; the collar starts at X ${r2(X - P.shutterCollarD / 2)}`);
 }
-openProbe("strap cord hole open", cylZ(S.lugHole[0], S.lugHole[1], P.strapLugZ0 - 0.5, P.strapHoleD / 2 - 0.1, P.strapLugH + S.lugProud + 1, 24), `${P.strapHoleD} mm through the lug on the right wall, front to back`);
-check("strap lug clears the USB opening and the shutter pod", P.strapLugY0 > S.usbOpenZ[1] - 100 && P.strapLugY0 + P.strapLugLen < SHUTTER.podInnerY - 2 && P.strapLugY0 > P.carrierH - P.carrierH, `lug Y ${P.strapLugY0} to ${P.strapLugY0 + P.strapLugLen} on the right wall; the USB-C is in the bottom wall, the pod from Y ${r2(SHUTTER.podInnerY)}`);
+for (const [i, [hx, hy]] of S.lugHoles.entries()) {
+  openProbe(`strap cord hole ${i === 0 ? "right" : "left"} open`, cylZ(hx, hy, P.strapLugZ0 - 0.5, P.strapHoleD / 2 - 0.1, P.strapLugH + S.lugProud + 1, 24), `${P.strapHoleD} mm through the tab at the lower rear corner, front to back`);
+}
+check("strap tabs sit beside the frame, under the palm's reach", P.strapLugZ0 >= Z.glass + 1 && P.strapLugZ0 + P.strapLugH + S.lugProud * 1.05 <= Z.carrierFront && P.strapLugY0 + P.strapLugLen < 20,
+  `tabs Z ${P.strapLugZ0} to ${r2(P.strapLugZ0 + P.strapLugH + S.lugProud * 1.05)} (glass at ${r2(Z.glass)}), Y ${P.strapLugY0} to ${P.strapLugY0 + P.strapLugLen}`);
 
-// Print orientations: the shell face down; everything else as drawn, its
-// cosmetic or bearing face on the bed.
+// Print orientations: the shell face down; the frame rear face up; the
+// rest as drawn, bearing face on the bed.
 const prints = {
   "KINO_CARRIER_SHELL.stl": toBed(shell.rotate([180, 0, 0])),
   "KINO_CARRIER_REAR_FRAME.stl": toBed(frame.rotate([180, 0, 0])),
   "KINO_CARRIER_FACE.stl": toBed(face),
   "KINO_CARRIER_LENS_COVER.stl": toBed(cover),
-  "KINO_CARRIER_COVER_KEEPER.stl": toBed(keeper),
-  "KINO_CARRIER_FACE_PINS.stl": toBed(pins),
+  "KINO_CARRIER_APRON.stl": toBed(apron.rotate([180, 0, 0])),
   "KINO_CARRIER_SHUTTER_BUTTON.stl": toBed(button),
 };
+const pinEnds = S.pinXY.length * Math.PI * (P.facePinD / 2) ** 2;
 const allowance = {
-  "KINO_CARRIER_SHELL.stl": [P.ledXs.length * P.ledSlot[0] * (cy0 - oy0) + P.carrierHoles.length * Math.PI * ((P.accessShaftD / 2) ** 2 - (P.screwBore / 2) ** 2) + (P.shutterCollarD / 2) * (Math.PI / 2) * (P.shutterCollarDepth + 0.2) + 20,
-    "the LED slot bridges, the four screw-foot shoulders, the shutter collar's 1.6 mm recess, and up to 20 mm^2 of exact 45 degree gable that rounds past the threshold; the layer grooves are 49 degrees"],
-  "KINO_CARRIER_REAR_FRAME.stl": [P.frameScrewXs.length * XY.wallMidY.length * Math.PI * ((P.frameHeadD / 2) ** 2 - (P.frameScrewHoleD / 2) ** 2) + 2,
-    "the four counterbore shoulders (0.9 mm rings over the bore), rear face up so the edge round faces up"],
-  "KINO_CARRIER_FACE.stl": [P.carrierHoles.length * Math.PI * (P.pinFaceD / 2) ** 2 + 3, "the four blind pin holes' ends (3.5 mm bridges)"],
+  "KINO_CARRIER_SHELL.stl": [P.ledXs.length * P.ledSlot[0] * (cy0 - oy0) + P.carrierHoles.length * Math.PI * ((P.accessShaftD / 2) ** 2 - (P.screwBore / 2) ** 2) + (P.shutterCollarD / 2) * (Math.PI / 2) * (P.shutterCollarDepth + 0.2) + pinEnds + 60 + 20,
+    "the LED slot bridges, the four screw-foot shoulders, the shutter collar's 1.6 mm recess, the six pin holes' ends, the engraved letters' 0.5 mm lower walls (60), and up to 20 mm^2 of exact 45 degree gable; the layer grooves are 49 degrees"],
+  "KINO_CARRIER_REAR_FRAME.stl": [2, "nothing: holes through, the chamfer and the pad face up"],
+  "KINO_CARRIER_FACE.stl": [pinEnds + 3, "the six blind pin holes' ends (1.8 mm bridges)"],
   "KINO_CARRIER_LENS_COVER.stl": [8, "the 0.2 mm ledges at the edge relief"],
-  "KINO_CARRIER_COVER_KEEPER.stl": [1, "nothing"],
-  "KINO_CARRIER_FACE_PINS.stl": [1, "nothing"],
+  "KINO_CARRIER_APRON.stl": [2, "nothing: plate face down, the keeper block stands on it"],
   "KINO_CARRIER_SHUTTER_BUTTON.stl": [110, "the retainer's leg-slot bridge and wire notches"],
 };
 for (const [name, m] of Object.entries(prints)) {
@@ -255,22 +267,25 @@ for (const [name, m] of Object.entries(prints)) {
 const files = {};
 for (const [name, m] of Object.entries(prints)) files[name] = writeStl(outDir, name, m);
 files["KINO_CARRIER_STACK_DUMMY.stl"] = writeStl(outDir, "KINO_CARRIER_STACK_DUMMY.stl", dummy);
-// Body-frame copies of each part for the colour previews (render-parts.py).
-for (const [name, m] of [["shell", shell], ["frame", frame], ["face", face], ["cover", cover], ["cover-open", coverOpen], ["keeper", keeper]]) {
+for (const [name, m] of [["shell", shell], ["frame", frame], ["face", face], ["cover", cover], ["cover-open", coverOpen], ["apron", apron]]) {
   writeStl(outDir, `preview-${name}.stl`, m);
 }
 writeStl(outDir, "preview-shutter.stl", capPreview());
-files["KINO_CARRIER_ASSEMBLED_PREVIEW.stl"] = writeStl(outDir, "KINO_CARRIER_ASSEMBLED_PREVIEW.stl", fuse([shell, frame, dummy, face, cover, keeper]));
-files["KINO_CARRIER_OPEN_PREVIEW.stl"] = writeStl(outDir, "KINO_CARRIER_OPEN_PREVIEW.stl", fuse([shell, frame, dummy, face, coverOpen, keeper]));
+{
+  const [px0, py0, px1, py1] = XY.p4;
+  writeStl(outDir, "preview-glass.stl", box(px0 + 0.5, py0 + 0.5, Z.glass - 0.2, px1 - 0.5, py1 - 0.5, Z.glass + 2));
+}
+files["KINO_CARRIER_ASSEMBLED_PREVIEW.stl"] = writeStl(outDir, "KINO_CARRIER_ASSEMBLED_PREVIEW.stl", fuse([shell, frame, dummy, face, cover, apron]));
+files["KINO_CARRIER_OPEN_PREVIEW.stl"] = writeStl(outDir, "KINO_CARRIER_OPEN_PREVIEW.stl", fuse([shell, frame, dummy, face, coverOpen, apron]));
 const report = {
   package: "KINO_CARRIER_BODY", generated: new Date().toISOString(),
-  body: { width: r2(XY.bodyW), height: r2(XY.bodyH), depth: r2(FACE.bandFront - Z.frameRear), depthToRim: r2(S.rimFront - Z.frameRear), lensRowY: r2(XY.lensY), cameraXs: P.cameraXs },
+  body: { width: r2(XY.bodyW), height: r2(XY.bodyH), depth: r2(FACE.bandFront - Z.frameRear), depthOverGrip: r2(FACE.front + P.gripProud + P.fingerRibH - Z.frameRear), lensRowY: r2(XY.lensY), cameraXs: P.cameraXs },
   stack: Object.fromEntries(Object.entries(Z).map(([k, v]) => [k, r2(v)])),
-  face: { back: r2(FACE.back), front: r2(FACE.front), bandFront: r2(FACE.bandFront), outline: FACE.outline.map(r2), panel: FACE.panel.map(r2), band: FACE.band.map(r2), coverClosed: [r2(FACE.closedY0), r2(FACE.closedY1)], coverOpen: [r2(FACE.openY0), r2(FACE.openY1)], travel: r2(FACE.travel), cellOuterD: r2(2 * FACE.outerR) },
+  face: { back: r2(FACE.back), front: r2(FACE.front), bandFront: r2(FACE.bandFront), outline: FACE.outline.map(r2), panel: FACE.panel.map(r2), band: FACE.band.map(r2), coverClosed: [r2(FACE.closedY0), r2(FACE.closedY1)], coverOpen: [r2(FACE.openY0), r2(FACE.openY1)], travel: r2(FACE.travel), apronTop: r2(FACE.apronTop), apronZ: apronZ.map(r2), cellOuterD: r2(2 * FACE.outerR) },
   shutter: { stem: r2(SHUTTER.stem), podInnerY: r2(SHUTTER.podInnerY), capD: P.shutterPressCapD },
   files, gates: { total: checks.length, failed: checks.filter((c) => !c.pass).length }, checks,
 };
 fs.writeFileSync(path.join(outDir, "carrier-body-release-report.json"), JSON.stringify(report, null, 2));
-console.log(`${checks.length} gates, ${report.gates.failed} failed. Body ${report.body.width} x ${report.body.height} x ${report.body.depth} mm over the lens band.`);
+console.log(`${checks.length} gates, ${report.gates.failed} failed. Body ${report.body.width} x ${report.body.height} x ${report.body.depth} mm over the band, ${report.body.depthOverGrip} over the grip.`);
 for (const [k, f] of Object.entries(files)) console.log(`  ${k}: ${f.size.join(" x ")} mm, ${f.volumeCm3} cm^3, ${f.triangles} triangles`);
 if (report.gates.failed) { for (const c of checks.filter((c) => !c.pass)) console.log(`  FAIL ${c.name}: ${c.details}`); process.exit(1); }

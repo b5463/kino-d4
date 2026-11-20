@@ -22,7 +22,7 @@ lenses at positive Z. The chain is re-added by a gate every build.
 
 | Term | mm | Z after | Source |
 |---|---:|---:|---|
-| rear frame | 3.0 | -16.8 | chosen; its R3 edge round over the full thickness |
+| rear frame | 2.5 | -16.3 | chosen; the thumb climbs it to the glass, so its window edge is chamfered |
 | P4 module, glass front to PCB back | 13.8 | 0.0 | OFFICIAL_CAD |
 | P4 inserts | 3.3 | 3.3 | MEASURED |
 | M2 spacers | 8.0 | 11.3 | the bench set; the J100 socket floats 0.3 mm off home |
@@ -31,9 +31,9 @@ lenses at positive Z. The chain is re-added by a gate every build.
 | XIAO male header insulator | 2.5 | 23.9 | **PROVISIONAL**: the headers soldered to the owner's XIAOs; the carrier's assembly print left this out |
 | XIAO back face to the lens front | 15.0 | 38.9 | Seeed's assembled Sense stack |
 | plate ahead of the lens | 1.5 | 40.4 | chosen; the shell's front |
-| face | 2.5 | 42.9 | its edge an R2.5 pillow round |
-| lens band | 3.5 | 46.4 | the cover, its set-back and 1.3 of floor over the lower pin holes |
-| **body, over the lens band** | **63.2** | | |
+| face | 3.5 | 43.9 | its edge an R3.5 pillow round; the cover's track is cut into it |
+| lens band rim | 1.0 | 44.9 | |
+| **body, over the band** | **61.2** | | 63.5 over the grip's ribs, 64.1 over the apron |
 
 The module's PCB face is the Z datum for the camera, as in the field body: it
 lands on the plate's inner face at Z 35.4 (the Sense board's top is at 31.5, so
@@ -61,11 +61,11 @@ What the depth is made of, lens front to glass, and what the body adds:
 | of which the P4-to-carrier layer (inserts and spacers; the battery lives in it) | 11.3 |
 | of which the XIAO connectors (8.5 socket + 2.5 male header insulator) | 11.0 |
 | of which the XIAO, Sense board and camera | 15.0 |
-| body in front: plate ahead of the lens 1.5, face 2.5, band 3.5 | 7.5 |
-| body behind: the rear frame | 3.0 |
-| **over the band** | **63.2** |
+| body in front: plate ahead of the lens 1.5, face 3.5, band rim 1.0 | 6.0 |
+| body behind: the rear frame | 2.5 |
+| **over the band** | **61.2** |
 
-The body is 10.5 mm of the 63.2. The one stack term that is a bench choice
+The body is 8.5 mm of the 61.2. The one stack term that is a bench choice
 is the XIAO connectors: the eight 1x07 sockets are hand-fit, so 4.3 mm
 low-profile strips in place of the 8.5 mm Wurth part, and XIAOs soldered on
 bare pins without the 2.5 mm insulator, would take up to 6.7 mm out of the
@@ -102,72 +102,109 @@ ideas"). Three filaments, each on its own part:
 
 | File | What | Filament | Print |
 |---|---|---|---|
-| `print/KINO_CARRIER_SHELL.stl` | front plate with the four pockets and bores, all four walls to the display plane with R10 plan corners, V-grooves around the side and bottom walls under a deck reveal, four screw pillars, the shutter pod, the rounded strap tab, the LED slots, the USB-C opening, the frame pilots | charcoal | face down, PETG, 0.20 mm, no support (gated) |
-| `print/KINO_CARRIER_REAR_FRAME.stl` | the 3 mm frame around the display with its outer edge rounded R3, 95.6 x 58.2 window, thumb grooves on the right border, the ODD JOBS symbol engraved on the left, four counterbored M2 holes | charcoal | rear face UP, so the round faces up; the counterbore shoulders are 0.9 mm bridges |
-| `print/KINO_CARRIER_FACE.stl` | the face: a 2.5 mm plate over the whole front, the walls' ends included, its edge an R2.5 pillow round; the pill-ended lens band with four stepped cells and the cover's track; the finger pad's ribs in a pill field; "odd jobs" raised; two domed rivets | cream (day) or cobalt (night) | back down |
-| `print/KINO_CARRIER_LENS_COVER.stl` | the sliding cover, 86.8 x 16.5 x 2, the kino D4 wordmark raised 0.6, a thumb ridge | charcoal | back down |
-| `print/KINO_CARRIER_COVER_KEEPER.stl` | the block that closes the cover's track at the band's bottom rim | as the face | as laid, glued in after the cover is in |
-| `print/KINO_CARRIER_FACE_PINS.stl` | four stepped pins, 3.8 x 5.5 into the shell's driver shafts, 3.5 x 3 into the face's back | any | standing; press fits, tune on the coupon |
+| `print/KINO_CARRIER_SHELL.stl` | front plate with the four pockets and bores, all four walls to the display plane with R10 plan corners, 0.5 mm V-grooves at 2.4 mm pitch around the side and bottom walls under a deck reveal, "odd jobs" engraved on the deck, four screw pillars, the shutter pod, two rounded strap tabs at the lower rear corners, the LED slots, the USB-C opening, the frame pilots, six pin holes in the walls' front ends | charcoal | face down, PETG, 0.20 mm, no support (gated) |
+| `print/KINO_CARRIER_REAR_FRAME.stl` | the 2.5 mm frame around the display, its outer edge rounded R1.5, 95.6 x 58.2 window with a 1.5 mm chamfer toward the rear, a raised thumb pad with grooves on the right border, the ODD JOBS symbol engraved on the left, four plain M2 holes (the pan heads sit proud, as the brand's concept shows its rear screws) | charcoal | rear face UP |
+| `print/KINO_CARRIER_FACE.stl` | the face: a 3.5 mm plate over the whole front, the walls' ends included, its edge an R3.5 pillow round; the lens band, a 1 mm pill-ended rim around the cover's track cut into the plate, with four stepped cells; the grip, a 2.5 mm pad on the right with the finger ribs on it; six pin holes in the back | cream (day) or cobalt (night) | back down |
+| `print/KINO_CARRIER_LENS_COVER.stl` | the sliding cover, 86.8 x 16.5 x 2 with R3 corners, the kino D4 wordmark raised 0.6 (print those last layers in the face's filament), a 3 mm lip on its top edge | charcoal | back down |
+| `print/KINO_CARRIER_APRON.stl` | the door over the stow zone: a 1 mm plate across the band's lower half, with the block that refills the cover's entry gap and is the track's stop | as the face | plate face down; glued in after the cover is in |
 | `print/KINO_CARRIER_SHUTTER_BUTTON.stl` | the plunger (14 mm cap with a convex R18 dome, 2 mm rim plus 1.4 of dome proud) and the switch retainer (6 x 6 x 4.3 mm tactile switch) | pink | flange down |
+| six pins | 1.75 mm filament cut 4.5 mm long: 3 into the wall end, 2 into the face | any | |
 
 Where it comes from, and what each thing is for:
 
 - **The hand.** The right hand holds the right end (the on-device UI is laid
   out for it: `firmware/UI_DIRECTION.md`). The pink shutter is on the top deck
-  at X 104 under the index finger; the finger pad's 0.8 mm ribs are on the
-  face's right, under the middle finger; the thumb grooves are on the rear
-  frame's right border beside the glass; the wrist strap hangs off the right
-  wall between the USB-C and the shutter. A left-handed body is a mirror of
-  `shutterX`, the pads and the lug, nothing else.
+  at X 104 under the index finger; the grip is a 2.5 mm pad on the face's
+  right with 0.8 mm ribs, under the middle finger, so a stranger's hand lands
+  in the same place and off the lens row; the thumb pad stands 1.2 mm off the
+  rear frame's right border beside the glass, and the window's edge is
+  chamfered so the thumb slides onto the glass's edge targets instead of
+  climbing a wall. The cover is a LEFT-hand action: its lip is at the top of
+  the bar and the thumb pushes it down. The strap tabs are at the lower rear
+  corners, out of the palm (the first one sat under the heel of the hand); a
+  wrist loop on the right one, a neck strap on both. A left-handed body is a
+  mirror of `shutterX`, the pads and the deck mark, nothing else.
 - **The four-mark.** The band is the camera's identity. The cover closed is
   one dark bar across the cream face, the UI's landed bar; dropped, the four
-  cells show, the UI's four-mark. The cover is charcoal so the bar reads.
+  cells show, the UI's four-mark. The cover is charcoal so the bar reads, and
+  its corners are R3 so the bar is not a square inside a pill. The apron
+  roofs the stow zone, so closed the front is a bar over a door and never an
+  empty pocket; dropped, the cover slides under the door and only its lip
+  shows.
 - **Colour is an event.** Charcoal and cream (or cobalt) at rest; the one
   pink thing is the button you press. No other colour on the body.
-- **Quiet markings.** "odd jobs" (traced from the logo by
-  `brand/trace-wordmark.py`, 26 mm, raised 0.5) on the upper deck; the kino D4
-  wordmark on the cover in the cover's own colour; the symbol engraved on the
-  back. "made for bad ideas." is not on this body: at a size the brand would
-  set it, its strokes are under one nozzle line.
-- **Layer texture.** 0.25 mm V-grooves at 1.6 mm pitch around the side and
-  bottom walls, parallel to the layers, stopped 8 mm short of the top so the
-  deck reads as a cap. 49 degree flanks, so the face-down print has no
-  overhang.
-- **The rivets.** The two domes on the upper deck are the upper pin holes'
-  material (the plate alone is thinner than the hole is deep). They stay
-  because they read as rivets, and the lower two holes sit under the track.
+- **One mark per face.** "kino D4" on the cover, 52 x 7 mm, raised 0.6 with
+  its last layers printed in the face's filament so the bar carries the name
+  in contrast (a filament change at that height; strokes about 0.8 mm, one
+  nozzle line and a margin, gated). "odd jobs" (traced from the logo by
+  `brand/trace-wordmark.py`, 22 mm) engraved 0.5 deep on the top deck left
+  of the shutter, read from behind the camera, the way the brand's concept
+  carries its maker plate. The symbol engraved on the back. "made for bad
+  ideas." is not on this body: at a size the brand would set it, its strokes
+  are under one nozzle line.
+- **Layer texture.** 0.5 mm V-grooves at 2.4 mm pitch around the side and
+  bottom walls, parallel to the layers, stopped 8 mm short of the top under
+  a reveal line so the deck reads as a cap. 49 degree flanks, so the
+  face-down print has no overhang. 0.25 mm at 1.6 was three layers deep, at
+  PETG's own ripple.
 - **Not a box.** The owner's call on the first ODD JOBS render. The plan
   corners went to R10, the face to a full-front pillow with an R3.5 round,
-  the rear frame rounded R3 over its 3 mm (printed rear face up for it), the
-  band pill-ended, the rivets and the shutter cap domed, the strap tab
-  rounded about its hole. Everything else the walls forbid: the plan corner
-  cannot pass about R10.6 with the carrier's square corner inside the wall,
-  and the shell's front edge is on the bed, so its softness is the face's.
+  the band pill-ended, the shutter cap domed, the strap tabs rounded about
+  their holes. The plan corner cannot pass about R10.6 with the carrier's
+  square corner inside the wall, and the shell's front edge is on the bed, so
+  its softness is the face's. The rear frame's round is R1.5: its screw holes
+  sit 2.55 mm from the edge and a bigger round broke out through them.
+- **What the reviews changed.** Two cold reads of the fourth cut, one by an
+  engineer and one as a customer (2026-11-20): the empty stow pocket under
+  the closed bar ("a part fell out"), the two rivet domes with no story, the
+  tone-on-tone marks, no place for the hand, the strap under the palm, a
+  2.5 mm press fit holding the face, 0.4 mm pinch ribs, grooves at
+  layer-noise depth, the thumb climbing a wall to the glass. The apron, the
+  grip, the contrast wordmark, the filament pins in the wall ends, the
+  triangular ribs, the corner tabs, the chamfered window and the 0.5 mm
+  grooves are those answers. One suggestion was not taken: stowing the cover
+  UP, which would centre the band; drop-to-open was settled on the bench
+  coupon and the empty pocket exists in either direction. The apron is the
+  fix.
 
 ### The face and the cover
 
 The shell's front plate prints on the bed, so it can carry no relief; the
-face does. It covers the whole front, the walls' ends included, 2.5 mm thick
-with its edge rounded over the full thickness, and one thing stands proud of
-it: the lens band, 3.5 mm proud, chamfered 1.5, pill-ended, from X 3.2 to
-97.2, its bottom at the inner edge of the face's round. The band's recessed panel (2.2 deep) is the cover's track:
-dovetail lips on both walls, two detent pairs, the cover entering through a
-gap in the bottom rim that the keeper closes, 0.1 mm a side, the cover riding
-on two 2.5 mm lands. The four cells are two stepped cones cut from the 82
-degree field cone (pupil 1.1 mm behind the lens face), 14 mm at the panel
-floor, rings 0.6 mm proud of the cone.
+face does. It covers the whole front, the walls' ends included, 3.5 mm thick
+with its edge rounded over the full thickness. The cover's track is a 2.2 mm
+panel cut into the plate (1.2 of plate left under the relieved floor), ringed
+by the band, a 1 mm pill-ended rim chamfered 1.5, from X 3.2 to 97.2, its
+bottom at the inner edge of the face's round. In the track: dovetail lips on
+both walls, two detent pairs past the cover's R3 corners, 0.1 mm a side, the
+cover riding on two 2.5 mm lands. The four cells are two stepped cones cut
+from the 82 degree field cone (pupil 1.1 mm behind the lens face), 14 mm at
+the panel floor, rings 0.6 mm proud of the cone. The band's R9 corners keep
+1.1 mm of rim around the panel's corners (gated; R12 cut into them).
 
-The cover drops 16.45 mm to shoot, down to the band's bottom rim; the travel
+The cover drops 17.6 mm to shoot, down to the band's bottom rim; the travel
 is derived from the face's edge. The lens row sits low on the carrier, so
 every millimetre of cover is a millimetre of travel: 16.5 mm tall, it blankets
 the 14 mm cells by 1.25 a side when closed and its top edge clears the field
-cone by 0.5 mm when stowed. Both are gates, as is the closed cover blanketing
+cone by 3 mm when stowed. Both are gates, as is the closed cover blanketing
 every cell (the firmware's cover-closed test needs all four dark).
 
-A rim pocket, the face flush inside walls that run past the plate, was the
-first draft of this cut: printed face down, the recessed plate hung 2.5 mm
-over the bed as 10,000 mm^2 of overhang. A proud face inside a flat margin
-came next; the full-front pillow replaced it when the body read as a box.
+The apron is one part in the face's filament: the block that refills the
+cover's entry gap in the bottom rim (the track's stop) and a 1 mm plate over
+the stow zone, 0.8 mm in front of the cover so the raised wordmark passes
+under it. Its top edge stops 0.3 mm under the stowed cover's lip, so closed,
+3.9 mm of track floor shows between the door and the bar as a shadow line.
+It prints plate face down and is glued in once the cover is in the track.
+Gates: it clears the cover closed, open and mid-travel, sits on the face
+without overlap, and is the stop under the stowed cover.
+
+The face is held by six 1.75 mm filament pins, 3 mm into the walls' front
+ends and 2 mm into its back (the two bottom pins sit outside the cover's
+entry gap, where the plate is thinner). They locate; a bead of glue at the
+pins retains, if the face ever lifts. A rim pocket (the face flush inside
+walls run past the plate) was the first draft of this cut: printed face
+down, the recessed plate hung 2.5 mm over the bed as 10,000 mm^2 of
+overhang. A proud face inside a flat margin came next; the full-front
+pillow replaced it when the body read as a box.
 
 ### The shutter
 
@@ -185,13 +222,15 @@ sits 12 mm above the pod's bottom.
 
 1. Switch into the retainer, retainer into the pod from the rear, leads out
    through the side channels. Plunger in from the top.
-2. Cover into the face's track from below, keeper glued into the rim gap.
-3. Pins into the face's back; face onto the shell, pins into the shafts.
+2. Cover into the face's track from below; apron glued over the stow zone,
+   its block in the rim gap.
+3. Six filament pins into the walls' front ends; face pressed on.
 4. Stack the P4, spacers, carrier and nodes outside the body. Slide the stack
    into the shell from the rear, carrier first, until the carrier meets the
    four pillar feet. Face off, drive the four M2 screws through the shafts,
    through the pillar feet and the carrier, into the spacers. Face back on.
-5. Frame onto the wall ends with four M2 x 8 thread-forming screws.
+5. Frame onto the wall ends with four M2 x 8 thread-forming pan-head screws;
+   the heads sit proud on the back.
 
 The carrier's USB-C comes out through the bottom wall at the right; the three
 edge LEDs show through three 2 x 4 mm slots beside it. The P4's own USB ports
@@ -204,7 +243,7 @@ are each part in print orientation from `render-stl.py`.
 
 ## Gates
 
-`node generate-carrier-body.mjs` writes `.candidate/` and runs 123 gates,
+`node generate-carrier-body.mjs` writes `.candidate/` and runs 139 gates,
 throwing on the first failure (`KINO_SOFT_GATES=1` collects them): the depth
 chain re-added over the lens band, the lens front on the pocket floor, the
 module PCB with the plate to land on, the battery bay tall enough for the cell
@@ -226,7 +265,7 @@ routes open, the pod above the carrier, the stem positive, the retainer
 passing its bore, the strap hole open, and every print support-free off the
 bed (each one's allowed bridges listed in its gate) and on a 250 x 210 bed.
 
-`node promote.mjs` validates the candidates, copies the seven parts into
+`node promote.mjs` validates the candidates, copies the six parts into
 `print/` and the report into `reports/`, sweeps stale files and validates
 again. There is no independent scan yet; promote says so every run.
 
@@ -253,6 +292,7 @@ Each one is a number in `params.mjs` and nothing else moves when it changes.
 - `p4CanH` 3.5: the P4 module can, and whatever else stands on the P4's back inside the bay rectangle (CN4, the C6 module).
 - `spacer` 8.0 with the socket home: the carrier README's bench step says 7.7 expected.
 - `camStackH` 15.0 and the head size 8.5: the field body's `KINO_CAM_FIT_COUPON` and a caliper on a seated node.
-- `pinShellD` / `pinFaceD`: the press fits, on the pillar coupon.
+- `facePinD` 1.8: the filament pins' fit in the wall ends and the face, on the pillar coupon.
+- The customer review's two items the carrier fixes, not the body: the USB-C and the three status lights are on the bottom edge because the carrier puts them there, so the camera charges lying on its back; a later carrier can move them.
 - `activeCentred`: the active area centred on the PCB is still an assumption; the window has 1.0 mm a side.
 - `camFovDeg` 78: the OV3660's real field is `MEASURE_REQUIRED`.

@@ -21,10 +21,15 @@ export const coneZ = (cx, cy, z, r0, r1, h, seg = 64) => Manifold.cylinder(h, r0
 export const cylY = (cx, y, cz, r, len, seg = 64) => Manifold.cylinder(len, r, r, seg).rotate([-90, 0, 0]).translate([cx, y, cz]);
 export const fuse = (list) => Manifold.union(list);
 export const vol = (a, b) => a.intersect(b).volume();
-// A box with rounded vertical edges: the hull of four cylinders.
-export const rbox = (x0, y0, z0, x1, y1, z1, r, seg = 48) => r <= 0 ? box(x0, y0, z0, x1, y1, z1) : Manifold.hull([
+// A box with rounded vertical edges: the hull of four cylinders. The radius
+// is clamped to half the shorter side: past that the corner cylinders cross
+// and the hull overruns the box (the apron plate grew 5 mm each way once).
+export const rbox = (x0, y0, z0, x1, y1, z1, rIn, seg = 48) => {
+  const r = Math.min(rIn, (x1 - x0) / 2 - 0.01, (y1 - y0) / 2 - 0.01);
+  return r <= 0 ? box(x0, y0, z0, x1, y1, z1) : Manifold.hull([
   cylZ(x0 + r, y0 + r, z0, r, z1 - z0, seg), cylZ(x1 - r, y0 + r, z0, r, z1 - z0, seg),
   cylZ(x0 + r, y1 - r, z0, r, z1 - z0, seg), cylZ(x1 - r, y1 - r, z0, r, z1 - z0, seg)]);
+};
 // A convex prism along Y from [x, z] points.
 export const prismY = (y, len, ...pointsXZ) => Manifold.hull(pointsXZ.map(([x, z]) => cube(x - 0.01, y, z - 0.01, 0.02, len, 0.02)));
 // A hole along Y whose roof points toward -Z: the shell prints with its
