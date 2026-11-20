@@ -50,8 +50,12 @@ from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-63 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens front
-on the pocket floor, both parts one solid, an electronics dummy clear of both
+66 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens front
+on the pocket floor, the battery bay (56.4 x 49.4 x 6.3 mm between the P4
+and the carrier, between the spacers; the cell goes on the P4's CN4 and the
+P4's IP5306 charges it from the carrier's USB-C, so there is no SW6106 module
+and no lead leaves the shell; a 505573 pouch does not fit this plan, a 50 x 50
+class cell does), both parts one solid, an electronics dummy clear of both
 parts with only the pinch ribs inside the nominal heads (5.3 mm^3), every
 pocket, bore, shaft, foot, slot, opening and pilot probed open, every pillar
 inside the carrier's 7 mm fastener keep-out, the carrier's sweep from the rear
@@ -68,9 +72,7 @@ unchanged.
 
 ## Staged
 
-The cosmetic face shell (form, marks, lens cones), the battery grip (the
-505573 pouch and SW6106 module fit neither under the carrier nor in the front
-cavity; the J1001 lead has no way out of this shell yet), the sliding lens
+The cosmetic face shell (form, marks, lens cones), the sliding lens
 cover, the shutter button on its J103 lead, the strap lug, the P4's TF slot
 opening, an interference gate against the carrier's own part model, the
 pillar and pocket coupons, the independent scan. Issue #252 carries the open
@@ -96,5 +98,5 @@ area's position, the field of view.
 ## Decision
 
 Design in progress. The first print waits on the owner's measurements of the
-soldered header insulator and the spacer height, and on the battery placement
-from the carrier's bench step.
+soldered header insulator, the P4 module can and the spacer height, and on a
+cell that fits the bay.

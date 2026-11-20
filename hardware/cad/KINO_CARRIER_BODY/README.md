@@ -47,6 +47,27 @@ the pin-7 end), at X 17.2, 39.2, 61.2, 83.2 from the carrier's left edge. The
 block is 9 mm left of centre; the right side carries the USB window and the
 power connector.
 
+## The battery
+
+In the layer between the P4 and the carrier, on the P4's own CN4 connector
+(owner's placement, 2026-11-20). The P4's IP5306 charges it from the
+carrier's USB-C: JP1 5 V sits on the IP5306's node per the vendor schematic,
+and the carrier README's bench step 8 is the meter check. No SW6106 module,
+no J1001 lead, no lead leaves the shell. The bay is a gated keep-out in the
+model (`batteryBay`), carried in the stack dummy as the cell it is gated for:
+
+| | mm |
+|---|---:|
+| plan, between the four spacers, 1 mm clear of each | 56.4 x 49.4 |
+| height, carrier back-face parts (1.5) to the P4 module can (3.5, PROVISIONAL) | 6.3 |
+| cell gated for | 5.0 thick plus 0.5 of foam |
+
+A 505573 pouch (55 x 73) does not fit this plan in either orientation; the
+cell has to be a 50 x 50 class, 5 to 6 mm thick. On battery the cameras run
+only if the rail is tied to the P4's 5 V (U1001 keeps the rail off the P4 by
+design): one wire from TP101 to the J1001 RAIL pins, and then the IP5306's
+2.1 A boost carries the whole stack. Measure before trusting it.
+
 ## The two prints
 
 | File | What | Print |
@@ -69,10 +90,11 @@ through the window would meet the plate.
 
 ## Gates
 
-`node generate-carrier-body.mjs` writes `.candidate/` and runs 63 gates,
+`node generate-carrier-body.mjs` writes `.candidate/` and runs 66 gates,
 throwing on the first failure (`KINO_SOFT_GATES=1` collects them): the depth
 chain re-added, the lens front on the pocket floor, the module PCB with the
-plate to land on, each part one solid, the electronics dummy clear of both
+plate to land on, the battery bay tall enough for the cell and clear of the
+spacers and the outline, each part one solid, the electronics dummy clear of both
 parts with only the pinch ribs inside the nominal heads, every pocket open with
 its ribs standing, every bore open through the plate and wide enough for the
 field cone (78 + 2 degrees from a pupil 1.1 mm behind the lens), the driver
@@ -96,9 +118,6 @@ again. There is no independent scan yet; promote says so every run. Previews:
   bores and four 4 mm screw shafts; it prints on the bed and can carry no
   relief. Form, marks and the lens cones for the field beyond the plate go on
   a face shell that prints back-face down, as the field body's does.
-- The battery. The 505573 pouch and the SW6106 module fit neither under the
-  carrier nor in the front cavity; the proposal in #252 is a grip on the right
-  side. The J1001 lead has no way out of this shell yet.
 - The sliding lens cover and keeper, the shutter button (J103 lead), the
   strap lug, the P4's TF slot opening (position unmeasured), the C6 service
   header access.
@@ -113,6 +132,7 @@ again. There is no independent scan yet; promote says so every run. Previews:
 Each one is a number in `params.mjs` and nothing else moves when it changes.
 
 - `xiaoHeaderInsulator` 2.5: measure a soldered XIAO, socket top to board back.
+- `p4CanH` 3.5: the P4 module can, and whatever else stands on the P4's back inside the bay rectangle (CN4, the C6 module).
 - `spacer` 8.0 with the socket home: the carrier README's bench step says 7.7 expected.
 - `camStackH` 15.0 and the head size 8.5: the field body's `KINO_CAM_FIT_COUPON` and a caliper on a seated node.
 - `activeCentred`: the active area centred on the PCB is still an assumption; the window has 1.0 mm a side.

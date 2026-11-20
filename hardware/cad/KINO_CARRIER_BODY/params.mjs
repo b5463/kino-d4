@@ -44,6 +44,19 @@ export const P = Object.freeze({
   ledXs: [87.695, 93.695, 99.695],
   ledSlot: [2.0, 4.0],       // width x height of each slot through the bottom wall
 
+  // ---- The battery bay: the layer between the P4 and the carrier ----------
+  // The owner's placement (2026-11-20). In plan the bay is what the four
+  // spacers leave between them, 1 mm clear of each: 56.4 x 49.4 mm. In height
+  // it is the spacer layer less the carrier's back-face parts under it
+  // (nothing taller than an 0805 in this rectangle: 1.25 mm plus solder) and
+  // the P4's module can. A 505573 pouch (55 x 73) does not fit this plan in
+  // either orientation; the cell has to be a 50 x 50 class.
+  batteryBay: [21.7, 10.7, 78.1, 60.1],   // body frame
+  carrierBackPartsH: 1.5,
+  p4CanH: 3.5,                 // PROVISIONAL: the ESP32-P4 module can on the P4's back
+  cellT: 5.0,                  // the cell this bay is gated for, plus 0.5 mm of foam
+  cellFoam: 0.5,
+
   // ---- The P4 module -------------------------------------------------------
   p4W: 114.40,               // the bare module, spec p.6
   p4H: 66.80,
@@ -108,10 +121,12 @@ export const Z = (() => {
   const glass = -P.p4T;
   const frameRear = glass - P.rearFrameT;
   const pupil = lensFront - P.camPupilBackFromLens;
+  const bayFloor = P.p4CanH;
+  const bayCeiling = carrierBack - P.carrierBackPartsH;
   return Object.freeze({
     carrierBack, carrierFront, socketTop, xiaoBack, senseTop, lensFront,
     camPocketDepth, plateInner, plateFront, glass, frameRear, pupil,
-    depth: plateFront - frameRear,
+    bayFloor, bayCeiling, depth: plateFront - frameRear,
   });
 })();
 

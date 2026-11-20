@@ -1,6 +1,6 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-20T18:39:16.081Z",
+  "generated": "2026-11-20T19:07:56.087Z",
   "body": {
     "width": 128,
     "height": 80.4,
@@ -26,6 +26,8 @@
     "glass": -13.8,
     "frameRear": -16.8,
     "pupil": 37.8,
+    "bayFloor": 3.5,
+    "bayCeiling": 9.8,
     "depth": 57.2
   },
   "files": {
@@ -48,8 +50,8 @@
       ]
     },
     "KINO_CARRIER_STACK_DUMMY.stl": {
-      "triangles": 1740,
-      "volumeCm3": 139.33,
+      "triangles": 1752,
+      "volumeCm3": 156.88,
       "size": [
         118.4,
         70.8,
@@ -57,8 +59,8 @@
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 7970,
-      "volumeCm3": 291.99,
+      "triangles": 7982,
+      "volumeCm3": 309.54,
       "size": [
         128,
         80.4,
@@ -67,7 +69,7 @@
     }
   },
   "gates": {
-    "total": 63,
+    "total": 66,
     "failed": 0
   },
   "checks": [
@@ -85,6 +87,21 @@
       "name": "the module's PCB has the plate to land on",
       "pass": true,
       "details": "3.9 mm from the Sense board's top to the plate's inner face, for a 3.5 mm module PCB and its fold"
+    },
+    {
+      "name": "battery bay takes the cell with foam",
+      "pass": true,
+      "details": "6.3 mm between the P4's module can (3.5, PROVISIONAL) and the carrier's back-face parts (1.5) for a 5 mm cell and 0.5 mm of foam"
+    },
+    {
+      "name": "battery bay clears the four spacers",
+      "pass": true,
+      "details": "56.4 x 49.4 mm in plan, 2.1 mm from the nearest 3.5 mm spacer; a 55 x 73 pouch does not fit this plan"
+    },
+    {
+      "name": "battery bay is inside the carrier outline",
+      "pass": true,
+      "details": "the cell never meets a wall"
     },
     {
       "name": "shell is one part",

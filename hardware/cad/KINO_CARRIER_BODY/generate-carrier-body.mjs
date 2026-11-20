@@ -148,6 +148,8 @@ function buildDummy() {
   parts.push(rbox(0, 0, Z.carrierBack, P.carrierW, P.carrierH, Z.carrierFront, P.carrierR)
     .subtract(box(wx0, wy0, Z.carrierBack - 1, wx1, wy1, Z.carrierFront + 1)));            // the carrier
   parts.push(box(P.usbCX - 4.47, P.carrierH - 7.88, Z.carrierBack - P.usbShellH, P.usbCX + 4.47, P.carrierH - 0.53, Z.carrierBack)); // J1000, shell 0.53 inside the edge
+  const [bx0, by0, bx1, by1] = P.batteryBay;
+  parts.push(box(bx0, by0, Z.bayFloor, bx1, by1, Z.bayCeiling));                             // the battery bay, as the cell it is gated for
   for (const x of P.cameraXs) {
     const cy = P.socketCentreY, ly = XY.lensY;
     for (const sx of [-7.62, 7.62]) parts.push(box(x + sx - 1.27, cy - 8.89, Z.carrierFront, x + sx + 1.27, cy + 8.89, Z.socketTop));
@@ -193,6 +195,20 @@ const r2 = (v) => Math.round(v * 100) / 100;
     `XIAO back at Z=${r2(Z.xiaoBack)} + ${P.camStackH} = lens front Z=${r2(Z.lensFront)}; pocket ${Z.camPocketDepth} deep from the plate's inner face at Z=${r2(Z.plateInner)}`);
   check("the module's PCB has the plate to land on", Z.plateInner - Z.senseTop >= P.camModulePcbT + 0.3,
     `${r2(Z.plateInner - Z.senseTop)} mm from the Sense board's top to the plate's inner face, for a ${P.camModulePcbT} mm module PCB and its fold`);
+}
+// The battery bay: the layer between the P4 and the carrier, between the spacers.
+{
+  const [bx0, by0, bx1, by1] = P.batteryBay;
+  const h = Z.bayCeiling - Z.bayFloor;
+  check("battery bay takes the cell with foam", h >= P.cellT + P.cellFoam,
+    `${r2(h)} mm between the P4's module can (${P.p4CanH}, PROVISIONAL) and the carrier's back-face parts (${P.carrierBackPartsH}) for a ${P.cellT} mm cell and ${P.cellFoam} mm of foam`);
+  const spacerGap = Math.min(...P.carrierHoles.map(([hx, hy]) => {
+    const dx = Math.max(bx0 - hx, 0, hx - bx1), dy = Math.max(by0 - hy, 0, hy - by1);
+    return Math.hypot(dx, dy) - 1.75;
+  }));
+  check("battery bay clears the four spacers", spacerGap >= 1.0,
+    `${r2(bx1 - bx0)} x ${r2(by1 - by0)} mm in plan, ${r2(spacerGap)} mm from the nearest 3.5 mm spacer; a 55 x 73 pouch does not fit this plan`);
+  check("battery bay is inside the carrier outline", bx0 >= 0 && by0 >= 0 && bx1 <= P.carrierW && by1 <= P.carrierH, "the cell never meets a wall");
 }
 check("shell is one part", shell.decompose().length === 1, `${shell.decompose().length} component(s)`);
 check("rear frame is one part", frame.decompose().length === 1, `${frame.decompose().length} component(s)`);
