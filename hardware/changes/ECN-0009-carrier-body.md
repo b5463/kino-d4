@@ -102,22 +102,39 @@ owner's printer. Two parts:
   cover upward, which would centre the band; drop-to-open was settled on the
   bench coupon. 128.0 x 80.4 x 61.2 mm over the band, 63.5 over the grip,
   the body 8.5 of it.
+- **After a design-award jury read** (sixth cut, 2026-11-20): the band
+  rim and the grip pad go; one groove, the horizon, is cut across the face
+  edge to edge at the bar's height, its right end 2 mm deep as the grip; the
+  face steps in 0.8 mm so a line of charcoal wall end frames it (the concept
+  frames its colour field); the face itself roofs the stow zone, with a
+  slot for the cover's lip, and the apron is gone (the keeper block stays);
+  the brand "odd jobs" goes on the bar, raised, its last layers cream on
+  both colourways, and the model "kino D4" to the deck, engraved 40 mm wide;
+  the layer grooves run over the deck too and the reveal line is gone; the
+  strap tabs become cord slots through the frame's corners over channels in
+  the wall end; the thumb pad gets three half-round ridges; the symbol is
+  engraved 1 mm with a stepped edge. Face 5.3 mm (horizon 1.0 + track 2.8 +
+  1.25 under the floor). 128.0 x 80.4 x 62.0 mm, the body 9.3 of it,
+  nothing proud of the face. Not taken: a fourth filament as a requirement
+  (it is a note on the cover's last layers).
 
 Depth, re-added by a gate every build: 2.5 frame + 13.8 module + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
-(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 3.5 face +
-1.0 band rim = 61.2 mm over the band, against the field body's 74.5 over its
-lens bar. The body is 8.5 of it; the XIAO connectors (11.0) are the one
+(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 5.3 face
+= 62.0 mm, against the field body's 74.5 over its lens bar. The body is 9.3
+of it; the XIAO connectors (11.0) are the one
 stack term the bench can shorten, with low-profile sockets and bare pins. The plate's inner face lands at Z 35.4
 from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-139 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
-front on the pocket floor, the face over the whole front, the plan corner's
-wall on the diagonal, the band's rim around the panel's corners, the apron
-clear of the cover at every position and the stop under it, the six pin
-holes open and blind, the window's chamfer, the marks and pads on
+145 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
+front on the pocket floor, the face inset from the outline and over the
+pins, the plan corner's wall on the diagonal, the roof over the stow zone
+clear of the cover and its mark, the lip's slot, the keeper clear of the
+cover at every position and the stop under it, the six pin holes open and
+blind, the strap slots and channels open and clear of the screws, the
+window's chamfer, the marks and pads on
 their decks, the shutter bore's roof inside the pod, the field cone clear of the shell, the face and
 the stowed cover at every station, the closed cover blanketing every cell,
 the cover held by its detents closed and open and free between, the keeper

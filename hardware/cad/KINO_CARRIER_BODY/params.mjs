@@ -93,9 +93,6 @@ export const P = Object.freeze({
   wall: 4.5,                 // thick enough for the rear frame's pilots in the wall ends
   plate: 5.0,                // the front plate: pocket depth + platePocketAhead
   cornerR: 10.0,             // near the most the plan allows: the carrier's R3 corners sit inside the wall, and at R10 the wall on the diagonal is 2.65 mm (gated)
-  deckLine: 8.0,             // the top deck reads as a cap: the layer grooves stop here and a reveal runs round
-  deckRevealW: 0.8,
-  deckRevealD: 0.4,
   frameEdgeR: 1.5,           // the rear frame's outer edge (printed rear face up); the screw holes 2.55 from the outline forbid a bigger one
   frameEdgeSteps: 5,
   // Six filament pins (1.75 mm, cut 4.5 long) in the walls' front ends locate
@@ -126,60 +123,56 @@ export const P = Object.freeze({
   // over the whole front with a pillow edge, a pink shutter, quiet markings.
   // The face covers the plate and the walls' front ends (the concept's v18
   // front: the fascia fills the front, the charcoal is the sides and the cap).
-  faceBase: 3.5,             // the face plate; the front's only soft edge lives here, and 2.5 did not read at 128 mm wide
-  faceEdgeR: 3.5,            // its front edge, a quarter round over the full thickness
-  // The grip: a raised pad on the face's right, where the right hand lands,
-  // with the finger ribs on it. A stranger's hand finds the same place every
-  // time and stays off the lens row.
-  gripX: [100.0, 118.0],
-  gripY: [4.0, 66.0],
-  gripProud: 2.5,
-  gripChamfer: 1.5,
-  gripR: 8.0,
-  fingerPadX: [102.5, 115.5],
-  fingerPadY: [10.0, 60.0],
-  fingerRibW: 1.2,
-  fingerRibPitch: 2.6,
-  fingerRibH: 0.8,
-  fingerPadR: 6.0,           // the rib field's corners
-  // The maker's mark, "odd jobs", traced from the logo, engraved on the top
-  // deck left of the shutter (the deck is a vertical wall in print, so an
-  // engraving there is free), the way the brand's concept carries its plate.
-  makerW: 22.0,
-  makerAt: [70.0, 24.0],     // X on the deck, and Z of its lower edge in the body frame
-  makerDepth: 0.5,
-  // Layer texture on the shell's walls: V-grooves around the body, parallel to
-  // the layers in print, on the side and bottom walls, never across the top deck.
+  faceBase: 5.3,             // the face plate; the horizon groove, the cover's track and the apron's recess are cut into it, 1.25 left under the floor
+  faceEdgeR: 3.5,            // its front edge, a quarter round
+  faceInset: 0.8,            // the face steps in from the shell's outline, so a charcoal line of wall end frames it (the concept frames its colour field)
+  // The horizon: a full-width groove across the face at the bar's height,
+  // its ends open through the edge round. The bar sits in it; the face is
+  // built around the line. The jury's one move.
+  horizonD: 1.0,
+  horizonPad: 1.0,           // above and below the closed cover
+  // The grip: the horizon's right end, cut deeper, so the middle finger
+  // pulls against its left wall. No ribs: ribs are the charcoal's texture.
+  gripX0: 100.0,
+  gripD: 2.0,
+  // The model name, "kino D4", engraved on the top deck left of the shutter
+  // (the deck is a vertical wall in print, so an engraving there is free).
+  modelW: 40.0,              // strokes about 0.6 mm at this width; 22 was under a nozzle line
+  modelAt: [48.0, 24.0],     // X on the deck, and Z of its lower edge in the body frame; ends before the collar's groove gap
+  modelDepth: 0.5,
+  // Layer texture: V-grooves around the whole body, parallel to the layers in
+  // print, the deck included (it is a wall in print too), clear of the
+  // shutter collar and the engraving. The body is one thing.
   grooveP: 2.4,
   grooveD: 0.5,              // 0.25 was three layers deep, at PETG's own ripple; these read as ribs
   grooveZ: [-9.0, 37.0],
-  // The rear frame: thumb pad as grooves on the right border, the ODD JOBS
-  // symbol engraved on the left border (the rear face is the bed, so nothing
-  // there can stand proud).
+  grooveCollarClear: 4.0,    // around the collar
+  // The rear frame: a thumb pad with three half-round ridges on the right
+  // border, the ODD JOBS symbol engraved on the left border, cut deep enough
+  // to read as shadow (the rear face is up in print).
   thumbPadX: [110.0, 119.0], // past the window's chamfer, short of the frame's edge round
   thumbPadY: [18.0, 52.0],
-  thumbGrooveW: 1.0,
-  thumbGroovePitch: 2.8,
-  thumbGrooveD: 0.4,
+  thumbPadProud: 1.5,
+  thumbRidgeR: 0.75,
+  thumbRidgeN: 3,
   symbolRearH: 8.0,
   symbolRearAt: [-1.5, 31.0],
-  symbolRearD: 0.4,
+  symbolRearD: 1.0,
+  symbolRearBevel: 0.3,      // a 0.4 mm step outside the outline, so the cut reads as shadow
   // The lens band: proud of the base, chamfered, with a recessed panel that is
   // the cover's track. Its Y extent is DERIVED from the cover's travel.
   bandX: [3.2, 97.2],
-  bandProud: 1.0,            // the panel is cut into the face itself now that no pin hole sits under the track; the band is a rim
   panelFloorMin: 1.2,        // face left under the panel floor
-  // The apron: the keeper grown into a fixed plate over the stow zone, in the
-  // face's colour, glued. Closed, the front is a bar over a door; dropped,
-  // the cover slides under the apron. Its slot lets the cover's lip through.
-  apronT: 1.0,
-  apronClear: 0.8,           // over the cover's front: the raised wordmark (0.6) passes under it
-  apronGapBelowBar: 0.3,     // between the apron's top edge and the stowed lip
+  // The stow zone is roofed by the face itself (the plate above the track,
+  // a 1 mm bridge in print); the cover slides under it with its raised mark.
+  // A slot through the roof carries the cover's lip. The keeper block
+  // refills the cover's entry gap and is the track's stop, glued.
+  lipSlotClear: 0.3,         // per side around the lip, and below it when stowed
   bandChamfer: 1.5,
   bandRim: 2.0,              // flat rim between the chamfer and the panel
   bandBottomInset: 3.4,      // the band's bottom rim, from the face's bottom edge to the panel; the keeper lives in it
   bandR: 9.0,                // pill ends; R12 cut 0.1 mm into the panel's corners through a 3.5 mm rim (gated now)
-  panelDepth: 2.2,           // cover 2.0 plus 0.2 set back from the band's front
+  panelDepth: 2.8,           // cover 2.0, its raised mark 0.6, and 0.2 under the face's roof over the stow zone; the bar sits 0.8 below the groove's floor
   lensRingStep: 0.6,         // each ring of a cell stands this far proud of the field cone
   // The cover: the field body's bench-tuned track, restated. Drops to open.
   sliderH: 16.5,             // blankets the 14 mm cells with 1.25 mm a side; the lens row sits low, so every mm of cover is a mm of travel (the travel is DERIVED: closed to the band's bottom rim)
@@ -198,11 +191,15 @@ export const P = Object.freeze({
   coverRailW: 2.5,
   coverRailProud: 0.25,
   coverRailOffset: 30.0,
-  coverLip: [24.0, 3.0],     // the thumb lip on the cover's TOP edge, width x height; the thumb pushes down on its top face
-  coverLipProud: 1.8,
-  markScale: 0.65,           // the kino D4 wordmark on the cover: 52 x 7 mm; print its last 0.6 mm in the face's filament so the bar reads
+  coverLip: [24.0, 1.5],     // the thumb lip on the cover's TOP edge, width x height; the thumb pushes down on its top face (the coupon says whether 1.5 is enough)
+  coverLipProud: 1.5,
+  // The brand on the bar: "odd jobs" raised on the cover, as the concept's
+  // nameplate. Print its last 0.6 mm in CREAM on both colourways (one swap on
+  // one small part): charcoal on cobalt was a low pair and cobalt type on it
+  // lower still.
+  markW: 30.0,               // the trace is 30 x 6.8; strokes about 1.3 mm
   markProud: 0.6,
-  markMinStroke: 0.8,        // gated against the trace's thinnest run at this scale
+  markMinStroke: 0.8,
   // ---- The shutter: the field body's pod, button and retainer, the cap grown
   // to the brand's pink button. The bore's teardrop roof points -Z, so the
   // axis sits sqrt(2) x the access radius above the pod's bottom.
@@ -232,15 +229,13 @@ export const P = Object.freeze({
   shutterSwitchLegBand: 1.8,
   shutterSwitchLegSink: 0.6,
   shutterSideWireW: 3.0,
-  // ---- Strap lugs at both lower rear corners: out of the palm (the right
-  // hand's heel sat on the first one, mid-wall), and a pair so a neck strap
-  // hangs the camera level. Wrist loop on the right one alone.
-  strapLugLen: 9.0,          // along Y
-  strapLugWall: 1.5,
-  strapHoleD: 3.0,
-  strapLugY0: -2.0,
-  strapLugZ0: -12.0,         // its -Z face (up in print), beside the frame
-  strapLugH: 6.0,            // at the outer face; the +Z side slopes 45 degrees back to the wall
+  // ---- Strap: cord channels at both lower corners, inside the outline. Two
+  // slots through the rear frame's border over a channel in the bottom
+  // wall's end: the cord goes in one slot, along the channel, out the other,
+  // and the frame between the slots is the bar it pulls on. No ears.
+  strapSlot: [2.2, 2.2],     // X x Y of each slot through the frame, inside the frame's edge round and 0.7 off the cavity
+  strapSlotXs: [2.5, 8.0],   // the two slots' X, from the body's left edge; mirrored at the right
+  strapChannelD: 2.2,        // into the wall end
 });
 
 // ---- The stack chain, derived once ------------------------------------------
