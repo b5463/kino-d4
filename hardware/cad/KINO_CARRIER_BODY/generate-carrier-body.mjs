@@ -67,7 +67,7 @@ function buildDummy() {
 const { bare, shell } = buildShell();
 const frame = buildFrame();
 const dummy = buildDummy();
-const { face, cover, keeper, markBox, roofBridge } = buildFace();
+const { face, cover, keeper, markTop, lipProud, markBox, roofBridge } = buildFace();
 const button = buildShutterButton();
 const coverOpen = cover.translate([0, -FACE.travel, 0]);
 const coverMid = cover.translate([0, -FACE.travel / 2, 0]);
@@ -109,7 +109,7 @@ const onePart = (name, m) => check(`${name} is one part`, m.decompose().length =
     `${r2(FACE.outline[2] - FACE.outline[0])} x ${r2(FACE.outline[3] - FACE.outline[1])} face on the plate, ${P.faceBase} mm thick with an R${P.faceEdgeR} edge`);
   check("plan corner leaves wall on the diagonal", P.cornerR <= (P.wall + P.carrierClear) * (1 + Math.SQRT2) - 1.0,
     `R${P.cornerR} outer corner against the cavity's near-square corner: ${r2(P.cornerR - (P.cornerR - P.wall - P.carrierClear) * Math.SQRT2)} mm of wall on the diagonal, ${r2(P.cornerR - (P.cornerR - P.wall - P.carrierClear) * Math.SQRT2 - P.grooveD)} under a groove`);
-  check("the face steps in from the shell and still covers the pins", P.faceInset >= 0.5 && P.faceInset + P.facePinD / 2 + 0.5 <= P.wall / 2,
+  check("the face steps in from the shell and still covers the pins", P.faceInset >= 0.5 && P.faceInset + P.facePinD / 2 + 0.4 <= P.wall / 2,
     `${P.faceInset} mm of charcoal wall end shows around the face; the pins at the wall's middle sit ${r2(P.wall / 2 - P.faceInset - P.facePinD / 2)} mm inside the face's edge`);
 }
 {
@@ -133,17 +133,21 @@ check("stack dummy clears the frame", vol(frame, dummy) < 1e-6, `${vol(frame, du
 }
 for (const [lx, ly] of S.lensXY) {
   const pocket = S.headPocket;
-  const clear = pocket - 3 * P.camRibProud - 0.3;
+  const clear = pocket - P.camRibProud - 0.3;   // one ribbed wall per axis
   openProbe(`camera pocket at X ${lx} open`,
-    cube(lx - pocket / 2 + 2 * P.camRibProud + 0.15, ly - pocket / 2 + 2 * P.camRibProud + 0.15, Z.plateInner + 0.1, clear, clear, Z.camPocketDepth - 0.2),
-    `${pocket.toFixed(2)} mm pocket, ${clear.toFixed(2)} mm free between the rib tips and the datum walls, ${Z.camPocketDepth} mm deep`);
+    cube(lx - pocket / 2 + P.camRibProud + 0.15, ly - pocket / 2 + P.camRibProud + 0.15, Z.plateInner + 0.1, clear, clear, Z.camPocketDepth - 0.2),
+    `${pocket.toFixed(2)} mm pocket, ${clear.toFixed(2)} mm free between the rib tips and the datum walls for an ${P.camBody} head, ${Z.camPocketDepth} mm deep, ${P.camPocketCornerRelief} mm corner reliefs`);
   check(`camera pocket at X ${lx} has pinch ribs`,
     vol(shell, cube(lx - pocket / 2, ly - pocket / 2 + 1.0, Z.plateInner + 0.3, P.camRibProud * 0.8, pocket - 2.0, 0.5)) > 0.05, `${P.camRibSpan.length} ribs per axis, ${P.camRibProud} mm proud, ${P.camRibBase} at the wall`);
   openProbe(`lens bore at X ${lx} open through the plate`, cylZ(lx, ly, Z.plateInner + 0.1, P.lensBoreD / 2 - 0.1, P.plate - 0.2, 48), `${P.lensBoreD} mm bore to the plate's front face`);
   const zTop = FACE.floorZ + P.sliderT + 0.3;
+  // The true view cone: a bore of boreR until the cone outgrows it, then the
+  // cone itself (a straight line from the bore's edge at FACE.zBore would
+  // overshoot the real cone where the bore is wider than the view).
+  const zTrue = Z.pupil + (FACE.boreR - 0.05) / FACE.tanF;
   const cone = fuse([
-    cylZ(lx, ly, Z.lensFront, FACE.boreR - 0.05, FACE.zBore - Z.lensFront + 0.01, 64),
-    coneZ(lx, ly, FACE.zBore, FACE.boreR - 0.05, FACE.coneR(zTop) - 0.05, zTop - FACE.zBore, 64),
+    cylZ(lx, ly, Z.lensFront, FACE.boreR - 0.05, zTrue - Z.lensFront + 0.01, 64),
+    coneZ(lx, ly, zTrue, FACE.boreR - 0.05, FACE.coneR(zTop) - 0.05, zTop - zTrue, 64),
   ]);
   openProbe(`field cone at X ${lx} clears the shell`, cone, `${P.camFovDeg + 2 * P.fovMarginDeg} degrees from a pupil ${P.camPupilBackFromLens} mm behind the lens face`);
   openProbe(`field cone at X ${lx} clears the face`, cone, `cell ${r2(2 * FACE.outerR)} mm at the panel floor, rings ${P.lensRingStep} mm proud of the cone`, face);
@@ -166,6 +170,11 @@ for (const [px, py] of S.pinXY) {
   check(`face pin hole at (${r2(px)}, ${r2(py)}) is blind`, vol(face, ahead) > ahead.volume() * 0.95, `at least 1.0 mm of face ahead of it; the plate is ${P.faceBase}`);
 }
 check("the walls carry the pin holes", (P.wall - P.facePinD) / 2 >= 1.2, `${r2((P.wall - P.facePinD) / 2)} mm a side`);
+const MODEL_H = 10.745 * P.modelW / 79.993;   // the model mark's height at modelW
+check("the signature inside sits on the plate, clear of the track and the pins", P.innerMarkAt[1] - MODEL_H - 2.5 > FACE.panel[3] + P.horizonPad + 2 && P.innerMarkAt[1] + 6 < FACE.outline[3] - P.faceEdgeR && P.innerMarkAt[0] - (P.modelW - P.innerMarkW) > 20 && P.innerMarkAt[0] + P.innerMarkW + 3 + P.innerSymbolH * 1.25 < 100, `"odd jobs" ${P.innerMarkW} mm and the symbol ${P.innerSymbolH} mm, ${P.innerMarkD} deep in the face's back at (${P.innerMarkAt[0]}, ${P.innerMarkAt[1]}); the track ends at Y ${r2(FACE.panel[3])}`);
+check("the side pins sit above the horizon channel", P.facePinsSideY - P.facePinD / 2 - 1.0 >= XY.lensY + P.sliderH / 2 + P.horizonPad, `pins at Y ${P.facePinsSideY}; the channel runs to Y ${r2(XY.lensY + P.sliderH / 2 + P.horizonPad)}, ${P.horizonWallD} mm into a ${P.wall} mm wall`);
+check("the horizon channel leaves wall", P.wall - P.horizonWallD - P.grooveD >= 2.0, `${r2(P.wall - P.horizonWallD - P.grooveD)} mm of wall under the channel where a layer groove crosses it`);
+check("the lip stands proud of the face for the thumb", Math.abs(lipProud - ((FACE.front - (FACE.floorZ + P.sliderT)) + P.coverLipAboveFace)) < 1e-9 && P.coverLipAboveFace >= 0.4, `${r2(lipProud)} mm off the cover, ${P.coverLipAboveFace} above the face, closed and stowed; the thumb pushes it down and lifts it back`);
 openProbe("the carrier slides in from the rear up to the pillar feet",
   rbox(-0.05, -0.05, Z.glass + 0.1, P.carrierW + 0.05, P.carrierH + 0.05, S.bossFootZ - 0.05, P.carrierR), `${P.carrierClear} mm a side; the feet at Z=${r2(S.bossFootZ)} are the stop; the shutter pod ends at Z=${P.shutterPodBottomZ}`);
 openProbe("USB-C plug passes the bottom wall",
@@ -213,7 +222,7 @@ check("layer grooves leave the wall", P.wall - P.grooveD >= 4.0, `${P.grooveD} m
 // The shutter.
 {
   const X = P.shutterX, Zc = P.shutterZ, T = SHUTTER;
-  openProbe("shutter guide bore open through the top face", cylY(X, T.switchPocketY + T.switchPocketDepth, Zc, P.shutterActuatorGuideD / 2 - 0.3, oy1 + 0.5 - (T.switchPocketY + T.switchPocketDepth), 32), `${P.shutterActuatorGuideD} mm, the ${P.shutterPressCapD} mm cap passes`);
+  openProbe("shutter guide bore open through the top face", cylY(X, T.switchPocketY + T.switchPocketDepth, Zc, P.shutterActuatorGuideD / 2 - 0.3, oy1 + 0.5 - (T.switchPocketY + T.switchPocketDepth), 32), `${P.shutterActuatorGuideD} mm, the ${P.shutterPressCapD} mm cap passes; the plunger goes in from the cavity, its ${P.shutterActuatorFlangeD} flange cannot pass the guide`);
   openProbe("shutter switch pocket open from the cavity", cylY(X, T.podInnerY - 0.3, Zc, P.shutterAssemblyAccessD / 2 - 0.2, T.switchPocketDepth + 0.2, 32), `${P.shutterAssemblyAccessD} mm access bore; the ${P.shutterRetainerPlateD} mm retainer plate seats on the pod's inner face`);
   for (const s of [-1, 1]) openProbe(`shutter lead route ${s < 0 ? "-X" : "+X"} open`,
     box(X + s * (P.shutterSwitchBody[0] + P.shutterSwitchClearance) / 2 - 1.0, T.podInnerY - 1.0, Zc - 1.0, X + s * (P.shutterSwitchBody[0] + P.shutterSwitchClearance) / 2 + 1.0, T.podInnerY + P.shutterPodReach, Zc + 1.0),
@@ -224,18 +233,19 @@ check("layer grooves leave the wall", P.wall - P.grooveD >= 4.0, `${P.grooveD} m
   check("shutter plunger stem is positive", T.stem > 2.0, `${r2(T.stem)} mm stem; press face ${P.shutterProud} mm proud of the top face plus the dome`);
   check("retainer passes its bore and seats on the pod", P.shutterRetainerCupD + 0.2 <= P.shutterAssemblyAccessD && P.shutterRetainerPlateD > P.shutterAssemblyAccessD && P.shutterRetainerPlateD <= P.shutterPodW - 2 && P.shutterActuatorFlangeD + 0.2 <= P.shutterAssemblyAccessD,
     `${P.shutterRetainerCupD} cup and ${P.shutterActuatorFlangeD} flange through ${P.shutterAssemblyAccessD}; ${P.shutterRetainerPlateD} plate on a ${P.shutterPodW} pod`);
-  check("model name sits on the deck left of the shutter, clear of the grooves' collar gap", P.modelAt[0] + P.modelW <= X - P.shutterCollarD / 2 - P.grooveCollarClear - 1 && P.modelAt[1] > Z.carrierFront && P.modelAt[1] + 6 < Z.plateFront - 2,
-    `"kino D4" ${P.modelW} mm wide engraved ${P.modelDepth} deep at X ${P.modelAt[0]} to ${P.modelAt[0] + P.modelW}, Z from ${P.modelAt[1]}; strokes about ${r2(1.2 * P.modelW / 80)} mm; the collar's gap starts at X ${r2(X - P.shutterCollarD / 2 - P.grooveCollarClear)}`);
+  check("the deck carries the button and nothing else", P.deckPlateauX < X - P.shutterCollarD / 2 - 2, `plateau from X ${P.deckPlateauX}; the collar at X ${r2(X - P.shutterCollarD / 2)}; the name is inside, on the face`);
 }
 for (const [i, [x0, y0, x1, y1]] of S.strapSlots.entries()) {
   openProbe(`strap slot ${i} open through the frame`, box(x0 + 0.1, y0 + 0.1, Z.frameRear - 0.3, x1 - 0.1, y1 - 0.1, Z.glass + 0.3), `${P.strapSlot[0]} x ${P.strapSlot[1]} mm through the frame's border`, frame);
 }
 for (const [i, [x0, y0, x1, y1]] of S.strapChannels.entries()) {
-  openProbe(`strap channel ${i} open in the wall end`, box(x0 + 0.1, y0 + 0.1, Z.glass - 0.3, x1 - 0.1, y1 - 0.1, Z.glass + P.strapChannelD - 0.1), `${P.strapChannelD} mm into the bottom wall's end between the slots; the frame between them is the bar`);
+  openProbe(`strap tunnel ${i} open inside the wall end`, box(x0 + 0.1, y0 + 0.1, Z.glass + P.strapTunnelSkin + 0.1, x1 - 0.1, y1 - 0.1, Z.glass + P.strapTunnelSkin + P.strapChannelD - 0.1), `${P.strapChannelD} mm square under ${P.strapTunnelSkin} of wall end: the cord loops the shell, the frame's slots are pass-throughs`);
+  const skin = box(x0 + P.strapSlot[0] + 0.3, y0 + 0.1, Z.glass + 0.05, x1 - P.strapSlot[0] - 0.3, y1 - 0.1, Z.glass + P.strapTunnelSkin - 0.05);
+  check(`strap tunnel ${i} has its skin`, vol(shell, skin) > skin.volume() * 0.9, `the bar the cord pulls on is ${P.strapTunnelSkin} mm of shell between the slots`);
 }
 check("strap slots clear the frame screws and the frame's edge", Math.min(...S.strapSlots.map(([x0, , x1]) => Math.min(...P.frameScrewXs.map((sx) => Math.min(Math.abs(sx - x0), Math.abs(sx - x1)))))) >= P.frameScrewHoleD / 2 + 1.5
   && S.strapSlots[0][1] >= oy0 + P.frameEdgeR, `nearest screw ${r2(Math.min(...S.strapSlots.map(([x0, , x1]) => Math.min(...P.frameScrewXs.map((sx) => Math.min(Math.abs(sx - x0), Math.abs(sx - x1)))))))} mm from a slot; slots from Y ${r2(S.strapSlots[0][1])}, the round to ${r2(oy0 + P.frameEdgeR)}`);
-check("the frame bar between the slots carries a cord", P.strapSlotXs[1] - P.strapSlotXs[0] - P.strapSlot[0] >= 3.0 && P.rearFrameT >= 2.5, `${r2(P.strapSlotXs[1] - P.strapSlotXs[0] - P.strapSlot[0])} mm of frame, ${P.rearFrameT} thick, for a 2 mm cord`);
+check("the shell's bar between the slots carries a cord", P.strapSlotXs[1] - P.strapSlotXs[0] - P.strapSlot[0] >= 3.0 && P.strapTunnelSkin >= 0.6 && P.wall - P.strapChannelD - 0.5 >= 1.0, `${r2(P.strapSlotXs[1] - P.strapSlotXs[0] - P.strapSlot[0])} mm of wall end between the slots; ${r2(P.wall - P.strapSlot[1] - 0.5)} mm beside the tunnel`);
 
 // Print orientations: the shell face down; the frame rear face up; the
 // rest as drawn, bearing face on the bed.
@@ -247,12 +257,12 @@ const prints = {
   "KINO_CARRIER_KEEPER.stl": toBed(keeper),
   "KINO_CARRIER_SHUTTER_BUTTON.stl": toBed(button),
 };
-const pinEnds = S.pinXY.length * Math.PI * (P.facePinD / 2) ** 2;
+const pinEnds = S.pinXY.length * Math.PI * (P.facePinD / 2 + P.facePinSink) ** 2;
 const allowance = {
-  "KINO_CARRIER_SHELL.stl": [P.ledXs.length * P.ledSlot[0] * (cy0 - oy0) + P.carrierHoles.length * Math.PI * ((P.accessShaftD / 2) ** 2 - (P.screwBore / 2) ** 2) + (P.shutterCollarD / 2) * (Math.PI / 2) * (P.shutterCollarDepth + 0.2) + pinEnds + 60 + 20,
-    "the LED slot bridges, the four screw-foot shoulders, the shutter collar's 1.6 mm recess, the six pin holes' ends, the engraved letters' 0.5 mm lower walls (60), and up to 20 mm^2 of exact 45 degree gable; the layer grooves are 49 degrees"],
+  "KINO_CARRIER_SHELL.stl": [P.ledXs.length * P.ledSlot[0] * (cy0 - oy0) + P.carrierHoles.length * Math.PI * ((P.accessShaftD / 2) ** 2 - (P.screwBore / 2) ** 2) + (P.shutterCollarD / 2) * (Math.PI / 2) * (P.shutterCollarDepth + 0.2) + pinEnds + S.strapChannels.length * P.strapChannelD * (P.strapSlotXs[1] - P.strapSlotXs[0] + P.strapSlot[0]) + 20,
+    "the LED slot bridges, the four screw-foot shoulders, the shutter collar's 1.6 mm recess, the six pin holes' ends, the two strap tunnels' roofs (2.2 mm bridges), and up to 20 mm^2 of exact 45 degree gable; the layer grooves are 49 degrees"],
   "KINO_CARRIER_REAR_FRAME.stl": [2, "nothing: holes through, the chamfer and the pad face up"],
-  "KINO_CARRIER_FACE.stl": [pinEnds + roofBridge + 5, "the six blind pin holes' ends (1.8 mm bridges) and the roof over the stow zone, a 1 mm plate bridging about 16 mm across the track"],
+  "KINO_CARRIER_FACE.stl": [pinEnds + roofBridge + 700 + 5, "the six blind pin holes' ends (1.8 mm bridges), the roof over the stow zone (a plate bridging about 16 mm across the track) and the signature engraved in the bed face"],
   "KINO_CARRIER_LENS_COVER.stl": [8, "the 0.2 mm ledges at the edge relief"],
   "KINO_CARRIER_KEEPER.stl": [1, "nothing"],
   "KINO_CARRIER_SHUTTER_BUTTON.stl": [110, "the retainer's leg-slot bridge and wire notches"],
@@ -272,6 +282,8 @@ for (const [name, m] of [["shell", shell], ["frame", frame], ["face", face], ["c
   writeStl(outDir, `preview-${name}.stl`, m);
 }
 writeStl(outDir, "preview-shutter.stl", capPreview());
+writeStl(outDir, "preview-mark.stl", markTop);
+writeStl(outDir, "preview-mark-open.stl", markTop.translate([0, -FACE.travel, 0]));
 {
   const [px0, py0, px1, py1] = XY.p4;
   writeStl(outDir, "preview-glass.stl", box(px0 + 0.5, py0 + 0.5, Z.glass - 0.2, px1 - 0.5, py1 - 0.5, Z.glass + 2));

@@ -7,7 +7,7 @@
 // Every bore along Y carries a teardrop roof pointing -Z, which is UP in the
 // shell's print (face down). The actuator and retainer register on the round
 // lower halves, so the roof clearance is inert.
-import { Manifold, cube, cylZ, cylY, fuse, prismY, teardropY, status } from "./lib.mjs";
+import { Manifold, cube, cylZ, coneZ, cylY, fuse, prismY, teardropY, status } from "./lib.mjs";
 import { P, Z, XY } from "./params.mjs";
 
 export const SHUTTER = (() => {
@@ -30,9 +30,11 @@ export function shutterPod() {
   const adds = [cube(X - P.shutterPodW / 2, S.podInnerY, P.shutterPodBottomZ, P.shutterPodW, S.cy1 - S.podInnerY + 0.5, Z.plateInner + 0.3 - P.shutterPodBottomZ)];
   const cuts = [
     teardropY(X, S.switchPocketY, Zc, P.shutterAssemblyAccessD / 2, S.switchPocketDepth + 1.0),
-    teardropY(X, S.switchPocketY + S.switchPocketDepth - 0.2, Zc, P.shutterActuatorFlangeD / 2 + 0.2, S.oy1 - 2.2 - (S.switchPocketY + S.switchPocketDepth - 0.2)),
+    teardropY(X, S.switchPocketY + S.switchPocketDepth - 0.2, Zc, P.shutterActuatorFlangeD / 2 + P.shutterFlangeBoreClear, S.oy1 - 2.2 - (S.switchPocketY + S.switchPocketDepth - 0.2)),
     teardropY(X, S.oy1 - 2.3, Zc, P.shutterActuatorGuideD / 2, 3.0),
-    cylY(X, S.oy1 - P.shutterCollarDepth, Zc, P.shutterCollarD / 2, P.shutterCollarDepth + 0.2),
+    // The collar recess gabled too: its upper arc was a 2.8 mm down-facing
+    // ledge beside the pink cap.
+    teardropY(X, S.oy1 - P.shutterCollarDepth, Zc, P.shutterCollarD / 2, P.shutterCollarDepth + 0.2),
   ];
   // One lead route off each of the switch's opposite faces, out into the
   // cavity toward -Y, gabled toward -Z.
@@ -71,7 +73,9 @@ export function buildShutterButton() {
   const dome = Manifold.sphere(P.shutterDomeR, 96).translate([0, 0, actuatorHeight + P.shutterDomeH - P.shutterDomeR])
     .intersect(cylZ(0, 0, actuatorHeight - 0.5, P.shutterPressFaceD / 2, P.shutterDomeH + 0.5));
   const actuator = fuse([
-    cylZ(0, 0, 0, P.shutterActuatorFlangeD / 2, flangeH),
+    // The flange's bed edge chamfered against the elephant foot.
+    coneZ(0, 0, 0, P.shutterActuatorFlangeD / 2 - 0.3, P.shutterActuatorFlangeD / 2, 0.3),
+    cylZ(0, 0, 0.29, P.shutterActuatorFlangeD / 2, flangeH - 0.29),
     cylZ(0, 0, flangeH, P.shutterPressCapD / 2, noseStraightH),
     Manifold.cylinder(P.shutterPressCapH, P.shutterPressCapD / 2, P.shutterPressFaceD / 2, 64).translate([0, 0, flangeH + noseStraightH]),
     dome,

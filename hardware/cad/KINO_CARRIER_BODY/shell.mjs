@@ -12,7 +12,7 @@
 // grooves on its right border and the ODD JOBS symbol engraved on its left,
 // both recesses because its rear face is the bed.
 import fs from "node:fs";
-import { Manifold, CrossSection, cube, box, cylZ, fuse, rbox, status } from "./lib.mjs";
+import { Manifold, CrossSection, cube, box, cylZ, coneZ, fuse, rbox, status } from "./lib.mjs";
 import { P, Z, XY } from "./params.mjs";
 import { shutterPod } from "./shutter.mjs";
 
@@ -92,13 +92,19 @@ export function buildShell() {
       ]);
       grooves.push(outerAt(-0.01, z - h, z + h).subtract(diamond));
     }
-    // All the way round, the deck included: the body is one thing. Clear of
-    // the shutter collar and the engraving's panel.
-    const keep = fuse([
-      box(P.shutterX - P.shutterCollarD / 2 - P.grooveCollarClear, oy1 - 1, Z.glass - 2, P.shutterX + P.shutterCollarD / 2 + P.grooveCollarClear, oy1 + 2, Z.plateFront + 2),
-      box(P.modelAt[0] - 3, oy1 - 1, P.modelAt[1] - 3, P.modelAt[0] + P.modelW + 3, oy1 + 2, P.modelAt[1] + MODEL.heightMm * P.modelW / MODEL.widthMm + 3),
-    ]);
-    shell = shell.subtract(fuse(grooves).subtract(keep));
+    // All the way round, the deck included: the body is one thing. The deck
+    // is grooved left of deckPlateauX and one smooth plateau from there to
+    // the right wall, round the corner, carrying the name and the button.
+    const plateau = box(P.deckPlateauX, oy1 - P.cornerR - 0.5, Z.glass - 2, ox1 + 2, oy1 + 2, Z.plateFront + 2);
+    void MODEL;
+    shell = shell.subtract(fuse(grooves).subtract(plateau));
+    // The horizon carried round: the face's groove continues across both
+    // side walls from the front to the rear frame, at the bar's height.
+    const [hy0, hy1] = [XY.lensY - P.sliderH / 2 - P.horizonPad, XY.lensY + P.sliderH / 2 + P.horizonPad];
+    shell = shell.subtract(fuse([
+      box(ox0 - 1, hy0, Z.glass + 0.01, ox0 + P.horizonWallD, hy1, Z.plateFront + 1),
+      box(ox1 - P.horizonWallD, hy0, Z.glass + 0.01, ox1 + 1, hy1, Z.plateFront + 1),
+    ]));
   }
 
   const pod = shutterPod();
@@ -111,15 +117,9 @@ export function buildShell() {
   // The strap lug on the right wall, its +Z side sloped past 45 degrees back
   // to the wall so the print (face down) has nothing hanging.
   shell = shell.add(fuse(adds));
-  // The model name engraved on the top deck, read from behind the camera:
-  // the trace's x runs to -X and its y toward the front.
-  {
-    const s = P.modelW / MODEL.widthMm;
-    const cs = new CrossSection(MODEL.polygons, "EvenOdd").scale([-s, s]).translate([P.modelAt[0] + P.modelW, P.modelAt[1]]);
-    const plaque = (cs.area() > 0 ? cs : new CrossSection(MODEL.polygons.map((p) => p.slice().reverse()), "EvenOdd").scale([-s, s]).translate([P.modelAt[0] + P.modelW, P.modelAt[1]]))
-      .extrude(P.modelDepth + 1).rotate([90, 0, 0]).translate([0, oy1 + 1, 0]);
-    shell = shell.subtract(status("model mark", plaque));
-  }
+  // No engraving on the deck: a 0.6 mm stroke in a vertical wall is one
+  // wobbling perimeter and the top wall of every letter droops. The deck
+  // carries the button and nothing else; the name is inside, on the face.
 
   const cuts = [...pod.cuts];
   for (const [hx, hy] of P.carrierHoles) {
@@ -127,9 +127,20 @@ export function buildShell() {
     cuts.push(cylZ(hx, hy, S.bossFootZ - 0.5, P.screwBore / 2, P.bossFoot + 1, 32));
   }
   for (const [lx, ly] of S.lensXY) {
-    cuts.push(cube(lx - S.headPocket / 2, ly - S.headPocket / 2, Z.plateInner - 0.01, S.headPocket, S.headPocket, Z.camPocketDepth + 0.01));
+    const h = S.headPocket / 2;
+    cuts.push(cube(lx - h, ly - h, Z.plateInner - 0.01, S.headPocket, S.headPocket, Z.camPocketDepth + 0.01));
+    // Round reliefs in the four corners: a printed inside corner has its own
+    // radius and the square head would land on it before the ribs.
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      cuts.push(cylZ(lx + sx * h, ly + sy * h, Z.plateInner - 0.01, P.camPocketCornerRelief, Z.camPocketDepth + 0.01, 24));
+    }
     cuts.push(cylZ(lx, ly, Z.lensFront - 0.01, P.lensBoreD / 2, P.platePocketAhead + 1, 64));
+    // Exactly 45 degrees (the 0.01 overshoot in the radius, not the height).
+    cuts.push(coneZ(lx, ly, Z.plateFront - P.lensBoreChamfer, P.lensBoreD / 2, P.lensBoreD / 2 + P.lensBoreChamfer + 0.01, P.lensBoreChamfer + 0.01, 64));
   }
+  // The front outer edge chamfered: the bed edge, under the face's reveal.
+  cuts.push(outerAt(-1, Z.plateFront - P.bedChamfer, Z.plateFront + 1).subtract(Manifold.hull([
+    outerAt(P.bedChamfer, Z.plateFront, Z.plateFront + 0.01), outerAt(0, Z.plateFront - P.bedChamfer - 0.01, Z.plateFront - P.bedChamfer)])));
   for (const lx of P.ledXs) {
     cuts.push(box(lx - P.ledSlot[0] / 2, oy0 - 1, Z.carrierBack - P.ledSlot[1], lx + P.ledSlot[0] / 2, cy0 + 1, Z.carrierBack));
   }
@@ -143,10 +154,19 @@ export function buildShell() {
   for (const x of P.frameScrewXs) for (const y of XY.wallMidY) {
     cuts.push(cylZ(x, y, Z.glass - 0.5, P.framePilotD / 2, P.framePilotDepth + 0.5, 24));
   }
-  // The strap channels in the bottom wall's end (the top of the print).
-  for (const [x0, y0, x1, y1] of S.strapChannels) cuts.push(box(x0, y0, Z.glass - 1, x1, y1, Z.glass + P.strapChannelD));
-  // Blind holes in the walls' front ends for the six filament pins that hold the face.
-  for (const [px, py] of S.pinXY) cuts.push(cylZ(px, py, Z.plateFront - P.facePinWall, P.facePinD / 2, P.facePinWall + 1, 24));
+  // The strap tunnels inside the bottom wall's end, under a skin of wall: the
+  // cord loops the shell's own wall, so a drop never loads the frame's
+  // screws. Each tunnel opens through the skin at the two slots.
+  for (const [x0, y0, x1, y1] of S.strapChannels) {
+    cuts.push(box(x0, y0, Z.glass + P.strapTunnelSkin, x1, y1, Z.glass + P.strapTunnelSkin + P.strapChannelD));
+  }
+  for (const [x0, y0, x1, y1] of S.strapSlots) cuts.push(box(x0, y0, Z.glass - 1, x1, y1, Z.glass + P.strapTunnelSkin + 0.5));
+  // Blind holes in the walls' front ends for the six filament pins that hold
+  // the face, countersunk at the mouth (the bed face) against the elephant foot.
+  for (const [px, py] of S.pinXY) {
+    cuts.push(cylZ(px, py, Z.plateFront - P.facePinWall, P.facePinD / 2, P.facePinWall + 1, 24));
+    cuts.push(coneZ(px, py, Z.plateFront - P.facePinSink, P.facePinD / 2, P.facePinD / 2 + P.facePinSink + 0.01, P.facePinSink + 0.01, 24));
+  }
   const bare = shell.subtract(fuse(cuts));
   // Pinch ribs: triangular, camRibBase wide at the wall, camRibProud at the
   // tip, the full pocket depth. Two extrusion lines at the base.
@@ -169,7 +189,7 @@ export function buildFrame() {
   // insetting slices on a quarter circle. Printed rear face UP, so the round
   // faces up and the engraving and grooves are top-surface recesses.
   const slices = [];
-  const R = P.frameEdgeR, n = P.frameEdgeSteps;
+  const R = P.frameEdgeR, n = Math.max(8, P.frameEdgeSteps);
   for (let k = 0; k <= n; k++) {
     const th = (Math.PI / 2) * (k / n);
     const ins = R * (1 - Math.cos(th));
@@ -180,14 +200,9 @@ export function buildFrame() {
   }
   slices.push(rbox(ox0, oy0, Z.glass - 0.01, ox1, oy1, Z.glass, P.cornerR));
   // The thumb pad stands off the rear face (raised is free: the rear is up
-  // in print) with three half-round ridges across it.
+  // in print), with the body's own grooves across it: texture, not a rocker.
   const padZ0 = Z.frameRear - P.thumbPadProud;
-  const ridges = [];
-  for (let i = 0; i < P.thumbRidgeN; i++) {
-    const y = P.thumbPadY[0] + (P.thumbPadY[1] - P.thumbPadY[0]) * (i + 1) / (P.thumbRidgeN + 1);
-    ridges.push(Manifold.cylinder(P.thumbPadX[1] - P.thumbPadX[0] - 2, P.thumbRidgeR, P.thumbRidgeR, 32).rotate([0, 90, 0]).translate([P.thumbPadX[0] + 1, y, padZ0]));
-  }
-  const frame = Manifold.hull(slices).add(rbox(P.thumbPadX[0], P.thumbPadY[0], padZ0, P.thumbPadX[1], P.thumbPadY[1], Z.frameRear + 0.3, 3.0)).add(fuse(ridges));
+  const frame = Manifold.hull(slices).add(rbox(P.thumbPadX[0], P.thumbPadY[0], padZ0, P.thumbPadX[1], P.thumbPadY[1], Z.frameRear + 0.3, 3.0));
   const [wx0, wy0, wx1, wy1] = [pcx - S.windowHalf[0], pcy - S.windowHalf[1], pcx + S.windowHalf[0], pcy + S.windowHalf[1]];
   const c = P.frameWindowChamfer;
   const cuts = [
@@ -199,6 +214,9 @@ export function buildFrame() {
   ];
   for (const x of P.frameScrewXs) for (const y of XY.wallMidY) {
     cuts.push(cylZ(x, y, Z.frameRear - 3, P.frameScrewHoleD / 2, P.rearFrameT + 4, 24));
+  }
+  for (let y = P.thumbPadY[0] + 2.4; y + 0.8 <= P.thumbPadY[1] - 2.0; y += P.grooveP) {
+    cuts.push(box(P.thumbPadX[0] - 1, y, padZ0 - 1, P.thumbPadX[1] + 1, y + 0.8, padZ0 + P.grooveD));
   }
   // The strap slots through the frame's border at both lower corners.
   for (const [x0, y0, x1, y1] of S.strapSlots) cuts.push(box(x0, y0, Z.frameRear - 3, x1, y1, Z.glass + 1));

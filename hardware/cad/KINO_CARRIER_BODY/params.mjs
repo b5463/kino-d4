@@ -18,7 +18,7 @@ export const P = Object.freeze({
   carrierH: 70.80,
   carrierR: 3.0,             // outline corner radius
   carrierT: 1.6,
-  carrierClear: 0.3,         // per side in the cavity: the stack slides in from the rear
+  carrierClear: 0.5,         // per side in the cavity: the stack slides in from the rear; PETG shrinks 0.3 to 0.5 % and 54 mm walls bow, so 0.3 wedged on paper
   // The four M2 holes, on the P4's insert pattern (61.9 x 54.8), 8.0 mm from
   // the carrier's top and bottom edges. H1 H2 top, H3 H4 bottom.
   carrierHoles: [[18.95, 62.80], [80.85, 62.80], [18.95, 8.00], [80.85, 8.00]],
@@ -78,12 +78,14 @@ export const P = Object.freeze({
   camModulePcb: [15.5, 17.9],
   camModulePcbT: 3.5,
   camBody: 8.5,              // the head square, verify by coupon
-  camBodySlack: 0.15,
+  camBodySlack: 0.20,
+  camPocketCornerRelief: 0.5, // round reliefs in the pocket corners: a printed inside corner has its own radius and an 8.5 mm square head hits it before the ribs
   camRibProud: 0.30,         // triangular crush ribs, 0.8 wide at the wall: two extrusion lines, prints every time (0.4 mm round columns did not)
   camRibBase: 0.80,
   camRibSpan: [0.2, 0.8],
   camBarrelD: 7.0,
-  lensBoreD: 7.1,
+  lensBoreD: 7.5,            // 7.1 around a 7.0 barrel on the first layer, less the elephant foot, did not pass; the bore is hidden behind the face
+  lensBoreChamfer: 0.3,      // at the plate's front, the bed side
   platePocketAhead: 1.5,     // plate left in front of the pocket to carry the bore
   camFovDeg: 78.0,           // design figure; the real field is MEASURE_REQUIRED
   fovMarginDeg: 2.0,
@@ -98,19 +100,20 @@ export const P = Object.freeze({
   // Six filament pins (1.75 mm, cut 4.5 long) in the walls' front ends locate
   // and hold the face: 3 mm into the wall, 2 mm into the face's back. The
   // four stack-screw shafts stay for the driver; the face covers them.
-  facePinD: 1.8,
+  facePinD: 2.0,             // for 1.75 mm filament: a 1.8 hole at a bed face closed to 1.5 with the elephant foot
+  facePinSink: 0.4,          // 45 degree countersink at every mouth, both parts
   facePinWall: 3.0,
   facePinFace: 2.0,
   facePinsTop: [30.0, 90.0],   // X on the top and bottom walls; the bottom pair dodges the LED slots and the USB opening
   facePinsBottom: [5.0, 96.7],  // outside the cover's entry gap (X 6.7 to 93.7, where the face is only 2.3 thick), between the LED slots, short of the corner
-  facePinsSideY: 35.0,         // one on each side wall
+  facePinsSideY: 52.0,         // one on each side wall, above the horizon channel
   bossD: 6.0,                // the stack-screw pillars, inside the 7 mm keep-out
   bossRib: 2.0,              // the rib tying each pillar to the wall
   bossFoot: 3.8,             // pillar material the screw head bears on
   screwBore: 2.4,            // M2 clearance
   accessShaftD: 4.0,         // the driver's way in from the front; an M2 pan head is 3.8
   rearFrameT: 2.5,           // the thumb climbs this to the glass; the window's inner edge is chamfered for it
-  framePilotD: 1.7,          // M2 thread-forming into PETG
+  framePilotD: 1.8,          // M2 thread-forming into PETG; 1.7 modelled prints 1.5 to 1.6
   framePilotDepth: 6.0,
   frameScrewHoleD: 2.4,      // plain holes: the four M2 pan heads sit proud on the back, as the brand's concept shows its rear screws; a counterbore broke out through the edge round
   frameScrewXs: [14.0, 76.0],  // clear of the LED slots and the USB opening on the bottom wall
@@ -123,42 +126,44 @@ export const P = Object.freeze({
   // over the whole front with a pillow edge, a pink shutter, quiet markings.
   // The face covers the plate and the walls' front ends (the concept's v18
   // front: the fascia fills the front, the charcoal is the sides and the cap).
-  faceBase: 5.3,             // the face plate; the horizon groove, the cover's track and the apron's recess are cut into it, 1.25 left under the floor
+  faceBase: 6.0,             // the face plate: horizon 1.5 + track 3.0 + 0.25 relief + 1.25 under the floor; nothing stands proud of it
   faceEdgeR: 3.5,            // its front edge, a quarter round
   faceInset: 0.8,            // the face steps in from the shell's outline, so a charcoal line of wall end frames it (the concept frames its colour field)
   // The horizon: a full-width groove across the face at the bar's height,
   // its ends open through the edge round. The bar sits in it; the face is
   // built around the line. The jury's one move.
-  horizonD: 1.0,
-  horizonPad: 1.0,           // above and below the closed cover
+  horizonD: 1.5,             // 1.0 did not read in a render or on a table; the roof over the stow zone is this thick too
+  horizonPad: 1.5,           // of groove floor above and below the closed bar, so the line shows round it
   // The grip: the horizon's right end, cut deeper, so the middle finger
   // pulls against its left wall. No ribs: ribs are the charcoal's texture.
   gripX0: 100.0,
   gripD: 2.0,
   // The model name, "kino D4", engraved on the top deck left of the shutter
   // (the deck is a vertical wall in print, so an engraving there is free).
-  modelW: 40.0,              // strokes about 0.6 mm at this width; 22 was under a nozzle line
+  modelW: 40.0,              // inside, with the signature: a 0.6 mm stroke engraved at the bed face prints; on a vertical deck it did not
   modelAt: [48.0, 24.0],     // X on the deck, and Z of its lower edge in the body frame; ends before the collar's groove gap
-  modelDepth: 0.5,
+  modelDepth: 0.4,           // in the face's back
   // Layer texture: V-grooves around the whole body, parallel to the layers in
   // print, the deck included (it is a wall in print too), clear of the
   // shutter collar and the engraving. The body is one thing.
   grooveP: 2.4,
   grooveD: 0.5,              // 0.25 was three layers deep, at PETG's own ripple; these read as ribs
-  grooveZ: [-9.0, 37.0],
-  grooveCollarClear: 4.0,    // around the collar
+  grooveZ: [-6.5, 37.0],     // the first groove stays clear of the frame pilots' bottoms at Z -7.8, so no groove thins the wall round a thread
+  deckPlateauX: 40.0,        // the deck is grooved left of here and one smooth plateau from here to the right wall, carrying the name and the button
   // The rear frame: a thumb pad with three half-round ridges on the right
   // border, the ODD JOBS symbol engraved on the left border, cut deep enough
   // to read as shadow (the rear face is up in print).
   thumbPadX: [110.0, 119.0], // past the window's chamfer, short of the frame's edge round
   thumbPadY: [18.0, 52.0],
-  thumbPadProud: 1.5,
-  thumbRidgeR: 0.75,
-  thumbRidgeN: 3,
+  thumbPadProud: 1.5,        // with the body's own grooves on it: texture, not a rocker
   symbolRearH: 8.0,
   symbolRearAt: [-1.5, 31.0],
   symbolRearD: 1.0,
   symbolRearBevel: 0.3,      // a 0.4 mm step outside the outline, so the cut reads as shadow
+  // The horizon carried round the body: the same groove continues across
+  // both side walls from the face's edge to the rear frame (a vertical
+  // channel in print, no overhang). The face and the shell share one line.
+  horizonWallD: 1.5,
   // The lens band: proud of the base, chamfered, with a recessed panel that is
   // the cover's track. Its Y extent is DERIVED from the cover's travel.
   bandX: [3.2, 97.2],
@@ -172,8 +177,8 @@ export const P = Object.freeze({
   bandRim: 2.0,              // flat rim between the chamfer and the panel
   bandBottomInset: 3.4,      // the band's bottom rim, from the face's bottom edge to the panel; the keeper lives in it
   bandR: 9.0,                // pill ends; R12 cut 0.1 mm into the panel's corners through a 3.5 mm rim (gated now)
-  panelDepth: 2.8,           // cover 2.0, its raised mark 0.6, and 0.2 under the face's roof over the stow zone; the bar sits 0.8 below the groove's floor
-  lensRingStep: 0.6,         // each ring of a cell stands this far proud of the field cone
+  panelDepth: 3.0,           // cover 2.0, its raised mark 0.8, and 0.2 under the face's roof over the stow zone; the roof's sag is the track coupon's question
+  lensRingStep: 0.0,         // plain cones: the stepped rings read as damage at this size
   // The cover: the field body's bench-tuned track, restated. Drops to open.
   sliderH: 16.5,             // blankets the 14 mm cells with 1.25 mm a side; the lens row sits low, so every mm of cover is a mm of travel (the travel is DERIVED: closed to the band's bottom rim)
   sliderT: 2.0,
@@ -192,13 +197,22 @@ export const P = Object.freeze({
   coverRailProud: 0.25,
   coverRailOffset: 30.0,
   coverLip: [24.0, 1.5],     // the thumb lip on the cover's TOP edge, width x height; the thumb pushes down on its top face (the coupon says whether 1.5 is enough)
-  coverLipProud: 1.5,
+  coverLipAboveFace: 0.5,    // the lip stands this far proud of the face, closed and stowed, so the thumb pad can push it down and lift it back; its height off the cover is derived
   // The brand on the bar: "odd jobs" raised on the cover, as the concept's
   // nameplate. Print its last 0.6 mm in CREAM on both colourways (one swap on
   // one small part): charcoal on cobalt was a low pair and cobalt type on it
   // lower still.
   markW: 30.0,               // the trace is 30 x 6.8; strokes about 1.3 mm
-  markProud: 0.6,
+  markLeft: 6.0,             // from the bar's left end: the brand left-aligns its plate
+  // The signature inside: the symbol and the wordmark engraved on the BACK
+  // of the face, where only the person who opens the camera finds them. The
+  // work nobody sees, done as well as the work everyone sees.
+  innerMarkW: 22.0,
+  innerSymbolH: 8.0,
+  innerMarkAt: [44.0, 56.0],   // the wordmark's lower-left; the symbol sits to its left
+  innerMarkD: 0.4,
+  markProud: 0.8,            // the first cream layer after the flush comes out grey; at 0.8 it is one layer in four
+  bedChamfer: 0.3,           // 45 degrees on every bed-side edge that meets a fit or shows: the cover's and keeper's backs, the face's back outer edge, the shell's front outer edge
   markMinStroke: 0.8,
   // ---- The shutter: the field body's pod, button and retainer, the cap grown
   // to the brand's pink button. The bore's teardrop roof points -Z, so the
@@ -210,8 +224,9 @@ export const P = Object.freeze({
   shutterPodBottomZ: 14.0,   // 1.1 above the carrier's front face
   shutterSwitchBody: [6.0, 6.0, 4.3],
   shutterSwitchClearance: 0.6,
-  shutterActuatorGuideD: 14.4,
+  shutterActuatorGuideD: 14.6,  // the bore's upper flanks sag inward in PETG
   shutterActuatorFlangeD: 16.0,
+  shutterFlangeBoreClear: 0.3,  // per side; the flange's bed edge is chamfered too
   shutterPressCapD: 14.0,
   shutterPressFaceD: 13.0,
   shutterPressCapH: 0.9,
@@ -235,7 +250,8 @@ export const P = Object.freeze({
   // and the frame between the slots is the bar it pulls on. No ears.
   strapSlot: [2.2, 2.2],     // X x Y of each slot through the frame, inside the frame's edge round and 0.7 off the cavity
   strapSlotXs: [2.5, 8.0],   // the two slots' X, from the body's left edge; mirrored at the right
-  strapChannelD: 2.2,        // into the wall end
+  strapChannelD: 2.2,        // the tunnel's size, inside the wall end
+  strapTunnelSkin: 0.6,      // of wall end over the tunnel: the cord loops the SHELL's wall, not the frame; the frame's slots are pass-throughs
 });
 
 // ---- The stack chain, derived once ------------------------------------------

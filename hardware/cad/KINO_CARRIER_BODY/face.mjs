@@ -21,6 +21,8 @@ import { Manifold, CrossSection, cube, box, cylZ, coneZ, fuse, rbox, prismY, sta
 import { P, Z, XY } from "./params.mjs";
 
 const MAKER = JSON.parse(fs.readFileSync(new URL("./brand/odd-jobs-wordmark.json", import.meta.url), "utf8"));
+const SYMBOL = JSON.parse(fs.readFileSync(new URL("../../pcb/kino-d4-carrier-a0/brand/odd-jobs-symbol.json", import.meta.url), "utf8"));
+const MODEL = JSON.parse(fs.readFileSync(new URL("../KINO_FIELD_BODY/brand/kino-d4-mark.json", import.meta.url), "utf8"));
 
 // ---- Derived figures, read by the builder and the gates ----------------------
 export const FACE = (() => {
@@ -40,10 +42,15 @@ export const FACE = (() => {
   const panel = [P.bandX[0] + inset, panelY0, P.bandX[1] - inset, closedY1 + 0.5];
   const horizon = [closedY0 - P.horizonPad, closedY1 + P.horizonPad];
   const lipSlotY0 = openY1 - P.coverLip[1] - P.lipSlotClear;   // the slot through the roof, from here up to the horizon
+  const horizonY = [closedY0 - P.horizonPad, closedY1 + P.horizonPad];
   const tanF = Math.tan(((P.camFovDeg / 2 + P.fovMarginDeg) * Math.PI) / 180);
   const boreR = P.lensBoreD / 2;
   const coneR = (z) => Math.max(boreR, (z - Z.pupil) * tanF);
-  const zBore = Z.pupil + boreR / tanF;
+  // Where the view cone outgrows the bore; with the 7.5 bore that is past
+  // the track floor, so the cells through the plate are plain bores and the
+  // cones collapse to the bore's radius (a cone must still have height).
+  const plainCells = Z.pupil + boreR / tanF >= floorZ - 0.1;
+  const zBore = Math.min(Z.pupil + boreR / tanF, floorZ - 0.1);
   const zMid = (zBore + floorZ) / 2;
   const midR = coneR(zMid) + P.lensRingStep;
   const outerR = coneR(floorZ) + 2 * P.lensRingStep;
@@ -53,7 +60,7 @@ export const FACE = (() => {
     [ox0 + P.wall / 2, P.facePinsSideY], [ox1 - P.wall / 2, P.facePinsSideY],
   ];
   return Object.freeze({ back, front, trackTop, floorZ, panel, horizon, outline, outlineR, closedY0, closedY1, openY0, openY1, travel, lipSlotY0,
-    tanF, boreR, coneR, zBore, zMid, midR, outerR, railXs, lensY, pinXY });
+    tanF, boreR, coneR, zBore, zMid, midR, outerR, plainCells, railXs, lensY, pinXY });
 })();
 
 const roundedRectZ = (x, y, z, w, d, h, r) => rbox(x, y, z, x + w, y + d, z + h, r);
@@ -72,11 +79,40 @@ export function buildFace() {
       const z = Math.min(F.front - 0.01, F.front - R * (1 - Math.sin(th)));
       slices.push(roundedRectZ(fx0 + ins, fy0 + ins, z, fx1 - fx0 - 2 * ins, fy1 - fy0 - 2 * ins, 0.01, Math.max(0.5, F.outlineR - ins)));
     }
-    slices.push(roundedRectZ(fx0, fy0, F.back, fx1 - fx0, fy1 - fy0, 0.01, F.outlineR));
+    // The back outer edge chamfered bedChamfer in the same hull: the elephant
+    // foot would otherwise show as a bright lip under the pillow round and eat
+    // the charcoal reveal. Exactly 45 degrees (the gate counts 44 as overhang).
+    slices.push(roundedRectZ(fx0, fy0, F.back + P.bedChamfer + 0.01, fx1 - fx0, fy1 - fy0, 0.01, F.outlineR));
+    slices.push(roundedRectZ(fx0 + P.bedChamfer, fy0 + P.bedChamfer, F.back, fx1 - fx0 - 2 * P.bedChamfer, fy1 - fy0 - 2 * P.bedChamfer, 0.01, Math.max(0.5, F.outlineR - P.bedChamfer)));
     solids.push(Manifold.hull(slices));
   }
-  // Blind holes in the back for the six filament pins in the walls' ends.
-  for (const [px, py] of F.pinXY) cuts.push(cylZ(px, py, F.back - 1, P.facePinD / 2, P.facePinFace + 1, 24));
+  // Blind holes in the back for the six filament pins in the walls' ends,
+  // countersunk at the mouth against the elephant foot. Exactly 45 degrees:
+  // the extra 0.01 goes into the radius, not the height, or the gate counts
+  // a 44 degree cone as overhang.
+  for (const [px, py] of F.pinXY) {
+    cuts.push(cylZ(px, py, F.back - 1, P.facePinD / 2, P.facePinFace + 1, 24));
+    cuts.push(coneZ(px, py, F.back - 0.01, P.facePinD / 2 + P.facePinSink + 0.01, P.facePinD / 2, P.facePinSink + 0.01, 24));
+  }
+  // The signature inside, engraved on the back (the bed face in print, so a
+  // recess), mirrored so it reads right when the face is turned over: the
+  // symbol, "odd jobs", and under them "kino D4".
+  {
+    const [mx, my] = P.innerMarkAt;
+    const mirrored = (data, w, x, y) => {
+      const s = w / data.widthMm;
+      const c0 = new CrossSection(data.polygons, "EvenOdd").scale([-s, s]).translate([x + w, y]);
+      return c0.area() > 0 ? c0 : new CrossSection(data.polygons.map((p) => p.slice().reverse()), "EvenOdd").scale([-s, s]).translate([x + w, y]);
+    };
+    const wm = mirrored(MAKER, P.innerMarkW, mx, my);
+    const model = mirrored(MODEL, P.modelW, mx - (P.modelW - P.innerMarkW), my - MODEL.heightMm * P.modelW / MODEL.widthMm - 2.5);
+    const [bx0, by0, bx1, by1] = SYMBOL.pixel_bounds, ss = P.innerSymbolH / (by1 - by0);
+    const sw = (bx1 - bx0) * ss;
+    const pts = SYMBOL.points.map(([px, py]) => [mx + P.innerMarkW + 3 + sw - (px - bx0) * ss, my - 1 + (by1 - py) * ss]);
+    const sy0 = new CrossSection([pts], "Positive");
+    const sym = sy0.area() > 0 ? sy0 : new CrossSection([pts.slice().reverse()], "Positive");
+    cuts.push(fuse([wm.extrude(P.innerMarkD + 1), model.extrude(P.innerMarkD + 1), sym.extrude(P.innerMarkD + 1)]).translate([0, 0, F.back - 1]));
+  }
   // The horizon: edge to edge, open at both ends through the round.
   cuts.push(box(fx0 - 2, F.horizon[0], F.trackTop, fx1 + 2, F.horizon[1], F.front + 2));
   // The grip: the horizon's right end, deeper.
@@ -87,18 +123,31 @@ export function buildFace() {
   // The cover's entry gap, through the plate below the track.
   const gapY0 = fy0 + P.faceEdgeR - 0.6;
   const gapCut = cube(p0x, gapY0 - 1.0, F.floorZ, p1x - p0x, p0y - (gapY0 - 1.0), F.front - F.floorZ + 2);
-  // The lip's slot through the roof: from the stowed lip's foot up into the horizon.
+  // The lip's slot through the roof, the roof's full height: from the panel's
+  // bottom rim up into the horizon, so every bridge line of the roof lands on
+  // a wall at both ends (a slot that stopped short left free-ended bridges).
   const lw0 = P.coverLip[0] + 2 * P.lipSlotClear;
-  cuts.push(box((p0x + p1x) / 2 - lw0 / 2, F.lipSlotY0, F.trackTop - 0.01, (p0x + p1x) / 2 + lw0 / 2, F.horizon[0] + 0.5, F.front + 2));
+  cuts.push(box((p0x + p1x) / 2 - lw0 / 2, p0y + 1.0, F.trackTop - 0.01, (p0x + p1x) / 2 + lw0 / 2, F.horizon[0] + 0.5, F.front + 2));
   // The keeper: the block in the gap, less keeperClr on its fitted sides, the
   // track's stop, flush with the face's front; glued in once the cover is in.
-  const keeper = status("keeper", cube(p0x + P.keeperClr, gapY0 + 0.3, F.floorZ, p1x - p0x - 2 * P.keeperClr, (p0y - P.keeperClr) - (gapY0 + 0.3), F.front - F.floorZ));
+  // Its back edges are chamfered against the elephant foot.
+  const kx0 = p0x + P.keeperClr, kx1 = p1x - P.keeperClr, ky0 = gapY0 + 0.3, ky1 = p0y - P.keeperClr, c = P.bedChamfer;
+  const keeper = status("keeper", Manifold.hull([
+    box(kx0 + c, ky0 + c, F.floorZ, kx1 - c, ky1 - c, F.floorZ + 0.01),
+    box(kx0, ky0, F.floorZ + c + 0.01, kx1, ky1, F.front),
+  ]));
   cuts.push(gapCut);
   // Lens cells: bore, then two stepped cones opening forward.
   for (const lx of P.cameraXs) {
-    cuts.push(cylZ(lx, F.lensY, F.back - 1, F.boreR, F.zBore - F.back + 1));
-    cuts.push(coneZ(lx, F.lensY, F.zBore - 0.01, F.boreR, F.midR, F.zMid - F.zBore + 0.01));
-    cuts.push(coneZ(lx, F.lensY, F.zMid - 0.01, F.midR, F.outerR, F.floorZ - F.zMid + 0.02));
+    if (F.plainCells) {
+      // The view cone never outgrows the bore inside the plate: one bore
+      // (two zero-taper cones on top of it left degenerate triangles).
+      cuts.push(cylZ(lx, F.lensY, F.back - 1, F.boreR, F.floorZ - F.back + 1.02));
+    } else {
+      cuts.push(cylZ(lx, F.lensY, F.back - 1, F.boreR, F.zBore - F.back + 1));
+      cuts.push(coneZ(lx, F.lensY, F.zBore - 0.01, F.boreR, F.midR, F.zMid - F.zBore + 0.01));
+      cuts.push(coneZ(lx, F.lensY, F.zMid - 0.01, F.midR, F.outerR, F.floorZ - F.zMid + 0.02));
+    }
   }
   // Track floor relief: the cover rides on two lands.
   {
@@ -125,19 +174,25 @@ export function buildFace() {
   const sy0 = F.closedY0, sy1 = F.closedY1;
   const sBack = F.floorZ, sFront = sBack + P.sliderT;
   const cr = P.sliderCornerR;
+  // The back edge chamfered bedChamfer against the elephant foot: the back
+  // is the cover's first layer, and it would flare into the track's walls.
+  const bc = P.bedChamfer;
   const plateC = Manifold.hull([
-    roundedRectZ(sx0, sy0, sBack, sx1 - sx0, sy1 - sy0, 0.01, cr),
+    roundedRectZ(sx0 + bc, sy0 + bc, sBack, sx1 - sx0 - 2 * bc, sy1 - sy0 - 2 * bc, 0.01, Math.max(0.3, cr - bc)),
+    roundedRectZ(sx0, sy0, sBack + bc + 0.01, sx1 - sx0, sy1 - sy0, 0.01, cr),
     roundedRectZ(sx0, sy0, sFront - P.sliderBevel - 0.01, sx1 - sx0, sy1 - sy0, 0.01, cr),
     roundedRectZ(sx0 + P.sliderBevel, sy0, sFront - 0.01, sx1 - sx0 - 2 * P.sliderBevel, sy1 - sy0, 0.01, Math.max(0.3, cr - P.sliderBevel / 2)),
   ]);
+  // The lip stands coverLipAboveFace proud of the face, closed and stowed.
   const [lw, lh] = P.coverLip;
-  const lip = roundedRectZ((sx0 + sx1) / 2 - lw / 2, sy1 - lh, sFront - 0.4, lw, lh, P.coverLipProud + 0.4, 0.6);
-  // The brand's wordmark, raised off the bar, under the lip.
+  const lipProud = (F.front - sFront) + P.coverLipAboveFace;
+  const lip = roundedRectZ((sx0 + sx1) / 2 - lw / 2, sy1 - lh, sFront - 0.4, lw, lh, lipProud + 0.4, 0.6);
+  // The brand's wordmark, raised off the bar, left-aligned as the brand sets its plate.
   const ms = P.markW / MAKER.widthMm, mw = P.markW, mh = MAKER.heightMm * ms;
   const bandY0 = sy0 + 1.0, bandY1 = sy1 - lh - 0.8;
-  const markY = bandY0 + (bandY1 - bandY0 - mh) / 2;
-  const cs = new CrossSection(MAKER.polygons, "EvenOdd").scale([ms, ms]).translate([(sx0 + sx1) / 2 - mw / 2, markY]);
-  const mark = (cs.area() > 0 ? cs : new CrossSection(MAKER.polygons.map((p) => p.slice().reverse()), "EvenOdd").scale([ms, ms]).translate([(sx0 + sx1) / 2 - mw / 2, markY]))
+  const markY = bandY0 + (bandY1 - bandY0 - mh) / 2, markX = sx0 + P.markLeft;
+  const cs = new CrossSection(MAKER.polygons, "EvenOdd").scale([ms, ms]).translate([markX, markY]);
+  const mark = (cs.area() > 0 ? cs : new CrossSection(MAKER.polygons.map((p) => p.slice().reverse()), "EvenOdd").scale([ms, ms]).translate([markX, markY]))
     .extrude(P.markProud + 0.4).translate([0, 0, sFront - 0.4]);
   const edgeCuts = [];
   {
@@ -151,5 +206,7 @@ export function buildFace() {
     }
   }
   const cover = status("cover", fuse([plateC, lip, mark]).subtract(fuse(edgeCuts)).simplify(1e-3));
-  return { face, cover, keeper, markBox: { x: (sx0 + sx1) / 2 - mw / 2, y: markY, w: mw, h: mh }, roofBridge: (p1x - p0x) * (F.lipSlotY0 - p0y) + ((p1x - p0x) - lw0) * (F.horizon[0] - F.lipSlotY0) };
+  // The mark's cream layers, for the previews: the top markProud of the raised mark.
+  const markTop = mark.intersect(box(sx0, sy0, sFront, sx1, sy1, sFront + P.markProud + 1));
+  return { face, cover, keeper, markTop, lipProud, markBox: { x: markX, y: markY, w: mw, h: mh }, roofBridge: (p1x - p0x) * (F.lipSlotY0 - p0y) + ((p1x - p0x) - lw0) * (F.horizon[0] - F.lipSlotY0) };
 }

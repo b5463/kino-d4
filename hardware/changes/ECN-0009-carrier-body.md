@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; first cut generated and gated, nothing printed |
+| Status | Design in progress; seventh cut generated and gated, nothing printed; the night colourway prints first |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -117,18 +117,47 @@ owner's printer. Two parts:
   1.25 under the floor). 128.0 x 80.4 x 62.0 mm, the body 9.3 of it,
   nothing proud of the face. Not taken: a fourth filament as a requirement
   (it is a note on the cover's last layers).
+- **After a print technician and a second juror** (seventh cut,
+  2026-11-20; the owner: the night body prints, keep reviewing; drop-to-open
+  stays; and a Japanese or Chinese sense of work and of less). The
+  technician's list, each a number: the cavity 0.5 mm a side (PETG shrink
+  and a bowing 54 mm wall); the pin holes 2.0 mm, countersunk 0.4 at every
+  mouth (1.8 closed to 1.5 with the elephant foot); the bore 7.5 (7.1 round
+  a 7.0 barrel did not pass at the bed); 0.3 mm chamfers on every fitted
+  bed edge (the cover's and keeper's backs, the face's back edge, the
+  shell's front edge, the plunger's flange) and 0.3 a side round the flange
+  in its bore; the frame pilots 1.8; the head pockets 8.70 with 0.5 mm
+  corner reliefs; the track 3.0 deep under a 1.5 mm roof (the roof sagged
+  onto the mark at 1 mm); the mark raised 0.8 (the first cream layer after
+  the flush comes out grey); the lip slot the roof's full height so every
+  bridge line lands on a wall; the collar recess gabled; the first groove
+  at Z -6.5 clear of the pilots' threads; the guide bore 14.6. The juror's
+  two: the engraved name on the deck was the last decoration (a 0.6 stroke
+  in a vertical wall is one wobbling perimeter anyway), so the deck is
+  bare; the cord looped the frame's screws, so it now loops a tunnel inside
+  the shell's wall end under 0.6 mm of wall and the frame's slots are
+  pass-throughs. The owner's note became the rule for every surface: one
+  word outside (the bar), the symbol on the back, and the rest of the
+  signature (symbol, "odd jobs", "kino D4") engraved 0.4 mm inside the
+  face's back, mirrored, where only the person who opens it reads it. With
+  the 7.5 bore the field cone never outgrows the cells inside the face, so
+  the stepped cones collapsed to plain bores. A print plan (layers,
+  elephant-foot compensation, scarf seam, bridge settings, 100 % face,
+  the cover's flush at 1.5 mm, bed temperatures, five coupons) is in the
+  package README. Face 6.0 (horizon 1.5 + track 3.0 + 1.25 under the
+  floor); 128.4 x 80.8 x 62.7 mm, the body 10.0 of it.
 
 Depth, re-added by a gate every build: 2.5 frame + 13.8 module + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
-(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 5.3 face
-= 62.0 mm, against the field body's 74.5 over its lens bar. The body is 9.3
+(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 6.0 face
+= 62.7 mm, against the field body's 74.5 over its lens bar. The body is 10.0
 of it; the XIAO connectors (11.0) are the one
 stack term the bench can shorten, with low-profile sockets and bare pins. The plate's inner face lands at Z 35.4
 from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-145 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
+151 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
 front on the pocket floor, the face inset from the outline and over the
 pins, the plan corner's wall on the diagonal, the roof over the stow zone
 clear of the cover and its mark, the lip's slot, the keeper clear of the
@@ -158,7 +187,12 @@ nothing at the cover's R0.6 corners, pin holes through the 2.5 mm base and
 through the track floor, a lip a hair shallower than 45 degrees, a zero-area
 triangle from a hull of 0.01 mm slabs, a groove cutter that was a hull of
 three slabs (a square groove with a flat ceiling), grooves at 43.6 degrees
-where 46 was meant, and the rim pocket above.
+where 46 was meant, and the rim pocket above. In the seventh cut: two
+zero-taper cones left on a bore that no longer needed them (four degenerate
+triangles), a pocket probe sized for two ribbed walls when the pocket has
+one per axis, a straight-line cone probe that overshot the real cone at
+the track floor, and chamfers drawn with their 0.01 overshoot in the height
+(44 degrees, counted as overhang) instead of the radius.
 
 ## Compatibility
 
@@ -170,8 +204,8 @@ unchanged.
 
 The P4's TF slot opening and the C6 service access, an interference gate
 against the carrier's own part model, the serial engraving and any line under
-4 mm of cap height ("made for bad ideas."), the coupons (pillar with pin,
-pocket, track, pod), the independent scan. Issue #252 carries the open
+4 mm of cap height ("made for bad ideas."), the coupons (shrink bar, pillar
+with pin, pocket, track with roof, deck with pod), the independent scan. Issue #252 carries the open
 inputs: the soldered header's insulator height, the spacer height with the
 socket home, the head size and stack height on a seated node, the active
 area's position, the field of view.
