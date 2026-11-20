@@ -22,7 +22,7 @@ lenses at positive Z. The chain is re-added by a gate every build.
 
 | Term | mm | Z after | Source |
 |---|---:|---:|---|
-| rear frame | 5.0 | -18.8 | chosen; carries its R4 edge round |
+| rear frame | 3.0 | -16.8 | chosen; its R3 edge round over the full thickness |
 | P4 module, glass front to PCB back | 13.8 | 0.0 | OFFICIAL_CAD |
 | P4 inserts | 3.3 | 3.3 | MEASURED |
 | M2 spacers | 8.0 | 11.3 | the bench set; the J100 socket floats 0.3 mm off home |
@@ -31,9 +31,9 @@ lenses at positive Z. The chain is re-added by a gate every build.
 | XIAO male header insulator | 2.5 | 23.9 | **PROVISIONAL**: the headers soldered to the owner's XIAOs; the carrier's assembly print left this out |
 | XIAO back face to the lens front | 15.0 | 38.9 | Seeed's assembled Sense stack |
 | plate ahead of the lens | 1.5 | 40.4 | chosen; the shell's front |
-| face | 3.5 | 43.9 | its edge an R3.5 pillow round |
-| lens band | 4.0 | 47.9 | |
-| **body, over the lens band** | **66.7** | | |
+| face | 2.5 | 42.9 | its edge an R2.5 pillow round |
+| lens band | 3.5 | 46.4 | the cover, its set-back and 1.3 of floor over the lower pin holes |
+| **body, over the lens band** | **63.2** | | |
 
 The module's PCB face is the Z datum for the camera, as in the field body: it
 lands on the plate's inner face at Z 35.4 (the Sense board's top is at 31.5, so
@@ -51,6 +51,26 @@ lens row is 28.45 mm above the carrier's bottom edge (the heads sit 6.95 mm
 below the socket centres, toward the pin-7 end), at X 17.2, 39.2, 61.2, 83.2
 from the carrier's left edge. The block is 9 mm left of centre; the right side
 carries the USB window and the shutter.
+
+What the depth is made of, lens front to glass, and what the body adds:
+
+| | mm |
+|---|---:|
+| electronics, lens front to glass | 52.7 |
+| of which the P4 module | 13.8 |
+| of which the P4-to-carrier layer (inserts and spacers; the battery lives in it) | 11.3 |
+| of which the XIAO connectors (8.5 socket + 2.5 male header insulator) | 11.0 |
+| of which the XIAO, Sense board and camera | 15.0 |
+| body in front: plate ahead of the lens 1.5, face 2.5, band 3.5 | 7.5 |
+| body behind: the rear frame | 3.0 |
+| **over the band** | **63.2** |
+
+The body is 10.5 mm of the 63.2. The one stack term that is a bench choice
+is the XIAO connectors: the eight 1x07 sockets are hand-fit, so 4.3 mm
+low-profile strips in place of the 8.5 mm Wurth part, and XIAOs soldered on
+bare pins without the 2.5 mm insulator, would take up to 6.7 mm out of the
+camera; `socketH` and `xiaoHeaderInsulator` are the two numbers. The J100
+socket fixes the 11.3 mm layer.
 
 ## The battery
 
@@ -83,8 +103,8 @@ ideas"). Three filaments, each on its own part:
 | File | What | Filament | Print |
 |---|---|---|---|
 | `print/KINO_CARRIER_SHELL.stl` | front plate with the four pockets and bores, all four walls to the display plane with R10 plan corners, V-grooves around the side and bottom walls under a deck reveal, four screw pillars, the shutter pod, the rounded strap tab, the LED slots, the USB-C opening, the frame pilots | charcoal | face down, PETG, 0.20 mm, no support (gated) |
-| `print/KINO_CARRIER_REAR_FRAME.stl` | the 5 mm frame around the display with its outer edge rounded R4, 95.6 x 58.2 window, thumb grooves on the right border, the ODD JOBS symbol engraved on the left, four counterbored M2 holes | charcoal | rear face UP, so the round faces up; the counterbore shoulders are 0.9 mm bridges |
-| `print/KINO_CARRIER_FACE.stl` | the face: a 3.5 mm plate over the whole front, the walls' ends included, its edge an R3.5 pillow round; the pill-ended lens band with four stepped cells and the cover's track; the finger pad's ribs in a pill field; "odd jobs" raised; two domed rivets | cream (day) or cobalt (night) | back down |
+| `print/KINO_CARRIER_REAR_FRAME.stl` | the 3 mm frame around the display with its outer edge rounded R3, 95.6 x 58.2 window, thumb grooves on the right border, the ODD JOBS symbol engraved on the left, four counterbored M2 holes | charcoal | rear face UP, so the round faces up; the counterbore shoulders are 0.9 mm bridges |
+| `print/KINO_CARRIER_FACE.stl` | the face: a 2.5 mm plate over the whole front, the walls' ends included, its edge an R2.5 pillow round; the pill-ended lens band with four stepped cells and the cover's track; the finger pad's ribs in a pill field; "odd jobs" raised; two domed rivets | cream (day) or cobalt (night) | back down |
 | `print/KINO_CARRIER_LENS_COVER.stl` | the sliding cover, 86.8 x 16.5 x 2, the kino D4 wordmark raised 0.6, a thumb ridge | charcoal | back down |
 | `print/KINO_CARRIER_COVER_KEEPER.stl` | the block that closes the cover's track at the band's bottom rim | as the face | as laid, glued in after the cover is in |
 | `print/KINO_CARRIER_FACE_PINS.stl` | four stepped pins, 3.8 x 5.5 into the shell's driver shafts, 3.5 x 3 into the face's back | any | standing; press fits, tune on the coupon |
@@ -118,7 +138,7 @@ Where it comes from, and what each thing is for:
   because they read as rivets, and the lower two holes sit under the track.
 - **Not a box.** The owner's call on the first ODD JOBS render. The plan
   corners went to R10, the face to a full-front pillow with an R3.5 round,
-  the rear frame to 5 mm with an R4 round (printed rear face up for it), the
+  the rear frame rounded R3 over its 3 mm (printed rear face up for it), the
   band pill-ended, the rivets and the shutter cap domed, the strap tab
   rounded about its hole. Everything else the walls forbid: the plan corner
   cannot pass about R10.6 with the carrier's square corner inside the wall,
@@ -127,9 +147,9 @@ Where it comes from, and what each thing is for:
 ### The face and the cover
 
 The shell's front plate prints on the bed, so it can carry no relief; the
-face does. It covers the whole front, the walls' ends included, 3.5 mm thick
+face does. It covers the whole front, the walls' ends included, 2.5 mm thick
 with its edge rounded over the full thickness, and one thing stands proud of
-it: the lens band, 4 mm proud, chamfered 1.5, pill-ended, from X 3.2 to
+it: the lens band, 3.5 mm proud, chamfered 1.5, pill-ended, from X 3.2 to
 97.2, its bottom at the inner edge of the face's round. The band's recessed panel (2.2 deep) is the cover's track:
 dovetail lips on both walls, two detent pairs, the cover entering through a
 gap in the bottom rim that the keeper closes, 0.1 mm a side, the cover riding

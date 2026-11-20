@@ -1,11 +1,11 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-20T20:21:23.916Z",
+  "generated": "2026-11-20T20:26:56.368Z",
   "body": {
     "width": 128,
     "height": 80.4,
-    "depth": 66.7,
-    "depthToRim": 59.2,
+    "depth": 63.2,
+    "depthToRim": 57.2,
     "lensRowY": 28.45,
     "cameraXs": [
       17.195,
@@ -25,16 +25,16 @@
     "plateInner": 35.4,
     "plateFront": 40.4,
     "glass": -13.8,
-    "frameRear": -18.8,
+    "frameRear": -16.8,
     "pupil": 37.8,
     "bayFloor": 3.5,
     "bayCeiling": 9.8,
-    "depth": 59.2
+    "depth": 57.2
   },
   "face": {
     "back": 40.4,
-    "front": 43.9,
-    "bandFront": 47.9,
+    "front": 42.9,
+    "bandFront": 46.4,
     "outline": [
       -4.8,
       -4.8,
@@ -43,13 +43,13 @@
     ],
     "panel": [
       6.7,
-      2.1,
+      1.1,
       93.7,
       37.2
     ],
     "band": [
       3.2,
-      -1.3,
+      -2.3,
       97.2,
       40.7
     ],
@@ -58,11 +58,11 @@
       36.7
     ],
     "coverOpen": [
-      2.6,
-      19.1
+      1.6,
+      18.1
     ],
-    "travel": 17.6,
-    "cellOuterD": 16.13
+    "travel": 18.6,
+    "cellOuterD": 13.53
   },
   "shutter": {
     "stem": 4.7,
@@ -80,21 +80,21 @@
       ]
     },
     "KINO_CARRIER_REAR_FRAME.stl": {
-      "triangles": 3532,
-      "volumeCm3": 21.58,
+      "triangles": 3492,
+      "volumeCm3": 12.97,
       "size": [
         128,
         80.4,
-        5
+        3
       ]
     },
     "KINO_CARRIER_FACE.stl": {
-      "triangles": 8566,
-      "volumeCm3": 40.38,
+      "triangles": 8560,
+      "volumeCm3": 29.91,
       "size": [
         128,
         80.4,
-        7.53
+        6.03
       ]
     },
     "KINO_CARRIER_LENS_COVER.stl": {
@@ -108,20 +108,20 @@
     },
     "KINO_CARRIER_COVER_KEEPER.stl": {
       "triangles": 52,
-      "volumeCm3": 0.38,
+      "volumeCm3": 0.39,
       "size": [
-        84.27,
-        2.57,
+        84.58,
+        2.67,
         2.2
       ]
     },
     "KINO_CARRIER_FACE_PINS.stl": {
       "triangles": 1520,
-      "volumeCm3": 0.36,
+      "volumeCm3": 0.34,
       "size": [
         27.8,
         3.8,
-        8.5
+        8
       ]
     },
     "KINO_CARRIER_SHUTTER_BUTTON.stl": {
@@ -143,21 +143,21 @@
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 27620,
-      "volumeCm3": 357.71,
+      "triangles": 27570,
+      "volumeCm3": 338.64,
       "size": [
         134.5,
         80.4,
-        67.5
+        64
       ]
     },
     "KINO_CARRIER_OPEN_PREVIEW.stl": {
-      "triangles": 27612,
-      "volumeCm3": 357.71,
+      "triangles": 27568,
+      "volumeCm3": 338.64,
       "size": [
         134.5,
         80.4,
-        67.5
+        64
       ]
     }
   },
@@ -169,7 +169,7 @@
     {
       "name": "depth chain adds up to the body depth",
       "pass": true,
-      "details": "rear frame 5 + P4 module, glass to PCB back 13.8 + P4 inserts 3.3 + spacers 8 + carrier PCB 1.6 + XIAO socket 8.5 + XIAO header insulator (PROVISIONAL) 2.5 + XIAO back face to lens front 15 + plate ahead of the lens 1.5 + face, over the front 3.5 + lens band 4 = 66.7 mm; body 66.7 over the lens band, 59.2 to the shell's front"
+      "details": "rear frame 3 + P4 module, glass to PCB back 13.8 + P4 inserts 3.3 + spacers 8 + carrier PCB 1.6 + XIAO socket 8.5 + XIAO header insulator (PROVISIONAL) 2.5 + XIAO back face to lens front 15 + plate ahead of the lens 1.5 + face, over the front 2.5 + lens band 3.5 = 63.2 mm; body 63.2 over the lens band, 57.2 to the shell's front"
     },
     {
       "name": "the lens front is the pocket floor",
@@ -184,7 +184,7 @@
     {
       "name": "the face covers the shell's front, walls included",
       "pass": true,
-      "details": "128 x 80.4 face on the plate, 3.5 mm thick with an R3.5 edge; the shell's bed-side edge is under it"
+      "details": "128 x 80.4 face on the plate, 2.5 mm thick with an R2.5 edge; the shell's bed-side edge is under it"
     },
     {
       "name": "plan corner leaves wall on the diagonal",
@@ -289,17 +289,17 @@
     {
       "name": "field cone at X 17.195 clears the face",
       "pass": true,
-      "details": "cell 16.13 mm at the panel floor, rings 0.6 mm proud of the cone"
+      "details": "cell 13.53 mm at the panel floor, rings 0.6 mm proud of the cone"
     },
     {
       "name": "field cone at X 17.195 clears the open cover",
       "pass": true,
-      "details": "cover stowed 17.6 mm down; its top edge at Y 19.1 against the cone's bottom at Y 19.58"
+      "details": "cover stowed 18.6 mm down; its top edge at Y 18.1 against the cone's bottom at Y 20.89"
     },
     {
       "name": "closed cover blankets the cell at X 17.195",
       "pass": true,
-      "details": "cover 16.5 tall over a 16.13 mm cell; the firmware's cover-closed test needs all four dark"
+      "details": "cover 16.5 tall over a 13.53 mm cell; the firmware's cover-closed test needs all four dark"
     },
     {
       "name": "camera pocket at X 39.195 open",
@@ -324,17 +324,17 @@
     {
       "name": "field cone at X 39.195 clears the face",
       "pass": true,
-      "details": "cell 16.13 mm at the panel floor, rings 0.6 mm proud of the cone"
+      "details": "cell 13.53 mm at the panel floor, rings 0.6 mm proud of the cone"
     },
     {
       "name": "field cone at X 39.195 clears the open cover",
       "pass": true,
-      "details": "cover stowed 17.6 mm down; its top edge at Y 19.1 against the cone's bottom at Y 19.58"
+      "details": "cover stowed 18.6 mm down; its top edge at Y 18.1 against the cone's bottom at Y 20.89"
     },
     {
       "name": "closed cover blankets the cell at X 39.195",
       "pass": true,
-      "details": "cover 16.5 tall over a 16.13 mm cell; the firmware's cover-closed test needs all four dark"
+      "details": "cover 16.5 tall over a 13.53 mm cell; the firmware's cover-closed test needs all four dark"
     },
     {
       "name": "camera pocket at X 61.195 open",
@@ -359,17 +359,17 @@
     {
       "name": "field cone at X 61.195 clears the face",
       "pass": true,
-      "details": "cell 16.13 mm at the panel floor, rings 0.6 mm proud of the cone"
+      "details": "cell 13.53 mm at the panel floor, rings 0.6 mm proud of the cone"
     },
     {
       "name": "field cone at X 61.195 clears the open cover",
       "pass": true,
-      "details": "cover stowed 17.6 mm down; its top edge at Y 19.1 against the cone's bottom at Y 19.58"
+      "details": "cover stowed 18.6 mm down; its top edge at Y 18.1 against the cone's bottom at Y 20.89"
     },
     {
       "name": "closed cover blankets the cell at X 61.195",
       "pass": true,
-      "details": "cover 16.5 tall over a 16.13 mm cell; the firmware's cover-closed test needs all four dark"
+      "details": "cover 16.5 tall over a 13.53 mm cell; the firmware's cover-closed test needs all four dark"
     },
     {
       "name": "camera pocket at X 83.195 open",
@@ -394,17 +394,17 @@
     {
       "name": "field cone at X 83.195 clears the face",
       "pass": true,
-      "details": "cell 16.13 mm at the panel floor, rings 0.6 mm proud of the cone"
+      "details": "cell 13.53 mm at the panel floor, rings 0.6 mm proud of the cone"
     },
     {
       "name": "field cone at X 83.195 clears the open cover",
       "pass": true,
-      "details": "cover stowed 17.6 mm down; its top edge at Y 19.1 against the cone's bottom at Y 19.58"
+      "details": "cover stowed 18.6 mm down; its top edge at Y 18.1 against the cone's bottom at Y 20.89"
     },
     {
       "name": "closed cover blankets the cell at X 83.195",
       "pass": true,
-      "details": "cover 16.5 tall over a 16.13 mm cell; the firmware's cover-closed test needs all four dark"
+      "details": "cover 16.5 tall over a 13.53 mm cell; the firmware's cover-closed test needs all four dark"
     },
     {
       "name": "driver reaches the screw at (18.95, 62.8)",
@@ -424,7 +424,7 @@
     {
       "name": "face pin hole at (18.95, 62.8) open",
       "pass": true,
-      "details": "3.5 mm, 3 deep into the face's back"
+      "details": "3.5 mm, 2.5 deep into the face's back"
     },
     {
       "name": "face pin hole at (18.95, 62.8) is blind",
@@ -434,7 +434,7 @@
     {
       "name": "pin at (18.95, 62.8) reaches past the plate into the shaft",
       "pass": true,
-      "details": "3.8 mm pin in the 4 mm shaft, 5.5 mm of it; 3.5 mm in the face, 3 mm"
+      "details": "3.8 mm pin in the 4 mm shaft, 5.5 mm of it; 3.5 mm in the face, 2.5 mm"
     },
     {
       "name": "driver reaches the screw at (80.85, 62.8)",
@@ -454,7 +454,7 @@
     {
       "name": "face pin hole at (80.85, 62.8) open",
       "pass": true,
-      "details": "3.5 mm, 3 deep into the face's back"
+      "details": "3.5 mm, 2.5 deep into the face's back"
     },
     {
       "name": "face pin hole at (80.85, 62.8) is blind",
@@ -464,7 +464,7 @@
     {
       "name": "pin at (80.85, 62.8) reaches past the plate into the shaft",
       "pass": true,
-      "details": "3.8 mm pin in the 4 mm shaft, 5.5 mm of it; 3.5 mm in the face, 3 mm"
+      "details": "3.8 mm pin in the 4 mm shaft, 5.5 mm of it; 3.5 mm in the face, 2.5 mm"
     },
     {
       "name": "driver reaches the screw at (18.95, 8)",
@@ -484,7 +484,7 @@
     {
       "name": "face pin hole at (18.95, 8) open",
       "pass": true,
-      "details": "3.5 mm, 3 deep into the face's back"
+      "details": "3.5 mm, 2.5 deep into the face's back"
     },
     {
       "name": "face pin hole at (18.95, 8) is blind",
@@ -494,7 +494,7 @@
     {
       "name": "pin at (18.95, 8) reaches past the plate into the shaft",
       "pass": true,
-      "details": "3.8 mm pin in the 4 mm shaft, 5.5 mm of it; 3.5 mm in the face, 3 mm"
+      "details": "3.8 mm pin in the 4 mm shaft, 5.5 mm of it; 3.5 mm in the face, 2.5 mm"
     },
     {
       "name": "driver reaches the screw at (80.85, 8)",
@@ -514,7 +514,7 @@
     {
       "name": "face pin hole at (80.85, 8) open",
       "pass": true,
-      "details": "3.5 mm, 3 deep into the face's back"
+      "details": "3.5 mm, 2.5 deep into the face's back"
     },
     {
       "name": "face pin hole at (80.85, 8) is blind",
@@ -524,7 +524,7 @@
     {
       "name": "pin at (80.85, 8) reaches past the plate into the shaft",
       "pass": true,
-      "details": "3.8 mm pin in the 4 mm shaft, 5.5 mm of it; 3.5 mm in the face, 3 mm"
+      "details": "3.8 mm pin in the 4 mm shaft, 5.5 mm of it; 3.5 mm in the face, 2.5 mm"
     },
     {
       "name": "the carrier slides in from the rear up to the pillar feet",
@@ -629,22 +629,22 @@
     {
       "name": "cover mid-travel: free in the track",
       "pass": true,
-      "details": "0.0000 mm^3; the edge relief clears the bumps between the crests"
+      "details": "-0.0000 mm^3; the edge relief clears the bumps between the crests"
     },
     {
       "name": "cover travel is positive and the cover stows above the rim",
       "pass": true,
-      "details": "17.6 mm down from Y 20.2; stowed bottom edge at Y 2.6, panel from Y 2.1"
+      "details": "18.6 mm down from Y 20.2; stowed bottom edge at Y 1.6, panel from Y 1.1"
     },
     {
       "name": "keeper fills the rim gap and nothing else",
       "pass": true,
-      "details": "379 mm^3, 0.1 mm a side in the gap; glued in once the cover is in"
+      "details": "388.44 mm^3, 0.1 mm a side in the gap; glued in once the cover is in"
     },
     {
       "name": "keeper sits under the stowed cover's bottom edge",
       "pass": true,
-      "details": "keeper top at Y 2, cover bottom when stowed at 2.6: the positive stop"
+      "details": "keeper top at Y 1, cover bottom when stowed at 1.6: the positive stop"
     },
     {
       "name": "wordmark fits the cover's band",
@@ -729,7 +729,7 @@
     {
       "name": "KINO_CARRIER_REAR_FRAME.stl fits the bed",
       "pass": true,
-      "details": "128 x 80.4 x 5"
+      "details": "128 x 80.4 x 3"
     },
     {
       "name": "KINO_CARRIER_FACE.stl prints support-free",
@@ -739,7 +739,7 @@
     {
       "name": "KINO_CARRIER_FACE.stl fits the bed",
       "pass": true,
-      "details": "128 x 80.4 x 7.53"
+      "details": "128 x 80.4 x 6.03"
     },
     {
       "name": "KINO_CARRIER_LENS_COVER.stl prints support-free",
@@ -759,7 +759,7 @@
     {
       "name": "KINO_CARRIER_COVER_KEEPER.stl fits the bed",
       "pass": true,
-      "details": "84.27 x 2.57 x 2.2"
+      "details": "84.58 x 2.67 x 2.2"
     },
     {
       "name": "KINO_CARRIER_FACE_PINS.stl prints support-free",
@@ -769,7 +769,7 @@
     {
       "name": "KINO_CARRIER_FACE_PINS.stl fits the bed",
       "pass": true,
-      "details": "27.8 x 3.8 x 8.5"
+      "details": "27.8 x 3.8 x 8"
     },
     {
       "name": "KINO_CARRIER_SHUTTER_BUTTON.stl prints support-free",

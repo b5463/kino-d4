@@ -144,7 +144,9 @@ export function buildFrame() {
   for (let k = 0; k <= n; k++) {
     const th = (Math.PI / 2) * (k / n);
     const ins = R * (1 - Math.cos(th));
-    const z = Math.max(Z.frameRear, Z.frameRear + R * (1 - Math.sin(th)));
+    // Clamped a hair under the glass plane: with the round over the frame's
+    // full thickness the last slice otherwise lands 0.01 mm into the shell.
+    const z = Math.min(Z.glass - 0.02, Math.max(Z.frameRear, Z.frameRear + R * (1 - Math.sin(th))));
     slices.push(rbox(ox0 + ins, oy0 + ins, z, ox1 - ins, oy1 - ins, z + 0.01, Math.max(0.5, P.cornerR - ins)));
   }
   slices.push(rbox(ox0, oy0, Z.glass - 0.01, ox1, oy1, Z.glass, P.cornerR));

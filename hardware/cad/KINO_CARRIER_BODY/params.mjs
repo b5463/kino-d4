@@ -95,19 +95,19 @@ export const P = Object.freeze({
   deckLine: 8.0,             // the top deck reads as a cap: the layer grooves stop here and a reveal runs round
   deckRevealW: 0.8,
   deckRevealD: 0.4,
-  frameEdgeR: 4.0,           // the rear frame's outer edge, a quarter round (printed rear face up)
+  frameEdgeR: 3.0,           // the rear frame's outer edge, a quarter round over its full thickness (printed rear face up)
   frameEdgeSteps: 6,
   bossD: 6.0,                // the stack-screw pillars, inside the 7 mm keep-out
   bossRib: 2.0,              // the rib tying each pillar to the wall
   bossFoot: 3.8,             // pillar material the screw head bears on
   screwBore: 2.4,            // M2 clearance
   accessShaftD: 4.0,         // the driver's way in from the front; an M2 pan head is 3.8
-  rearFrameT: 5.0,           // thick enough to carry its R4 edge round
+  rearFrameT: 3.0,           // carries its edge round; 5.0 was 2 mm of depth for a bigger round
   framePilotD: 1.7,          // M2 thread-forming into PETG
   framePilotDepth: 6.0,
   frameScrewHoleD: 2.4,
   frameHeadD: 4.2,
-  frameHeadDepth: 3.0,       // M2 x 8 reaches 6 mm into the pilot through a 5 mm frame
+  frameHeadDepth: 1.6,       // M2 x 8 reaches 6 mm into the pilot through a 3 mm frame
   frameScrewXs: [14.0, 76.0],  // clear of the LED slots and the USB opening on the bottom wall
   usbGable: 45,              // degrees, the opening's roof in print
 
@@ -116,8 +116,8 @@ export const P = Object.freeze({
   // over the whole front with a pillow edge, a pink shutter, quiet markings.
   // The face covers the plate and the walls' front ends (the concept's v18
   // front: the fascia fills the front, the charcoal is the sides and the cap).
-  faceBase: 3.5,             // the face plate
-  faceEdgeR: 3.5,            // its front edge, a quarter round over the full thickness
+  faceBase: 2.5,             // the face plate; depth is the camera's bulk, so the pillow is the plate's own thickness and no more
+  faceEdgeR: 2.5,            // its front edge, a quarter round over the full thickness
   // Finger pad: raised ribs on the face, right of the band, where the middle
   // finger of the right hand wraps the body.
   fingerPadX: [102.0, 115.0],
@@ -153,14 +153,14 @@ export const P = Object.freeze({
   pinShellD: 3.8,
   pinShellL: 5.5,
   pinFaceD: 3.5,
-  pinFaceL: 3.0,             // the two lower holes sit under the cover's track floor, 4.3 mm behind it
+  pinFaceL: 2.5,             // the two lower holes sit under the cover's track floor; a press fit this short locates, it does not retain: a drop of glue on the pins if the face lifts
   pinBossD: 7.0,             // on the upper deck, where the base alone is thinner than the pin hole is deep
   pinBossH: 1.5,             // in all: a short cylinder under a spherical cap
   pinBossCapR: 7.0,
   // The lens band: proud of the base, chamfered, with a recessed panel that is
   // the cover's track. Its Y extent is DERIVED from the cover's travel.
   bandX: [3.2, 97.2],
-  bandProud: 4.0,            // 6.0 put the cone's foot at the cover plane under the stowed cover's top edge
+  bandProud: 3.5,            // the cover (2.0), its set-back (0.2) and 1.3 of floor over the lower pin holes; 6.0 put the cone's foot under the stowed cover's top edge, 3.0 left 0.3 mm over the pin holes
   bandChamfer: 1.5,
   bandRim: 2.0,              // flat rim between the chamfer and the panel
   bandBottomInset: 3.4,      // the band's bottom rim, from the face's bottom edge to the panel; the keeper lives in it
