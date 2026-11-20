@@ -84,3 +84,7 @@ firmware/*/build-*/
 # KINO Twin device screen: the private variant with the Windows 98 artwork (#134) and the toolchain cache
 .cache/
 firmware/p4/twin_ui/kino-ui.wasm
+
+# Dev carrier D1: design/build.py writes this footprint, a copy of KiCad's PinSocket_2x13 with 1.5 mm pads.
+# Generated, and a KiCad-library derivative (CC-BY-SA-4.0) the repository does not redistribute.
+hardware/pcb/kino-d4-dev-carrier/KINO_DEV.pretty/PinSocket_2x13_P2.54mm_Vertical_Pad1.5.kicad_mod
