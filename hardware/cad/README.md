@@ -1,6 +1,7 @@
 # Mechanical CAD
 
-Two bodies, and they answer different questions.
+Three bodies, and they answer different questions. The first two carry the
+electronics themselves; the third is a shell around the dev carrier D1 stack.
 
 - **`KINO_FIELD_BODY/`** — PETG, FDM, support-free on a 250 × 210 bed. The
   released body and the one to print if you have a printer.
@@ -12,6 +13,13 @@ Two bodies, and they answer different questions.
   the sensors and the firmware's cover-closed test would never read dark. It has
   **no independent scan yet**, so a pass there is weaker evidence than a pass
   here — its `promote.mjs` says so every run.
+- **`KINO_CARRIER_BODY/`** — PETG, FDM, support-free; a shell around the dev
+  carrier D1 stack (P4 on its inserts, 8 mm spacers, carrier, XIAOs in
+  sockets). The carrier is the chassis: the four stack screws hold the shell,
+  and the front plate captures each camera head in a pinch pocket. 128 × 80.4
+  × 57.2 mm, two parts, first cut, nothing printed
+  ([`ECN-0009`](../changes/ECN-0009-carrier-body.md), issue #252). No
+  independent scan yet.
 
 Both take the same P4 module, the same four camera modules and XIAOs, and the
 same firmware, and both share one PROVISIONAL figure: the standoff pattern's

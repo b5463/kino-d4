@@ -2,6 +2,16 @@
 
 This log tracks released design-package versions inside the physical revision named in [`REVISION`](REVISION). Numbered engineering change notices carry the reason, evidence, and compatibility decision for each change.
 
+## 0.1.10 - 2026-11-20
+
+Status: a third CAD package for the dev carrier stack, first cut generated and gated; nothing printed.
+
+- New package `cad/KINO_CARRIER_BODY/`: a PETG shell around the D1 stack (P4 on its inserts, 8 mm spacers, carrier, XIAOs in 8.5 mm sockets, camera modules on their ribbons). The carrier is the chassis: four pillars from the front plate stand on the carrier at its M2 holes, and the four stack screws hold the shell through 4 mm driver shafts in the front face. Each camera head sits in an 8.65 mm pocket with 0.2 mm pinch ribs, the module PCB on the plate's inner face as the Z datum, the lens front on the pocket floor. 128.0 x 80.4 x 57.2 mm; the depth chain (3.0 + 13.8 + 3.3 + 8.0 + 1.6 + 8.5 + 2.5 + 15.0 + 1.5) is a gate. The soldered XIAO header insulator (2.5 mm) is provisional.
+- Two prints, both support-free: the shell face down, the 3 mm rear frame (95.6 x 58.2 window) rear face down, four M2 thread-forming screws into the wall ends. USB-C opening and three LED slots in the bottom wall.
+- 63 gates, 0 failures; `validate-stl` 2 files manifold. No independent scan yet. Staged: the face shell, the battery grip, the lens cover, the shutter, the strap lug, the TF slot opening, coupons.
+
+Engineering change notice: [ECN-0009](changes/ECN-0009-carrier-body.md). Tracking: [issue #252](https://github.com/b5463/kino-d4/issues/252).
+
 ## 0.1.9 - 2026-11-05
 
 Status: dev carrier D1 design released for ordering after manual checks; carrier A0.2 unchanged.

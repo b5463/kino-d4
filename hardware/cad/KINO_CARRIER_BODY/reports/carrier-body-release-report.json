@@ -1,0 +1,390 @@
+{
+  "package": "KINO_CARRIER_BODY",
+  "generated": "2026-11-20T18:39:16.081Z",
+  "body": {
+    "width": 128,
+    "height": 80.4,
+    "depth": 57.2,
+    "lensRowY": 28.45,
+    "cameraXs": [
+      17.195,
+      39.195,
+      61.195,
+      83.195
+    ]
+  },
+  "stack": {
+    "carrierBack": 11.3,
+    "carrierFront": 12.9,
+    "socketTop": 21.4,
+    "xiaoBack": 23.9,
+    "senseTop": 31.5,
+    "lensFront": 38.9,
+    "camPocketDepth": 3.5,
+    "plateInner": 35.4,
+    "plateFront": 40.4,
+    "glass": -13.8,
+    "frameRear": -16.8,
+    "pupil": 37.8,
+    "depth": 57.2
+  },
+  "files": {
+    "KINO_CARRIER_SHELL.stl": {
+      "triangles": 4958,
+      "volumeCm3": 138.68,
+      "size": [
+        128,
+        80.4,
+        54.2
+      ]
+    },
+    "KINO_CARRIER_REAR_FRAME.stl": {
+      "triangles": 1142,
+      "volumeCm3": 13.99,
+      "size": [
+        128,
+        80.4,
+        3
+      ]
+    },
+    "KINO_CARRIER_STACK_DUMMY.stl": {
+      "triangles": 1740,
+      "volumeCm3": 139.33,
+      "size": [
+        118.4,
+        70.8,
+        52.7
+      ]
+    },
+    "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
+      "triangles": 7970,
+      "volumeCm3": 291.99,
+      "size": [
+        128,
+        80.4,
+        57.2
+      ]
+    }
+  },
+  "gates": {
+    "total": 63,
+    "failed": 0
+  },
+  "checks": [
+    {
+      "name": "depth chain adds up to the body depth",
+      "pass": true,
+      "details": "rear frame 3 + P4 module, glass to PCB back 13.8 + P4 inserts 3.3 + spacers 8 + carrier PCB 1.6 + XIAO socket 8.5 + XIAO header insulator (PROVISIONAL) 2.5 + XIAO back face to lens front 15 + plate ahead of the lens 1.5 = 57.2 mm; body 57.2"
+    },
+    {
+      "name": "the lens front is the pocket floor",
+      "pass": true,
+      "details": "XIAO back at Z=23.9 + 15 = lens front Z=38.9; pocket 3.5 deep from the plate's inner face at Z=35.4"
+    },
+    {
+      "name": "the module's PCB has the plate to land on",
+      "pass": true,
+      "details": "3.9 mm from the Sense board's top to the plate's inner face, for a 3.5 mm module PCB and its fold"
+    },
+    {
+      "name": "shell is one part",
+      "pass": true,
+      "details": "1 component(s)"
+    },
+    {
+      "name": "rear frame is one part",
+      "pass": true,
+      "details": "1 component(s)"
+    },
+    {
+      "name": "shell and frame do not overlap",
+      "pass": true,
+      "details": "-0.0000 mm^3 shared"
+    },
+    {
+      "name": "stack dummy clears the shell (ribs aside)",
+      "pass": true,
+      "details": "-0.0000 mm^3 of electronics inside the shell's material"
+    },
+    {
+      "name": "stack dummy clears the frame",
+      "pass": true,
+      "details": "0.0000 mm^3"
+    },
+    {
+      "name": "pinch ribs bite the heads and nothing else does",
+      "pass": true,
+      "details": "2.23 mm^3 of rib inside the nominal heads: 4 pockets x 4 ribs x 0.2 mm"
+    },
+    {
+      "name": "camera pocket at X 17.195 open",
+      "pass": true,
+      "details": "8.65 mm pocket, 7.75 mm free between the rib tips and the datum walls, 3.5 mm deep"
+    },
+    {
+      "name": "camera pocket at X 17.195 has pinch ribs",
+      "pass": true,
+      "details": "2 ribs per axis, 0.2 mm proud"
+    },
+    {
+      "name": "lens bore at X 17.195 open through the plate",
+      "pass": true,
+      "details": "7.1 mm bore from the pocket floor to the plate's front face"
+    },
+    {
+      "name": "lens bore at X 17.195 passes the field",
+      "pass": true,
+      "details": "2.26 mm radius needed at the plate's front for 82 degrees from a pupil 2.6 mm behind it; bore 3.55"
+    },
+    {
+      "name": "camera pocket at X 39.195 open",
+      "pass": true,
+      "details": "8.65 mm pocket, 7.75 mm free between the rib tips and the datum walls, 3.5 mm deep"
+    },
+    {
+      "name": "camera pocket at X 39.195 has pinch ribs",
+      "pass": true,
+      "details": "2 ribs per axis, 0.2 mm proud"
+    },
+    {
+      "name": "lens bore at X 39.195 open through the plate",
+      "pass": true,
+      "details": "7.1 mm bore from the pocket floor to the plate's front face"
+    },
+    {
+      "name": "lens bore at X 39.195 passes the field",
+      "pass": true,
+      "details": "2.26 mm radius needed at the plate's front for 82 degrees from a pupil 2.6 mm behind it; bore 3.55"
+    },
+    {
+      "name": "camera pocket at X 61.195 open",
+      "pass": true,
+      "details": "8.65 mm pocket, 7.75 mm free between the rib tips and the datum walls, 3.5 mm deep"
+    },
+    {
+      "name": "camera pocket at X 61.195 has pinch ribs",
+      "pass": true,
+      "details": "2 ribs per axis, 0.2 mm proud"
+    },
+    {
+      "name": "lens bore at X 61.195 open through the plate",
+      "pass": true,
+      "details": "7.1 mm bore from the pocket floor to the plate's front face"
+    },
+    {
+      "name": "lens bore at X 61.195 passes the field",
+      "pass": true,
+      "details": "2.26 mm radius needed at the plate's front for 82 degrees from a pupil 2.6 mm behind it; bore 3.55"
+    },
+    {
+      "name": "camera pocket at X 83.195 open",
+      "pass": true,
+      "details": "8.65 mm pocket, 7.75 mm free between the rib tips and the datum walls, 3.5 mm deep"
+    },
+    {
+      "name": "camera pocket at X 83.195 has pinch ribs",
+      "pass": true,
+      "details": "2 ribs per axis, 0.2 mm proud"
+    },
+    {
+      "name": "lens bore at X 83.195 open through the plate",
+      "pass": true,
+      "details": "7.1 mm bore from the pocket floor to the plate's front face"
+    },
+    {
+      "name": "lens bore at X 83.195 passes the field",
+      "pass": true,
+      "details": "2.26 mm radius needed at the plate's front for 82 degrees from a pupil 2.6 mm behind it; bore 3.55"
+    },
+    {
+      "name": "driver reaches the screw at (18.95, 62.8)",
+      "pass": true,
+      "details": "4 mm shaft from the front face to the foot at Z=16.7"
+    },
+    {
+      "name": "screw passes the foot at (18.95, 62.8)",
+      "pass": true,
+      "details": "2.4 mm bore through 3.8 mm of foot onto the carrier at Z=12.9"
+    },
+    {
+      "name": "foot stands on the carrier at (18.95, 62.8)",
+      "pass": true,
+      "details": "pillar 6 mm, inside the carrier's 7 mm fastener keep-out"
+    },
+    {
+      "name": "pillar at (18.95, 62.8) stays inside the keep-out",
+      "pass": true,
+      "details": "nothing but silk under it"
+    },
+    {
+      "name": "driver reaches the screw at (80.85, 62.8)",
+      "pass": true,
+      "details": "4 mm shaft from the front face to the foot at Z=16.7"
+    },
+    {
+      "name": "screw passes the foot at (80.85, 62.8)",
+      "pass": true,
+      "details": "2.4 mm bore through 3.8 mm of foot onto the carrier at Z=12.9"
+    },
+    {
+      "name": "foot stands on the carrier at (80.85, 62.8)",
+      "pass": true,
+      "details": "pillar 6 mm, inside the carrier's 7 mm fastener keep-out"
+    },
+    {
+      "name": "pillar at (80.85, 62.8) stays inside the keep-out",
+      "pass": true,
+      "details": "nothing but silk under it"
+    },
+    {
+      "name": "driver reaches the screw at (18.95, 8)",
+      "pass": true,
+      "details": "4 mm shaft from the front face to the foot at Z=16.7"
+    },
+    {
+      "name": "screw passes the foot at (18.95, 8)",
+      "pass": true,
+      "details": "2.4 mm bore through 3.8 mm of foot onto the carrier at Z=12.9"
+    },
+    {
+      "name": "foot stands on the carrier at (18.95, 8)",
+      "pass": true,
+      "details": "pillar 6 mm, inside the carrier's 7 mm fastener keep-out"
+    },
+    {
+      "name": "pillar at (18.95, 8) stays inside the keep-out",
+      "pass": true,
+      "details": "nothing but silk under it"
+    },
+    {
+      "name": "driver reaches the screw at (80.85, 8)",
+      "pass": true,
+      "details": "4 mm shaft from the front face to the foot at Z=16.7"
+    },
+    {
+      "name": "screw passes the foot at (80.85, 8)",
+      "pass": true,
+      "details": "2.4 mm bore through 3.8 mm of foot onto the carrier at Z=12.9"
+    },
+    {
+      "name": "foot stands on the carrier at (80.85, 8)",
+      "pass": true,
+      "details": "pillar 6 mm, inside the carrier's 7 mm fastener keep-out"
+    },
+    {
+      "name": "pillar at (80.85, 8) stays inside the keep-out",
+      "pass": true,
+      "details": "nothing but silk under it"
+    },
+    {
+      "name": "the carrier slides in from the rear up to the pillar feet",
+      "pass": true,
+      "details": "0.3 mm a side; the feet at Z=12.9 are the stop"
+    },
+    {
+      "name": "USB-C plug passes the bottom wall",
+      "pass": true,
+      "details": "12.4 x 6.5 overmold, 0.5 mm a side, centred Z=9.67"
+    },
+    {
+      "name": "LED slot at X 87.695 open",
+      "pass": true,
+      "details": "2 x 4 mm through the bottom wall under the carrier's back face"
+    },
+    {
+      "name": "LED slot at X 93.695 open",
+      "pass": true,
+      "details": "2 x 4 mm through the bottom wall under the carrier's back face"
+    },
+    {
+      "name": "LED slot at X 99.695 open",
+      "pass": true,
+      "details": "2 x 4 mm through the bottom wall under the carrier's back face"
+    },
+    {
+      "name": "the frame shows the whole active area with margin",
+      "pass": true,
+      "details": "95.6 x 58.16 window over a 93.6 x 56.16 active area, 1 mm a side (active area centred: PROVISIONAL)"
+    },
+    {
+      "name": "the frame overlaps the module's border on every side",
+      "pass": true,
+      "details": "9.4 mm in X, 4.32 mm in Y"
+    },
+    {
+      "name": "frame pilot at (14, -2.55) open",
+      "pass": true,
+      "details": "1.7 mm pilot 6 mm into the wall end"
+    },
+    {
+      "name": "frame screw hole at (14, -2.55) open",
+      "pass": true,
+      "details": "2.4 mm through the frame"
+    },
+    {
+      "name": "wall carries the pilot at (14, -2.55)",
+      "pass": true,
+      "details": "1.4 mm a side"
+    },
+    {
+      "name": "frame pilot at (14, 73.35) open",
+      "pass": true,
+      "details": "1.7 mm pilot 6 mm into the wall end"
+    },
+    {
+      "name": "frame screw hole at (14, 73.35) open",
+      "pass": true,
+      "details": "2.4 mm through the frame"
+    },
+    {
+      "name": "wall carries the pilot at (14, 73.35)",
+      "pass": true,
+      "details": "1.4 mm a side"
+    },
+    {
+      "name": "frame pilot at (76, -2.55) open",
+      "pass": true,
+      "details": "1.7 mm pilot 6 mm into the wall end"
+    },
+    {
+      "name": "frame screw hole at (76, -2.55) open",
+      "pass": true,
+      "details": "2.4 mm through the frame"
+    },
+    {
+      "name": "wall carries the pilot at (76, -2.55)",
+      "pass": true,
+      "details": "1.4 mm a side"
+    },
+    {
+      "name": "frame pilot at (76, 73.35) open",
+      "pass": true,
+      "details": "1.7 mm pilot 6 mm into the wall end"
+    },
+    {
+      "name": "frame screw hole at (76, 73.35) open",
+      "pass": true,
+      "details": "2.4 mm through the frame"
+    },
+    {
+      "name": "wall carries the pilot at (76, 73.35)",
+      "pass": true,
+      "details": "1.4 mm a side"
+    },
+    {
+      "name": "shell prints support-free",
+      "pass": true,
+      "details": "61 mm^2 facing down steeper than 45 degrees off the bed: 27 mm^2 the three LED slots' 2 mm bridges, 32.17 mm^2 the four screw-foot shoulders (0.8 mm rings over the bore), nothing else"
+    },
+    {
+      "name": "frame prints support-free",
+      "pass": true,
+      "details": "0 mm^2 off the bed, 37.32 mm^2 of it the four counterbore shoulders (0.9 mm bridges)"
+    },
+    {
+      "name": "prints fit a 250 x 210 bed",
+      "pass": true,
+      "details": "128 x 80.4 x 54.2; 128 x 80.4 x 3"
+    }
+  ]
+}
