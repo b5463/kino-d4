@@ -105,6 +105,121 @@ export const P = Object.freeze({
   frameHeadDepth: 1.6,
   frameScrewXs: [14.0, 76.0],  // clear of the LED slots and the USB opening on the bottom wall
   usbGable: 45,              // degrees, the opening's roof in print
+
+  // ---- The face shell: the form lives here, printed back-face down --------
+  // ODD JOBS: a charcoal ribbed shell, a cream (day) or cobalt (night) face
+  // set INSIDE the shell's rim, a pink shutter, quiet markings. The shell's
+  // walls run faceBase past the plate and the face sits in that pocket.
+  faceBase: 2.5,             // the face plate, flush with the shell's rim
+  faceClear: 0.15,           // per side, in the rim pocket
+  faceChamfer: 0.5,          // the face's front edge
+  // Finger pad: raised ribs on the face, right of the band, where the middle
+  // finger of the right hand wraps the body.
+  fingerPadX: [102.0, 115.0],
+  fingerPadY: [10.0, 62.0],
+  fingerRibW: 1.2,
+  fingerRibPitch: 2.6,
+  fingerRibH: 0.8,
+  // The maker's mark, "odd jobs", traced from the logo, raised on the upper deck.
+  makerW: 26.0,
+  makerAt: [6.0, 46.5],      // lower-left corner
+  makerProud: 0.5,
+  // Layer texture on the shell's walls: V-grooves around the body, parallel to
+  // the layers in print, on the side and bottom walls, never across the top deck.
+  grooveP: 1.6,
+  grooveD: 0.25,
+  grooveZ: [-9.0, 37.0],
+  // The rear frame: thumb pad as grooves on the right border, the ODD JOBS
+  // symbol engraved on the left border (the rear face is the bed, so nothing
+  // there can stand proud).
+  thumbPadX: [109.0, 121.0],
+  thumbPadY: [18.0, 52.0],
+  thumbGrooveW: 1.0,
+  thumbGroovePitch: 2.8,
+  thumbGrooveD: 0.4,
+  symbolRearH: 8.0,
+  symbolRearAt: [-1.5, 31.0],
+  symbolRearD: 0.4,
+  // Four stepped pins locate the face on the shell: one end in the shell's
+  // 4.0 mm driver shaft, the other in a blind hole in the face's back. Pegs
+  // on the face itself would stand on its bed face. Press fits, tuned on the
+  // coupon: printed holes come out small, printed pins large.
+  pinShellD: 3.8,
+  pinShellL: 5.5,
+  pinFaceD: 3.5,
+  pinFaceL: 3.0,             // the two lower holes sit under the cover's track floor, 4.3 mm behind it
+  pinBossD: 7.0,             // on the upper deck, where the base alone is thinner than the pin hole is deep
+  pinBossH: 1.5,
+  pinBossChamfer: 0.5,
+  // The lens band: proud of the base, chamfered, with a recessed panel that is
+  // the cover's track. Its Y extent is DERIVED from the cover's travel.
+  bandX: [3.2, 97.2],
+  bandProud: 4.0,            // 6.0 put the cone's foot at the cover plane under the stowed cover's top edge
+  bandChamfer: 1.5,
+  bandRim: 2.0,              // flat rim between the chamfer and the panel
+  bandBottomInset: 3.4,      // the band's bottom rim, from the face's bottom edge to the panel; the keeper lives in it
+  bandR: 5.0,
+  panelDepth: 2.2,           // cover 2.0 plus 0.2 set back from the band's front
+  lensRingStep: 0.6,         // each ring of a cell stands this far proud of the field cone
+  // The cover: the field body's bench-tuned track, restated. Drops to open.
+  sliderH: 16.5,             // blankets the 14 mm cells with 1.25 mm a side; the lens row sits low, so every mm of cover is a mm of travel (the travel is DERIVED: closed to the band's bottom rim)
+  sliderT: 2.0,
+  sliderClr: 0.1,            // per side, in X
+  sliderBevel: 1.0,          // 45-degree edge bevel, and the lip that traps it
+  sliderLipZ: 1.1,           // lip depth from the band's front: deeper than the bevel is wide, so the lip's underside is steeper than 45 degrees in print (0.95 read as an overhang)
+  sliderCornerR: 0.6,
+  sliderBumpR: 0.4,
+  sliderBumpBite: 0.15,
+  sliderBumpH: 0.8,
+  sliderEdgeCrest: 1.5,
+  sliderEdgeRamp: 0.6,
+  sliderEdgeRelief: 0.2,
+  keeperClr: 0.1,
+  coverRailW: 2.5,
+  coverRailProud: 0.25,
+  coverRailOffset: 30.0,
+  coverRidge: [22.0, 1.6],   // thumb ridge, width x height
+  coverRidgeProud: 1.0,
+  coverRidgeGap: 1.5,        // above the cover's bottom edge
+  markScale: 0.5,            // the kino D4 wordmark on the cover: 80 x 10.7 mm traced, halved
+  markProud: 0.6,
+  // ---- The shutter: the field body's pod, button and retainer, the cap grown
+  // to the brand's pink button. The bore's teardrop roof points -Z, so the
+  // axis sits sqrt(2) x the access radius above the pod's bottom.
+  shutterX: 104.0,
+  shutterZ: 26.2,            // bore axis, between the plate and the carrier
+  shutterPodW: 24.0,
+  shutterPodReach: 4.0,      // pod pilaster inward from the cavity's top face
+  shutterPodBottomZ: 14.0,   // 1.1 above the carrier's front face
+  shutterSwitchBody: [6.0, 6.0, 4.3],
+  shutterSwitchClearance: 0.6,
+  shutterActuatorGuideD: 14.4,
+  shutterActuatorFlangeD: 16.0,
+  shutterPressCapD: 14.0,
+  shutterPressFaceD: 13.0,
+  shutterPressCapH: 0.9,
+  shutterProud: 2.0,
+  shutterDishD: 10.0,
+  shutterDishDepth: 0.5,
+  shutterCollarD: 20.0,
+  shutterCollarDepth: 1.6,
+  shutterAssemblyAccessD: 17.0,
+  shutterRetainerCupD: 16.4,
+  shutterRetainerPlateD: 19.5,
+  shutterRetainerCupH: 4.0,
+  shutterWireExit: [6.4, 4.5],
+  shutterWireBayW: 8.0,
+  shutterSwitchLegBand: 1.8,
+  shutterSwitchLegSink: 0.6,
+  shutterSideWireW: 3.0,
+  // ---- The strap lug on the RIGHT wall, the hand's side, where a wrist loop
+  // hangs from the hand that holds the camera.
+  strapLugLen: 10.0,         // along Y
+  strapLugWall: 1.5,
+  strapHoleD: 3.5,
+  strapLugY0: 26.0,          // between the USB-C opening below and the shutter pod above
+  strapLugZ0: 20.0,          // its -Z face (up in print)
+  strapLugH: 8.0,            // at the outer face; the +Z side slopes 45 degrees back to the wall
 });
 
 // ---- The stack chain, derived once ------------------------------------------

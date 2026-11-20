@@ -41,17 +41,54 @@ owner's printer. Two parts:
 - **Rear frame**: 3 mm, a 95.6 x 58.2 mm window over the 93.6 x 56.16 active
   area (1.0 mm a side; the area centred on the PCB is PROVISIONAL), four M2
   thread-forming screws into 1.7 mm pilots in the wall ends.
+- **Face shell** (second cut, 2026-11-20): the shell's front prints on the
+  bed and carries no relief, so the form is a separate face printed back
+  down. A 2.5 mm base with an R2.5 edge; a lens band 4 mm proud with a
+  recessed panel that is the sliding cover's track (the field body's
+  bench-tuned track restated: dovetail lips, two detent pairs, 0.1 mm a side,
+  a keeper closing the rim gap, drops 17.5 mm to shoot); four cells as stepped
+  cones from the 82 degree field cone, 14 mm at the panel floor; the ODD JOBS
+  symbol raised top left; the kino D4 wordmark raised on the cover. Located
+  on the shell by four stepped printed pins in the driver shafts (press fits,
+  tuned on the coupon); two rivet bosses on the upper deck carry the upper
+  pin holes. The lens row sits low on the carrier, so the cover is 17 mm tall
+  and blankets the 14 mm cells by 1.5 a side; both margins are gates.
+- **Shutter and strap lug**: the field body's pod, plunger and retainer on
+  the shell's top wall at X 104, between the plate and the carrier (1.1 mm
+  above it), every bore with a teardrop roof pointing up in print; the switch
+  leads run down the cavity to J103. A strap lug on the right wall, cord hole
+  front to back, its underside sloped past 45 degrees.
+- **ODD JOBS** (third cut, the same day, on the owner's brief that the body
+  carry the brand's personality and the user's hand): the brand's own camera
+  concept (`ODD JOBS/CAMERA 01`, v18 and v6) restated on this stack. A
+  charcoal shell with 0.25 mm V-grooves at 1.6 mm pitch around the side and
+  bottom walls (the layer texture, 49 degree flanks); the face a cream or
+  cobalt plate standing proud inside a 4.5 mm charcoal margin; the pink
+  shutter cap grown to 14 mm under the right index finger; finger ribs on the
+  face's right under the middle finger; thumb grooves on the rear frame's
+  right border; the strap on the right wall; "odd jobs" traced from the logo
+  and raised on the upper deck; the symbol engraved on the back. The cover is
+  charcoal so that, closed, it is one bar across the face (the UI's landed
+  bar) and dropped it is the four-mark. Three filaments, one part each. A rim
+  pocket (the face flush inside walls run past the plate) was drawn first and
+  thrown out: face down, the recessed plate is 10,000 mm^2 of overhang.
 
 Depth, re-added by a gate every build: 3.0 frame + 13.8 module + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
-(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate = 57.2 mm, against
-the field body's 74.5 over its lens bar. The plate's inner face lands at Z 35.4
+(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 2.5 face base +
+4.0 lens band = 63.7 mm over the band, against the field body's 74.5 over its
+lens bar. The plate's inner face lands at Z 35.4
 from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-66 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens front
-on the pocket floor, the battery bay (56.4 x 49.4 x 6.3 mm between the P4
+122 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
+front on the pocket floor, the face inside its margin, the marks and pads on
+their decks, the shutter bore's roof inside the pod, the field cone clear of the shell, the face and
+the stowed cover at every station, the closed cover blanketing every cell,
+the cover held by its detents closed and open and free between, the keeper
+as the stop, the pin holes blind, the shutter bores and lead routes open, the
+battery bay (56.4 x 49.4 x 6.3 mm between the P4
 and the carrier, between the spacers; the cell goes on the P4's CN4 and the
 P4's IP5306 charges it from the carrier's USB-C, so there is no SW6106 module
 and no lead leaves the shell; a 505573 pouch does not fit this plan, a 50 x 50
@@ -60,9 +97,17 @@ parts with only the pinch ribs inside the nominal heads (5.3 mm^3), every
 pocket, bore, shaft, foot, slot, opening and pilot probed open, every pillar
 inside the carrier's 7 mm fastener keep-out, the carrier's sweep from the rear
 clear up to the feet, the frame window over the whole active area, both prints
-support-free off the bed except the three LED bridges and the four 0.8 mm
-screw-foot shoulders, both on the bed. `validate-stl.mjs`: 2 files, manifold,
-one part each. No independent scan yet; `promote.mjs` says so every run.
+support-free off the bed (each print's allowed bridges listed in its gate),
+all on the bed. `validate-stl.mjs`: 7 files, manifold, at their part counts.
+No independent scan yet; `promote.mjs` says so every run. Found by the gates
+while the face was written: a face hull 0.01 mm into the shell (100 mm^3), a
+straight frustum probe that bulged past the bore, a 6 mm band that put the
+cone's foot under the stowed cover, a single detent pair that touched
+nothing at the cover's R0.6 corners, pin holes through the 2.5 mm base and
+through the track floor, a lip a hair shallower than 45 degrees, a zero-area
+triangle from a hull of 0.01 mm slabs, a groove cutter that was a hull of
+three slabs (a square groove with a flat ceiling), grooves at 43.6 degrees
+where 46 was meant, and the rim pocket above.
 
 ## Compatibility
 
@@ -72,10 +117,10 @@ unchanged.
 
 ## Staged
 
-The cosmetic face shell (form, marks, lens cones), the sliding lens
-cover, the shutter button on its J103 lead, the strap lug, the P4's TF slot
-opening, an interference gate against the carrier's own part model, the
-pillar and pocket coupons, the independent scan. Issue #252 carries the open
+The P4's TF slot opening and the C6 service access, an interference gate
+against the carrier's own part model, the serial engraving and any line under
+4 mm of cap height ("made for bad ideas."), the coupons (pillar with pin,
+pocket, track, pod), the independent scan. Issue #252 carries the open
 inputs: the soldered header's insulator height, the spacer height with the
 socket home, the head size and stack height on a seated node, the active
 area's position, the field of view.
