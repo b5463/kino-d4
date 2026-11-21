@@ -13,11 +13,13 @@ electronics themselves; the third is a shell around the dev carrier D1 stack.
   the sensors and the firmware's cover-closed test would never read dark. It has
   **no independent scan yet**, so a pass there is weaker evidence than a pass
   here — its `promote.mjs` says so every run.
-- **`KINO_CARRIER_BODY/`** — PETG, FDM, support-free; a shell around the dev
-  carrier D1 stack (P4 on its inserts, 8 mm spacers, carrier, XIAOs in
-  sockets). The carrier is the chassis: the four stack screws hold the shell,
-  and the front plate captures each camera head in a pinch pocket. 128 × 80.4
-  × 57.2 mm, two parts, first cut, nothing printed
+- **`KINO_CARRIER_BODY/`** — black PETG and dark blue PLA, FDM, support-free;
+  a shell around the dev carrier D1 stack (P4 on its inserts, 8 mm spacers,
+  carrier, XIAOs in sockets). The carrier is the chassis: its edge lands on a
+  ledge, the rear frame's foam clamps it, the front plate captures each
+  camera head in a pinch pocket; the face and the frame are screwed on with
+  M2 heat-set inserts, no screw into a board. 131.4 × 83.8 × 51.1 mm, five
+  printed parts, coupons printed and read through the button
   ([`ECN-0009`](../changes/ECN-0009-carrier-body.md), issue #252). No
   independent scan yet.
 

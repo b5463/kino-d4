@@ -18,3 +18,5 @@ tact-switch,design-dependent,Tactile switch,6x6x4.3mm,SELLER_SPEC,"Controls pend
 slide-switch,1,SPDT slide switch,MSK-22D14,MEASURE_REQUIRED,"Logic input only"
 perfboard,1,Main carrier,DKAWS or Perma-Proto style,MEASURE_REQUIRED,"V1 carrier; do not carry high current on thin traces"
 field-body,1,Camera body,KINO_FIELD_BODY 0.1.4 (PETG; two chassis halves; face shell; sliding lens cover + keeper; rear door; XIAO clamps; shutter button),OFFICIAL_CAD,"hardware/cad/KINO_FIELD_BODY; 131x90x65.5mm; USB-C powered fixture - no pack bay (ECN-0004)"
+carrier-body-insert,12,Heat-set threaded insert,M2 brass OD 3.2 x 3.0mm,SELLER_SPEC_PROVISIONAL,"KINO_CARRIER_BODY C01: six in the face's back, six in the shell's rear wall ends; 3.0mm holes (the kit's sheet wins, T04 and T06 prove it) (ECN-0009)"
+carrier-body-screw,12,Pan-head screw,M2 x 6 (6) and M2 x 4 (6),STANDARD,"KINO_CARRIER_BODY C03: face from inside the cavity, frame from the back; no screw into a board (ECN-0009)"

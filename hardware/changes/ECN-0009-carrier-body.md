@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; twenty-third cut generated and gated after the second coupon round (2026-11-21: the 8.1 gauge pocket holds the head, the bar 99.9 at 0.2 %, the carrier's corner flat on the ledge; the front-entry button took neither the plunger nor the switch, so the slot is open to the face and the switch goes in first); the third pod coupon T05 with B02 is next on the bed, with the pin-hold tests on T03 and T04 still to report |
+| Status | Design in progress; twenty-fifth cut generated and gated (2026-11-21: the third pod coupon with the real plunger and switch "works perfectly"; the filament pins retired for M2 heat-set inserts and screws, the walls 6.0 for them, the cover's detents made leaf springs); the joint coupons T03, T04 and T06 are next on the bed, then the real face and cover |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -489,6 +489,36 @@ owner's printer. Two parts:
   Then, as the coupon went to the bed (the owner: "a slight indent to give
   it a tactile feel"): the cap's top carries an 11 mm spherical dish 0.4
   deep inside a 1.0 flat rim (`shutterCapDish`), gated.
+- **Inserts, screws and the slide** (twenty-fifth cut, 2026-11-21; the
+  owner: "the button mechanism now works perfectly", then "lets now work on
+  the actual slide mechanism, and assembly of the camera without using
+  filament slices you can use A2 heat inserts i have a kit of various
+  lengths"; asked, the kit is OD 3.2 in 3, 4 and 5 mm, the face's screws
+  may come from inside before the stack, and the slide is the lens cover's).
+  The twelve filament pins are gone (`facePin*`, `framePin*`, `pinHoldN`).
+  The face is held by six M2 x 6 from inside the cavity through 2.4 holes
+  in the plate with 4.4 x 1.4 counterbores (heads flush under the stack,
+  gated against the dummy) into 3 mm inserts in its back (3.0 holes 3.4
+  deep, 0.3 countersunk, 0.8 of face ahead; stations (4, 4), (4, 50), (18,
+  60), (95, 60), (114, 50), (105, 4), each gated for a ring of face and a
+  ring of plate). The frame is held by six M2 x 4 from the back (4.0 x
+  0.6 counterbores, heads 0.7 proud, the bore's edge on the chamfer's
+  start) into inserts in the walls' rear ends, the axis 3.2 from the
+  outline. A boss on the wall's inner face for a 4.5 wall stood in the
+  carrier's path from the rear (the sweep gate caught it), so `wall` is
+  6.0 (1.7 outside the hole, 1.2 under a groove, 1.3 inside): the body is
+  131.4 x 83.8 x 51.1, the cover's travel 19.0. `insertHoleD` 3.0 and
+  `insertPullN` 50 are PROVISIONAL. The cover's detents: the rigid 0.4 mm
+  posts are replaced by a leaf spring in each window wall (2.0 x 2.0 x
+  13.5, cut free by 0.6 slits from the back under 0.8 of skin) carrying
+  two R0.6 bumps reaching 0.35 past the cover's edge line, placed by
+  arithmetic so the upper meets the closed cover's R3 corners at its stop
+  and the lower the open cover's (no slop, gated at each stop and 0.4
+  past); 0.58 % strain, about 2 N a side; the cover's edge relief 0.5,
+  crest 4.5; the lips skip the leaves. T06 is the face's corner (the
+  insert station and the left leaf, blue PLA); T03 carries the plate's
+  counterbore and T04 a wall-end insert hole. IDs: C01 inserts, C03
+  screws. 241 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
@@ -500,7 +530,7 @@ from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-189 in `generate-carrier-body.mjs`, 0 failures (the list below is the
+241 in `generate-carrier-body.mjs`, 0 failures (the list below is the
 first cut's; the package README's "Gates" names the current set, which
 adds the ledge, the carrier heads' clearance, the stack and the frame
 refused turned round, the frame pins and their hold, the pry point open at
@@ -613,11 +643,11 @@ the pins' hold, the active area's position, the field of view.
 - `hardware/cad/KINO_CARRIER_BODY/` (new; `print/` and `coupons/`)
 - `docs/MAKING_OF.md`, `docs/assets/making-of/` (the archive of every cut's renders)
 - `hardware/cad/README.md`
-- `hardware/manifest.json`, `hardware/CHANGELOG.md`, `versions.json`
+- `hardware/manifest.json`, `hardware/CHANGELOG.md`, `hardware/BOM.csv` (the inserts and screws), `versions.json`
 
 ## Verification
 
-- [x] BOM and manifest agree (no new BOM lines; no screw in the body, the pins are cut from filament).
+- [x] BOM and manifest agree (two BOM lines for the body's joints: twelve M2 heat-set inserts and twelve M2 screws; no screw into a board).
 - [x] Wiring and GPIO records agree (unchanged).
 - [ ] Assembly and acceptance procedures: the package README carries the assembly; `hardware/TESTING.md` unchanged until a body is printed.
 - [x] Affected firmware and KDP assumptions were tested (none affected).
@@ -626,8 +656,9 @@ the pins' hold, the active area's position, the field of view.
 
 ## Decision
 
-Design in progress. Two coupon rounds are printed and read (2026-11-21):
-the head size (8.1) and the ledge fit are settled; the pins' hold (T03,
-T04) and the third pod coupon with the button decide before the body
-prints. Still open: the soldered header insulator, the P4 module can, the
-spacer height, a cell that fits the bay.
+Design in progress. Three coupon rounds are printed and read (2026-11-21):
+the head size (8.1), the ledge fit and the button are settled; the insert
+holes (T04 in PETG, T06 in PLA) and the real face with its cover (the
+leaf detents) decide before the body prints. Still open: the soldered
+header insulator, the P4 module can, the spacer height, a cell that fits
+the bay.

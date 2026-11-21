@@ -5,12 +5,14 @@
 // face, on which the carrier's edge lands (no pillar, no screw, nothing at
 // the carrier's holes); the shutter pod on the top wall; V-grooves around
 // the walls, parallel to the print's layers, the brand's layer texture; the
-// USB-C opening, six pin holes in the walls' front ends for the face and
-// six in their rear ends for the frame. Printed face down.
+// USB-C opening, six counterbored screw holes through the plate for the
+// face (screwed from inside) and six insert holes in bosses at the walls'
+// rear ends for the frame. Printed face down.
 //
 // The rear frame is a 2 mm plate around the display with the thumb pad on
 // its right border and the ODD JOBS symbol engraved on its left, printed
-// rear face up, held on the wall ends by six filament pins through it.
+// rear face up, held on the wall ends by six M2 screws into heat-set
+// inserts, their heads 0.7 proud of its rear face.
 import fs from "node:fs";
 import { Manifold, CrossSection, cube, box, cylZ, coneZ, cylY, fuse, rbox, status, textSolid } from "./lib.mjs";
 import { P, Z, XY, IDS } from "./params.mjs";
@@ -38,16 +40,16 @@ export const SHELL = (() => {
     strapChannels.push([ox0 + P.strapSlotXs[0], slotY[0], ox0 + P.strapSlotXs[1] + P.strapSlot[0], slotY[1]]);
     strapChannels.push([ox1 - P.strapSlotXs[1] - P.strapSlot[0], slotY[0], ox1 - P.strapSlotXs[0], slotY[1]]);
   }
-  const pinXY = [
-    ...P.facePinsTop.map((x) => [x, XY.wallMidY[1]]), ...P.facePinsBottom.map((x) => [x, XY.wallMidY[0]]),
-    [ox0 + P.wall / 2, P.facePinsSideY], [ox1 - P.wall / 2, P.facePinsSideY],
-  ];
-  // The frame's six pins in the walls' rear ends, a different pattern from
-  // the face's so neither part fits the other's end and the frame goes on
-  // one way (the bottom pair is not the top pair's mirror).
-  const pinRearXY = [
-    ...P.framePinsTop.map((x) => [x, XY.wallMidY[1]]), ...P.framePinsBottom.map((x) => [x, XY.wallMidY[0]]),
-    [ox0 + P.wall / 2, P.framePinsSideY], [ox1 - P.wall / 2, P.framePinsSideY],
+  // The face's six screw stations in the plate (screwed from inside the
+  // cavity into inserts in the face's back).
+  const faceScrewXY = P.faceScrewXY.map(([x, y]) => [x, y]);
+  // The frame's six stations in the walls' rear ends, the axis frameScrewIn
+  // from the outline, each with its side (which wall it is in, so the boss
+  // grows inward from that wall); the bottom pair is not the top pair's
+  // mirror, so the frame goes on one way.
+  const frameScrewXY = [
+    ...P.frameScrewsTop.map((x) => [x, oy1 - P.frameScrewIn, "top"]), ...P.frameScrewsBottom.map((x) => [x, oy0 + P.frameScrewIn, "bottom"]),
+    [ox0 + P.frameScrewIn, P.frameScrewsSideY, "left"], [ox1 - P.frameScrewIn, P.frameScrewsSideY, "right"],
   ];
   // The face sits ON the plate inside a flat margin the width of the
   // wall. Walls running past the plate to pocket the face were tried first:
@@ -60,7 +62,9 @@ export const SHELL = (() => {
   const usbOpenW = P.usbPlug[0] + 2 * P.usbPlugClear;
   const usbOpenZ = [Z.carrierBack - P.usbShellH / 2 - usbOpenH / 2, Z.carrierBack - P.usbShellH / 2 + usbOpenH / 2];
   const windowHalf = [P.activeArea[0] / 2 + P.windowMargin, P.activeArea[1] / 2 + P.windowMargin];
-  return Object.freeze({ strapSlots, strapChannels, pinXY, pinRearXY, rimFront, pocket, ledgeZ, usbOpenZ, usbOpenW, windowHalf,
+  const insertHoleDepth = P.insertLen + P.insertHoleExtra;
+  const plateBoreDepth = P.plate - (P.faceScrewLen - P.insertLen);   // the counterbore in the plate's inner face: what is left of the plate is the screw's length less the insert
+  return Object.freeze({ strapSlots, strapChannels, faceScrewXY, frameScrewXY, insertHoleDepth, plateBoreDepth, rimFront, pocket, ledgeZ, usbOpenZ, usbOpenW, windowHalf,
     lensXY: P.cameraXs.map((x) => [x, XY.lensY]), headPocket: P.camBody + P.camBodySlack });
 })();
 
@@ -180,10 +184,20 @@ export function buildShell() {
     const [x0, x1] = [P.usbCX - S.usbOpenW / 2, P.usbCX + S.usbOpenW / 2];
     cuts.push(status("USB opening", rbox(x0, S.usbOpenZ[0], 0, x1, S.usbOpenZ[1], cy0 - oy0 + 2, P.usbOpenR, 24).rotate([90, 0, 0]).translate([0, cy0 + 1, 0])));
   }
-  // Blind holes in the walls' rear ends for the frame's six pins. The wall
-  // ends are the top of the print: no elephant foot, so no countersink.
-  for (const [px, py] of S.pinRearXY) {
-    cuts.push(cylZ(px, py, Z.glass - 1, P.facePinD / 2, P.facePinWall + 1, 24));
+  // Blind insert holes in the walls' rear ends for the frame's six screws,
+  // countersunk at the mouth for the melt. The wall ends are the top of
+  // the print. (A boss on the wall's inner face for a thinner wall stood in
+  // the carrier's path from the rear; the wall is 6.0 instead.)
+  for (const [px, py] of S.frameScrewXY) {
+    cuts.push(cylZ(px, py, Z.glass - 1, P.insertHoleD / 2, S.insertHoleDepth + 1, 32));
+    cuts.push(coneZ(px, py, Z.glass - 0.01, P.insertHoleD / 2 + P.insertMouthSink + 0.01, P.insertHoleD / 2, P.insertMouthSink + 0.01, 32));
+  }
+  // The face's screws pass through the plate from the cavity: a clearance
+  // hole and a counterbore in the plate's inner face (up in print) that
+  // takes the pan head flush, under the stack.
+  for (const [px, py] of S.faceScrewXY) {
+    cuts.push(cylZ(px, py, Z.plateInner - 1, P.screwClearD / 2, P.plate + 2, 32));
+    cuts.push(cylZ(px, py, Z.plateInner - 1, P.screwBoreD / 2, S.plateBoreDepth + 1, 32));
   }
   // The strap tunnels inside the bottom wall's end, under a skin of wall: the
   // cord loops the shell's own wall, so a drop never loads the frame's
@@ -192,12 +206,6 @@ export function buildShell() {
     cuts.push(box(x0, y0, Z.glass + P.strapTunnelSkin, x1, y1, Z.glass + P.strapTunnelSkin + P.strapChannelD));
   }
   for (const [x0, y0, x1, y1] of S.strapSlots) cuts.push(box(x0, y0, Z.glass - 1, x1, y1, Z.glass + P.strapTunnelSkin + 0.5));
-  // Blind holes in the walls' front ends for the six filament pins that hold
-  // the face, countersunk at the mouth (the bed face) against the elephant foot.
-  for (const [px, py] of S.pinXY) {
-    cuts.push(cylZ(px, py, Z.plateFront - P.facePinWall, P.facePinD / 2, P.facePinWall + 1, 24));
-    cuts.push(coneZ(px, py, Z.plateFront - P.facePinSink, P.facePinD / 2, P.facePinD / 2 + P.facePinSink + 0.01, P.facePinSink + 0.01, 24));
-  }
   // A01, engraved in the plate's inner face, which is up in print (read
   // from the cavity, so mirrored).
   cuts.push(textSolid(IDS.shell, P.idShellAt[0], P.idShellAt[1], Z.plateInner - 1, P.idCap, P.idDepth + 1, true));
@@ -237,11 +245,11 @@ export function buildFrame() {
     Manifold.hull([box(wx0, wy0, Z.frameRear + c, wx1, wy1, Z.frameRear + c + 0.01), box(wx0 - c, wy0 - c, Z.frameRear - 0.01, wx1 + c, wy1 + c, Z.frameRear)]),
     box(wx0 - c, wy0 - c, Z.frameRear - 2, wx1 + c, wy1 + c, Z.frameRear),
   ];
-  // Six pin holes through the frame, countersunk at the inner face (the
-  // bed) against the elephant foot; the pins end 0.2 under the rear face.
-  for (const [px, py] of S.pinRearXY) {
-    cuts.push(cylZ(px, py, Z.frameRear - 1, P.framePinHoleD / 2, P.rearFrameT + 2, 24));
-    cuts.push(coneZ(px, py, Z.glass - P.facePinSink, P.framePinHoleD / 2, P.framePinHoleD / 2 + P.facePinSink + 0.01, P.facePinSink + 0.01, 24));
+  // Six screw holes through the frame, counterbored at the rear face (up in
+  // print) so the pan heads sit 0.7 proud: the concept's rear screws.
+  for (const [px, py] of S.frameScrewXY) {
+    cuts.push(cylZ(px, py, padZ0 - 1, P.screwClearD / 2, P.rearFrameT + P.thumbPadProud + 2, 32));
+    cuts.push(cylZ(px, py, padZ0 - 1, P.frameBoreD / 2, Z.frameRear + P.frameBoreDepth - padZ0 + 1, 32));
   }
   // The gasket groove in the inner face round the window: the P4 module is
   // held at the rear by foam in it, squeezed on the glass's margin by the

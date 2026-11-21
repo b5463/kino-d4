@@ -10,12 +10,15 @@
 // face's own floor, and the four cells show in the line.
 //
 // The track is the field body's, restated: dovetail lips on both X walls,
-// two detent pairs, 0.1 mm a side, drops to open. The two lips are not the
+// 0.1 mm a side, drops to open; the detents are a leaf spring in each side
+// wall with two bumps the cover's corners ride over (one holds it closed,
+// one open, each touching exactly at the stop). The two lips are not the
 // same: the left bevel is 1.0 and the right 1.5, so the cover goes in one
 // way only (turned round, its 1.0 bevel meets the 1.5 lip and stops). The
 // window's bottom rim is the stowed cover's stop and its top rim the
 // closed cover's. The cover loads from the face's back before the face
-// goes on; the face's own floor closes the track.
+// goes on; the face's own floor closes the track. The face is screwed to
+// the shell from inside the cavity: six M2 inserts in its back.
 import fs from "node:fs";
 import { Manifold, CrossSection, cube, box, cylZ, coneZ, fuse, rbox, prismY, status, textSolid, textWidth } from "./lib.mjs";
 import { P, Z, XY, IDS } from "./params.mjs";
@@ -47,12 +50,26 @@ export const FACE = (() => {
   const coneR = (z) => Math.max(boreR, (z - Z.pupil) * tanF);
   const outerR = boreR;                               // plain bores through the floor, with a rim
   const bevel = P.sliderBevel, lipZ = bevel.map((b) => b + P.sliderLipOver);   // left, right
-  const pinXY = [
-    ...P.facePinsTop.map((x) => [x, XY.wallMidY[1]]), ...P.facePinsBottom.map((x) => [x, XY.wallMidY[0]]),
-    [ox0 + P.wall / 2, P.facePinsSideY], [ox1 - P.wall / 2, P.facePinsSideY],
-  ];
+  const insertHoleDepth = P.insertLen + P.insertHoleExtra;
+  // The detent leaves and their bumps. A bump of radius rB whose face
+  // reaches `reach` past the cover's edge line touches an R corner when the
+  // corner's centre is dy above (or below) the bump's centre:
+  //   dy = sqrt((R + rB)^2 - (R + rB - reach... )
+  // exactly: the bump's centre is rB - reach outside the edge line, the
+  // corner's centre R inside it, so dx = R + rB - reach and dy =
+  // sqrt((R + rB)^2 - dx^2). The upper bump sits dy below the closed
+  // cover's bottom corner centre and the lower bump dy above the open
+  // cover's top corner centre: no slop at either stop.
+  const R = P.sliderCornerR, rB = P.sliderBumpR, reach = P.sliderBumpReach;
+  const dx = R + rB - reach, dy = Math.sqrt((R + rB) ** 2 - dx * dx);
+  const bumpClosedY = closedY0 + R - dy;
+  const bumpOpenY = openY1 - R + dy;
+  const leafTipY = bumpClosedY + rB;
+  const leafRootY = leafTipY - P.sliderLeafL;
+  const leafTop = back + P.sliderLeafH;              // the leaf's top; the slit above it to leafTop + slit
+  const leafSlitEndY = leafTipY + P.sliderLeafSlit;
   return Object.freeze({ back, front, trackTop, floorZ, horizonD, panel, horizon, outline, outlineR, closedY0, closedY1, openY0, openY1, travel,
-    tanF, boreR, coneR, outerR, bevel, lipZ, lensY, pinXY });
+    tanF, boreR, coneR, outerR, bevel, lipZ, lensY, insertHoleDepth, bumpClosedY, bumpOpenY, leafTipY, leafRootY, leafTop, leafSlitEndY, bumpDy: dy });
 })();
 
 const roundedRectZ = (x, y, z, w, d, h, r) => rbox(x, y, z, x + w, y + d, z + h, r);
@@ -70,12 +87,12 @@ export function buildFace() {
     slices.push(roundedRectZ(fx0 + P.bedChamfer, fy0 + P.bedChamfer, F.back, fx1 - fx0 - 2 * P.bedChamfer, fy1 - fy0 - 2 * P.bedChamfer, 0.01, Math.max(0.5, F.outlineR - P.bedChamfer)));
     solids.push(Manifold.hull(slices));
   }
-  // Blind holes in the back for the six filament pins in the walls' ends,
-  // countersunk at the mouth. The pattern is not symmetric top to bottom,
-  // so the face goes on one way.
-  for (const [px, py] of F.pinXY) {
-    cuts.push(cylZ(px, py, F.back - 1, P.facePinD / 2, P.facePinFace + 1, 24));
-    cuts.push(coneZ(px, py, F.back - 0.01, P.facePinD / 2 + P.facePinSink + 0.01, P.facePinD / 2, P.facePinSink + 0.01, 24));
+  // Blind insert holes in the back (the bed face) at the six screw
+  // stations, countersunk at the mouth for the melt; the screws come from
+  // inside the cavity through the shell's plate.
+  for (const [px, py] of P.faceScrewXY) {
+    cuts.push(cylZ(px, py, F.back - 1, P.insertHoleD / 2, F.insertHoleDepth + 1, 32));
+    cuts.push(coneZ(px, py, F.back - 0.01, P.insertHoleD / 2 + P.insertMouthSink + 0.01, P.insertHoleD / 2, P.insertMouthSink + 0.01, 32));
   }
   // The signature inside, engraved on the back (the bed face), mirrored so
   // it reads right when the face is turned over, and the part ID beside it.
@@ -142,18 +159,33 @@ export function buildFace() {
     cuts.push(cylZ(lx, F.lensY, F.back - 1, F.boreR, F.floorZ - F.back + 1.02));
     cuts.push(coneZ(lx, F.lensY, F.floorZ - P.cellSink, F.boreR, F.boreR + P.cellSink + 0.01, P.cellSink + 0.01, 64));
   }
-  // Dovetail lips on both X walls (left 1.0, right 1.5: the key) and two
-  // detent pairs, added AFTER the cuts.
-  const lipTop = F.trackTop + 0.02, lipLen = p1y - p0y - 0.4;
+  // The detent leaves: in each side wall, a beam sliderLeafT thick from the
+  // window's wall outward, sliderLeafH tall from the back, rooted at
+  // leafRootY and free to its tip, cut free by three slits: its outer
+  // side, its tip end and the slit above it (a bridge in print, 0.8 of
+  // skin under the horizon's floor). The lips skip the leaf's span.
+  const lipTop = F.trackTop + 0.02;
   const [b0, b1] = F.bevel, [l0, l1] = F.lipZ;
-  const adds = [
-    prismY(p0y + 0.2, lipLen, [p0x - 0.01, lipTop], [p0x + b0, lipTop], [p0x - 0.01, lipTop - l0]),
-    prismY(p0y + 0.2, lipLen, [p1x + 0.01, lipTop], [p1x - b1, lipTop], [p1x + 0.01, lipTop - l1]),
-  ];
-  const bumpSink = P.sliderBumpR - (P.sliderClr + P.sliderBumpBite);
-  for (const holdY of [F.closedY0 + P.sliderCornerR + 0.5, F.openY1 - P.sliderCornerR - 0.5]) {
-    adds.push(cylZ(p0x - bumpSink, holdY, F.floorZ, P.sliderBumpR, P.sliderBumpH, 32));
-    adds.push(cylZ(p1x + bumpSink, holdY, F.floorZ, P.sliderBumpR, P.sliderBumpH, 32));
+  const sl = P.sliderLeafSlit, lt = P.sliderLeafT;
+  const leafX = [[p0x, p0x - lt, p0x - lt - sl], [p1x, p1x + lt, p1x + lt + sl]];   // inner face (the window's wall), outer face, the slit's far side; left and right
+  for (const [xi, xo, xs] of leafX) {
+    const [xa, xb] = xo < xs ? [xo, xs] : [xs, xo];
+    cuts.push(box(xa, F.leafRootY, F.back - 1, xb, F.leafSlitEndY, F.leafTop + sl));                                   // the outer slit
+    cuts.push(box(Math.min(xi, xs) - 0.5, F.leafTipY, F.back - 1, Math.max(xi, xs) + 0.5, F.leafSlitEndY, F.leafTop + sl));   // the tip slit
+    cuts.push(box(Math.min(xi, xs) - 0.5, F.leafRootY, F.leafTop, Math.max(xi, xs) + 0.5, F.leafSlitEndY, F.leafTop + sl));  // the slit above
+  }
+  // Dovetail lips on both X walls (left 1.0, right 1.5: the key), in two
+  // runs each round the leaf, and the two bumps on each leaf's face, added
+  // AFTER the cuts.
+  const adds = [];
+  for (const [y0, y1] of [[p0y + 0.2, F.leafRootY - 0.01], [F.leafSlitEndY + 0.01, p1y - 0.2]]) {
+    adds.push(prismY(y0, y1 - y0, [p0x - 0.01, lipTop], [p0x + b0, lipTop], [p0x - 0.01, lipTop - l0]));
+    adds.push(prismY(y0, y1 - y0, [p1x + 0.01, lipTop], [p1x - b1, lipTop], [p1x + 0.01, lipTop - l1]));
+  }
+  const bumpIn = P.sliderBumpR - (P.sliderClr + P.sliderBumpReach);   // the bump's centre this far outside the wall's face
+  for (const holdY of [F.bumpClosedY, F.bumpOpenY]) {
+    adds.push(cylZ(p0x - bumpIn, holdY, F.floorZ - 0.01, P.sliderBumpR, P.sliderBumpH + 0.01, 32));
+    adds.push(cylZ(p1x + bumpIn, holdY, F.floorZ - 0.01, P.sliderBumpR, P.sliderBumpH + 0.01, 32));
   }
   const faceCut = status("face: plate less cuts", status("face: plate", fuse(solids)).subtract(status("face: cuts", fuse(cuts))));
   const face = status("face", status("face: with lips", faceCut.add(status("face: lips and bumps", fuse(adds)))).simplify(1e-3));

@@ -1,9 +1,9 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-21T21:06:59.529Z",
+  "generated": "2026-11-21T22:20:31.742Z",
   "body": {
-    "width": 128.4,
-    "height": 80.8,
+    "width": 131.4,
+    "height": 83.8,
     "depth": 51.1,
     "lensRowY": 28.45,
     "cameraXs": [
@@ -36,14 +36,14 @@
     "front": 44.1,
     "trackTop": 43.3,
     "outline": [
-      -4.7,
-      -4.7,
-      123.1,
-      75.5
+      -6.2,
+      -6.2,
+      124.6,
+      77
     ],
     "panel": [
       6.7,
-      2.2,
+      0.7,
       93.7,
       37.2
     ],
@@ -56,10 +56,10 @@
       36.7
     ],
     "coverOpen": [
-      2.7,
-      19.2
+      1.2,
+      17.7
     ],
-    "travel": 17.5,
+    "travel": 19,
     "horizonD": 0.8,
     "cellOuterD": 7.5
   },
@@ -67,7 +67,7 @@
     "x": 105.5,
     "zc": 32.5,
     "stem": 4.3,
-    "podInnerY": 65.3,
+    "podInnerY": 66.8,
     "capD": 14,
     "flangeD": 17.6,
     "chamberW": 18.6,
@@ -78,44 +78,58 @@
   "print": {
     "shrinkPct": 0.2,
     "ledgeW": 2,
-    "pins": 12,
+    "inserts": 12,
+    "screws": {
+      "face": "M2 x 6 x 6",
+      "frame": "M2 x 4 x 6"
+    },
     "gaugePockets": [
       7.8,
       8.1,
       8.4
     ]
   },
+  "slide": {
+    "bumpClosedY": 21.65,
+    "bumpOpenY": 16.25,
+    "leaf": [
+      2,
+      2,
+      13.5
+    ],
+    "reach": 0.35
+  },
   "files": {
     "A01-KINO_CARRIER_SHELL.stl": {
-      "triangles": 12492,
-      "volumeCm3": 125.23,
+      "triangles": 13802,
+      "volumeCm3": 152.85,
       "size": [
-        128.4,
-        80.8,
+        131.4,
+        83.8,
         44.9
       ]
     },
     "A03-KINO_CARRIER_REAR_FRAME.stl": {
-      "triangles": 5492,
-      "volumeCm3": 8.77,
+      "triangles": 6168,
+      "volumeCm3": 9.98,
       "size": [
-        128.4,
-        80.8,
+        131.4,
+        83.8,
         3.5
       ]
     },
     "A02-KINO_CARRIER_FACE.stl": {
-      "triangles": 9398,
-      "volumeCm3": 31.08,
+      "triangles": 9870,
+      "volumeCm3": 33,
       "size": [
-        127.8,
-        80.2,
+        130.8,
+        83.2,
         4.2
       ]
     },
     "B01-KINO_CARRIER_LENS_COVER.stl": {
-      "triangles": 2764,
-      "volumeCm3": 2.88,
+      "triangles": 2772,
+      "volumeCm3": 2.87,
       "size": [
         86.8,
         16.5,
@@ -132,8 +146,8 @@
       ]
     },
     "T03-KINO_COUPON_LEDGE_CORNER.stl": {
-      "triangles": 2136,
-      "volumeCm3": 9.48,
+      "triangles": 2252,
+      "volumeCm3": 11.03,
       "size": [
         26,
         26,
@@ -150,21 +164,30 @@
       ]
     },
     "T05-KINO_COUPON_DECK.stl": {
-      "triangles": 2230,
-      "volumeCm3": 4.82,
+      "triangles": 2258,
+      "volumeCm3": 5.52,
       "size": [
-        30.4,
+        31.9,
         12.5,
         24.9
       ]
     },
     "T04-KINO_COUPON_STRAP_SHELL.stl": {
-      "triangles": 1216,
-      "volumeCm3": 3.22,
+      "triangles": 1312,
+      "volumeCm3": 4.51,
       "size": [
-        49,
+        51.5,
         14,
         14
+      ]
+    },
+    "T06-KINO_COUPON_FACE_CORNER.stl": {
+      "triangles": 1366,
+      "volumeCm3": 1.9,
+      "size": [
+        20.7,
+        32.05,
+        4.2
       ]
     },
     "T01-KINO_COUPON_SHRINK_BAR.stl": {
@@ -186,10 +209,10 @@
       ]
     },
     "P2-COUPON_PLATE_T03_T04.stl": {
-      "triangles": 3352,
-      "volumeCm3": 12.7,
+      "triangles": 3564,
+      "volumeCm3": 15.54,
       "size": [
-        85,
+        87.5,
         26,
         30.6
       ]
@@ -204,26 +227,26 @@
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 32158,
-      "volumeCm3": 256.15,
+      "triangles": 34866,
+      "volumeCm3": 286.9,
       "size": [
-        128.4,
-        80.8,
+        131.4,
+        83.8,
         54.1
       ]
     },
     "KINO_CARRIER_OPEN_PREVIEW.stl": {
-      "triangles": 32176,
-      "volumeCm3": 256.15,
+      "triangles": 34884,
+      "volumeCm3": 286.9,
       "size": [
-        128.4,
-        80.8,
+        131.4,
+        83.8,
         54.1
       ]
     }
   },
   "gates": {
-    "total": 189,
+    "total": 241,
     "failed": 0
   },
   "checks": [
@@ -255,17 +278,17 @@
     {
       "name": "the face covers the shell's front, inset from the outline",
       "pass": true,
-      "details": "127.8 x 80.2 face on the plate, 4.2 mm thick with a 1.2 mm chamfer"
+      "details": "130.8 x 83.2 face on the plate, 4.2 mm thick with a 1.2 mm chamfer"
     },
     {
       "name": "plan corner leaves wall on the diagonal",
       "pass": true,
-      "details": "R10 outer corner against the cavity's near-square corner: 2.93 mm of wall on the diagonal, 2.43 under a groove"
+      "details": "R10 outer corner against the cavity's near-square corner: 5.05 mm of wall on the diagonal, 4.55 under a groove"
     },
     {
-      "name": "the face steps in from the shell and still covers the pins",
+      "name": "the face steps in from the shell",
       "pass": true,
-      "details": "0.3 mm of black wall end shows around the blue face; the pins at the wall's middle sit 1 mm inside the face's edge"
+      "details": "0.3 mm of black wall end shows around the blue face"
     },
     {
       "name": "battery bay takes the cell with foam and its swell",
@@ -310,17 +333,17 @@
     {
       "name": "shell and frame do not overlap",
       "pass": true,
-      "details": "-0.0000 mm^3 shared"
+      "details": "0.0000 mm^3 shared"
     },
     {
       "name": "face sits on the shell without overlap",
       "pass": true,
-      "details": "-0.0000 mm^3 shared"
+      "details": "0.0000 mm^3 shared"
     },
     {
       "name": "stack dummy clears the shell (ribs aside)",
       "pass": true,
-      "details": "-0.0000 mm^3 of electronics inside the shell's material"
+      "details": "0.0000 mm^3 of electronics inside the shell's material"
     },
     {
       "name": "stack dummy clears the frame",
@@ -360,7 +383,7 @@
     {
       "name": "field cone at X 17.195 clears the open cover",
       "pass": true,
-      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 23.76"
+      "details": "cover stowed 19 mm down; its top edge at Y 17.7 against the cone's bottom at Y 23.76"
     },
     {
       "name": "closed cover blankets the cell at X 17.195",
@@ -395,7 +418,7 @@
     {
       "name": "field cone at X 39.195 clears the open cover",
       "pass": true,
-      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 23.76"
+      "details": "cover stowed 19 mm down; its top edge at Y 17.7 against the cone's bottom at Y 23.76"
     },
     {
       "name": "closed cover blankets the cell at X 39.195",
@@ -430,7 +453,7 @@
     {
       "name": "field cone at X 61.195 clears the open cover",
       "pass": true,
-      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 23.76"
+      "details": "cover stowed 19 mm down; its top edge at Y 17.7 against the cone's bottom at Y 23.76"
     },
     {
       "name": "closed cover blankets the cell at X 61.195",
@@ -465,7 +488,7 @@
     {
       "name": "field cone at X 83.195 clears the open cover",
       "pass": true,
-      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 23.76"
+      "details": "cover stowed 19 mm down; its top edge at Y 17.7 against the cone's bottom at Y 23.76"
     },
     {
       "name": "closed cover blankets the cell at X 83.195",
@@ -505,192 +528,382 @@
     {
       "name": "the stack goes in one way",
       "pass": true,
-      "details": "turned round, 712.26 mm^3 of electronics inside the shell's material; the right way, -0.0000"
+      "details": "turned round, 712.26 mm^3 of electronics inside the shell's material; the right way, 0.0000"
     },
     {
-      "name": "frame pin hole in the wall end at (30, 73.55) open",
+      "name": "frame insert hole in the top wall's rear end at (30, 74.1) open",
       "pass": true,
-      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+      "details": "3 mm, 3.4 deep for a 3 insert, countersunk 0.3 at the mouth"
     },
     {
-      "name": "frame pin hole through the frame at (30, 73.55) open",
+      "name": "frame insert at (30, 74.1) has 1.0 mm of wall all round",
       "pass": true,
-      "details": "1.8 mm through the 2 frame, countersunk 0.4 at the inner face"
+      "details": "100 % of a 1.0 mm ring round the hole in material over its depth: 1.7 outside (1.2 under a groove), 1.3 inside toward the cavity"
     },
     {
-      "name": "frame pin hole in the wall end at (90, 73.55) open",
+      "name": "frame screw hole through the frame at (30, 74.1) open",
       "pass": true,
-      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+      "details": "2.4 mm through the 2 frame"
     },
     {
-      "name": "frame pin hole through the frame at (90, 73.55) open",
+      "name": "frame counterbore at (30, 74.1) open",
       "pass": true,
-      "details": "1.8 mm through the 2 frame, countersunk 0.4 at the inner face"
+      "details": "4 mm, 0.6 deep in the rear face; the 3.8 pan head stands 0.7 proud"
     },
     {
-      "name": "frame pin hole in the wall end at (40, -2.75) open",
+      "name": "frame insert hole in the top wall's rear end at (90, 74.1) open",
       "pass": true,
-      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+      "details": "3 mm, 3.4 deep for a 3 insert, countersunk 0.3 at the mouth"
     },
     {
-      "name": "frame pin hole through the frame at (40, -2.75) open",
+      "name": "frame insert at (90, 74.1) has 1.0 mm of wall all round",
       "pass": true,
-      "details": "1.8 mm through the 2 frame, countersunk 0.4 at the inner face"
+      "details": "100 % of a 1.0 mm ring round the hole in material over its depth: 1.7 outside (1.2 under a groove), 1.3 inside toward the cavity"
     },
     {
-      "name": "frame pin hole in the wall end at (100, -2.75) open",
+      "name": "frame screw hole through the frame at (90, 74.1) open",
       "pass": true,
-      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+      "details": "2.4 mm through the 2 frame"
     },
     {
-      "name": "frame pin hole through the frame at (100, -2.75) open",
+      "name": "frame counterbore at (90, 74.1) open",
       "pass": true,
-      "details": "1.8 mm through the 2 frame, countersunk 0.4 at the inner face"
+      "details": "4 mm, 0.6 deep in the rear face; the 3.8 pan head stands 0.7 proud"
     },
     {
-      "name": "frame pin hole in the wall end at (-2.75, 52) open",
+      "name": "frame insert hole in the bottom wall's rear end at (40, -3.3) open",
       "pass": true,
-      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+      "details": "3 mm, 3.4 deep for a 3 insert, countersunk 0.3 at the mouth"
     },
     {
-      "name": "frame pin hole through the frame at (-2.75, 52) open",
+      "name": "frame insert at (40, -3.3) has 1.0 mm of wall all round",
       "pass": true,
-      "details": "1.8 mm through the 2 frame, countersunk 0.4 at the inner face"
+      "details": "100 % of a 1.0 mm ring round the hole in material over its depth: 1.7 outside (1.2 under a groove), 1.3 inside toward the cavity"
     },
     {
-      "name": "frame pin hole in the wall end at (121.15, 52) open",
+      "name": "frame screw hole through the frame at (40, -3.3) open",
       "pass": true,
-      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+      "details": "2.4 mm through the 2 frame"
     },
     {
-      "name": "frame pin hole through the frame at (121.15, 52) open",
+      "name": "frame counterbore at (40, -3.3) open",
       "pass": true,
-      "details": "1.8 mm through the 2 frame, countersunk 0.4 at the inner face"
+      "details": "4 mm, 0.6 deep in the rear face; the 3.8 pan head stands 0.7 proud"
     },
     {
-      "name": "the frame's pin holes sit inside its rear chamfer",
+      "name": "frame insert hole in the bottom wall's rear end at (100, -3.3) open",
       "pass": true,
-      "details": "1.35 mm from the outline to the hole, the rear chamfer 1.2; the countersink 0.95 from it at the inner face, the bed chamfer 0.4"
+      "details": "3 mm, 3.4 deep for a 3 insert, countersunk 0.3 at the mouth"
+    },
+    {
+      "name": "frame insert at (100, -3.3) has 1.0 mm of wall all round",
+      "pass": true,
+      "details": "100 % of a 1.0 mm ring round the hole in material over its depth: 1.7 outside (1.2 under a groove), 1.3 inside toward the cavity"
+    },
+    {
+      "name": "frame screw hole through the frame at (100, -3.3) open",
+      "pass": true,
+      "details": "2.4 mm through the 2 frame"
+    },
+    {
+      "name": "frame counterbore at (100, -3.3) open",
+      "pass": true,
+      "details": "4 mm, 0.6 deep in the rear face; the 3.8 pan head stands 0.7 proud"
+    },
+    {
+      "name": "frame insert hole in the left wall's rear end at (-3.3, 58) open",
+      "pass": true,
+      "details": "3 mm, 3.4 deep for a 3 insert, countersunk 0.3 at the mouth"
+    },
+    {
+      "name": "frame insert at (-3.3, 58) has 1.0 mm of wall all round",
+      "pass": true,
+      "details": "100 % of a 1.0 mm ring round the hole in material over its depth: 1.7 outside (1.2 under a groove), 1.3 inside toward the cavity"
+    },
+    {
+      "name": "frame screw hole through the frame at (-3.3, 58) open",
+      "pass": true,
+      "details": "2.4 mm through the 2 frame"
+    },
+    {
+      "name": "frame counterbore at (-3.3, 58) open",
+      "pass": true,
+      "details": "4 mm, 0.6 deep in the rear face; the 3.8 pan head stands 0.7 proud"
+    },
+    {
+      "name": "frame insert hole in the right wall's rear end at (121.7, 58) open",
+      "pass": true,
+      "details": "3 mm, 3.4 deep for a 3 insert, countersunk 0.3 at the mouth"
+    },
+    {
+      "name": "frame insert at (121.7, 58) has 1.0 mm of wall all round",
+      "pass": true,
+      "details": "100 % of a 1.0 mm ring round the hole in material over its depth: 1.7 outside (1.2 under a groove), 1.3 inside toward the cavity"
+    },
+    {
+      "name": "frame screw hole through the frame at (121.7, 58) open",
+      "pass": true,
+      "details": "2.4 mm through the 2 frame"
+    },
+    {
+      "name": "frame counterbore at (121.7, 58) open",
+      "pass": true,
+      "details": "4 mm, 0.6 deep in the rear face; the 3.8 pan head stands 0.7 proud"
+    },
+    {
+      "name": "the frame's counterbores sit inside its rear chamfer",
+      "pass": true,
+      "details": "the bore's edge 1.2 mm from the outline, the chamfer starts at 1.2; the hole 2 from it at the inner face"
+    },
+    {
+      "name": "the frame's screw reaches its insert and stops short of the floor",
+      "pass": true,
+      "details": "M2 x 4: 1.4 of frame under the head, 2.6 into a 3 insert in a 3.4 hole"
+    },
+    {
+      "name": "the walls carry the insert holes without a boss",
+      "pass": true,
+      "details": "a 6 wall: 1.3 mm between the hole and the cavity (nothing stands into the carrier's path from the rear, a gate above), 1.2 outside under a groove"
     },
     {
       "name": "the frame goes on one way",
       "pass": true,
-      "details": "turned round in its plane, the nearest hole misses a pin by 11.6 mm; the face's pattern is another, so neither part fits the other's end"
+      "details": "turned round in its plane, the nearest hole misses an insert by 11.6 mm"
     },
     {
-      "name": "the frame's pattern is not the face's",
+      "name": "face screw hole through the plate at (4, 4) open",
       "pass": true,
-      "details": "one frame hole is 35 mm from every face pin, so neither part fits the other's end (the top and side pairs coincide in plan, the bottom pairs do not)"
+      "details": "2.4 mm through the 4.4 plate"
     },
     {
-      "name": "face pin hole in the wall end at (30, 73.55) open",
+      "name": "face counterbore at (4, 4) open",
       "pass": true,
-      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+      "details": "4.4 mm, 1.4 deep in the plate's inner face for the 3.8 x 1.3 pan head"
     },
     {
-      "name": "face pin hole in the face at (30, 73.55) open",
+      "name": "face screw at (4, 4) has plate to seat on",
       "pass": true,
-      "details": "1.8 deep into the face's back"
+      "details": "the head seats on a full ring of plate 3 mm thick, clear of the pockets and the ledge"
     },
     {
-      "name": "face pin hole at (30, 73.55) is blind",
+      "name": "face screw head at (4, 4) is clear of the stack",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 4.2"
+      "details": "the head 1.3 tall in a 1.4 counterbore, flush under the stack; 0.0000 mm^3 of electronics in it"
     },
     {
-      "name": "face pin hole in the wall end at (90, 73.55) open",
+      "name": "face insert hole at (4, 4) open",
       "pass": true,
-      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+      "details": "3 mm, 3.4 deep into the face's back for a 3 insert"
     },
     {
-      "name": "face pin hole in the face at (90, 73.55) open",
+      "name": "face insert hole at (4, 4) is blind with face ahead",
       "pass": true,
-      "details": "1.8 deep into the face's back"
+      "details": "0.8 mm of face ahead of the hole, full"
     },
     {
-      "name": "face pin hole at (90, 73.55) is blind",
+      "name": "face insert at (4, 4) has 1.0 mm of face all round",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 4.2"
+      "details": "100 % of a 1.0 mm ring round the hole in material: clear of the window, the leaves, the signature and the edge"
     },
     {
-      "name": "face pin hole in the wall end at (5, -2.75) open",
+      "name": "face screw hole through the plate at (4, 50) open",
       "pass": true,
-      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+      "details": "2.4 mm through the 4.4 plate"
     },
     {
-      "name": "face pin hole in the face at (5, -2.75) open",
+      "name": "face counterbore at (4, 50) open",
       "pass": true,
-      "details": "1.8 deep into the face's back"
+      "details": "4.4 mm, 1.4 deep in the plate's inner face for the 3.8 x 1.3 pan head"
     },
     {
-      "name": "face pin hole at (5, -2.75) is blind",
+      "name": "face screw at (4, 50) has plate to seat on",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 4.2"
+      "details": "the head seats on a full ring of plate 3 mm thick, clear of the pockets and the ledge"
     },
     {
-      "name": "face pin hole in the wall end at (96.7, -2.75) open",
+      "name": "face screw head at (4, 50) is clear of the stack",
       "pass": true,
-      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+      "details": "the head 1.3 tall in a 1.4 counterbore, flush under the stack; 0.0000 mm^3 of electronics in it"
     },
     {
-      "name": "face pin hole in the face at (96.7, -2.75) open",
+      "name": "face insert hole at (4, 50) open",
       "pass": true,
-      "details": "1.8 deep into the face's back"
+      "details": "3 mm, 3.4 deep into the face's back for a 3 insert"
     },
     {
-      "name": "face pin hole at (96.7, -2.75) is blind",
+      "name": "face insert hole at (4, 50) is blind with face ahead",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 4.2"
+      "details": "0.8 mm of face ahead of the hole, full"
     },
     {
-      "name": "face pin hole in the wall end at (-2.75, 52) open",
+      "name": "face insert at (4, 50) has 1.0 mm of face all round",
       "pass": true,
-      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+      "details": "100 % of a 1.0 mm ring round the hole in material: clear of the window, the leaves, the signature and the edge"
     },
     {
-      "name": "face pin hole in the face at (-2.75, 52) open",
+      "name": "face screw hole through the plate at (18, 60) open",
       "pass": true,
-      "details": "1.8 deep into the face's back"
+      "details": "2.4 mm through the 4.4 plate"
     },
     {
-      "name": "face pin hole at (-2.75, 52) is blind",
+      "name": "face counterbore at (18, 60) open",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 4.2"
+      "details": "4.4 mm, 1.4 deep in the plate's inner face for the 3.8 x 1.3 pan head"
     },
     {
-      "name": "face pin hole in the wall end at (121.15, 52) open",
+      "name": "face screw at (18, 60) has plate to seat on",
       "pass": true,
-      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+      "details": "the head seats on a full ring of plate 3 mm thick, clear of the pockets and the ledge"
     },
     {
-      "name": "face pin hole in the face at (121.15, 52) open",
+      "name": "face screw head at (18, 60) is clear of the stack",
       "pass": true,
-      "details": "1.8 deep into the face's back"
+      "details": "the head 1.3 tall in a 1.4 counterbore, flush under the stack; 0.0000 mm^3 of electronics in it"
     },
     {
-      "name": "face pin hole at (121.15, 52) is blind",
+      "name": "face insert hole at (18, 60) open",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 4.2"
+      "details": "3 mm, 3.4 deep into the face's back for a 3 insert"
     },
     {
-      "name": "the walls carry the pin holes",
+      "name": "face insert hole at (18, 60) is blind with face ahead",
       "pass": true,
-      "details": "1.3 mm a side"
+      "details": "0.8 mm of face ahead of the hole, full"
     },
     {
-      "name": "the signature inside sits on the plate, clear of the track and the pins",
+      "name": "face insert at (18, 60) has 1.0 mm of face all round",
       "pass": true,
-      "details": "\"odd jobs\" 22 mm and the symbol 8 mm, 0.4 deep in the face's back at (44, 56); the track ends at Y 37.2"
+      "details": "100 % of a 1.0 mm ring round the hole in material: clear of the window, the leaves, the signature and the edge"
     },
     {
-      "name": "the side pins sit above the horizon channel",
+      "name": "face screw hole through the plate at (95, 60) open",
       "pass": true,
-      "details": "pins at Y 52; the channel runs to Y 38.2, 1.8 mm into a 4.5 mm wall"
+      "details": "2.4 mm through the 4.4 plate"
+    },
+    {
+      "name": "face counterbore at (95, 60) open",
+      "pass": true,
+      "details": "4.4 mm, 1.4 deep in the plate's inner face for the 3.8 x 1.3 pan head"
+    },
+    {
+      "name": "face screw at (95, 60) has plate to seat on",
+      "pass": true,
+      "details": "the head seats on a full ring of plate 3 mm thick, clear of the pockets and the ledge"
+    },
+    {
+      "name": "face screw head at (95, 60) is clear of the stack",
+      "pass": true,
+      "details": "the head 1.3 tall in a 1.4 counterbore, flush under the stack; 0.0000 mm^3 of electronics in it"
+    },
+    {
+      "name": "face insert hole at (95, 60) open",
+      "pass": true,
+      "details": "3 mm, 3.4 deep into the face's back for a 3 insert"
+    },
+    {
+      "name": "face insert hole at (95, 60) is blind with face ahead",
+      "pass": true,
+      "details": "0.8 mm of face ahead of the hole, full"
+    },
+    {
+      "name": "face insert at (95, 60) has 1.0 mm of face all round",
+      "pass": true,
+      "details": "100 % of a 1.0 mm ring round the hole in material: clear of the window, the leaves, the signature and the edge"
+    },
+    {
+      "name": "face screw hole through the plate at (114, 50) open",
+      "pass": true,
+      "details": "2.4 mm through the 4.4 plate"
+    },
+    {
+      "name": "face counterbore at (114, 50) open",
+      "pass": true,
+      "details": "4.4 mm, 1.4 deep in the plate's inner face for the 3.8 x 1.3 pan head"
+    },
+    {
+      "name": "face screw at (114, 50) has plate to seat on",
+      "pass": true,
+      "details": "the head seats on a full ring of plate 3 mm thick, clear of the pockets and the ledge"
+    },
+    {
+      "name": "face screw head at (114, 50) is clear of the stack",
+      "pass": true,
+      "details": "the head 1.3 tall in a 1.4 counterbore, flush under the stack; 0.0000 mm^3 of electronics in it"
+    },
+    {
+      "name": "face insert hole at (114, 50) open",
+      "pass": true,
+      "details": "3 mm, 3.4 deep into the face's back for a 3 insert"
+    },
+    {
+      "name": "face insert hole at (114, 50) is blind with face ahead",
+      "pass": true,
+      "details": "0.8 mm of face ahead of the hole, full"
+    },
+    {
+      "name": "face insert at (114, 50) has 1.0 mm of face all round",
+      "pass": true,
+      "details": "100 % of a 1.0 mm ring round the hole in material: clear of the window, the leaves, the signature and the edge"
+    },
+    {
+      "name": "face screw hole through the plate at (105, 4) open",
+      "pass": true,
+      "details": "2.4 mm through the 4.4 plate"
+    },
+    {
+      "name": "face counterbore at (105, 4) open",
+      "pass": true,
+      "details": "4.4 mm, 1.4 deep in the plate's inner face for the 3.8 x 1.3 pan head"
+    },
+    {
+      "name": "face screw at (105, 4) has plate to seat on",
+      "pass": true,
+      "details": "the head seats on a full ring of plate 3 mm thick, clear of the pockets and the ledge"
+    },
+    {
+      "name": "face screw head at (105, 4) is clear of the stack",
+      "pass": true,
+      "details": "the head 1.3 tall in a 1.4 counterbore, flush under the stack; 0.0000 mm^3 of electronics in it"
+    },
+    {
+      "name": "face insert hole at (105, 4) open",
+      "pass": true,
+      "details": "3 mm, 3.4 deep into the face's back for a 3 insert"
+    },
+    {
+      "name": "face insert hole at (105, 4) is blind with face ahead",
+      "pass": true,
+      "details": "0.8 mm of face ahead of the hole, full"
+    },
+    {
+      "name": "face insert at (105, 4) has 1.0 mm of face all round",
+      "pass": true,
+      "details": "100 % of a 1.0 mm ring round the hole in material: clear of the window, the leaves, the signature and the edge"
+    },
+    {
+      "name": "the face's screw reaches its insert and stops short of the floor",
+      "pass": true,
+      "details": "M2 x 6: 3 of plate under the head, the whole 3 insert, 0.4 short of the hole's floor"
+    },
+    {
+      "name": "the face's stations stay off the mouth and the pod",
+      "pass": true,
+      "details": "the pod's inner face at Y 66.8 from X 94; the nearest station (4, 4) (4, 50) (18, 60) (95, 60) (114, 50) (105, 4)"
+    },
+    {
+      "name": "the signature inside sits on the plate, clear of the track and the stations",
+      "pass": true,
+      "details": "\"odd jobs\" 22 mm and the symbol 8 mm, 0.4 deep in the face's back at (44, 56); the track ends at Y 37.2; the stations 1.0 clear of its box"
+    },
+    {
+      "name": "the side stations sit above the horizon channel",
+      "pass": true,
+      "details": "inserts at Y 58; the channel runs to Y 38.2, 1.8 mm into a 6 mm wall"
     },
     {
       "name": "the horizon channel leaves wall",
       "pass": true,
-      "details": "2.2 mm of wall under the channel where a layer groove crosses it"
+      "details": "3.7 mm of wall under the channel where a layer groove crosses it"
     },
     {
       "name": "the horizon channel is the pry point for the face and the frame",
@@ -740,32 +953,87 @@
     {
       "name": "layer grooves leave the wall",
       "pass": true,
-      "details": "0.5 mm V-grooves at 2.4 mm pitch in a 4.5 mm wall"
+      "details": "0.5 mm V-grooves at 2.4 mm pitch in a 6 mm wall"
     },
     {
-      "name": "the first groove clears the frame pins' floors",
+      "name": "the frame's insert holes keep wall under the first groove",
       "pass": true,
-      "details": "groove bottom at Z -7.22, the pins' floors at -8"
+      "details": "the axis 3.2 from the outline, the hole 3: 1.7 of wall outside it, 1.2 where a groove crosses the hole's depth (the hole ends at Z -1.6, the first shell groove sits at -4.2)"
     },
     {
-      "name": "cover closed: held by the detent and nothing else",
+      "name": "cover closed: the upper bumps touch its bottom corners and nothing else does",
       "pass": true,
-      "details": "0.038 mm^3 of bump inside the cover's edge crests"
+      "details": "0.0000 mm^3 shared at the stop, 0.067 after 0.4 of drop: the corners meet the bumps at once, no slop"
     },
     {
-      "name": "cover open: held by the detent and nothing else",
+      "name": "cover open: the lower bumps touch its top corners and nothing else does",
       "pass": true,
-      "details": "0.038 mm^3"
+      "details": "-0.0000 mm^3 shared at the stop, 0.067 after 0.4 of lift"
     },
     {
       "name": "cover mid-travel: free in the track",
       "pass": true,
-      "details": "-0.0000 mm^3; the edge relief clears the bumps between the crests"
+      "details": "-0.0000 mm^3; the edge relief (0.5) clears the bumps (reach 0.35) between the crests"
+    },
+    {
+      "name": "a corner crest passing a bump pushes the leaf by the reach",
+      "pass": true,
+      "details": "0.269 mm^3 of bump inside the crest with the cover 7.4 below closed; 0.9 of straight crest past the corner; the leaf gives 0.35"
+    },
+    {
+      "name": "the left leaf stands",
+      "pass": true,
+      "details": "2 x 2 x 13.5 mm from Y 8.75 to 22.25"
+    },
+    {
+      "name": "the left leaf's outer slit is open",
+      "pass": true,
+      "details": "0.6 wide beside it, from the back"
+    },
+    {
+      "name": "the left leaf's slit above is open",
+      "pass": true,
+      "details": "0.6 tall over it, a 2.6 mm bridge in print"
+    },
+    {
+      "name": "the left leaf is rooted",
+      "pass": true,
+      "details": "solid below Y 8.75"
+    },
+    {
+      "name": "the right leaf stands",
+      "pass": true,
+      "details": "2 x 2 x 13.5 mm from Y 8.75 to 22.25"
+    },
+    {
+      "name": "the right leaf's outer slit is open",
+      "pass": true,
+      "details": "0.6 wide beside it, from the back"
+    },
+    {
+      "name": "the right leaf's slit above is open",
+      "pass": true,
+      "details": "0.6 tall over it, a 2.6 mm bridge in print"
+    },
+    {
+      "name": "the right leaf is rooted",
+      "pass": true,
+      "details": "solid below Y 8.75"
+    },
+    {
+      "name": "the leaves bend inside PLA's limit under skin",
+      "pass": true,
+      "details": "0.58 % strain at the root for 0.35 of deflection (E 3.5 GPa: about 5.69 N/mm, 1.99 N a side at the peak); 0.8 mm of skin between the slit and the horizon's floor"
+    },
+    {
+      "name": "the bumps sit where the corners meet them at the stops",
+      "pass": true,
+      "details": "upper bump at Y 21.65 for the closed cover's bottom at 20.2, lower at 16.25 for the open cover's top at 17.7; R3 corners on R0.6 bumps reaching 0.35, contact 1.55 off the corner's centre"
     },
     {
       "name": "cover travel is positive and the cover stows above the rim",
       "pass": true,
-      "details": "17.5 mm down from Y 20.2; stowed bottom edge at Y 2.7, panel from Y 2.2"
+      "details": "19 mm down from Y 20.2; stowed bottom edge at Y 1.2, panel from Y 0.7"
     },
     {
       "name": "wordmark fits under the lip",
@@ -775,7 +1043,7 @@
     {
       "name": "the cover goes in one way only",
       "pass": true,
-      "details": "turned round in its plane the cover's 1.0 bevel meets the 1.5 lip: 1.15 mm^3 of lip inside it; the right way, 0.04 (the detent's bite)"
+      "details": "turned round in its plane the cover's 1.0 bevel meets the 1.5 lip: 1.03 mm^3 of lip inside it; the right way, 0.0000"
     },
     {
       "name": "wordmark strokes clear one nozzle line with margin",
@@ -795,7 +1063,7 @@
     {
       "name": "shutter chamber open from its rear end out through the plate",
       "pass": true,
-      "details": "18.6 wide, 5.7 tall from the floor at Y 67.8 to the step at 73.5, from Z 23.2 to the front"
+      "details": "18.6 wide, 5.7 tall from the floor at Y 69.3 to the step at 75, from Z 23.2 to the front"
     },
     {
       "name": "the switch's pocket is open in the floor",
@@ -855,7 +1123,7 @@
     {
       "name": "1. the switch drops into its pocket",
       "pass": true,
-      "details": "0.0000 mm^3 of shell in the seated switch; its actuator top at Y 71.6"
+      "details": "0.0000 mm^3 of shell in the seated switch; its actuator top at Y 73.1"
     },
     {
       "name": "2. the plunger slides in over the seated switch, hanging on the step, cap in the slot",
@@ -865,7 +1133,7 @@
     {
       "name": "2. the plunger rests on the step, cap proud, dished",
       "pass": true,
-      "details": "at rest 0.0000 mm^3 of shell inside it; its rim at Y 77.8, 2 proud of the deck; the 11 dish 0.4 deep inside a 1 flat rim"
+      "details": "at rest 0.0000 mm^3 of shell inside it; its rim at Y 79.3, 2 proud of the deck; the 11 dish 0.4 deep inside a 1 flat rim"
     },
     {
       "name": "the plunger must go in second: at rest it blocks a switch on the floor",
@@ -875,7 +1143,7 @@
     {
       "name": "the actuator sits under the flange at rest",
       "pass": true,
-      "details": "seat at Y 67.3 + switch 4.3 + 0.3 free = flange bottom 71.9; the first 0.3 of press is free, the next 0.25 is the click"
+      "details": "seat at Y 68.8 + switch 4.3 + 0.3 free = flange bottom 73.4; the first 0.3 of press is free, the next 0.25 is the click"
     },
     {
       "name": "the cap sits against the face's back with its clearance",
@@ -890,7 +1158,7 @@
     {
       "name": "shutter pod stays above the carrier and its connectors",
       "pass": true,
-      "details": "pod bottom Z=21, carrier front Z=12.9; the pod's inner face at Y 65.3, J1001's top at 55.9"
+      "details": "pod bottom Z=21, carrier front Z=12.9; the pod's inner face at Y 66.8, J1001's top at 55.9"
     },
     {
       "name": "the chamber stays inside the pod's width",
@@ -898,9 +1166,9 @@
       "details": "chamber from X 96.2 to 114.8; the pod's face at 94, the wall at 118.9"
     },
     {
-      "name": "the mouth in the plate clears CAM 4's pocket and the face's pins",
+      "name": "the mouth in the plate clears CAM 4's pocket and the face's stations",
       "pass": true,
-      "details": "mouth from X 96.2, CAM 4's pocket ends at 87.24; the top pins at X 30 and 90"
+      "details": "mouth from X 96.2, CAM 4's pocket ends at 87.24; the stations near it at (95, 60) (114, 50) (105, 4)"
     },
     {
       "name": "shutter plunger stem is positive",
@@ -993,14 +1261,14 @@
       "details": "the bar the cord pulls on is 1.2 mm of shell between the slots"
     },
     {
-      "name": "strap slots and tunnels clear the frame pins and the frame's edge",
+      "name": "strap slots and tunnels clear the frame's stations and the frame's edge",
       "pass": true,
-      "details": "nearest pin 12.4 mm from a slot, 12.4 from a tunnel; slots from Y -3.6, the round to -3.8"
+      "details": "nearest station 13.9 mm from a slot, 13.9 from a tunnel; slots from Y -5.1, the round to -5.3"
     },
     {
       "name": "the shell's bar between the slots carries a cord",
       "pass": true,
-      "details": "3 mm of wall end between the slots; 1.2 mm beside the tunnel"
+      "details": "3 mm of wall end between the slots; 2.7 mm beside the tunnel"
     },
     {
       "name": "the frame's inner face stands off the glass",
@@ -1028,44 +1296,44 @@
       "details": "643.84 mm^2 of foam at 25 kPa (PROVISIONAL) is 16.1 N on the glass, 12.62 times the 130 g stack; no screw anywhere in the body"
     },
     {
-      "name": "six pins hold the frame against the foam",
+      "name": "six inserts hold the frame against the foam",
       "pass": true,
-      "details": "6 pins at 5 N each (PROVISIONAL, T04's hang test) against 16.1 N of foam; the frame seats on the wall ends, so the pins see the foam's push and nothing else"
+      "details": "6 M2 inserts at 50 N pull-out each (PROVISIONAL, T04's pull) against 16.1 N of foam; the frame seats on the wall ends, so the screws see the foam's push and nothing else"
     },
     {
       "name": "A01-KINO_CARRIER_SHELL.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "1.86 mm^2 facing down past 45 degrees outside the named places (allowed 5), 260.21 inside them: the cavity, the USB opening (a 13.4 mm bridge inside the wall), the strap tunnels, the six front pin holes, the slot's flat ceiling, the switch pocket's rear wall and the chamber's closed rear end (an 18.6 mm bridge inside the pod, under the face); the ledge and the rear pin holes face up; the largest stray at (68.63, 51.3, 1)"
+      "details": "1.86 mm^2 facing down past 45 degrees outside the named places (allowed 5), 263.19 inside them: the cavity, the USB opening (a 13.4 mm bridge inside the wall), the strap tunnels, the slot's flat ceiling, the switch pocket's rear wall and the chamber's closed rear end (an 18.6 mm bridge inside the pod, under the face); the ledge, the counterbores and the rear insert holes face up; the largest stray at (70.13, 52.8, 1)"
     },
     {
       "name": "A01-KINO_CARRIER_SHELL.stl fits the bed",
       "pass": true,
-      "details": "128.4 x 80.8 x 44.9"
+      "details": "131.4 x 83.8 x 44.9"
     },
     {
       "name": "A03-KINO_CARRIER_REAR_FRAME.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 659.84 inside them: the gasket groove's ceiling (a 2 mm bridge at the bed) and the pin holes' countersinks at the bed; the chamfer, the pad and the A03 engraving face up"
+      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 659.84 inside them: the gasket groove's ceiling (a 2 mm bridge at the bed); the chamfer, the counterbores, the pad and the A03 engraving face up"
     },
     {
       "name": "A03-KINO_CARRIER_REAR_FRAME.stl fits the bed",
       "pass": true,
-      "details": "128.4 x 80.8 x 3.5"
+      "details": "131.4 x 83.8 x 3.5"
     },
     {
       "name": "A02-KINO_CARRIER_FACE.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 5), 181.29 inside them: the six pin holes and the signature's 0.4 mm ceilings at the bed, the A02 letters' top edges in the bottom edge wall (0.3 mm bridges); the lips' undersides are steeper than 45"
+      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 5), 294.03 inside them: the six insert holes' countersinks and the signature's 0.4 mm ceilings at the bed, the slits over the two leaves (2.6 mm bridges), the A02 letters' top edges in the bottom edge wall (0.3 mm bridges); the lips' undersides are steeper than 45"
     },
     {
       "name": "A02-KINO_CARRIER_FACE.stl fits the bed",
       "pass": true,
-      "details": "127.8 x 80.2 x 4.2"
+      "details": "130.8 x 83.2 x 4.2"
     },
     {
       "name": "B01-KINO_CARRIER_LENS_COVER.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 1.53 inside them: the 0.2 mm ledges over the edge reliefs"
+      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 3.79 inside them: the 0.2 mm ledges over the edge reliefs"
     },
     {
       "name": "B01-KINO_CARRIER_LENS_COVER.stl fits the bed",
@@ -1105,17 +1373,22 @@
     {
       "name": "T03-KINO_COUPON_LEDGE_CORNER.stl carries \"T03\" in material",
       "pass": true,
-      "details": "3 mm letters at (8, -4.25) in the face at Z 9.3, 0.4 deep; 100 % of the engraving in material"
+      "details": "3 mm letters at (8, -5.75) in the face at Z 9.3, 0.4 deep; 100 % of the engraving in material"
     },
     {
       "name": "T04-KINO_COUPON_STRAP_SHELL.stl carries \"T04\" in material",
       "pass": true,
-      "details": "3 mm letters at (14, -4.25) in the face at Z -5, 0.4 deep; 100 % of the engraving in material"
+      "details": "3 mm letters at (14, -5.75) in the face at Z -5, 0.4 deep; 100 % of the engraving in material"
     },
     {
       "name": "T05-KINO_COUPON_DECK.stl carries \"T05\" in material",
       "pass": true,
       "details": "3 mm letters at (95, 72.05) in the face at Z 15, 0.4 deep; 100 % of the engraving in material"
+    },
+    {
+      "name": "T06-KINO_COUPON_FACE_CORNER.stl carries \"T06\" in material",
+      "pass": true,
+      "details": "3 mm letters at (5, -4.4) in the face at Z 44.1, 0.4 deep; 100 % of the engraving in material"
     },
     {
       "name": "T01-KINO_COUPON_SHRINK_BAR.stl carries \"T01\" in material",
@@ -1125,17 +1398,22 @@
     {
       "name": "every coupon is labelled",
       "pass": true,
-      "details": "7.8 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.1 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.4 in T02-KINO_COUPON_POCKET_GAUGE.stl; T02 in T02-KINO_COUPON_POCKET_GAUGE.stl; T03 in T03-KINO_COUPON_LEDGE_CORNER.stl; T04 in T04-KINO_COUPON_STRAP_SHELL.stl; T05 in T05-KINO_COUPON_DECK.stl; T01 in T01-KINO_COUPON_SHRINK_BAR.stl"
+      "details": "7.8 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.1 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.4 in T02-KINO_COUPON_POCKET_GAUGE.stl; T02 in T02-KINO_COUPON_POCKET_GAUGE.stl; T03 in T03-KINO_COUPON_LEDGE_CORNER.stl; T04 in T04-KINO_COUPON_STRAP_SHELL.stl; T05 in T05-KINO_COUPON_DECK.stl; T06 in T06-KINO_COUPON_FACE_CORNER.stl; T01 in T01-KINO_COUPON_SHRINK_BAR.stl"
     },
     {
-      "name": "the ledge coupon carries a face pin hole and the ledge",
+      "name": "the ledge coupon carries a face screw station and the ledge",
       "pass": true,
-      "details": "pin hole at X 5 inside the coupon's 27 mm; 2 mm of ledge along 24 mm of two walls"
+      "details": "station (4, 4) inside the coupon's 27 mm; 2 mm of ledge along 24 mm of two walls"
     },
     {
-      "name": "the strap coupon carries a frame pin hole",
+      "name": "the strap coupon carries a frame insert station",
       "pass": true,
-      "details": "pin hole at X 40, 3 deep; 500 g hung on the pin is the hold (pinHoldN 5 N, PROVISIONAL)"
+      "details": "insert hole at X 40, 3.4 deep in the wall end; the insert set with the iron and pulled is the hold (insertPullN 50 N, PROVISIONAL)"
+    },
+    {
+      "name": "the face coupon carries the insert station and the left leaf",
+      "pass": true,
+      "details": "station (4, 4) and the leaf from Y 8.75 to 22.25 inside the coupon; it screws onto T03 with an M2 x 6"
     },
     {
       "name": "P1-COUPON_PLATE_T01_T02.stl is two pieces on the bed",
@@ -1145,7 +1423,7 @@
     {
       "name": "P2-COUPON_PLATE_T03_T04.stl is two pieces on the bed",
       "pass": true,
-      "details": "85 x 26 mm, 2 pieces"
+      "details": "87.5 x 26 mm, 2 pieces"
     },
     {
       "name": "T03-KINO_COUPON_LEDGE_CORNER.stl is one piece on the bed",
@@ -1160,12 +1438,17 @@
     {
       "name": "T05-KINO_COUPON_DECK.stl is one piece on the bed",
       "pass": true,
-      "details": "30.4 x 12.5 x 24.9 mm, 1 piece(s)"
+      "details": "31.9 x 12.5 x 24.9 mm, 1 piece(s)"
     },
     {
       "name": "T04-KINO_COUPON_STRAP_SHELL.stl is one piece on the bed",
       "pass": true,
-      "details": "49 x 14 x 14 mm, 1 piece(s)"
+      "details": "51.5 x 14 x 14 mm, 1 piece(s)"
+    },
+    {
+      "name": "T06-KINO_COUPON_FACE_CORNER.stl is one piece on the bed",
+      "pass": true,
+      "details": "20.7 x 32.05 x 4.2 mm, 1 piece(s)"
     },
     {
       "name": "T01-KINO_COUPON_SHRINK_BAR.stl is one piece on the bed",

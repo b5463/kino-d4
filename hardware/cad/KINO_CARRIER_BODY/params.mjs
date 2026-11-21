@@ -123,27 +123,46 @@ export const P = Object.freeze({
   camPupilBackFromLens: 1.1, // entrance pupil behind the lens's front face
 
   // ---- The shell -----------------------------------------------------------
-  wall: 4.5,                 // carries a pin hole in each end with 1.3 of wall a side
+  wall: 6.0,                 // carries an M2 insert hole in each rear end: 1.7 of wall outside the hole (1.2 under a groove), 1.3 inside. 4.5 left 0.75 a side, and a boss on the inner face would stand in the carrier's path from the rear (gated: the carrier's sweep). The body grew 1.5 a side for the inserts (2026-11-21)
   plate: 4.4,                // the front plate: pocket depth 3.4 + platePocketAhead
   cornerR: 10.0,             // near the most the plan allows: the carrier's R3 corners sit inside the wall, and at R10 the wall on the diagonal is 2.65 mm (gated)
   frameEdgeR: 1.2,           // the rear frame's outer edge, a 45 degree chamfer toward the rear: chamfers in Z step one layer each and read as the grooves do, rounds in Z terrace (R1.5 at 0.2 stepped 0.77, 0.32, 0.25); rounds stay in plan. The pin holes 1.35 from the outline cap it
-  // One fastener in the body: a 4.8 mm length of 1.75 mm filament, twelve
-  // of them. Six in the walls' front ends hold the face (3 mm into the
-  // wall, 1.8 into the face's back); six in the walls' rear ends hold the
-  // frame (3 into the wall, through the 2.0 frame, 0.2 under its rear
-  // face). No screw anywhere.
-  facePinD: 1.9,             // the hole in the wall ends and the face, for 1.75 mm filament: a 1.8 hole at a bed face closed to 1.5 with the elephant foot, 2.0 with the countersink and the 0.2 compensation did not retain; the pins must hold without glue, T03 and T04 decide
-  facePinSink: 0.4,          // 45 degree countersink at every bed-face mouth
-  facePinWall: 3.0,
-  facePinFace: 1.8,          // into the face's back (the face is 4.2 with a 1.2 edge chamfer over the holes' outer edges): the pins are 4.8 long, 3 in the wall and 1.8 here; the pull test on the real face decides
-  facePinsTop: [30.0, 90.0],   // X on the top and bottom walls; the bottom pair dodges the LED slots and the USB opening
-  facePinsBottom: [5.0, 96.7],  // under the window's bottom rim, short of the corner and the USB opening
-  facePinsSideY: 52.0,         // one on each side wall, above the horizon channel
-  framePinsTop: [30.0, 90.0],  // the frame's pins in the walls' rear ends: clear of the strap tunnels (X 2 to 11 from each end)
-  framePinsBottom: [40.0, 100.0],  // not the top pair's mirror: turned round, the frame's holes miss the shell's pins by 2.4 mm (a gate), so it goes on one way
-  framePinsSideY: 52.0,
-  framePinHoleD: 1.8,        // through the frame, countersunk at its inner face (the bed): tighter than the wall end's 1.9, so the pins stay in the frame when it comes off
-  pinHoldN: 5,               // PROVISIONAL: one pin's hold in a wall-end hole, 500 g hung on T04's pin; six against the foam's 16 N
+  // The body's two joints are screwed: M2 heat-set brass inserts (the
+  // owner's kit, 2026-11-21: OD 3.2, lengths 3, 4 and 5) and M2 pan-head
+  // screws. The face is screwed from INSIDE the cavity through the plate
+  // into inserts in its back, before the stack goes in, so no head shows on
+  // the front; the frame is screwed from the rear into inserts in the
+  // walls' rear ends, its six heads where the brand's concept draws its
+  // rear screws. The twelve filament pins they replace held, on paper, by
+  // friction. The stack itself still takes no screw.
+  insertOD: 3.2,             // the kit's M2 insert
+  insertLen: 3.0,            // the 3 mm insert everywhere: in a 4.2 face it leaves 0.8 ahead (gated); in a wall end it ends short of the first groove
+  insertHoleD: 3.0,          // PROVISIONAL: 0.2 under the insert's OD, the usual for PLA and PETG; the kit's own sheet wins. T06 (face) and T04 (wall end) prove it
+  insertHoleExtra: 0.4,      // hole depth past the insert, for the melt
+  insertMouthSink: 0.3,      // 45 degree countersink at the mouth: the flash the iron pushes up stays under the surface, so the joint seats flat
+  insertPullN: 50,           // PROVISIONAL: one 3 mm M2 insert's pull-out in PETG at 2 mm of wall; six against the foam's 16 N
+  screwD: 2.0,
+  screwClearD: 2.4,          // through the plate and the frame
+  screwHeadD: 3.8,           // M2 pan head, 1.3 tall
+  screwHeadH: 1.3,
+  screwBoreD: 4.4,           // counterbore round the head in the plate's inner face (the head sits flush, under the stack)
+  faceScrewLen: 6.0,         // M2 x 6: 4.4 of plate less the counterbore, then the whole insert
+  frameScrewLen: 4.0,        // M2 x 4: 1.4 of frame under the head, 2.6 into the 3 mm insert (gated)
+  frameBoreD: 4.0,           // counterbore in the frame's rear face: the head 0.7 proud; its edge meets the chamfer's start exactly (gated)
+  frameBoreDepth: 0.6,
+  // The face's six stations, in the plate's interior where the face is full
+  // 4.2 and the plate's inner face is bare: inside the ledge, clear of the
+  // camera module PCBs, the signature's engraving, the window, the horizon
+  // and the grip. Not a symmetric pattern, but the face goes on one way
+  // anyway (the window and the shutter slot say so).
+  faceScrewXY: [[4.0, 4.0], [4.0, 50.0], [18.0, 60.0], [95.0, 60.0], [114.0, 50.0], [105.0, 4.0]],
+  // The frame's six stations in the walls' rear ends, the hole's axis
+  // frameScrewIn from the body's outline (1.7 of wall outside it, 1.2 under a
+  // groove, 1.3 inside it toward the cavity; gated as a ring).
+  frameScrewsTop: [30.0, 90.0],  // X on the top and bottom walls, clear of the strap tunnels (X 2 to 11 from each end)
+  frameScrewsBottom: [40.0, 100.0],  // not the top pair's mirror: turned round, the frame's holes miss the shell's by 2.4 mm (a gate), so it goes on one way
+  frameScrewsSideY: 58.0,    // above the thumb pad (Y 18 to 52) on the right and the symbol on the left, below the top strap tunnels
+  frameScrewIn: 3.2,         // the axis from the outline: the frame's counterbore edge lands on its 1.2 chamfer's start
   idCap: 5.0,                // cap height of the IDs on the big hidden faces (A01, the coupons)
   idCapSmall: 3.0,           // A03 on the rear, under the thumb pad
   idCapEdge: 2.2,            // A02 in the face's bottom edge wall: 2.6 mm of vertical edge between its two chamfers
@@ -228,12 +247,25 @@ export const P = Object.freeze({
   sliderBevel: [1.0, 1.5],   // 45-degree edge bevels, left and right, and the lips that trap them. NOT the same: the orientation key. Turned round, the cover's 1.0 bevel meets the 1.5 lip and stops at the window's mouth; a gate proves it
   sliderLipOver: 0.2,        // each lip is this much deeper than its bevel is wide, so its underside is steeper than 45 degrees in print
   sliderCornerR: 3.0,        // the bar is the thing the eye reads; square corners inside a pill band were the last box on the front
-  sliderBumpR: 0.4,
-  sliderBumpBite: 0.15,
-  sliderBumpH: 1.0,          // the 0.2 elephant-foot compensation takes the bump's first layer and the cover's 0.4 bed chamfer skips its second; at 1.0 three layers bite the cover's vertical flank
-  sliderEdgeCrest: 4.0,      // past the R3 corners, so each detent meets a straight edge
+  // The detents: a leaf spring in each of the window's side walls, cut free
+  // from the face's back by slits (hidden against the shell's plate, under
+  // 0.8 of skin at the front), carrying two bumps near its tip that the
+  // cover's R3 corners ride over: the lower bump holds the cover open, the
+  // upper holds it closed, each touching its corner exactly at the stop
+  // (derived from the corner radius and the bump's reach, so there is no
+  // slop at either end). Between the corners the cover's edge is relieved,
+  // so mid-travel the leaves rest. The rigid 0.4 mm bumps before this were
+  // posts that bent (the owner, on the field body: "bumps are not a stop").
+  sliderBumpR: 0.6,          // the bump: a half-round on the leaf's face, this radius
+  sliderBumpReach: 0.35,     // past the cover's edge line: the leaf's deflection as a corner passes (0.58 % strain in the leaf, gated); about 1.7 N a side at the peak
+  sliderBumpH: 0.9,          // the bump's height off the floor: inside the cover's vertical flank (1.0 on the left, 0.5 on the right; above the flank the bevel runs away from it)
+  sliderLeafT: 2.0,          // the leaf's thickness in X, from the window's wall outward
+  sliderLeafL: 13.5,         // root to tip; its tip is the upper bump's far edge
+  sliderLeafSlit: 0.6,       // the slit round the leaf's outer side, tip end and top: 0.6 prints as a clean gap, 0.4 fuses
+  sliderLeafH: 2.0,          // the leaf's height from the face's back: the bumps and 0.1 over them; the slit above it leaves 0.8 of skin under the horizon's floor (gated)
+  sliderEdgeCrest: 4.5,      // the cover's edge is full for this far from each end (the R3 corner, then 0.9 of straight crest before the 0.6 ramp), relieved between
   sliderEdgeRamp: 0.6,
-  sliderEdgeRelief: 0.2,
+  sliderEdgeRelief: 0.5,     // deeper than the bump's reach, so between the corners the leaves rest
   coverLip: [20.0, 1.5],     // a thumb needs 16; at 30 the open slot under the eyes read as a mouth
   coverLipLeft: 45.0,        // the lip's left end from the bar's left edge, past the wordmark's end at 36, so the thumb never covers a letter
   coverLipRoot: 0.4,         // 45 degree root on the lip's three free sides: the lip takes a face-down drop     // the thumb lip on the cover's TOP edge, width x height; the thumb pushes down on its top face (the coupon says whether 1.5 is enough)
@@ -312,7 +344,7 @@ export const P = Object.freeze({
 // not the bed.
 export const IDS = Object.freeze({
   shell: "A01", face: "A02", frame: "A03", cover: "B01", plunger: "B02",
-  pins: "C01", foam: "C02", shrinkBar: "T01",
+  inserts: "C01", foam: "C02", screws: "C03", shrinkBar: "T01",
 });
 
 // ---- The stack chain, derived once ------------------------------------------
