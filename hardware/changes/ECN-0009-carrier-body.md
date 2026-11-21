@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; eighth cut generated and gated, nothing printed; the night colourway prints first |
+| Status | Design in progress; ninth cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -178,18 +178,44 @@ owner's printer. Two parts:
   (the wall cannot give 0.4), a fake lens tell on the closed front (the
   four cells behind one bar are the signature; closed, the button says
   camera). Face 6.1; 128.4 x 80.8 x 62.8 mm, the body 10.1 of it.
+- **After the whole field of design awards** (ninth cut, 2026-11-21; the
+  owner: "not just award cameras, the whole design awards, rerun it"). The
+  published criteria and jury practice of Red Dot, iF, IDEA, Good Design,
+  the Compasso d'Oro, D&AD and the Braun Prize across every category, and
+  the record of award-praised objects that failed in use, were read and set
+  down in the README; an IDEA and Red Dot generalist, a Good Design and
+  Compasso d'Oro juror and a jury chair then judged the eighth cut against
+  them. The scored faults were responsibility and the hand, not form: the
+  glued keeper sealed in the one wear part, the pins located but did not
+  retain, the button ticked in its guide, the entry had no cord, no spares
+  and no BOM. Taken: the cover's entry gap through the whole plate and the
+  keeper captive by a 0.9 x 1.1 foot in a pocket in the shell's plate
+  under the face (no glue anywhere; the cover comes out with the pins);
+  pins 1.9; the plunger's bore 0.15 a side with three 0.2 x 0.8 ribs in the
+  guide; the lip 20 wide with a 0.4 root, 1.5 proud, at 45 to 65 mm (a
+  thumb needs 16, a glove needs 1.5); the track 3.4 under the roof; the
+  thumb pad over the whole right border; a 10 % swell term in the battery
+  gate; nine coupons cut from the real parts with boxes, in `coupons/`,
+  with pass criteria; a "What ships" list (BOM, cord, spares, the pilots'
+  cycle count, the lens-pitch contract, the known and accepted faults); the
+  face at 40 % gyroid with 100 % modifiers; the README's lug sentence gone
+  and "layer lines" renamed ribs; the left-hand mirror stated as four
+  numbers. Not taken: a 5.5 mm wall for heat-set frame inserts (stated
+  cycle count and spares instead), a tripod boss (the next carrier's), one
+  `hand` parameter (listed). Face 6.4; 128.4 x 80.8 x 63.1 mm, the body
+  10.4 of it.
 
 Depth, re-added by a gate every build: 2.5 frame + 13.8 module + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
-(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 6.1 face
-= 62.8 mm, against the field body's 74.5 over its lens bar. The body is 10.1
+(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 6.4 face
+= 63.1 mm, against the field body's 74.5 over its lens bar. The body is 10.4
 of it; the XIAO connectors (11.0) are the one
 stack term the bench can shorten, with low-profile sockets and bare pins. The plate's inner face lands at Z 35.4
 from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-159 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
+168 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
 front on the pocket floor, the face inset from the outline and over the
 pins, the plan corner's wall on the diagonal, the roof over the stow zone
 clear of the cover and its mark, the lip's slot, the keeper clear of the
@@ -227,7 +253,10 @@ the track floor, and chamfers drawn with their 0.01 overshoot in the height
 (44 degrees, counted as overhang) instead of the radius. In the eighth: the
 frame's bed chamfer drawn 0.39 high (61 mm^2 at 44 degrees), and the
 panel datum moving 1.5 mm with the face's edge (the mid-travel probe
-touched a detent) until `bandBottomInset` was re-based on the chamfer.
+touched a detent) until `bandBottomInset` was re-based on the chamfer. In
+the ninth: the keeper's foot drawn with a flat underside (85 mm^2 hanging
+in a foot-up print) until it was sloped 47 degrees, and the keeper gate
+reading the foot as the stop face.
 
 ## Sources read for the eighth cut
 
@@ -249,7 +278,23 @@ that the award winners be studied before the judges ran again. Read:
 [Camp Snap](https://www.techradar.com/cameras/compact-cameras/camp-snap-camera-review),
 [Paper Shoot](https://www.digitalcameraworld.com/uk/reviews/paper-shoot-paper-camera-review),
 [Kodak Charmera](https://petapixel.com/2025/12/20/kodak-charmera-review-reto-makes-a-retro-redo/).
-The lessons are in the package README ("What the award cameras taught").
+Widened for the ninth cut (2026-11-21, the owner: "not just award cameras,
+the whole design awards") with the published criteria and jury practice
+across awards and categories:
+[Red Dot judging qualities](https://www.red-dot.org/pd/red-dot-jury-1),
+[Red Dot Best of the Best, how few win](https://www.red-dot.org/zh/magazine/finest-quality-red-dot-jurors-award-top-class-design-products),
+[IDEA criteria and jury](https://www.idsa.org/awards-recognitions/idea/),
+[Good Design Award: types of awards and the Grand Award vote](https://www.g-mark.org/en/apply/gda/guide/typesofawards),
+[Good Design Award 2025 results](https://www.g-mark.org/en/learn/past-awards/gda-2025/results),
+[Compasso d'Oro, ADI](https://www.adidesignmuseum.org/en/?p=8378) and
+[the 2022 winners](https://domusweb.it/en/design/gallery/2022/06/20/the-winners-of-the-2022-compasso-doro-awards.html),
+[iF Design Award 2025 winners](https://ifdesign.com/en/if-magazine/newsroom/if-design-award-2025-the-winners),
+[a juror's account of judging](https://www.mckinsey.com/capabilities/mckinsey-design/how-we-help-clients/design-blog/learning-by-doing-a-design-award-jury-experience),
+and the failures:
+[the Humane AI Pin](https://www.engadget.com/ai/the-humane-ai-pin-debacle-is-a-reminder-that-ai-alone-doesnt-make-a-compelling-product-190119112.html),
+[the AI gadget debacle of 2024](https://www.fastcompany.com/91231902/the-great-ai-gadget-debacle-of-2024),
+[consumer product design failures](https://www.onshape.com/de/blog/epic-consumer-product-design-failures).
+The lessons are in the package README ("What the design awards taught").
 
 ## Compatibility
 
@@ -261,15 +306,15 @@ unchanged.
 
 The P4's TF slot opening and the C6 service access, an interference gate
 against the carrier's own part model, the serial engraving and any line under
-4 mm of cap height ("made for bad ideas."), the coupons (shrink bar, pillar
-with pin, pocket, track with roof, deck with pod), the independent scan. Issue #252 carries the open
+4 mm of cap height ("made for bad ideas."), the coupon prints and their
+results, a `hand` parameter, the independent scan. Issue #252 carries the open
 inputs: the soldered header's insulator height, the spacer height with the
 socket home, the head size and stack height on a seated node, the active
 area's position, the field of view.
 
 ## Files changed
 
-- `hardware/cad/KINO_CARRIER_BODY/` (new)
+- `hardware/cad/KINO_CARRIER_BODY/` (new; `print/` and `coupons/`)
 - `hardware/cad/README.md`
 - `hardware/manifest.json`, `hardware/CHANGELOG.md`, `versions.json`
 

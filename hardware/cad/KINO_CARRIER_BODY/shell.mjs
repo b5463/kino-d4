@@ -14,7 +14,8 @@
 import fs from "node:fs";
 import { Manifold, CrossSection, cube, box, cylZ, coneZ, cylY, fuse, rbox, status } from "./lib.mjs";
 import { P, Z, XY } from "./params.mjs";
-import { shutterPod } from "./shutter.mjs";
+import { shutterPod, SHUTTER } from "./shutter.mjs";
+import { FACE } from "./face.mjs";
 
 const SYMBOL = JSON.parse(fs.readFileSync(new URL("../../pcb/kino-d4-carrier-a0/brand/odd-jobs-symbol.json", import.meta.url), "utf8"));
 const MODEL = JSON.parse(fs.readFileSync(new URL("../KINO_FIELD_BODY/brand/kino-d4-mark.json", import.meta.url), "utf8"));
@@ -172,7 +173,25 @@ export function buildShell() {
     cuts.push(cylZ(px, py, Z.plateFront - P.facePinWall, P.facePinD / 2, P.facePinWall + 1, 24));
     cuts.push(coneZ(px, py, Z.plateFront - P.facePinSink, P.facePinD / 2, P.facePinD / 2 + P.facePinSink + 0.01, P.facePinSink + 0.01, 24));
   }
+  // The keeper's foot pocket in the plate's front, under the face above the
+  // cover's entry gap: a recess in the bed face, hidden once the face is on.
+  {
+    const { x0: kx0, x1: kx1, y1: ky1 } = FACE.keeper;
+    const [footY, footZ] = P.keeperFoot, c = P.keeperFootClr;
+    cuts.push(box(kx0 + 1 - c, ky1 - 0.5 - c, Z.plateFront - footZ - c, kx1 - 1 + c, ky1 + footY + c, Z.plateFront + 0.01));
+  }
   const bare = shell.subtract(fuse(cuts));
+  // Three ribs along the shutter's guide bore on its face side (the floor of
+  // the bore in print): the cap runs on three lines instead of ticking in a
+  // 0.6 mm gap.
+  const guideRibs = [];
+  {
+    const [rh, rw] = P.shutterGuideRib, rg = P.shutterActuatorGuideD / 2;
+    const y0 = SHUTTER.oy1 - 2.3, len = 2.3 - P.shutterCollarDepth - 0.05;
+    for (const phi of [-50, 0, 50]) {
+      guideRibs.push(cube(-rw / 2, y0, rg - rh, rw, len, rh + 0.3).rotate([0, phi, 0]).translate([P.shutterX, 0, P.shutterZ]));
+    }
+  }
   // Pinch ribs: triangular, camRibBase wide at the wall, camRibProud at the
   // tip, the full pocket depth. Two extrusion lines at the base.
   const ribs = [];
@@ -183,7 +202,7 @@ export function buildShell() {
     ribs.push(tri([[wx - 0.01, ry - b], [wx + p, ry], [wx - 0.01, ry + b]]));
     ribs.push(tri([[rx - b, wy - 0.01], [rx, wy + p], [rx + b, wy - 0.01]]));
   }
-  return { bare, shell: status("shell", bare.add(fuse(ribs))) };
+  return { bare, shell: status("shell", bare.add(fuse([...ribs, ...guideRibs]))) };
 }
 
 export function buildFrame() {

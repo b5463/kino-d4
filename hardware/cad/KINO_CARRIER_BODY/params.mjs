@@ -56,6 +56,7 @@ export const P = Object.freeze({
   p4CanH: 3.5,                 // PROVISIONAL: the ESP32-P4 module can on the P4's back
   cellT: 5.0,                  // the cell this bay is gated for, plus 0.5 mm of foam
   cellFoam: 0.5,
+  cellSwell: 0.5,              // 10 % of the cell, gated: a swelling pouch must not lift the P4 off its spacers
 
   // ---- The P4 module -------------------------------------------------------
   p4W: 114.40,               // the bare module, spec p.6
@@ -100,7 +101,7 @@ export const P = Object.freeze({
   // Six filament pins (1.75 mm, cut 4.5 long) in the walls' front ends locate
   // and hold the face: 3 mm into the wall, 2 mm into the face's back. The
   // four stack-screw shafts stay for the driver; the face covers them.
-  facePinD: 2.0,             // for 1.75 mm filament: a 1.8 hole at a bed face closed to 1.5 with the elephant foot
+  facePinD: 1.9,             // for 1.75 mm filament: a 1.8 hole at a bed face closed to 1.5 with the elephant foot, 2.0 with the countersink and the 0.2 compensation did not retain; the pins must hold the face without glue, the pillar coupon decides
   facePinSink: 0.4,          // 45 degree countersink at every mouth, both parts
   facePinWall: 3.0,
   facePinFace: 2.0,
@@ -126,7 +127,7 @@ export const P = Object.freeze({
   // over the whole front with a pillow edge, a pink shutter, quiet markings.
   // The face covers the plate and the walls' front ends (the concept's v18
   // front: the fascia fills the front, the charcoal is the sides and the cap).
-  faceBase: 6.1,             // the face plate: horizon 1.5 + track 3.1 + 0.25 relief + 1.25 under the floor; nothing stands proud of it but the cover's lip
+  faceBase: 6.4,             // the face plate: horizon 1.5 + track 3.4 + 0.25 relief + 1.25 under the floor; nothing stands proud of it but the cover's lip
   faceEdgeR: 2.0,            // its front edge, a 45 degree chamfer. The R3.5 quarter round at 0.2 mm layers terraced 1.17, 0.46, 0.33 mm wide along 400 mm of the first edge a juror touches; the chamfer steps 0.2 every layer, one texture with the grooves. Rounds in plan (R10), chamfers in Z
   faceInset: 0.8,            // the face steps in from the shell's outline, so a charcoal line of wall end frames it (the concept frames its colour field)
   // The horizon: a full-width groove across the face at the bar's height,
@@ -153,7 +154,7 @@ export const P = Object.freeze({
   // The rear frame: a thumb pad with three half-round ridges on the right
   // border, the ODD JOBS symbol engraved on the left border, cut deep enough
   // to read as shadow (the rear face is up in print).
-  thumbPadX: [110.0, 119.0], // past the window's chamfer, short of the frame's edge round
+  thumbPadX: [109.5, 121.0], // the full right border past the window's chamfer: a 20 mm thumb landed on the 1.5 mm step at 9 wide
   thumbPadY: [18.0, 52.0],
   thumbGroove: [1.0, 0.6],   // width, depth: 0.8 wide was two line widths with ragged ends, 0.5 deep was two and a half layers
   thumbPadProud: 1.5,        // with the body's own grooves on it: texture, not a rocker
@@ -174,12 +175,12 @@ export const P = Object.freeze({
   // a 1 mm bridge in print); the cover slides under it with its raised mark.
   // A slot through the roof carries the cover's lip. The keeper block
   // refills the cover's entry gap and is the track's stop, glued.
-  lipSlotClear: 0.3,         // per side around the lip, and below it when stowed
+  lipSlotClear: 0.5,         // per side around the lip, and below it when stowed
   bandChamfer: 1.5,
   bandRim: 2.0,              // flat rim between the chamfer and the panel
   bandBottomInset: 4.9,      // panel bottom = outline + chamfer 2.0 + this = the sixth cut's 6.9, so the track, the travel and the detents stay where the bench tuned them
   bandR: 9.0,                // pill ends; R12 cut 0.1 mm into the panel's corners through a 3.5 mm rim (gated now)
-  panelDepth: 3.1,           // cover 2.0, its raised mark 0.8, and 0.3 under the face's roof over the stow zone (PETG bridges sag 0.2 to 0.3 over 16 mm at full fan); the coupon confirms
+  panelDepth: 3.4,           // cover 2.0, its raised mark 0.8, and 0.3 under the face's roof over the stow zone (PETG bridges sag 0.2 to 0.3 over 16 mm at full fan); the coupon confirms
   lensRingStep: 0.0,
   cellSink: 0.8,             // 45 degrees at each cell's mouth in the track floor: a rim, so the four read as eyes and not as a microphone array; prints face-up         // plain cones: the stepped rings read as damage at this size
   // The cover: the field body's bench-tuned track, restated. Drops to open.
@@ -196,12 +197,15 @@ export const P = Object.freeze({
   sliderEdgeRamp: 0.6,
   sliderEdgeRelief: 0.2,
   keeperClr: 0.1,
+  keeperFoot: [0.9, 1.1],    // Y proud above the keeper's body, Z into the shell's plate; its underside slopes 47 degrees back to the body so the foot-up print hangs nothing: the foot sits in a pocket in the plate under the face, so the keeper is captive without glue and the cover is a serviceable part
+  keeperFootClr: 0.1,
   coverRailW: 2.5,
   coverRailProud: 0.25,
   coverRailOffset: 30.0,
-  coverLip: [30.0, 1.5],
-  coverLipLeft: 40.0,        // the lip's left end from the bar's left edge: the wordmark ends at 36, so the roof's slot shows plain bar and never a letter (a stray "s" showed through it, the one wrong detail at the point of use)     // the thumb lip on the cover's TOP edge, width x height; the thumb pushes down on its top face (the coupon says whether 1.5 is enough)
-  coverLipAboveFace: 1.0,    // visible as a slide from across the room, as the XA's and the Minox's sills are; 0.5 was invisible    // the lip stands this far proud of the face, closed and stowed, so the thumb pad can push it down and lift it back; its height off the cover is derived
+  coverLip: [20.0, 1.5],     // a thumb needs 16; at 30 the open slot under the eyes read as a mouth
+  coverLipLeft: 45.0,        // the lip's left end from the bar's left edge: the wordmark ends at 36, so the roof's slot shows plain bar and never a letter (a stray "s" showed through it, the one wrong detail at the point of use)
+  coverLipRoot: 0.4,         // 45 degree root on the lip's three free sides: the lip takes a face-down drop     // the thumb lip on the cover's TOP edge, width x height; the thumb pushes down on its top face (the coupon says whether 1.5 is enough)
+  coverLipAboveFace: 1.5,    // visible as a slide from across the room, as the XA's and the Minox's sills are; 0.5 was invisible, and a glove or a dry thumb could not lift the cover closed on 1.0    // the lip stands this far proud of the face, closed and stowed, so the thumb pad can push it down and lift it back; its height off the cover is derived
   // The brand on the bar: "odd jobs" raised on the cover, as the concept's
   // nameplate. Print its last 0.6 mm in CREAM on both colourways (one swap on
   // one small part): charcoal on cobalt was a low pair and cobalt type on it
@@ -230,7 +234,8 @@ export const P = Object.freeze({
   shutterSwitchClearance: 0.6,
   shutterActuatorGuideD: 14.6,  // the bore's upper flanks sag inward in PETG
   shutterActuatorFlangeD: 16.0,
-  shutterFlangeBoreClear: 0.3,  // per side; the flange's bed edge is chamfered too
+  shutterFlangeBoreClear: 0.15, // per side; the flange's bed edge is chamfered too. 0.3 ticked in the hand, the first thing a juror touches
+  shutterGuideRib: [0.2, 0.8],  // three ribs, proud x wide, along the guide bore on the face side: the cap runs on three lines, not in a 0.6 mm gap
   shutterPressCapD: 14.0,
   shutterPressFaceD: 13.0,
   shutterPressCapH: 0.9,

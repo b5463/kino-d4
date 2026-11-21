@@ -1,10 +1,10 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-20T23:42:20.756Z",
+  "generated": "2026-11-21T00:00:40.765Z",
   "body": {
     "width": 128.4,
     "height": 80.8,
-    "depth": 62.8,
+    "depth": 63.1,
     "lensRowY": 28.45,
     "cameraXs": [
       17.195,
@@ -32,8 +32,8 @@
   },
   "face": {
     "back": 40.4,
-    "front": 46.5,
-    "trackTop": 45,
+    "front": 46.8,
+    "trackTop": 45.3,
     "outline": [
       -4.2,
       -4.2,
@@ -59,7 +59,7 @@
       19.7
     ],
     "travel": 17,
-    "lipSlotY0": 17.9,
+    "lipSlotY0": 17.7,
     "cellOuterD": 7.5
   },
   "shutter": {
@@ -69,8 +69,8 @@
   },
   "files": {
     "KINO_CARRIER_SHELL.stl": {
-      "triangles": 15390,
-      "volumeCm3": 132.57,
+      "triangles": 15472,
+      "volumeCm3": 132.42,
       "size": [
         128.4,
         80.8,
@@ -79,7 +79,7 @@
     },
     "KINO_CARRIER_REAR_FRAME.stl": {
       "triangles": 4286,
-      "volumeCm3": 11.35,
+      "volumeCm3": 11.45,
       "size": [
         128.4,
         80.8,
@@ -87,30 +87,30 @@
       ]
     },
     "KINO_CARRIER_FACE.stl": {
-      "triangles": 8920,
-      "volumeCm3": 42.58,
+      "triangles": 8924,
+      "volumeCm3": 43.87,
       "size": [
         126.8,
         79.2,
-        6.1
+        6.4
       ]
     },
     "KINO_CARRIER_LENS_COVER.stl": {
       "triangles": 2796,
-      "volumeCm3": 3.02,
+      "volumeCm3": 3.01,
       "size": [
         86.8,
         16.5,
-        5.6
+        6.4
       ]
     },
     "KINO_CARRIER_KEEPER.stl": {
-      "triangles": 24,
-      "volumeCm3": 2.02,
+      "triangles": 42,
+      "volumeCm3": 3.49,
       "size": [
         86.8,
-        5.1,
-        4.6
+        7.2,
+        7.5
       ]
     },
     "KINO_CARRIER_SHUTTER_BUTTON.stl": {
@@ -120,6 +120,87 @@
         40.75,
         19.5,
         6.3
+      ]
+    },
+    "KINO_COUPON_PILLAR.stl": {
+      "triangles": 2474,
+      "volumeCm3": 14.85,
+      "size": [
+        29.65,
+        75.11,
+        28.5
+      ]
+    },
+    "KINO_COUPON_POCKET.stl": {
+      "triangles": 790,
+      "volumeCm3": 0.94,
+      "size": [
+        16,
+        16,
+        5
+      ]
+    },
+    "KINO_COUPON_DECK.stl": {
+      "triangles": 2440,
+      "volumeCm3": 4.43,
+      "size": [
+        36,
+        7.5,
+        28.4
+      ]
+    },
+    "KINO_COUPON_STRAP_SHELL.stl": {
+      "triangles": 572,
+      "volumeCm3": 1.62,
+      "size": [
+        22,
+        14,
+        14
+      ]
+    },
+    "KINO_COUPON_STRAP_FRAME.stl": {
+      "triangles": 218,
+      "volumeCm3": 0.61,
+      "size": [
+        22,
+        14,
+        2.5
+      ]
+    },
+    "KINO_COUPON_TRACK_FACE.stl": {
+      "triangles": 1702,
+      "volumeCm3": 7.9,
+      "size": [
+        74,
+        46.4,
+        6.4
+      ]
+    },
+    "KINO_COUPON_TRACK_COVER.stl": {
+      "triangles": 2582,
+      "volumeCm3": 2.47,
+      "size": [
+        69.9,
+        16.5,
+        6.4
+      ]
+    },
+    "KINO_COUPON_TRACK_KEEPER.stl": {
+      "triangles": 40,
+      "volumeCm3": 2.81,
+      "size": [
+        69.9,
+        7.2,
+        7.5
+      ]
+    },
+    "KINO_COUPON_SHRINK_BAR.stl": {
+      "triangles": 12,
+      "volumeCm3": 3,
+      "size": [
+        100,
+        10,
+        3
       ]
     },
     "KINO_CARRIER_STACK_DUMMY.stl": {
@@ -132,43 +213,43 @@
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 33068,
-      "volumeCm3": 348.4,
+      "triangles": 33174,
+      "volumeCm3": 351.12,
       "size": [
         128.4,
         80.8,
-        65.3
+        66.1
       ]
     },
     "KINO_CARRIER_OPEN_PREVIEW.stl": {
-      "triangles": 33060,
-      "volumeCm3": 348.4,
+      "triangles": 33166,
+      "volumeCm3": 351.12,
       "size": [
         128.4,
         80.8,
-        65.3
+        66.1
       ]
     }
   },
   "gates": {
-    "total": 159,
+    "total": 168,
     "failed": 0
   },
   "checks": [
     {
       "name": "depth chain adds up to the body depth",
       "pass": true,
-      "details": "rear frame 2.5 + P4 module, glass to PCB back 13.8 + P4 inserts 3.3 + spacers 8 + carrier PCB 1.6 + XIAO socket 8.5 + XIAO header insulator (PROVISIONAL) 2.5 + XIAO back face to lens front 15 + plate ahead of the lens 1.5 + face, over the front 6.1 = 62.8 mm; body 62.8; nothing stands proud of the face"
+      "details": "rear frame 2.5 + P4 module, glass to PCB back 13.8 + P4 inserts 3.3 + spacers 8 + carrier PCB 1.6 + XIAO socket 8.5 + XIAO header insulator (PROVISIONAL) 2.5 + XIAO back face to lens front 15 + plate ahead of the lens 1.5 + face, over the front 6.4 = 63.1 mm; body 63.1; nothing stands proud of the face"
     },
     {
       "name": "the horizon and the track leave face under the floor",
       "pass": true,
-      "details": "1.25 mm of plate under the relieved floor; 2.6 under the grip"
+      "details": "1.25 mm of plate under the relieved floor; 2.9 under the grip"
     },
     {
       "name": "the roof over the stow zone clears the cover and its mark",
       "pass": true,
-      "details": "0.3 mm between the raised mark and the face's roof; the roof is 1.5 mm of plate"
+      "details": "0.6 mm between the raised mark and the face's roof; the roof is 1.5 mm of plate"
     },
     {
       "name": "the lens front is the pocket floor",
@@ -183,7 +264,7 @@
     {
       "name": "the face covers the shell's front, inset from the outline",
       "pass": true,
-      "details": "126.8 x 79.2 face on the plate, 6.1 mm thick with a 2 mm chamfer"
+      "details": "126.8 x 79.2 face on the plate, 6.4 mm thick with a 2 mm chamfer"
     },
     {
       "name": "plan corner leaves wall on the diagonal",
@@ -193,12 +274,12 @@
     {
       "name": "the face steps in from the shell and still covers the pins",
       "pass": true,
-      "details": "0.8 mm of charcoal wall end shows around the face; the pins at the wall's middle sit 0.45 mm inside the face's edge"
+      "details": "0.8 mm of charcoal wall end shows around the face; the pins at the wall's middle sit 0.5 mm inside the face's edge"
     },
     {
-      "name": "battery bay takes the cell with foam",
+      "name": "battery bay takes the cell with foam and its swell",
       "pass": true,
-      "details": "6.3 mm between the P4's module can (3.5, PROVISIONAL) and the carrier's back-face parts (1.5) for a 5 mm cell and 0.5 mm of foam"
+      "details": "6.3 mm between the P4's module can (3.5, PROVISIONAL) and the carrier's back-face parts (1.5) for a 5 mm cell, 0.5 mm of foam and 0.5 mm of swell (10 %), so a swelling pouch never lifts the P4 off its spacers"
     },
     {
       "name": "battery bay clears the four spacers",
@@ -488,7 +569,7 @@
     {
       "name": "face pin hole in the wall end at (30, 73.55) open",
       "pass": true,
-      "details": "2 mm, 3 deep in a 4.5 mm wall"
+      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
     },
     {
       "name": "face pin hole in the face at (30, 73.55) open",
@@ -498,12 +579,12 @@
     {
       "name": "face pin hole at (30, 73.55) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 6.1"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 6.4"
     },
     {
       "name": "face pin hole in the wall end at (90, 73.55) open",
       "pass": true,
-      "details": "2 mm, 3 deep in a 4.5 mm wall"
+      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
     },
     {
       "name": "face pin hole in the face at (90, 73.55) open",
@@ -513,12 +594,12 @@
     {
       "name": "face pin hole at (90, 73.55) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 6.1"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 6.4"
     },
     {
       "name": "face pin hole in the wall end at (5, -2.75) open",
       "pass": true,
-      "details": "2 mm, 3 deep in a 4.5 mm wall"
+      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
     },
     {
       "name": "face pin hole in the face at (5, -2.75) open",
@@ -528,12 +609,12 @@
     {
       "name": "face pin hole at (5, -2.75) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 6.1"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 6.4"
     },
     {
       "name": "face pin hole in the wall end at (96.7, -2.75) open",
       "pass": true,
-      "details": "2 mm, 3 deep in a 4.5 mm wall"
+      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
     },
     {
       "name": "face pin hole in the face at (96.7, -2.75) open",
@@ -543,12 +624,12 @@
     {
       "name": "face pin hole at (96.7, -2.75) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 6.1"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 6.4"
     },
     {
       "name": "face pin hole in the wall end at (-2.75, 52) open",
       "pass": true,
-      "details": "2 mm, 3 deep in a 4.5 mm wall"
+      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
     },
     {
       "name": "face pin hole in the face at (-2.75, 52) open",
@@ -558,12 +639,12 @@
     {
       "name": "face pin hole at (-2.75, 52) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 6.1"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 6.4"
     },
     {
       "name": "face pin hole in the wall end at (121.15, 52) open",
       "pass": true,
-      "details": "2 mm, 3 deep in a 4.5 mm wall"
+      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
     },
     {
       "name": "face pin hole in the face at (121.15, 52) open",
@@ -573,12 +654,12 @@
     {
       "name": "face pin hole at (121.15, 52) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 6.1"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 6.4"
     },
     {
       "name": "the walls carry the pin holes",
       "pass": true,
-      "details": "1.25 mm a side"
+      "details": "1.3 mm a side"
     },
     {
       "name": "the signature inside sits on the plate, clear of the track and the pins",
@@ -598,7 +679,7 @@
     {
       "name": "the lip stands proud of the face for the thumb",
       "pass": true,
-      "details": "3.6 mm off the cover, 1 above the face, closed and stowed; the thumb pushes it down and lifts it back"
+      "details": "4.4 mm off the cover, 1.5 above the face, closed and stowed; the thumb pushes it down and lifts it back"
     },
     {
       "name": "the carrier slides in from the rear up to the pillar feet",
@@ -643,7 +724,7 @@
     {
       "name": "thumb pad and symbol stay on the frame's borders",
       "pass": true,
-      "details": "window from X 11.4 to 107; thumb pad X 110 to 119; symbol from X -1.5, 8 mm tall"
+      "details": "window from X 11.4 to 107; thumb pad X 109.5 to 121; symbol from X -1.5, 8 mm tall"
     },
     {
       "name": "frame pilot at (17, -2.75) open",
@@ -733,12 +814,12 @@
     {
       "name": "keeper sits in the gap without overlap and is the stop",
       "pass": true,
-      "details": "0.0000 mm^3 shared; keeper top at Y 2.6, the stowed cover's bottom edge at 3.2"
+      "details": "0.0000 mm^3 shared; the keeper's stop face at Y 2.6 (its foot behind the face reaches 3.5), the stowed cover's bottom edge at 3.2"
     },
     {
       "name": "the lip's slot runs from the stowed lip into the horizon",
       "pass": true,
-      "details": "slot from Y 17.9 to the groove at 18.7; closed, 2.3 mm of it shows below the bar as the thumb's cue"
+      "details": "slot from Y 17.7 to the groove at 18.7; closed, 2.5 mm of it shows below the bar as the thumb's cue"
     },
     {
       "name": "wordmark fits under the lip",
@@ -893,7 +974,7 @@
     {
       "name": "KINO_CARRIER_SHELL.stl prints support-free",
       "pass": true,
-      "details": "160.12 mm^2 facing down steeper than 45 degrees off the bed, allowed 233.54 for the LED slot bridges, the four screw-foot shoulders, the shutter collar's 1.6 mm recess, the six pin holes' ends, the two strap tunnels' roofs (2.2 mm bridges), and up to 20 mm^2 of exact 45 degree gable; the layer grooves are 49 degrees"
+      "details": "294.88 mm^2 facing down steeper than 45 degrees off the bed, allowed 366.95 for the LED slot bridges, the four screw-foot shoulders, the shutter collar's 1.6 mm recess, the six pin holes' ends, the strap tunnels' roofs, the keeper's foot pocket (a 1.6 mm bridge at the bed), and up to 20 mm^2 of exact 45 degree gable; the layer grooves are 49 degrees"
     },
     {
       "name": "KINO_CARRIER_SHELL.stl fits the bed",
@@ -913,12 +994,12 @@
     {
       "name": "KINO_CARRIER_FACE.stl prints support-free",
       "pass": true,
-      "details": "1080.72 mm^2 facing down steeper than 45 degrees off the bed, allowed 2109.47 for the six blind pin holes' ends (1.8 mm bridges), the roof over the stow zone (a plate bridging about 16 mm across the track) and the signature engraved in the bed face"
+      "details": "1222.9 mm^2 facing down steeper than 45 degrees off the bed, allowed 2110.35 for the six blind pin holes' ends (1.8 mm bridges), the roof over the stow zone (a plate bridging about 16 mm across the track) and the signature engraved in the bed face"
     },
     {
       "name": "KINO_CARRIER_FACE.stl fits the bed",
       "pass": true,
-      "details": "126.8 x 79.2 x 6.1"
+      "details": "126.8 x 79.2 x 6.4"
     },
     {
       "name": "KINO_CARRIER_LENS_COVER.stl prints support-free",
@@ -928,17 +1009,17 @@
     {
       "name": "KINO_CARRIER_LENS_COVER.stl fits the bed",
       "pass": true,
-      "details": "86.8 x 16.5 x 5.6"
+      "details": "86.8 x 16.5 x 6.4"
     },
     {
       "name": "KINO_CARRIER_KEEPER.stl prints support-free",
       "pass": true,
-      "details": "0 mm^2 facing down steeper than 45 degrees off the bed, allowed 1 for nothing"
+      "details": "0 mm^2 facing down steeper than 45 degrees off the bed, allowed 1 for nothing: the foot faces up, the chamfer is 45"
     },
     {
       "name": "KINO_CARRIER_KEEPER.stl fits the bed",
       "pass": true,
-      "details": "86.8 x 5.1 x 4.6"
+      "details": "86.8 x 7.2 x 7.5"
     },
     {
       "name": "KINO_CARRIER_SHUTTER_BUTTON.stl prints support-free",
@@ -949,6 +1030,51 @@
       "name": "KINO_CARRIER_SHUTTER_BUTTON.stl fits the bed",
       "pass": true,
       "details": "40.75 x 19.5 x 6.3"
+    },
+    {
+      "name": "KINO_COUPON_PILLAR.stl is one piece on the bed",
+      "pass": true,
+      "details": "29.65 x 75.11 x 28.5 mm, 1 piece(s)"
+    },
+    {
+      "name": "KINO_COUPON_POCKET.stl is one piece on the bed",
+      "pass": true,
+      "details": "16 x 16 x 5 mm, 1 piece(s)"
+    },
+    {
+      "name": "KINO_COUPON_DECK.stl is one piece on the bed",
+      "pass": true,
+      "details": "36 x 7.5 x 28.4 mm, 1 piece(s)"
+    },
+    {
+      "name": "KINO_COUPON_STRAP_SHELL.stl is one piece on the bed",
+      "pass": true,
+      "details": "22 x 14 x 14 mm, 1 piece(s)"
+    },
+    {
+      "name": "KINO_COUPON_STRAP_FRAME.stl is one piece on the bed",
+      "pass": true,
+      "details": "22 x 14 x 2.5 mm, 1 piece(s)"
+    },
+    {
+      "name": "KINO_COUPON_TRACK_FACE.stl is one piece on the bed",
+      "pass": true,
+      "details": "74 x 46.4 x 6.4 mm, 1 piece(s)"
+    },
+    {
+      "name": "KINO_COUPON_TRACK_COVER.stl is one piece on the bed",
+      "pass": true,
+      "details": "69.9 x 16.5 x 6.4 mm, 1 piece(s)"
+    },
+    {
+      "name": "KINO_COUPON_TRACK_KEEPER.stl is one piece on the bed",
+      "pass": true,
+      "details": "69.9 x 7.2 x 7.5 mm, 1 piece(s)"
+    },
+    {
+      "name": "KINO_COUPON_SHRINK_BAR.stl is one piece on the bed",
+      "pass": true,
+      "details": "100 x 10 x 3 mm, 1 piece(s)"
     }
   ]
 }

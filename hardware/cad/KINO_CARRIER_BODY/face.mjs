@@ -55,12 +55,17 @@ export const FACE = (() => {
   const midR = coneR(zMid) + P.lensRingStep;
   const outerR = coneR(floorZ) + 2 * P.lensRingStep;
   const railXs = [(panel[0] + panel[2]) / 2 - P.coverRailOffset, (panel[0] + panel[2]) / 2 + P.coverRailOffset];
+  // The cover's entry gap through the whole plate below the track, and the
+  // keeper that refills it: the keeper runs from the face's back to its
+  // front and carries a foot that sits in a pocket in the shell's plate.
+  const gapY0 = outline[1] + P.faceEdgeR - 0.6;
+  const keeper = { x0: panel[0] + P.keeperClr, x1: panel[2] - P.keeperClr, y0: gapY0 - 1.0 + P.keeperClr, y1: panel[1] - P.keeperClr };
   const pinXY = [
     ...P.facePinsTop.map((x) => [x, XY.wallMidY[1]]), ...P.facePinsBottom.map((x) => [x, XY.wallMidY[0]]),
     [ox0 + P.wall / 2, P.facePinsSideY], [ox1 - P.wall / 2, P.facePinsSideY],
   ];
   return Object.freeze({ back, front, trackTop, floorZ, panel, horizon, outline, outlineR, closedY0, closedY1, openY0, openY1, travel, lipSlotY0,
-    tanF, boreR, coneR, zBore, zMid, midR, outerR, plainCells, railXs, lensY, pinXY });
+    tanF, boreR, coneR, zBore, zMid, midR, outerR, plainCells, railXs, lensY, pinXY, gapY0, keeper });
 })();
 
 const roundedRectZ = (x, y, z, w, d, h, r) => rbox(x, y, z, x + w, y + d, z + h, r);
@@ -127,9 +132,10 @@ export function buildFace() {
   // The recessed panel: the cover's track, cut below the groove's floor.
   const [p0x, p0y, p1x, p1y] = F.panel;
   cuts.push(roundedRectZ(p0x, p0y, F.floorZ, p1x - p0x, p1y - p0y, F.trackTop - F.floorZ + 0.01, P.sliderCornerR + P.sliderClr));
-  // The cover's entry gap, through the plate below the track.
-  const gapY0 = fy0 + P.faceEdgeR - 0.6;
-  const gapCut = cube(p0x, gapY0 - 1.0, F.floorZ, p1x - p0x, p0y - (gapY0 - 1.0), F.front - F.floorZ + 2);
+  // The cover's entry gap, through the whole plate below the track: the
+  // keeper fills it back to front and sits on the shell's plate.
+  const gapY0 = F.gapY0;
+  const gapCut = cube(p0x, gapY0 - 1.0, F.back - 1, p1x - p0x, p0y - (gapY0 - 1.0), F.front - F.back + 3);
   // The lip's slot through the roof, the roof's full height: from the panel's
   // bottom rim up into the horizon, so every bridge line of the roof lands on
   // a wall at both ends (a slot that stopped short left free-ended bridges).
@@ -139,15 +145,21 @@ export function buildFace() {
   const lipX0 = p0x + P.sliderClr + P.coverLipLeft;
   cuts.push(box(lipX0 - P.lipSlotClear, p0y + 1.0, F.trackTop - 0.01, lipX0 + P.coverLip[0] + P.lipSlotClear, F.horizon[0] + 0.5, F.front + 2));
   // The keeper: the block in the gap, less keeperClr on its fitted sides, the
-  // track's stop, flush with the face's front; glued in once the cover is in.
-  // Its back edges are chamfered against the elephant foot.
-  const kx0 = p0x + P.keeperClr, kx1 = p1x - P.keeperClr, ky0 = gapY0 + 0.3, ky1 = p0y - P.keeperClr, c = P.bedChamfer;
-  // Cut from the plate's own solid, so the face's edge chamfer runs through
-  // it: a flat-fronted block stood proud of the chamfer at its lower corner.
-  const keeper = status("keeper", solids[0].intersect(Manifold.hull([
-    box(kx0 + c, ky0 + c, F.floorZ, kx1 - c, ky1 - c, F.floorZ + 0.01),
-    box(kx0, ky0, F.floorZ + c + 0.01, kx1, ky1, F.front + 1),
-  ])));
+  // track's stop, flush with the face's front, the face's full thickness. Cut
+  // from the plate's own solid so the edge chamfer runs through it. No glue:
+  // a foot on its back, under the plate above the gap, sits in a pocket in
+  // the shell's plate; the face traps it forward, the pocket down and back.
+  // In: keeper into the pocket with the face off, then the face over it.
+  // Out: six pins, face off, keeper lifts, cover drops out. Printed front
+  // down (the foot up), so nothing of it hangs.
+  const { x0: kx0, x1: kx1, y0: ky0, y1: ky1 } = F.keeper;
+  const [footY, footZ] = P.keeperFoot;
+  const keeper = status("keeper", solids[0].intersect(box(kx0, ky0, F.back - 1, kx1, ky1, F.front + 1))
+    .add(Manifold.hull([
+      box(kx0 + 1, ky1 - 0.5, F.back - footZ, kx1 - 1, ky1 + footY, F.back - footZ + 0.01),
+      box(kx0 + 1, ky1 - 0.5, F.back - 0.01, kx1 - 1, ky1 - 0.1, F.back),
+    ]))
+    .add(box(kx0 + 1, ky1 - 0.5, F.back - 0.5, kx1 - 1, ky1 - 0.1, F.back + 0.5)));
   cuts.push(gapCut);
   // Lens cells: bore, then two stepped cones opening forward.
   for (const lx of P.cameraXs) {
@@ -200,7 +212,13 @@ export function buildFace() {
   // The lip stands coverLipAboveFace proud of the face, closed and stowed.
   const [lw, lh] = P.coverLip;
   const lipProud = (F.front - sFront) + P.coverLipAboveFace;
-  const lip = roundedRectZ(sx0 + P.coverLipLeft, sy1 - lh, sFront - 0.4, lw, lh, lipProud + 0.4, 0.6);
+  // A 45 degree root on the lip's three free sides (the fourth is the
+  // cover's own top edge): the lip takes the face-down drop.
+  const lr = P.coverLipRoot, lipX = sx0 + P.coverLipLeft, lipY = sy1 - lh;
+  const lip = Manifold.hull([
+    roundedRectZ(lipX - lr, lipY - lr, sFront - 0.4, lw + 2 * lr, lh + lr, 0.41, 0.6 + lr),
+    roundedRectZ(lipX, lipY, sFront + lr, lw, lh, lipProud - lr, 0.6),
+  ]);
   // The brand's wordmark, raised off the bar, left-aligned as the brand sets its plate.
   const ms = P.markW / MAKER.widthMm, mw = P.markW, mh = MAKER.heightMm * ms;
   const bandY0 = sy0 + 1.0, bandY1 = sy1 - lh - 0.8;

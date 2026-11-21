@@ -115,8 +115,8 @@ const onePart = (name, m) => check(`${name} is one part`, m.decompose().length =
 {
   const [bx0, by0, bx1, by1] = P.batteryBay;
   const h = Z.bayCeiling - Z.bayFloor;
-  check("battery bay takes the cell with foam", h >= P.cellT + P.cellFoam,
-    `${r2(h)} mm between the P4's module can (${P.p4CanH}, PROVISIONAL) and the carrier's back-face parts (${P.carrierBackPartsH}) for a ${P.cellT} mm cell and ${P.cellFoam} mm of foam`);
+  check("battery bay takes the cell with foam and its swell", h >= P.cellT + P.cellFoam + P.cellSwell,
+    `${r2(h)} mm between the P4's module can (${P.p4CanH}, PROVISIONAL) and the carrier's back-face parts (${P.carrierBackPartsH}) for a ${P.cellT} mm cell, ${P.cellFoam} mm of foam and ${P.cellSwell} mm of swell (10 %), so a swelling pouch never lifts the P4 off its spacers`);
   const spacerGap = Math.min(...P.carrierHoles.map(([hx, hy]) => Math.hypot(Math.max(bx0 - hx, 0, hx - bx1), Math.max(by0 - hy, 0, hy - by1)) - 1.75));
   check("battery bay clears the four spacers", spacerGap >= 1.0, `${r2(bx1 - bx0)} x ${r2(by1 - by0)} mm in plan, ${r2(spacerGap)} mm from the nearest 3.5 mm spacer; a 55 x 73 pouch does not fit this plan`);
   check("battery bay is inside the carrier outline", bx0 >= 0 && by0 >= 0 && bx1 <= P.carrierW && by1 <= P.carrierH, "the cell never meets a wall");
@@ -209,8 +209,8 @@ check("layer grooves leave the wall", P.wall - P.grooveD >= 4.0, `${P.grooveD} m
   for (const [n, c] of [["closed", cover], ["open", coverOpen], ["mid", coverMid]]) {
     check(`keeper clears the cover ${n}`, vol(keeper, c) < 1e-6, `${vol(keeper, c).toFixed(4)} mm^3`);
   }
-  check("keeper sits in the gap without overlap and is the stop", vol(keeper, face) < 1e-6 && keeper.boundingBox().max[1] <= FACE.openY0 - 0.3 && keeper.boundingBox().max[1] >= FACE.openY0 - 1.0,
-    `${vol(keeper, face).toFixed(4)} mm^3 shared; keeper top at Y ${r2(keeper.boundingBox().max[1])}, the stowed cover's bottom edge at ${r2(FACE.openY0)}`);
+  check("keeper sits in the gap without overlap and is the stop", vol(keeper, face) < 1e-6 && FACE.keeper.y1 <= FACE.openY0 - 0.3 && FACE.keeper.y1 >= FACE.openY0 - 1.0,
+    `${vol(keeper, face).toFixed(4)} mm^3 shared; the keeper's stop face at Y ${r2(FACE.keeper.y1)} (its foot behind the face reaches ${r2(keeper.boundingBox().max[1])}), the stowed cover's bottom edge at ${r2(FACE.openY0)}`);
   check("the lip's slot runs from the stowed lip into the horizon", FACE.lipSlotY0 <= FACE.openY1 - P.coverLip[1] - P.lipSlotClear + 1e-9 && FACE.lipSlotY0 > FACE.panel[1] + 2,
     `slot from Y ${r2(FACE.lipSlotY0)} to the groove at ${r2(FACE.horizon[0])}; closed, ${r2(FACE.closedY0 - FACE.lipSlotY0)} mm of it shows below the bar as the thumb's cue`);
   check("wordmark fits under the lip", markBox.y > FACE.closedY0 + 0.8 && markBox.y + markBox.h < FACE.closedY1 - P.coverLip[1] - 0.6 && markBox.w < (FACE.panel[2] - FACE.panel[0]) - 10,
@@ -254,17 +254,17 @@ const prints = {
   "KINO_CARRIER_REAR_FRAME.stl": toBed(frame.rotate([180, 0, 0])),
   "KINO_CARRIER_FACE.stl": toBed(face),
   "KINO_CARRIER_LENS_COVER.stl": toBed(cover),
-  "KINO_CARRIER_KEEPER.stl": toBed(keeper),
+  "KINO_CARRIER_KEEPER.stl": toBed(keeper.rotate([180, 0, 0])),   // front down, the foot up
   "KINO_CARRIER_SHUTTER_BUTTON.stl": toBed(button),
 };
 const pinEnds = S.pinXY.length * Math.PI * (P.facePinD / 2 + P.facePinSink) ** 2;
 const allowance = {
-  "KINO_CARRIER_SHELL.stl": [P.ledXs.length * P.ledSlot[0] * (cy0 - oy0) + P.carrierHoles.length * Math.PI * ((P.accessShaftD / 2) ** 2 - (P.screwBore / 2) ** 2) + (P.shutterCollarD / 2) * (Math.PI / 2) * (P.shutterCollarDepth + 0.2) + pinEnds + S.strapChannels.length * P.strapChannelD * (P.strapSlotXs[1] - P.strapSlotXs[0] + P.strapSlot[0]) + 20,
-    "the LED slot bridges, the four screw-foot shoulders, the shutter collar's 1.6 mm recess, the six pin holes' ends, the two strap tunnels' roofs (2.2 mm bridges), and up to 20 mm^2 of exact 45 degree gable; the layer grooves are 49 degrees"],
+  "KINO_CARRIER_SHELL.stl": [P.ledXs.length * P.ledSlot[0] * (cy0 - oy0) + P.carrierHoles.length * Math.PI * ((P.accessShaftD / 2) ** 2 - (P.screwBore / 2) ** 2) + (P.shutterCollarD / 2) * (Math.PI / 2) * (P.shutterCollarDepth + 0.2) + pinEnds + S.strapChannels.length * P.strapChannelD * (P.strapSlotXs[1] - P.strapSlotXs[0] + P.strapSlot[0]) + (FACE.keeper.x1 - FACE.keeper.x0 - 2 + 2 * P.keeperFootClr) * (P.keeperFoot[0] + 0.5 + 2 * P.keeperFootClr) + 20,
+    "the LED slot bridges, the four screw-foot shoulders, the shutter collar's 1.6 mm recess, the six pin holes' ends, the strap tunnels' roofs, the keeper's foot pocket (a 1.6 mm bridge at the bed), and up to 20 mm^2 of exact 45 degree gable; the layer grooves are 49 degrees"],
   "KINO_CARRIER_REAR_FRAME.stl": [2, "nothing: holes through, the chamfer and the pad face up"],
   "KINO_CARRIER_FACE.stl": [pinEnds + roofBridge + 700 + 5, "the six blind pin holes' ends (1.8 mm bridges), the roof over the stow zone (a plate bridging about 16 mm across the track) and the signature engraved in the bed face"],
   "KINO_CARRIER_LENS_COVER.stl": [8, "the 0.2 mm ledges at the edge relief"],
-  "KINO_CARRIER_KEEPER.stl": [1, "nothing"],
+  "KINO_CARRIER_KEEPER.stl": [1, "nothing: the foot faces up, the chamfer is 45"],
   "KINO_CARRIER_SHUTTER_BUTTON.stl": [110, "the retainer's leg-slot bridge and wire notches"],
 };
 for (const [name, m] of Object.entries(prints)) {
@@ -274,9 +274,34 @@ for (const [name, m] of Object.entries(prints)) {
   check(`${name} fits the bed`, b.max[0] <= 250 && b.max[1] <= 210, `${r2(b.max[0])} x ${r2(b.max[1])} x ${r2(b.max[2])}`);
 }
 
+// ---- Coupons: pieces of the real parts, cut out with boxes, to print before
+// the whole. Each is the parent's geometry, so a fit proved here is the fit
+// in the part. Same print orientation as the parent.
+const coupons = (() => {
+  const [hx, hy] = [P.carrierHoles[2][0] + 0.695, 70.105 - P.carrierHoles[2][1]];   // the lower-left pillar
+  const [lx, ly] = S.lensXY[0];
+  const [p0x, p0y, , ] = FACE.panel;
+  const cut = (m, b) => m.intersect(b);
+  return {
+    "KINO_COUPON_PILLAR.stl": toBed(cut(shell, box(2, oy0 - 1, S.bossFootZ - 1, hx + 12, hy + 8, Z.plateFront + 1)).rotate([180, 0, 0])),
+    "KINO_COUPON_POCKET.stl": toBed(cut(shell, box(lx - 8, ly - 8, Z.plateInner - 1.5, lx + 8, ly + 8, Z.plateFront + 1)).rotate([180, 0, 0])),
+    "KINO_COUPON_DECK.stl": toBed(cut(shell, box(P.shutterX - 18, cy1 - 3, 8, P.shutterX + 18, oy1 + 1, Z.plateInner + 1)).rotate([180, 0, 0])),
+    "KINO_COUPON_STRAP_SHELL.stl": toBed(cut(shell, box(ox0 - 1, oy0 - 1, Z.glass - 1, ox0 + 22, oy0 + 14, Z.glass + 14)).rotate([180, 0, 0])),
+    "KINO_COUPON_STRAP_FRAME.stl": toBed(cut(frame, box(ox0 - 1, oy0 - 1, Z.frameRear - 1, ox0 + 22, oy0 + 14, Z.glass + 1)).rotate([180, 0, 0])),
+    "KINO_COUPON_TRACK_FACE.stl": toBed(cut(face, box(p0x - 4, FACE.outline[1] - 1, FACE.back - 1, p0x + 70, FACE.horizon[1] + 4, FACE.front + 1))),
+    "KINO_COUPON_TRACK_COVER.stl": toBed(cut(cover, box(p0x - 4, FACE.outline[1] - 1, FACE.back - 1, p0x + 70, FACE.horizon[1] + 4, FACE.front + 3))),
+    "KINO_COUPON_TRACK_KEEPER.stl": toBed(cut(keeper, box(p0x - 4, FACE.outline[1] - 1, FACE.back - 2, p0x + 70, FACE.horizon[1] + 4, FACE.front + 1)).rotate([180, 0, 0])),
+    "KINO_COUPON_SHRINK_BAR.stl": box(0, 0, 0, 100, 10, 3),
+  };
+})();
+for (const [name, m] of Object.entries(coupons)) {
+  check(`${name} is one piece on the bed`, m.decompose().length === 1 && m.boundingBox().max[0] <= 250, `${r2(m.boundingBox().max[0])} x ${r2(m.boundingBox().max[1])} x ${r2(m.boundingBox().max[2])} mm, ${m.decompose().length} piece(s)`);
+}
+
 // ---- Write --------------------------------------------------------------------
 const files = {};
 for (const [name, m] of Object.entries(prints)) files[name] = writeStl(outDir, name, m);
+for (const [name, m] of Object.entries(coupons)) files[name] = writeStl(outDir, name, m);
 files["KINO_CARRIER_STACK_DUMMY.stl"] = writeStl(outDir, "KINO_CARRIER_STACK_DUMMY.stl", dummy);
 for (const [name, m] of [["shell", shell], ["frame", frame], ["face", face], ["cover", cover], ["cover-open", coverOpen], ["keeper", keeper]]) {
   writeStl(outDir, `preview-${name}.stl`, m);
