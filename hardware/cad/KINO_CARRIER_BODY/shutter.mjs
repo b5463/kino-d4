@@ -108,6 +108,14 @@ export function shutterPod() {
   return { adds, cuts, ribs };
 }
 
+// The dish in the cap's top: a sphere whose cap is shutterCapDish wide and
+// deep, centred on the axis, its rim at zTop. Print frame (Z up).
+const dish = (cx, cy, zTop) => {
+  const [d, depth] = P.shutterCapDish, r = d / 2;
+  const R = (r * r + depth * depth) / (2 * depth);
+  return Manifold.sphere(R, 96).translate([cx, cy, zTop + R - depth]);
+};
+
 // The cap as it stands in the collar, for the colour previews: the rim
 // shutterProud above the top face. Body frame.
 export function capPreview() {
@@ -116,7 +124,7 @@ export function capPreview() {
   const cap = fuse([
     cylZ(0, 0, 0, P.shutterPressCapD / 2, h - e, 64),
     coneZ(0, 0, h - e - 0.01, P.shutterPressCapD / 2, P.shutterPressCapD / 2 - e, e + 0.01, 64),
-  ]);
+  ]).subtract(dish(0, 0, h));
   return cap.rotate([-90, 0, 0]).translate([S.X, S.oy1 - P.shutterCollarDepth, S.Zc]);
 }
 
@@ -141,6 +149,6 @@ export function buildShutterButton() {
     cylZ(0, 0, 0.29, P.shutterActuatorFlangeD / 2, flangeH - 0.29),
     cylZ(0, 0, flangeH, P.shutterPressCapD / 2, noseStraightH),
     coneZ(0, 0, flangeH + noseStraightH - 0.01, P.shutterPressCapD / 2, P.shutterPressCapD / 2 - e, e + 0.01, 64),
-  ]).translate([o, o, 0]);
+  ]).subtract(dish(0, 0, flangeH + S.stem)).translate([o, o, 0]);   // the dish in the top, inside the chamfered rim
   return status("shutter button", actuator.simplify(1e-5));
 }

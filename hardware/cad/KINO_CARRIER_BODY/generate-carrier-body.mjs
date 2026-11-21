@@ -313,8 +313,11 @@ check("the first groove clears the frame pins' floors", P.grooveZ[0] - P.grooveD
     ]);
     check("2. the plunger slides in over the seated switch, hanging on the step, cap in the slot", vol(shell, plungerSweep) < 1e-3 && vol(seated, plungerSweep) < 1e-3 && T.flangeBottomRest - (T.seatTop + hS - 0.8) >= 0.6,
       `a ${r2(2 * rFl)} flange and a ${P.shutterPressCapD} cap swept from the mouth to the axis: ${vol(shell, plungerSweep).toFixed(4)} mm^3 of shell and ${vol(seated, plungerSweep).toFixed(4)} of switch in it; the flange ${r2(T.flangeBottomRest - (T.seatTop + hS - 0.8))} over the switch's body, ${P.shutterSwitchFree} over its actuator`);
-    check("2. the plunger rests on the step, cap proud", vol(shell, rest) < 1e-3 && vol(rest, box(X - 3, T.oy1 + P.shutterProud + 0.05, Zc - 3, X + 3, T.oy1 + P.shutterProud + 1, Zc + 3)) < 1e-3 && vol(rest, box(X - 3, T.oy1 + P.shutterProud - 0.3, Zc - 3, X + 3, T.oy1 + P.shutterProud - 0.1, Zc + 3)) > 0.5,
-      `at rest ${vol(shell, rest).toFixed(4)} mm^3 of shell inside it; its cap top at Y ${r2(T.oy1 + P.shutterProud)}, ${P.shutterProud} proud of the deck`);
+    const rimR = P.shutterPressCapD / 2 - P.shutterCapEdge, dishR = P.shutterCapDish[0] / 2;
+    const rim = box(X + dishR + 0.1, T.oy1 + P.shutterProud - 0.3, Zc - 1, X + rimR - 0.1, T.oy1 + P.shutterProud - 0.1, Zc + 1);   // the flat rim between the dish and the chamfer
+    const dishProbe = box(X - 1, T.oy1 + P.shutterProud - P.shutterCapDish[1] + 0.05, Zc - 1, X + 1, T.oy1 + P.shutterProud + 1, Zc + 1);   // the dish's centre, empty
+    check("2. the plunger rests on the step, cap proud, dished", vol(shell, rest) < 1e-3 && vol(rest, box(X - 7, T.oy1 + P.shutterProud + 0.05, Zc - 7, X + 7, T.oy1 + P.shutterProud + 1, Zc + 7)) < 1e-3 && vol(rest, rim) > rim.volume() * 0.95 && vol(rest, dishProbe) < 0.05 && rimR - dishR >= 0.8,   // the sphere's facets leave a few thousandths in the probe
+      `at rest ${vol(shell, rest).toFixed(4)} mm^3 of shell inside it; its rim at Y ${r2(T.oy1 + P.shutterProud)}, ${P.shutterProud} proud of the deck; the ${P.shutterCapDish[0]} dish ${P.shutterCapDish[1]} deep inside a ${r2(rimR - dishR)} flat rim`);
     check("the plunger must go in second: at rest it blocks a switch on the floor", vol(rest, switchSweep) > 1.0 && vol(bodySeated, plungerSweep) < 1e-3,
       `${r2(vol(rest, switchSweep))} mm^3 of plunger in the sweep of a switch riding on the floor (${P.shutterSwitchPocket} higher than seated); switch first, plunger second, face third`);
   }

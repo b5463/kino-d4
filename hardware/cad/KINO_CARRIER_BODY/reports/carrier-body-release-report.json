@@ -1,6 +1,6 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-21T20:53:36.184Z",
+  "generated": "2026-11-21T21:06:59.529Z",
   "body": {
     "width": 128.4,
     "height": 80.8,
@@ -123,8 +123,8 @@
       ]
     },
     "B02-KINO_CARRIER_SHUTTER_BUTTON.stl": {
-      "triangles": 1020,
-      "volumeCm3": 1.04,
+      "triangles": 1086,
+      "volumeCm3": 1.03,
       "size": [
         17.6,
         17.6,
@@ -863,9 +863,9 @@
       "details": "a 17.6 flange and a 14 cap swept from the mouth to the axis: 0.0000 mm^3 of shell and 0.0000 of switch in it; the flange 1.1 over the switch's body, 0.3 over its actuator"
     },
     {
-      "name": "2. the plunger rests on the step, cap proud",
+      "name": "2. the plunger rests on the step, cap proud, dished",
       "pass": true,
-      "details": "at rest 0.0000 mm^3 of shell inside it; its cap top at Y 77.8, 2 proud of the deck"
+      "details": "at rest 0.0000 mm^3 of shell inside it; its rim at Y 77.8, 2 proud of the deck; the 11 dish 0.4 deep inside a 1 flat rim"
     },
     {
       "name": "the plunger must go in second: at rest it blocks a switch on the floor",

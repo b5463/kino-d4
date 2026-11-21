@@ -287,6 +287,7 @@ export const P = Object.freeze({
   shutterPressCapD: 14.0,
   shutterProud: 2.0,         // the cap's rim above the top face
   shutterCapEdge: 0.5,       // 45 degrees round the cap's top edge: six even rings at 0.08
+  shutterCapDish: [11.0, 0.4],  // a spherical dish in the cap's top, diameter x depth (the owner: "a slight indent to give it a tactile feel"): the finger finds the centre; a 1.0 flat rim stays between it and the chamfer; five layers at 0.08, up in print
   shutterCollarD: 20.0,
   shutterCollarDepth: 0.4,   // a two-layer shadow line round the cap, clipped by the deck's front edge
   shutterFloor: 2.0,         // of pod under the switch's pocket: the press lands here; the leg channels cut through it

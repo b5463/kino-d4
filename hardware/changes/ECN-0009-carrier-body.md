@@ -486,6 +486,9 @@ owner's printer. Two parts:
   the step over the seated switch (1.1 over its body, 0.3 over its
   actuator), face third; a switch not yet in its pocket blocks the plunger
   (gated). `shutterSwitchFree` 0.3, `shutterPodBottomZ` 21. 189 gates.
+  Then, as the coupon went to the bed (the owner: "a slight indent to give
+  it a tactile feel"): the cap's top carries an 11 mm spherical dish 0.4
+  deep inside a 1.0 flat rim (`shutterCapDish`), gated.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
