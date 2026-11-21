@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; seventeenth cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
+| Status | Design in progress; eighteenth cut generated and gated, the coupon plates ready to print, nothing printed; the night colourway prints first, the coupons before it |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -351,6 +351,19 @@ owner's printer. Two parts:
   the jury paragraph. Every cut's renders are now archived under
   `docs/assets/making-of/` by `archive-previews.py` for the website's
   making-of page (`docs/MAKING_OF.md`). 156 gates.
+- **Clean, and the coupons** (eighteenth cut, 2026-11-21; the owner:
+  "clean up the body fully and then make me the coupons"). Dead
+  parameters gone (the dome, the press face, the wire exit, the edge
+  steps, the foot height, the deck engraving depth, the active-area flag),
+  every comment that still spoke of charcoal, cream, pink, the lug, the
+  apron, the shafts or the swap rewritten, the unused overhang sum
+  removed from lib, the generator's header for two materials; the README
+  loses its review-by-review narrative and its earlier-drafts paragraph
+  (they live in this ECN and on the making-of page) and keeps a short
+  "what the reviews taught" with the rules. Coupons: T02 to T05 carry
+  their own IDs in their bed faces (a gate proves each engraving sits in
+  material); two bed plates ship as one file each, P1 (T01 + T02) and P2
+  (T03 + T04), so a print job is one file.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator

@@ -1,9 +1,9 @@
-// The shell and the rear frame: the charcoal parts.
+// A01 the shell and A03 the rear frame: the black PETG parts.
 //
 // The shell is the front plate with the camera pockets, all four walls down
 // to the display plane and forward past the plate by faceBase, so the face
-// sits inside a charcoal rim; four pillars that stand on the carrier at its
-// M2 holes; the shutter pod on the top wall; the strap lug on the right wall;
+// sits inside a black reveal; four pillars whose feet stand on the carrier
+// round its own screw heads; the shutter pod on the top wall;
 // V-grooves around the side and bottom walls, parallel to the print's layers,
 // the brand's layer texture; the LED slots, the USB-C opening and the frame
 // pilots. Printed face down.
@@ -42,7 +42,7 @@ export const SHELL = (() => {
     ...P.facePinsTop.map((x) => [x, XY.wallMidY[1]]), ...P.facePinsBottom.map((x) => [x, XY.wallMidY[0]]),
     [ox0 + P.wall / 2, P.facePinsSideY], [ox1 - P.wall / 2, P.facePinsSideY],
   ];
-  // The face sits ON the plate inside a flat charcoal margin the width of the
+  // The face sits ON the plate inside a flat margin the width of the
   // wall. Walls running past the plate to pocket the face were tried first:
   // printed face down, the recessed plate hung 2.5 mm over the bed as
   // 10,000 mm^2 of overhang.
@@ -73,7 +73,7 @@ export function buildShell() {
   let shell = outer.subtract(cavity);
 
   // Layer texture: V-grooves around the walls, stopped short of the top deck
-  // so the deck reads as a cap. Cut before the lug goes on.
+  // so the deck reads as a cap.
   {
     // Each groove: the hull of a slab inset d at z and two slabs on the outline
     // 1.05 d above and below, less the inset prism, so a V whose faces are a
@@ -121,8 +121,6 @@ export function buildShell() {
     const toTop = hy > P.carrierH / 2;
     adds.push(box(hx - P.bossRib / 2, toTop ? hy : cy0 - 0.5, S.bossFootZ, hx + P.bossRib / 2, toTop ? cy1 + 0.5 : hy, S.bossTopZ));
   }
-  // The strap lug on the right wall, its +Z side sloped past 45 degrees back
-  // to the wall so the print (face down) has nothing hanging.
   shell = shell.add(fuse(adds));
   // No engraving on the deck: a 0.6 mm stroke in a vertical wall is one
   // wobbling perimeter and the top wall of every letter droops. The deck

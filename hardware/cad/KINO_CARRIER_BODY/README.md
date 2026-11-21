@@ -9,7 +9,7 @@ either board: the shell clamps the stack, pillar feet on the carrier in
 front and the rear frame's foam on the glass behind, and captures each
 camera head in a pocket with pinch ribs, so the picture does not shake on
 its ribbon. The face
-shell carries the form. Issue #252; seventeenth cut, nothing printed yet;
+shell carries the form. Issue #252; eighteenth cut, nothing printed yet;
 two materials, black PETG and dark blue PLA, one per part; the coupons in
 `coupons/` print before the body. Every part has an ID (A01 to B03, C01 to
 C03 for what is not printed, T01 to T05 for the coupons), embossed on a
@@ -220,8 +220,7 @@ Where it comes from, and what each thing is for:
   landed bar, and it carries the brand; dropped, it slides down its window
   into the open stow zone and the four bores show in the line, the UI's
   four-mark. The window is open: the face's own blue floor shows through
-  it under the bar, and the dropped cover sits in it in plain view. The twelfth cut
-  chose that over a roof, a slot, a keeper and five breakaway blades.
+  it under the bar, and the dropped cover sits in it in plain view.
 - **Colour is the architecture.** Black PETG is everything structural and
   everything that wears: the shell, the frame, the cover. Dark blue PLA is
   what you look at and the one thing you press: the face and the button.
@@ -269,123 +268,21 @@ Where it comes from, and what each thing is for:
   bar, the 14 mm cap. The body is one thing; the reveal line
   and the smooth cap are gone.
 - **Not a box.** R10 plan corners (the carrier's square corner inside the
-  wall caps it near R10.6), the face a pillow framed by a 0.8 mm line of
-  charcoal, the shutter cap domed, the cover's corners R3, every tab and
-  ear gone from the outline. The shell's front edge is on the bed, so its
+  wall caps it near R10.6), the face framed by a 0.3 mm black reveal
+  line, the cover's corners R3, every tab and ear gone from the outline. The shell's front edge is on the bed, so its
   softness is the face's; the rear frame's round is R1.5, its screw holes
   2.55 mm from the edge.
-- **Seven reviews.** Cuts four to nine each answered a cold read: an
-  engineer on the files (press-fit face, 0.4 mm ribs, shallow grooves, the
-  strap under the palm), a customer on the renders (the empty pocket under
-  the closed bar, the rivets, the invisible brand, no grip), a design-award
-  juror (the band pinned low-left in an empty field, a lid instead of a
-  frame, the product name where the brand belongs, the apron as a door that
-  does nothing, ears outside the outline, a smooth cap on a ribbed body), a
-  second juror on the night body (the engraved name on the deck as the one
-  decoration left, the slot stopping short of the groove, the cord on the
-  frame's screws) and a print technician (0.3 mm cavity clearance against
-  PETG shrink, 1.8 mm pin holes closing to 1.5 at the bed, a 7.1 bore
-  around a 7.0 barrel, the elephant foot at every fitted bed edge, the
-  roof's sag over the track, a 0.6 stroke engraved in a vertical wall, the
-  collar's flat-ceilinged recess, the lip slot's free-ended bridges, the
-  grooves over the pilots' threads), then, after the award winners were
-  read, two jurors and a print foreman together (closed, the silhouette was
-  a cassette or a speaker, with ribs and a pink dot; the deck half smooth
-  for a name that was gone; the horizon invisible from the front; the
-  pillow round terraced; the grip a fingertip's edge and the right wall's
-  ribs erased under the fingers; a letter showing through the lip slot; the
-  collar an arrow; a 2.2 cord a key fob and the camera hanging inverted on
-  it; the dome a contour map; the keeper a tooth under the round), and
-  then, with the whole field of design awards read, an IDEA and Red Dot
-  generalist, a Good Design and Compasso d'Oro juror and a jury chair (the
-  glued keeper sealing in the one wear part; pins that locate but do not
-  retain; the button ticking in its guide, the first thing a juror
-  touches; a 30 mm slot reading as a mouth; a 1 mm sill a glove cannot
-  lift; a 9 mm thumb pad for a 20 mm thumb; no cord, no spares, no BOM in
-  the entry; a swelling cell with no gate; a left-hand promise that was
-  four numbers; "layer lines" that are ribs; a lug sentence left over).
-  Each is in ECN-0009 with what it changed. Not taken, six times: stowing
-  the cover up; drop-to-open was settled on the bench. Also not taken: a
-  5.5 mm wall for heat-set frame inserts (the frame screws are on the
-  battery's path; the cycle count and spares are stated instead), a fake
-  lens tell on the closed front, a tripod boss (the next carrier's).
+### What the reviews and the awards taught
 
-### What the design awards taught
-
-Read before the eighth cut (2026-11-20) and widened for the ninth (the
-owner: "not just award cameras, the whole design awards"): the published
-criteria and the juries' own words across Red Dot (Best of the Best), iF
-(Gold), IDEA (Gold, Best in Show), the Good Design Award Japan (Grand, Gold,
-Long Life), the Compasso d'Oro, D&AD and the Braun Prize, in every
-category, and the record of award-praised objects that failed in use. The
-owner's brief was that the body be printable and recognisable.
-
-The criteria, as published. Red Dot: innovation, ergonomics, product
-periphery, functionality, durability, self-explanatory quality, formal
-quality, ecological compatibility, symbolic and emotional content; the unit
-is judged in the hand. IDEA, unchanged for 40 years: design innovation
-(what problem does it solve, how clever is the solution, does it advance
-its category), benefit to the user, benefit to the brand, benefit to
-society, appropriate aesthetics (form suits use; colours, materials and
-finishes fit the purpose). Good Design: the Grand Award is voted from the
-Gold list by the jury and the other winners; the Long Life award goes to
-what is still right after ten years; 2025's Grand went to thirty years of
-disaster housing, not an object. Compasso d'Oro: pre-screened on measurable
-criteria (performance, reduced environmental impact, new technology); the
-2022 jury's words were development, sustainable, responsible; its citations
-praise "technological and formal innovation to the archetype" and "a poetic
-solution to a static and mechanical problem". Rams's ten, which every one
-of these juries still quotes: innovative, useful, aesthetic, understandable,
-unobtrusive, honest, long-lasting, thorough to the last detail,
-environmentally friendly, as little design as possible.
-
-What wins, in every category: a real problem solved cleverly inside an
-archetype people already know (the citations name the problem first and
-the form second); one idea carried through the whole object; one visible,
-physical main action with a sound and a stop; benefit to the user and now
-to society (repairable, screw-apart, replaceable parts, open documentation:
-Fairphone, Framework, the Xbox Adaptive Controller designed from the edge
-user inward); appropriate aesthetics, colour as information; workmanship at
-the edges and joints; longevity, since trend finishes date and an archetype
-with one clear move does not; thoroughness, since the strap, the packaging,
-the manual and the service procedure are part of the entry.
-
-What fails, including award-praised work: a device without a need (Juicero,
-the Humane AI Pin, the Rabbit R1: "a brilliant exercise in design", hollow
-in use); minimal to a fault; style that does not carry into handling;
-decoration in costume; fragile novelty and glue where a pin belongs; one
-wrong detail at the point of use; hype over implementation ("it is always
-the implementation that lets them down").
-
-The camera winners, in the juries' words: one idea carried through the whole object
-(Sigma BF, Red Dot Best of the Best 2026 at 100 points, iF Gold 2026, Good
-Design Gold 2025: "a single aluminium block", "a stripped-down interface";
-Leica T: "reduction to essentials"; Fujifilm GFX100RF: "closer to an analog
-tool than a piece of technology"); continuity, a silhouette drawn from memory
-(Ricoh GR IV, Good Design 2025: "a consistent design for 30 years, evolving
-alongside its users"); the ritual visible and physical (Instax mini Evo, Red
-Dot Best of the Best 2024: "instant-camera rituals", its crank lever really
-advances the print); self-explanatory controls, one thing each; honest
-symbolism (the Charmera's 1987 Fling shape); workmanship at the edges, since
-the jury holds the unit.
-
-What failed, in the reviews of the same winners: minimal to a fault (the
-BF "virtually flat", "ergonomics non-existent"; the Leica T's touchscreen
-"95 per cent there"), so reduce controls, never grip; style that does not
-carry into handling (X half, X1D); no strap (Camp Snap); decoration in
-costume (fake leatherette, dials that are not dials); fragile novelty (Paper
-Shoot); one wrong detail at the point of use (Camp Snap's LED in the
-viewfinder).
-
-Applied here as the eighth and ninth cuts' brief: the jury holds the print,
-so every surface the hand meets is judged as a printed surface, and the
-process is either shown on purpose (the ribs on the layer rhythm; rounds
-in plan, chamfers in Z) or it must not show at all; recognisable
-means three lines on a napkin that are nothing else, and "a camera" at
-arm's length with the cover closed; responsible means screw-apart, pins not
-glue, a replaceable wear part, a strap supplied, the print plan and the
-coupons in the entry, and nothing that dates in two years. Sources are
-listed in ECN-0009.
+Nine review rounds (engineers, customers, design-award jurors, a print
+foreman, a first-time builder) and a reading of the design awards' own
+criteria shaped cuts four to seventeen. What survived is the body above;
+each round, what it found and what was taken or refused is in ECN-0009,
+and every cut's renders are on the making-of page (`docs/MAKING_OF.md`).
+The rules that came out of it and govern this body: rounds in plan,
+chamfers in Z; reduce controls, never grip; the slide must be visible;
+nothing glued, nothing that needs a knife; every overhang in a named
+place; one material per part; every part keyed and named.
 
 ### The face and the cover
 
@@ -441,17 +338,6 @@ body. The pillar coupon sets the hole; the real face, hung face-down from
 the cord for an hour and then pulled, proves the hold. To take the face
 off: the horizon channel on the left wall exposes 1.5 mm of the face's
 back edge at its left end; a nail lifts it there. No knife on the blue.
-
-Earlier drafts, each thrown out by a gate or a review: a rim pocket (the
-face flush inside walls run past the plate: 10,000 mm^2 of overhang face
-down); a proud face inside a flat margin (a lid on a tin); a 1 mm band rim
-with rivet bosses over the pin holes; a glued apron plate over the stow
-zone (a door that did nothing, and 0.6 mm proud by arithmetic); the face
-roofing the stow zone with a slot for the lip, an entry gap below the
-track and a captive keeper refilling it (sixth to eleventh cuts: the roof
-was two cantilevers in print and needed five breakaway blades, the keeper
-a foot and a pocket, the track a relieved floor; the owner's call on the
-twelfth cut was to open the stow zone and drop all of it).
 
 ### The shutter
 
@@ -591,7 +477,10 @@ button. Orientations are in the parts table, each with its preview, and in
 
 Coupons before the full print, in `coupons/`, each cut from the real part
 with a box so a fit proved on the coupon is the fit in the part; same print
-orientation as the parent. Pass criteria, in numbers:
+orientation as the parent; each with its ID in its bed face. The two
+pairs that print together ship as bed plates, `P1-COUPON_PLATE_T01_T02.stl`
+and `P2-COUPON_PLATE_T03_T04.stl`, 10 mm apart, so a print job is one
+file. Pass criteria, in numbers:
 
 | Coupon | What it proves | You need | Pass | If not, the number |
 |---|---|---|---|---|

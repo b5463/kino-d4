@@ -8,12 +8,11 @@
 // the stack, and captures each camera head in a pocket with pinch ribs so the
 // picture does not shake on its ribbon. The face shell carries the form.
 //
-// ODD JOBS, as the brand's camera concept draws it: a charcoal shell with the
-// layer texture on its walls, a cream (day) or cobalt (night) face with a
-// pillow edge, a pink shutter, quiet markings. Three filaments, one part
-// each. See shell.mjs, face.mjs, shutter.mjs.
+// ODD JOBS in two materials, one per part: black PETG for the shell, the
+// frame and the cover; dark blue PLA for the face and the button. See
+// shell.mjs, face.mjs, shutter.mjs.
 //
-// PETG, FDM, no support:
+// FDM, no support:
 //   A01-KINO_CARRIER_SHELL.stl           black PETG; front plate, four walls, pillars, shutter pod; front plate on the bed
 //   A02-KINO_CARRIER_FACE.stl            dark blue PLA; the face with its own track floor; back down
 //   A03-KINO_CARRIER_REAR_FRAME.stl      black PETG; the frame around the display; rear face up
@@ -324,6 +323,28 @@ const coupons = (() => {
     "T01-KINO_COUPON_SHRINK_BAR.stl": box(0, 0, 0, 100, 10, 3).subtract(blockText(IDS.shrinkBar, 3, 2.9, 3 - P.idDepth, P.idPx, 1, false)),
   };
 })();
+// Each coupon carries its own ID in its bed face (the parents' IDs fall
+// outside the cut boxes): a gate proves the engraving sits in material.
+{
+  const px = 0.5;
+  const at = { "T02-KINO_COUPON_POCKET.stl": [0.5, 12.3], "T03-KINO_COUPON_PILLAR.stl": [2, 2], "T04-KINO_COUPON_STRAP_SHELL.stl": [6, 9.8], "T05-KINO_COUPON_DECK.stl": [2, 0.6] };
+  for (const [name, [x, y]] of Object.entries(at)) {
+    const id = name.slice(0, 3), probe = blockText(id, x, y, 0, px, P.idDepth, true);
+    check(`${name} carries its ID in its bed face`, vol(coupons[name], probe) > probe.volume() * 0.98, `${id} at (${x}, ${y}) in the bed face, ${P.idDepth} deep; ${r2(100 * vol(coupons[name], probe) / probe.volume())} % of the engraving in material`);
+    coupons[name] = coupons[name].subtract(blockText(id, x, y, -1, px, P.idDepth + 1, true));
+  }
+}
+// Bed plates: the coupons that print together, 10 mm apart, as one file each.
+const plates = (() => {
+  const beside = (a, b, gap = 10) => fuse([a, b.translate([a.boundingBox().max[0] + gap, 0, 0])]);
+  return {
+    "P1-COUPON_PLATE_T01_T02.stl": beside(coupons["T01-KINO_COUPON_SHRINK_BAR.stl"], coupons["T02-KINO_COUPON_POCKET.stl"]),
+    "P2-COUPON_PLATE_T03_T04.stl": beside(coupons["T03-KINO_COUPON_PILLAR.stl"], coupons["T04-KINO_COUPON_STRAP_SHELL.stl"]),
+  };
+})();
+for (const [name, m] of Object.entries(plates)) {
+  check(`${name} is two pieces on the bed`, m.decompose().length === 2 && m.boundingBox().max[0] <= 250, `${r2(m.boundingBox().max[0])} x ${r2(m.boundingBox().max[1])} mm, ${m.decompose().length} pieces`);
+}
 {
   const pilot = cylZ(P.frameScrewXs[0], XY.wallMidY[0], Z.glass - 0.2, P.framePilotD / 2 - 0.1, P.framePilotDepth, 16);
   check("the strap coupon carries a frame pilot", vol(shell, pilot) < 1e-3 && vol(shell, box(P.frameScrewXs[0] - 2, oy0, Z.glass, P.frameScrewXs[0] + 2, oy0 + 4.5, Z.glass + 6)) > 20 && P.frameScrewXs[0] + 4 <= ox0 + 30,
@@ -337,6 +358,7 @@ for (const [name, m] of Object.entries(coupons)) {
 const files = {};
 for (const [name, m] of Object.entries(prints)) files[name] = writeStl(outDir, name, m);
 for (const [name, m] of Object.entries(coupons)) files[name] = writeStl(outDir, name, m);
+for (const [name, m] of Object.entries(plates)) files[name] = writeStl(outDir, name, m);
 files["KINO_CARRIER_STACK_DUMMY.stl"] = writeStl(outDir, "KINO_CARRIER_STACK_DUMMY.stl", dummy);
 for (const [name, m] of [["shell", shell], ["frame", frame], ["face", face], ["cover", cover], ["cover-open", coverOpen]]) {
   writeStl(outDir, `preview-${name}.stl`, m);

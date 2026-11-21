@@ -23,7 +23,7 @@ export const fuse = (list) => Manifold.union(list);
 export const vol = (a, b) => a.intersect(b).volume();
 // A box with rounded vertical edges: the hull of four cylinders. The radius
 // is clamped to half the shorter side: past that the corner cylinders cross
-// and the hull overruns the box (the apron plate grew 5 mm each way once).
+// and the hull overruns the box (a plate grew 5 mm each way once).
 export const rbox = (x0, y0, z0, x1, y1, z1, rIn, seg = 48) => {
   const r = Math.min(rIn, (x1 - x0) / 2 - 0.01, (y1 - y0) / 2 - 0.01);
   return r <= 0 ? box(x0, y0, z0, x1, y1, z1) : Manifold.hull([
@@ -71,27 +71,14 @@ export function blockText(text, x, y, z, px, h, mirror = false) {
       if (bit !== "1") return;
       const cx = i * 6 * px + c * px, cy = (6 - r) * px;
       const gx = mirror ? width - cx - px : cx;
-      cubes.push(cube(x + gx - 0.01, y + cy - 0.01, z, px + 0.02, px + 0.02, h));
+      cubes.push(cube(x + gx - 0.03, y + cy - 0.03, z, px + 0.06, px + 0.06, h));   // pixels overlap 0.03 so the union never leaves a sliver
     }));
   });
   return fuse(cubes);
 }
 
-// Area of faces pointing down more than 45 degrees off vertical, above the bed.
-export function overhangArea(m) {
-  const mesh = m.getMesh(); const s = mesh.numProp; let area = 0;
-  const v = (i) => [mesh.vertProperties[i * s], mesh.vertProperties[i * s + 1], mesh.vertProperties[i * s + 2]];
-  for (let t = 0; t < mesh.triVerts.length; t += 3) {
-    const [a, b, c] = [v(mesh.triVerts[t]), v(mesh.triVerts[t + 1]), v(mesh.triVerts[t + 2])];
-    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    const n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
-    const len = Math.hypot(...n); if (len < 1e-9) continue;
-    if (n[2] / len < -Math.SQRT1_2 - 1e-6 && Math.max(a[2], b[2], c[2]) > 0.01) area += len / 2;
-  }
-  return area;
-}
-
-// The same area, split by whether each triangle's centroid lies in one of the
+// Down-facing area past 45 degrees, above the bed, split by whether each
+// triangle's centroid lies in one of the
 // boxes [x0, y0, z0, x1, y1, z1] (the print's frame): inside is a named
 // bridge, hole or pocket; outside is a surface a support would scar.
 export function overhangOutside(m, zones) {

@@ -20,6 +20,9 @@ export const RELEASE_SET = [
   { file: "T03-KINO_COUPON_PILLAR.stl", dir: "coupons", parts: 1 },
   { file: "T04-KINO_COUPON_STRAP_SHELL.stl", dir: "coupons", parts: 1 },
   { file: "T05-KINO_COUPON_DECK.stl", dir: "coupons", parts: 1 },
+  // Bed plates: the coupons that print together, in one file each.
+  { file: "P1-COUPON_PLATE_T01_T02.stl", dir: "coupons", parts: 2 },
+  { file: "P2-COUPON_PLATE_T03_T04.stl", dir: "coupons", parts: 2 },
 ];
 export const RELEASE_DIRS = ["print", "coupons"];
 // Non-mesh outputs of a build and where they go.
@@ -42,4 +45,6 @@ export const RELEASE_PROCESS = {
   "T03-KINO_COUPON_PILLAR.stl": "FDM, black PETG, 0.20 mm, plate down: one pillar with its head pocket and a face pin hole",
   "T04-KINO_COUPON_STRAP_SHELL.stl": "FDM, black PETG, 0.20 mm, cut face down: a wall end with its tunnel, slots and the first frame pilot; pulled to 100 N on a 2.5 mm cord, the pilot driven ten times",
   "T05-KINO_COUPON_DECK.stl": "FDM, black PETG, 0.20 mm, cut face down: the deck with the pod, the collar and the guide ribs",
+  "P1-COUPON_PLATE_T01_T02.stl": "FDM, black PETG, 0.20 mm: T01 and T02 on one bed, the first print; set the shrink compensation from T01, check the pocket on T02",
+  "P2-COUPON_PLATE_T03_T04.stl": "FDM, black PETG, 0.20 mm: T03 and T04 on one bed, the second print; the head pocket, a pin hole, the strap tunnel and a frame pilot",
 };

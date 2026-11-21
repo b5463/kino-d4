@@ -1,10 +1,10 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-21T03:21:20.954Z",
+  "generated": "2026-11-21T14:39:37.605Z",
   "body": {
     "width": 128.4,
     "height": 80.8,
-    "depth": 50.1,
+    "depth": 51.1,
     "lensRowY": 28.45,
     "cameraXs": [
       17.195,
@@ -33,8 +33,8 @@
   },
   "face": {
     "back": 39.9,
-    "front": 43.1,
-    "trackTop": 42.3,
+    "front": 44.1,
+    "trackTop": 43.3,
     "outline": [
       -4.7,
       -4.7,
@@ -69,80 +69,80 @@
     "capD": 14
   },
   "files": {
-    "KINO_CARRIER_SHELL.stl": {
-      "triangles": 14192,
-      "volumeCm3": 113.45,
+    "A01-KINO_CARRIER_SHELL.stl": {
+      "triangles": 14750,
+      "volumeCm3": 113.44,
       "size": [
         128.4,
         80.8,
         44.9
       ]
     },
-    "KINO_CARRIER_REAR_FRAME.stl": {
-      "triangles": 4316,
-      "volumeCm3": 8.77,
+    "A03-KINO_CARRIER_REAR_FRAME.stl": {
+      "triangles": 4964,
+      "volumeCm3": 8.76,
       "size": [
         128.4,
         80.8,
         3.5
       ]
     },
-    "KINO_CARRIER_FACE.stl": {
-      "triangles": 7322,
-      "volumeCm3": 21.1,
+    "A02-KINO_CARRIER_FACE.stl": {
+      "triangles": 9530,
+      "volumeCm3": 31.08,
       "size": [
         127.8,
         80.2,
-        3.2
+        4.2
       ]
     },
-    "KINO_CARRIER_LENS_COVER.stl": {
-      "triangles": 2864,
-      "volumeCm3": 2.95,
+    "B01-KINO_CARRIER_LENS_COVER.stl": {
+      "triangles": 3432,
+      "volumeCm3": 2.87,
       "size": [
         86.8,
         16.5,
         4.7
       ]
     },
-    "KINO_CARRIER_SHUTTER_BUTTON.stl": {
-      "triangles": 1576,
-      "volumeCm3": 1.77,
+    "B02-KINO_CARRIER_SHUTTER_BUTTON.stl": {
+      "triangles": 3066,
+      "volumeCm3": 1.76,
       "size": [
         40.75,
         19.5,
         6.3
       ]
     },
-    "KINO_COUPON_PILLAR.stl": {
-      "triangles": 2048,
-      "volumeCm3": 14.52,
+    "T03-KINO_COUPON_PILLAR.stl": {
+      "triangles": 2630,
+      "volumeCm3": 14.51,
       "size": [
         29.65,
         75.11,
         28
       ]
     },
-    "KINO_COUPON_POCKET.stl": {
-      "triangles": 774,
-      "volumeCm3": 0.82,
+    "T02-KINO_COUPON_POCKET.stl": {
+      "triangles": 1392,
+      "volumeCm3": 0.81,
       "size": [
         16,
         16,
         4.4
       ]
     },
-    "KINO_COUPON_DECK.stl": {
-      "triangles": 2440,
-      "volumeCm3": 4.46,
+    "T05-KINO_COUPON_DECK.stl": {
+      "triangles": 3046,
+      "volumeCm3": 4.45,
       "size": [
         36,
         7.5,
         28.5
       ]
     },
-    "KINO_COUPON_STRAP_SHELL.stl": {
-      "triangles": 824,
+    "T04-KINO_COUPON_STRAP_SHELL.stl": {
+      "triangles": 1414,
       "volumeCm3": 1.81,
       "size": [
         26,
@@ -150,13 +150,31 @@
         14
       ]
     },
-    "KINO_COUPON_SHRINK_BAR.stl": {
-      "triangles": 12,
-      "volumeCm3": 3,
+    "T01-KINO_COUPON_SHRINK_BAR.stl": {
+      "triangles": 508,
+      "volumeCm3": 2.99,
       "size": [
         100,
         10,
         3
+      ]
+    },
+    "P1-COUPON_PLATE_T01_T02.stl": {
+      "triangles": 1900,
+      "volumeCm3": 3.81,
+      "size": [
+        126,
+        16,
+        4.4
+      ]
+    },
+    "P2-COUPON_PLATE_T03_T04.stl": {
+      "triangles": 4044,
+      "volumeCm3": 16.32,
+      "size": [
+        65.65,
+        75.11,
+        28
       ]
     },
     "KINO_CARRIER_STACK_DUMMY.stl": {
@@ -169,26 +187,26 @@
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 30540,
-      "volumeCm3": 232.89,
+      "triangles": 34616,
+      "volumeCm3": 242.77,
       "size": [
         128.4,
         80.8,
-        53.1
+        54.1
       ]
     },
     "KINO_CARRIER_OPEN_PREVIEW.stl": {
-      "triangles": 30558,
-      "volumeCm3": 232.89,
+      "triangles": 34602,
+      "volumeCm3": 242.77,
       "size": [
         128.4,
         80.8,
-        53.1
+        54.1
       ]
     }
   },
   "gates": {
-    "total": 155,
+    "total": 162,
     "failed": 0
   },
   "checks": [
@@ -200,12 +218,12 @@
     {
       "name": "depth chain adds up to the body depth",
       "pass": true,
-      "details": "rear frame 2 + glass clearance 0.4 + P4 module, glass to PCB back 4.6 + P4 inserts 3.3 + spacers 8 + carrier PCB 1.6 + XIAO socket 8.5 + XIAO header insulator (PROVISIONAL) 2.5 + XIAO back face to lens front 15 + plate ahead of the lens 1 + face, over the front 3.2 = 50.1 mm; body 50.1; nothing stands proud of the face"
+      "details": "rear frame 2 + glass clearance 0.4 + P4 module, glass to PCB back 4.6 + P4 inserts 3.3 + spacers 8 + carrier PCB 1.6 + XIAO socket 8.5 + XIAO header insulator (PROVISIONAL) 2.5 + XIAO back face to lens front 15 + plate ahead of the lens 1 + face, over the front 4.2 = 51.1 mm; body 51.1; nothing stands proud of the face"
     },
     {
       "name": "the horizon sits above the track's lips and the grip leaves plate",
       "pass": true,
-      "details": "groove 0.8 deep over lips 2.4 above the shell's plate (the cover 2, 0.4 of play); 1 mm of plate under the grip"
+      "details": "groove 0.8 deep over lips 2.4 above the face's own 1 floor (the cover 2, 0.4 of play); 2 mm of plate under the grip"
     },
     {
       "name": "the lens front is the pocket floor",
@@ -220,7 +238,7 @@
     {
       "name": "the face covers the shell's front, inset from the outline",
       "pass": true,
-      "details": "127.8 x 80.2 face on the plate, 3.2 mm thick with a 1.2 mm chamfer"
+      "details": "127.8 x 80.2 face on the plate, 4.2 mm thick with a 1.2 mm chamfer"
     },
     {
       "name": "plan corner leaves wall on the diagonal",
@@ -230,7 +248,7 @@
     {
       "name": "the face steps in from the shell and still covers the pins",
       "pass": true,
-      "details": "0.3 mm of wall end shows around the face (in the face's filament, shellFrontSwap 1); the pins at the wall's middle sit 1 mm inside the face's edge"
+      "details": "0.3 mm of black wall end shows around the blue face; the pins at the wall's middle sit 1 mm inside the face's edge"
     },
     {
       "name": "battery bay takes the cell with foam and its swell",
@@ -280,7 +298,7 @@
     {
       "name": "face sits on the shell without overlap",
       "pass": true,
-      "details": "0.0000 mm^3 shared"
+      "details": "-0.0000 mm^3 shared"
     },
     {
       "name": "stack dummy clears the shell (ribs aside)",
@@ -325,7 +343,7 @@
     {
       "name": "field cone at X 17.195 clears the open cover",
       "pass": true,
-      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 24.63"
+      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 23.76"
     },
     {
       "name": "closed cover blankets the cell at X 17.195",
@@ -360,7 +378,7 @@
     {
       "name": "field cone at X 39.195 clears the open cover",
       "pass": true,
-      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 24.63"
+      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 23.76"
     },
     {
       "name": "closed cover blankets the cell at X 39.195",
@@ -395,7 +413,7 @@
     {
       "name": "field cone at X 61.195 clears the open cover",
       "pass": true,
-      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 24.63"
+      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 23.76"
     },
     {
       "name": "closed cover blankets the cell at X 61.195",
@@ -430,7 +448,7 @@
     {
       "name": "field cone at X 83.195 clears the open cover",
       "pass": true,
-      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 24.63"
+      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 23.76"
     },
     {
       "name": "closed cover blankets the cell at X 83.195",
@@ -490,7 +508,7 @@
     {
       "name": "face pin hole at (30, 73.55) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 3.2"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 4.2"
     },
     {
       "name": "face pin hole in the wall end at (90, 73.55) open",
@@ -505,7 +523,7 @@
     {
       "name": "face pin hole at (90, 73.55) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 3.2"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 4.2"
     },
     {
       "name": "face pin hole in the wall end at (5, -2.75) open",
@@ -520,7 +538,7 @@
     {
       "name": "face pin hole at (5, -2.75) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 3.2"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 4.2"
     },
     {
       "name": "face pin hole in the wall end at (96.7, -2.75) open",
@@ -535,7 +553,7 @@
     {
       "name": "face pin hole at (96.7, -2.75) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 3.2"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 4.2"
     },
     {
       "name": "face pin hole in the wall end at (-2.75, 52) open",
@@ -550,7 +568,7 @@
     {
       "name": "face pin hole at (-2.75, 52) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 3.2"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 4.2"
     },
     {
       "name": "face pin hole in the wall end at (121.15, 52) open",
@@ -565,7 +583,7 @@
     {
       "name": "face pin hole at (121.15, 52) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 3.2"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 4.2"
     },
     {
       "name": "the walls carry the pin holes",
@@ -695,17 +713,17 @@
     {
       "name": "cover closed: held by the detent and nothing else",
       "pass": true,
-      "details": "0.058 mm^3 of bump inside the cover's edge crests"
+      "details": "0.038 mm^3 of bump inside the cover's edge crests"
     },
     {
       "name": "cover open: held by the detent and nothing else",
       "pass": true,
-      "details": "0.058 mm^3"
+      "details": "0.038 mm^3"
     },
     {
       "name": "cover mid-travel: free in the track",
       "pass": true,
-      "details": "0.0000 mm^3; the edge relief clears the bumps between the crests"
+      "details": "-0.0000 mm^3; the edge relief clears the bumps between the crests"
     },
     {
       "name": "cover travel is positive and the cover stows above the rim",
@@ -715,12 +733,17 @@
     {
       "name": "wordmark fits under the lip",
       "pass": true,
-      "details": "30 x 6.79 mm raised 0.8; \"odd jobs\" at 30 mm has strokes about 1.3 mm, floor 0.8"
+      "details": "30 x 6.79 mm engraved 0.4; \"odd jobs\" at 30 mm has strokes about 1.3 mm, floor 0.8"
+    },
+    {
+      "name": "the cover goes in one way only",
+      "pass": true,
+      "details": "turned round in its plane the cover's 1.0 bevel meets the 1.5 lip: 1.15 mm^3 of lip inside it; the right way, 0.04 (the detent's bite)"
     },
     {
       "name": "wordmark strokes clear one nozzle line with margin",
       "pass": true,
-      "details": "about 1.3 mm; print its last 0.8 mm in cream on both colourways"
+      "details": "about 1.3 mm; print its last undefined mm in cream on both colourways"
     },
     {
       "name": "the grip is the horizon's right end, past the track",
@@ -888,54 +911,84 @@
       "details": "643.84 mm^2 of foam at 25 kPa (PROVISIONAL) is 16.1 N on the glass, 12.62 times the 130 g stack; the only screws in the body go from the frame into the shell"
     },
     {
-      "name": "KINO_CARRIER_SHELL.stl overhangs only where a support's scar would hide",
+      "name": "A01-KINO_CARRIER_SHELL.stl overhangs only where a support's scar would hide",
       "pass": true,
       "details": "1.88 mm^2 facing down past 45 degrees outside the named places (allowed 5), 104.38 inside them: the cavity (the four screw-foot shoulders), the LED slots (4.5 mm bridges), the USB opening's 45 degree gable, the strap tunnels, the six pin holes, the collar's 0.4 recess; the largest stray at (17.94, 44.74, 1)"
     },
     {
-      "name": "KINO_CARRIER_SHELL.stl fits the bed",
+      "name": "A01-KINO_CARRIER_SHELL.stl fits the bed",
       "pass": true,
       "details": "128.4 x 80.8 x 44.9"
     },
     {
-      "name": "KINO_CARRIER_REAR_FRAME.stl overhangs only where a support's scar would hide",
+      "name": "A03-KINO_CARRIER_REAR_FRAME.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 659.84 inside them: the gasket groove's ceiling (a 1.5 mm bridge at the bed); holes through, the chamfer and the pad face up"
+      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 680.5 inside them: the gasket groove's ceiling (a 2 mm bridge at the bed) and the A03 engraving's; holes through, the chamfer and the pad face up"
     },
     {
-      "name": "KINO_CARRIER_REAR_FRAME.stl fits the bed",
+      "name": "A03-KINO_CARRIER_REAR_FRAME.stl fits the bed",
       "pass": true,
       "details": "128.4 x 80.8 x 3.5"
     },
     {
-      "name": "KINO_CARRIER_FACE.stl overhangs only where a support's scar would hide",
+      "name": "A02-KINO_CARRIER_FACE.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 5), 179.31 inside them: the six pin holes and the signature's 0.4 mm ceilings at the bed; the lips' undersides are steeper than 45"
+      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 5), 199.97 inside them: the six pin holes and the signature's 0.4 mm ceilings at the bed; the lips' undersides are steeper than 45"
     },
     {
-      "name": "KINO_CARRIER_FACE.stl fits the bed",
+      "name": "A02-KINO_CARRIER_FACE.stl fits the bed",
       "pass": true,
-      "details": "127.8 x 80.2 x 3.2"
+      "details": "127.8 x 80.2 x 4.2"
     },
     {
-      "name": "KINO_CARRIER_LENS_COVER.stl overhangs only where a support's scar would hide",
+      "name": "B01-KINO_CARRIER_LENS_COVER.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 3.45 inside them: the 0.2 mm ledges over the edge reliefs"
+      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 21.26 inside them: the 0.2 mm ledges over the edge reliefs and the B01 engraving's ceiling"
     },
     {
-      "name": "KINO_CARRIER_LENS_COVER.stl fits the bed",
+      "name": "B01-KINO_CARRIER_LENS_COVER.stl fits the bed",
       "pass": true,
       "details": "86.8 x 16.5 x 4.7"
     },
     {
-      "name": "KINO_CARRIER_SHUTTER_BUTTON.stl overhangs only where a support's scar would hide",
+      "name": "B02-KINO_CARRIER_SHUTTER_BUTTON.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0.5 mm^2 facing down past 45 degrees outside the named places (allowed 1), 44.02 inside them: the retainer's leg-slot bridge and wire notches, inside the pod; the largest stray at (6.19, 16.78, 0.29)"
+      "details": "0.5 mm^2 facing down past 45 degrees outside the named places (allowed 1), 74.53 inside them: the retainer's leg-slot bridge and wire notches, inside the pod, and the two ID engravings' ceilings; the largest stray at (6.19, 16.78, 0.29)"
     },
     {
-      "name": "KINO_CARRIER_SHUTTER_BUTTON.stl fits the bed",
+      "name": "B02-KINO_CARRIER_SHUTTER_BUTTON.stl fits the bed",
       "pass": true,
       "details": "40.75 x 19.5 x 6.3"
+    },
+    {
+      "name": "T02-KINO_COUPON_POCKET.stl carries its ID in its bed face",
+      "pass": true,
+      "details": "T02 at (0.5, 12.3) in the bed face, 0.4 deep; 100 % of the engraving in material"
+    },
+    {
+      "name": "T03-KINO_COUPON_PILLAR.stl carries its ID in its bed face",
+      "pass": true,
+      "details": "T03 at (2, 2) in the bed face, 0.4 deep; 100 % of the engraving in material"
+    },
+    {
+      "name": "T04-KINO_COUPON_STRAP_SHELL.stl carries its ID in its bed face",
+      "pass": true,
+      "details": "T04 at (6, 9.8) in the bed face, 0.4 deep; 100 % of the engraving in material"
+    },
+    {
+      "name": "T05-KINO_COUPON_DECK.stl carries its ID in its bed face",
+      "pass": true,
+      "details": "T05 at (2, 0.6) in the bed face, 0.4 deep; 100 % of the engraving in material"
+    },
+    {
+      "name": "P1-COUPON_PLATE_T01_T02.stl is two pieces on the bed",
+      "pass": true,
+      "details": "126 x 16 mm, 2 pieces"
+    },
+    {
+      "name": "P2-COUPON_PLATE_T03_T04.stl is two pieces on the bed",
+      "pass": true,
+      "details": "65.65 x 75.11 mm, 2 pieces"
     },
     {
       "name": "the strap coupon carries a frame pilot",
@@ -943,27 +996,27 @@
       "details": "pilot at X 17 inside the coupon's 27 mm; M2 x 8 driven and backed out ten times proves the thread-forming pilots"
     },
     {
-      "name": "KINO_COUPON_PILLAR.stl is one piece on the bed",
+      "name": "T03-KINO_COUPON_PILLAR.stl is one piece on the bed",
       "pass": true,
       "details": "29.65 x 75.11 x 28 mm, 1 piece(s)"
     },
     {
-      "name": "KINO_COUPON_POCKET.stl is one piece on the bed",
+      "name": "T02-KINO_COUPON_POCKET.stl is one piece on the bed",
       "pass": true,
       "details": "16 x 16 x 4.4 mm, 1 piece(s)"
     },
     {
-      "name": "KINO_COUPON_DECK.stl is one piece on the bed",
+      "name": "T05-KINO_COUPON_DECK.stl is one piece on the bed",
       "pass": true,
       "details": "36 x 7.5 x 28.5 mm, 1 piece(s)"
     },
     {
-      "name": "KINO_COUPON_STRAP_SHELL.stl is one piece on the bed",
+      "name": "T04-KINO_COUPON_STRAP_SHELL.stl is one piece on the bed",
       "pass": true,
       "details": "26 x 14 x 14 mm, 1 piece(s)"
     },
     {
-      "name": "KINO_COUPON_SHRINK_BAR.stl is one piece on the bed",
+      "name": "T01-KINO_COUPON_SHRINK_BAR.stl is one piece on the bed",
       "pass": true,
       "details": "100 x 10 x 3 mm, 1 piece(s)"
     }
