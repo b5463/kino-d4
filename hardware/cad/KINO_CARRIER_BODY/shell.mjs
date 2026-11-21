@@ -138,7 +138,7 @@ export function buildShell() {
     }
     // All the way round, the deck included: the body is one thing, one idea
     // carried through. One smooth ring of deckRing round the shutter collar.
-    const ring = cylY(P.shutterX, oy1 - P.wall - 2, P.shutterZ, P.shutterCollarD / 2 + P.deckRing, P.wall + 4);
+    const ring = cylY(P.shutterX, oy1 - P.wall - 2, SHUTTER.Zc, P.shutterCollarD / 2 + P.deckRing, P.wall + 4);
     void MODEL;
     shell = shell.subtract(fuse(grooves).subtract(ring));
     // The horizon carried round the LEFT wall only, from the front to the rear
@@ -202,18 +202,10 @@ export function buildShell() {
   // from the cavity, so mirrored).
   cuts.push(textSolid(IDS.shell, P.idShellAt[0], P.idShellAt[1], Z.plateInner - 1, P.idCap, P.idDepth + 1, true));
   const bare = shell.subtract(fuse(cuts));
-  // Three ribs along the shutter's guide bore on its face side (the floor of
-  // the bore in print): the cap runs on three lines instead of ticking in a
-  // 0.6 mm gap.
-  const guideRibs = [];
-  {
-    const [rh, rw] = P.shutterGuideRib, rg = P.shutterActuatorGuideD / 2;
-    const y0 = SHUTTER.guideBottom + 0.1, len = P.shutterGuideLen - P.shutterCollarDepth - 0.15;
-    for (const phi of [-50, 0, 50]) {
-      guideRibs.push(cube(-rw / 2, y0, rg - rh, rw, len, rh + 0.3).rotate([0, phi, 0]).translate([P.shutterX, 0, P.shutterZ]));
-    }
-  }
-  return { bare, shell: status("shell", bare.add(fuse([...ribs, ...guideRibs, ...pod.legRibs]))) };
+  // The four ribs along the shutter's slot come back after the cuts
+  // (shutter.mjs); simplified like the face and the frame, so a rib meeting
+  // the slot's round end leaves no sliver triangle.
+  return { bare, shell: status("shell", bare.add(fuse([...ribs, ...pod.ribs])).simplify(1e-3)) };
 }
 
 export function buildFrame() {

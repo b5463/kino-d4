@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; twenty-first cut generated and gated after the first coupons and the first button printed (2026-11-21: shrink 0.2 % measured, the pocket loose, the head-pocket feet, the frame pilots, the retainer cup and the teardrops refused; the button now one part, loaded through the plate under the face); the new coupons T02 to T05 are next on the bed |
+| Status | Design in progress; twenty-third cut generated and gated after the second coupon round (2026-11-21: the 8.1 gauge pocket holds the head, the bar 99.9 at 0.2 %, the carrier's corner flat on the ledge; the front-entry button took neither the plunger nor the switch, so the slot is open to the face and the switch goes in first); the third pod coupon T05 with B02 is next on the bed, with the pin-hold tests on T03 and T04 still to report |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -467,6 +467,25 @@ owner's printer. Two parts:
   and of the seated plunger, a switch at its stop blocking the plunger's
   ride): plunger first, switch second, face third; switch-first is
   geometrically impossible and the README says so. 187 gates.
+- **The second coupon round, and the slot** (twenty-third cut, 2026-11-21;
+  the owner: "camera fits perfectly in 8.1, shrink bar is 99.9mm, carrier
+  board fits perfectly in the corner, and the button mechanism still has
+  no way for the switch and the button to be fit in there and also its too
+  tight for the button to even fit in without the switch"). `camBody` 7.9
+  (+ 0.2 = the 8.1 pocket), `shrinkPct` stays 0.2 (99.9 is inside the
+  calliper), `ledgeW` and `carrierClear` confirmed. The button: the 0.2 of
+  headroom was not a tolerance but an identity (switch height less the
+  deck less the proud cap), so the guide is now a slot in the deck open
+  toward the face, the pod moved to the deck's front edge (axis Z 32.5, X
+  105.5, the cap's front 0.4 off the face's back), the chamber 18.6 wide
+  with 0.5 a side round a 17.6 flange (1.5 over the step all round), the
+  floor carrying a 6.6 x 6.6 x 0.5 pocket the switch seats in, the leg
+  channels ending inside it, the detent ribs gone, four 0.2 ribs in the
+  slot (two on the round end 60 degrees off its apex, printable). The
+  order reverses: switch first (1.4 of headroom), plunger second hanging on
+  the step over the seated switch (1.1 over its body, 0.3 over its
+  actuator), face third; a switch not yet in its pocket blocks the plunger
+  (gated). `shutterSwitchFree` 0.3, `shutterPodBottomZ` 21. 189 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
@@ -478,7 +497,7 @@ from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-187 in `generate-carrier-body.mjs`, 0 failures (the list below is the
+189 in `generate-carrier-body.mjs`, 0 failures (the list below is the
 first cut's; the package README's "Gates" names the current set, which
 adds the ledge, the carrier heads' clearance, the stack and the frame
 refused turned round, the frame pins and their hold, the pry point open at
@@ -604,8 +623,8 @@ the pins' hold, the active area's position, the field of view.
 
 ## Decision
 
-Design in progress. The first coupons are printed and read (2026-11-21); the
-second round (T02 gauge, T03 ledge corner, T04 strap end with a frame pin)
-decides the head size, the ledge fit and the pins' hold before the body
+Design in progress. Two coupon rounds are printed and read (2026-11-21):
+the head size (8.1) and the ledge fit are settled; the pins' hold (T03,
+T04) and the third pod coupon with the button decide before the body
 prints. Still open: the soldered header insulator, the P4 module can, the
 spacer height, a cell that fits the bay.

@@ -19,7 +19,7 @@ export const P = Object.freeze({
   carrierR: 3.0,             // outline corner radius
   carrierT: 1.6,
   carrierClear: 0.5,         // per side in the cavity: the stack slides in from the rear; 54 mm walls bow, so 0.3 wedged on paper. The shrink itself is the slicer's (shrinkPct)
-  shrinkPct: 0.2,            // MEASURED on T01 (2026-11-21): the 100.0 mm bar printed 99.8. Set in the slicer as compensation; the model is never scaled
+  shrinkPct: 0.2,            // MEASURED on T01 (2026-11-21): the 100.0 mm bar printed 99.8 uncompensated, 99.9 on the second plate. Set in the slicer as compensation; the model is never scaled
   // The four M2 holes, on the P4's insert pattern (61.9 x 54.8), 8.0 mm from
   // the carrier's top and bottom edges. H1 H2 top, H3 H4 bottom. The body
   // uses them for nothing: the dummy carries the standoffs and the carrier's
@@ -107,9 +107,9 @@ export const P = Object.freeze({
   xiaoBoardH: 21.0,
   camModulePcb: [15.5, 17.9],
   camModulePcbT: 3.5,
-  camBody: 8.5,              // the head square. The first T02 (8.7 pocket, 0.3 ribs) was "extremely loose" on the bench: the head is not 8.5. The gauge coupon T02 now has three pockets; the one that holds sets this with camBodySlack
+  camBody: 7.9,              // the head square, SET BY THE GAUGE (T02, 2026-11-21): the 8.1 pocket "fits perfectly", 7.8 and 8.4 did not; with camBodySlack the pocket is 8.1. The first T02 (8.7) was "extremely loose"
   camBodySlack: 0.20,
-  camGaugePockets: [7.8, 8.1, 8.4],   // T02's three pocket widths (ribs the same): a sizing gauge, one print answers which width holds
+  camGaugePockets: [7.8, 8.1, 8.4],   // T02's three pocket widths (ribs the same): a sizing gauge, one print answered: 8.1
   camPocketCornerRelief: 0.5, // round reliefs in the pocket corners: a printed inside corner has its own radius and an 8.5 mm square head hits it before the ribs
   camRibProud: 0.30,         // triangular crush ribs, 0.8 wide at the wall: two extrusion lines, prints every time (0.4 mm round columns did not)
   camRibBase: 0.80,
@@ -252,41 +252,44 @@ export const P = Object.freeze({
   markDepth: 0.4,            // the wordmark engraved in the bar's top: one material per part (PLA on PETG does not bond, so no raised mark in the face's colour); it reads as shadow, as the symbol on the back does
   bedChamfer: 0.4,           // two whole layers at 0.2 (0.3 sliced as one step and a sliver); 45 degrees on every bed-side edge that meets a fit or shows: the cover's and keeper's backs, the face's back outer edge, the shell's front outer edge
   markMinStroke: 0.8,
-  // ---- The shutter: a pod under the deck with a round guide and a chamber
-  // open toward the front through the plate; the plunger and the switch
-  // slide in from the front and the face is the door. One printed part, no
-  // fastener. See shutter.mjs for the chain and why the front. The first
-  // printed pod (2026-11-21) missed the switch by 0.5 mm, had a loose
-  // retainer and no lead route; a pinned floor plate after it could not be
-  // assembled at all (the flange had no way in), and rear entry fails on
-  // the wall's inner face. Every number here is read off the bench's switch.
-  shutterX: 104.0,
-  shutterZ: 26.2,            // bore axis, between the plate and the carrier
-  shutterPodLeft: 10.0,      // the pod's left face this far left of the axis (X 94: 1.9 clear of CAM 4's XIAO at 92.1, 1.85 of pod beside the chamber); the pod runs into the right wall
-  shutterPodBottomZ: 14.0,   // 1.1 above the carrier's front face
+  // ---- The shutter: a pod under the deck at its front edge, the guide a
+  // slot open toward the face, the chamber open through the plate; the
+  // switch goes in first into a pocket in the floor, the plunger slides in
+  // over it, and the face is the door. One printed part, no fastener. See
+  // shutter.mjs for the chain and why the switch is first. The first printed
+  // pod (2026-11-21) missed the switch by 0.5 mm, had a loose retainer and
+  // no lead route; a pinned floor plate after it could not be assembled at
+  // all (the flange had no way in); the first front-entry chamber gave the
+  // plunger and the switch 0.2 mm each and neither went in. Every number
+  // here is read off the bench's switch.
+  shutterX: 105.5,
+  shutterCapToFace: 0.4,     // from the cap's front edge, against the slot's round end, to the face's back; the axis Z follows from it
+  shutterPodLeft: 11.5,      // the pod's left face this far left of the axis (X 94: 1.9 clear of CAM 4's XIAO at 92.1, 2.2 of pod beside the chamber); the pod runs into the right wall
+  shutterPodBottomZ: 21.0,   // 2.2 of pod behind the chamber's rear end; 8 above the carrier's front face
   shutterSwitchBody: [6.0, 6.0, 4.3],   // X, Z and the whole height, base to actuator top at rest (3.5 body + 0.8 actuator); MEASURE the bench's switch
   shutterSwitchTravel: 0.25, // the actuator's stroke to the click
-  shutterSwitchFree: 0.2,    // between the actuator and the flange at rest, so the switch slides in under the seated plunger; it is also the plunger's play riding in
+  shutterSwitchFree: 0.3,    // between the actuator and the flange at rest (the plunger hangs on the step): the first 0.3 of press is free, then the click. A printed chamber 0.2 short still leaves the actuator untouched
+  shutterSwitchPocket: 0.5,  // the pocket in the floor the switch drops into at the end of its ride: its walls hold it under the cap, and a switch NOT in its pocket is 0.5 too tall for the flange to pass over, which forces the order
+  shutterSwitchPocketClr: 0.3,  // a side round the switch's body in the pocket
   shutterLegX: 3.25,         // the legs' X off the axis, each side (6.5 pitch)
   shutterLegZ: 2.25,         // the legs' Z off the axis, each side (4.5 pitch)
-  shutterLegClr: 0.5,        // past the rear legs to the channels' rear ends: the switch's stop, and from the front legs to the detent ribs
+  shutterLegClr: 0.5,        // past the rear legs to the channels' rear ends: the switch's stop
   shutterLegT: 0.3,          // a leg's thickness in X (a 0.3 x 0.7 strip, 3.5 long below the base)
   shutterLegSlot: [2.0, 5.5],   // a leg channel's width in X (the second figure is unused: the channels run to the front)
-  shutterLegRib: 1.35,       // the detent rib in each channel, proud from the outer wall: it reaches 0.2 past the leg's inner face with the switch at its innermost and 0.5 with it centred; the legs flex in past it and sit behind it (gated against the leg's lane)
-  shutterGuideLen: 2.3,      // the guide bore, deck to the step the flange rests under. The plunger riding in (flange 1.6 + cap 2.0 proud + this) must fit under the step with the free play to spare in a chamber that is flange + free + switch tall (gated): 5.9 in 6.1
-  shutterGuideRound: 1.0,    // the guide's last mm at the deck is round; below it the ceiling is flat
-  shutterGuideCeil: 0.4,     // the flat ceiling above the circle's top: the print's bridge clears the cap
-  shutterActuatorGuideD: 14.6,
-  shutterActuatorFlangeD: 16.0,
+  shutterGuideLen: 2.3,      // the slot's depth, deck to the step the flange rests under; the cap's guided length
+  shutterGuideRound: 1.0,    // the slot's round end is round for its last mm at the deck; below it the ceiling is flat
+  shutterGuideCeil: 0.4,     // the flat ceiling above the round end's top: the print's bridge clears the cap
+  shutterActuatorGuideD: 14.6,  // the slot's width and its round end
+  shutterActuatorFlangeD: 17.6, // the flange: 1.5 over the step each side and at the rear (gated)
   shutterFlangeH: 1.6,
-  shutterFlangeBoreClear: 0.15, // per side in the chamber; the flange's bed edge is chamfered too. 0.3 ticked in the hand, the first thing a juror touches
-  shutterGuideRib: [0.2, 0.8],  // three ribs, proud x wide, along the guide bore on the face side: the cap runs on three lines, not in a 0.6 mm gap
+  shutterFlangeBoreClear: 0.5,  // per side in the chamber: the flange only rides in, it is guided by the cap in the slot; the flange's bed edge is chamfered too
+  shutterGuideRib: [0.2, 0.8],  // four ribs, proud x wide, along the slot (one each straight side, two on the round end 60 degrees off its apex): the cap runs on four lines 0.1 off, not in a 0.6 mm gap
   shutterPressCapD: 14.0,
   shutterProud: 2.0,         // the cap's rim above the top face
   shutterCapEdge: 0.5,       // 45 degrees round the cap's top edge: six even rings at 0.08
   shutterCollarD: 20.0,
-  shutterCollarDepth: 0.4,   // a two-layer shadow line round the cap
-  shutterFloor: 2.0,         // of pod under the chamber: the press lands here; the leg channels cut through it
+  shutterCollarDepth: 0.4,   // a two-layer shadow line round the cap, clipped by the deck's front edge
+  shutterFloor: 2.0,         // of pod under the switch's pocket: the press lands here; the leg channels cut through it
   // ---- Strap: cord channels at both lower corners, inside the outline. Two
   // slots through the rear frame's border over a channel in the bottom
   // wall's end: the cord goes in one slot, along the channel, out the other,
