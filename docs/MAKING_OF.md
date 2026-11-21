@@ -68,6 +68,7 @@ and shell print views; the index with the exact file names is
 - **17** (2026-11-21) `assets/making-of/carrier-body/17-520a2a8-exploded-previews/`: The exploded views, every part pulled apart along the depth axis.
 - **18** (2026-11-21) `assets/making-of/carrier-body/18-a8edd0c-sixteenth-cut-the-stack-measured/`: The stack measured on the bench: 17.5 mm from glass to carrier front, not 26.7. Nine millimetres gone in one number; 50.1 deep.
 - **19** (2026-11-21) `assets/making-of/carrier-body/19-157f571-seventeenth-cut-two-materials-ids-keys/`: Two materials, one per part: black PETG shell, frame and cover, dark blue PLA face and button; the face's own track floor back; the cover keyed by its bevels; part IDs embossed in every part and in every file name; the labelled exploded view.
+- **20** (2026-11-21) `assets/making-of/carrier-body/20-9b333d2-eighteenth-cut-cleaned-and-the-coupons/`: Cleaned: dead parameters and stale words gone, the history moved out of the README; the five coupons with their IDs and the two bed plates, ready to print.
 
 Later cuts append here as they are committed; the archive script
 (`../hardware/cad/KINO_CARRIER_BODY/archive-previews.py`) adds the folder,
