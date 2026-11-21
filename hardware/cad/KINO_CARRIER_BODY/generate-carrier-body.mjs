@@ -97,7 +97,7 @@ const onePart = (name, m) => check(`${name} is one part`, m.decompose().length =
   const depth = FACE.front - Z.frameRear;
   check("depth chain adds up to the body depth", Math.abs(sum - depth) < 1e-9,
     terms.map(([n, v]) => `${n} ${v}`).join(" + ") + ` = ${r2(sum)} mm; body ${r2(depth)}; nothing stands proud of the face`);
-  check("the horizon sits above the track's lips and the grip leaves plate", FACE.horizonD >= 1.5 && P.panelDepth >= P.sliderT + 0.2 && P.faceBase - P.gripD >= 1.0,
+  check("the horizon sits above the track's lips and the grip leaves plate", FACE.horizonD >= 0.8 && P.panelDepth >= P.sliderT + 0.2 && P.faceBase - P.gripD >= 1.0,
     `groove ${r2(FACE.horizonD)} deep over lips ${P.panelDepth} above the shell's plate (the cover ${P.sliderT}, ${r2(P.panelDepth - P.sliderT)} of play); ${r2(P.faceBase - P.gripD)} mm of plate under the grip`);
   check("the lens front is the pocket floor", Math.abs((Z.plateInner + Z.camPocketDepth) - Z.lensFront) < 1e-9,
     `XIAO back at Z=${r2(Z.xiaoBack)} + ${P.camStackH} = lens front Z=${r2(Z.lensFront)}; pocket ${Z.camPocketDepth} deep from the plate's inner face at Z=${r2(Z.plateInner)}`);

@@ -87,14 +87,14 @@ export const P = Object.freeze({
   camBarrelD: 7.0,
   lensBoreD: 7.5,            // 7.1 around a 7.0 barrel on the first layer, less the elephant foot, did not pass; the bore is hidden behind the face
   lensBoreChamfer: 0.4,      // at the plate's front, the bed side
-  platePocketAhead: 1.6,     // plate left in front of the pocket to carry the bore; 8 whole 0.2 layers (1.5 landed mid-layer)
+  platePocketAhead: 1.0,     // plate left in front of the pocket to carry the bore and its 0.4 chamfer; five whole 0.2 layers (thin: 1.6 was a choice, not a need)
   camFovDeg: 78.0,           // design figure; the real field is MEASURE_REQUIRED
   fovMarginDeg: 2.0,
   camPupilBackFromLens: 1.1, // entrance pupil behind the lens's front face
 
   // ---- The shell -----------------------------------------------------------
   wall: 4.5,                 // thick enough for the rear frame's pilots in the wall ends
-  plate: 5.0,                // the front plate: pocket depth + platePocketAhead
+  plate: 4.4,                // the front plate: pocket depth 3.4 + platePocketAhead
   cornerR: 10.0,             // near the most the plan allows: the carrier's R3 corners sit inside the wall, and at R10 the wall on the diagonal is 2.65 mm (gated)
   frameEdgeR: 1.2,           // the rear frame's outer edge, a 45 degree chamfer toward the rear: chamfers in Z step one layer each and read as the grooves do, rounds in Z terrace (R1.5 at 0.2 stepped 0.77, 0.32, 0.25); rounds stay in plan. The screw holes 2.55 from the outline cap it
   frameEdgeSteps: 5,
@@ -104,7 +104,7 @@ export const P = Object.freeze({
   facePinD: 1.9,             // for 1.75 mm filament: a 1.8 hole at a bed face closed to 1.5 with the elephant foot, 2.0 with the countersink and the 0.2 compensation did not retain; the pins must hold the face without glue, the pillar coupon decides
   facePinSink: 0.4,          // 45 degree countersink at every mouth, both parts
   facePinWall: 3.0,
-  facePinFace: 2.5,          // into the face's back (the face is 4.0, its 2 mm edge chamfer passes over the pins, so 1.45 of plate stays ahead): retention is friction over length, so the pins are 5.5 long, 3 in the wall and 2.5 here; the pull test on the real face decides
+  facePinFace: 1.8,          // into the face's back (the face is 3.2 with a 1.2 edge chamfer over the holes' outer edges, so 1.2 of plate stays ahead): the pins are 4.8 long, 3 in the wall and 1.8 here; the pull test on the real face decides
   facePinsTop: [30.0, 90.0],   // X on the top and bottom walls; the bottom pair dodges the LED slots and the USB opening
   facePinsBottom: [5.0, 96.7],  // under the window's bottom rim, between the LED slots, short of the corner
   facePinsSideY: 52.0,         // one on each side wall, above the horizon channel
@@ -119,7 +119,7 @@ export const P = Object.freeze({
   carrierHeadClr: 0.3,       // a side and above it in the foot's pocket
   gasketKPa: 25,             // PROVISIONAL: PORON or silicone foam at 35 % squeeze; PE takes a set in a year and the clamp with it
   stackMassG: 130,           // PROVISIONAL: P4 module, standoffs, carrier, four nodes, the cell
-  rearFrameT: 2.5,           // the thumb climbs this to the glass; the window's inner edge is chamfered for it
+  rearFrameT: 2.0,           // 1.2 under the gasket groove; the thumb climbs this to the glass, so its window edge is chamfered for it
   // The P4 is held at the rear without a screw into it: its inserts carry
   // the carrier's standoffs. The frame's inner face stands off the glass
   // front and carries a foam strip in a groove round the window, on the
@@ -127,12 +127,12 @@ export const P = Object.freeze({
   // module (26 mm past its standoffs in X) is clamped between foam and
   // standoffs, and a rigid PETG frame never touches glass.
   glassClear: 0.4,           // frame's inner face behind the glass front, gated against the module
-  gasket: [1.8, 2.0, 2.0, 0.9],  // inset from the window's edge (past the 1.5 chamfer), strip width, foam thickness, groove depth: 2 mm closed-cell foam, 2 mm wide (a stock tape width; 1.5 was a sliver nobody cuts straight), squeezed to 1.3 (35 %), 20 to 50 % over +-0.3 of stack; the strip's outer edge 0.5 inside the module's edge
+  gasket: [1.8, 2.0, 2.0, 0.8],  // inset from the window's edge (past the 1.0 chamfer), strip width, foam thickness, groove depth: 2 mm PORON, 2 mm wide (a stock tape width), squeezed to 1.2 (40 %), 25 to 55 % over +-0.3 of stack; the strip's outer edge 0.5 inside the module's edge
   framePilotD: 1.8,          // M2 thread-forming into PETG; 1.7 modelled prints 1.5 to 1.6
   framePilotDepth: 6.0,
   frameScrewHoleD: 2.4,      // plain holes: the four M2 pan heads sit proud on the back, as the brand's concept shows its rear screws; a counterbore broke out through the edge round
   frameScrewXs: [17.0, 76.0],  // clear of the LED slots and the USB opening on the bottom wall
-  frameWindowChamfer: 1.5,   // 45 degrees, widening toward the rear, so the thumb slides onto the glass's edge targets
+  frameWindowChamfer: 1.0,   // 45 degrees, widening toward the rear, so the thumb slides onto the glass's edge targets; 1.0 of frame left at the window's edge
   thumbPadProud: 1.2,        // the thumb pad stands off the frame; grooves cut into it
   usbGable: 45,              // degrees, the opening's roof in print
 
@@ -141,8 +141,8 @@ export const P = Object.freeze({
   // over the whole front with a pillow edge, a pink shutter, quiet markings.
   // The face covers the plate and the walls' front ends (the concept's v18
   // front: the fascia fills the front, the charcoal is the sides and the cap).
-  faceBase: 4.0,             // the face plate: the track's lips 2.3 + the horizon 1.7 above them; the window through it is the cover's track, the shell's plate its floor
-  faceEdgeR: 2.0,            // its front edge, a 45 degree chamfer. The R3.5 quarter round at 0.2 mm layers terraced 1.17, 0.46, 0.33 mm wide along 400 mm of the first edge a juror touches; the chamfer steps 0.2 every layer, one texture with the grooves. Rounds in plan (R10), chamfers in Z
+  faceBase: 3.2,             // the face plate: the track's lips 2.4 + the horizon 0.8 above them (thin: the groove is now the chamfer family's own size); the window through it is the cover's track, the shell's plate its floor
+  faceEdgeR: 1.2,            // its front edge, a 45 degree chamfer, the frame's own size (2.0 on a 3.2 plate ran over the pin holes' outer edges). A quarter round at 0.2 mm layers terraces; the chamfer steps one layer each, one texture with the grooves. Rounds in plan (R10), chamfers in Z
   faceInset: 0.3,            // the face steps in from the shell's outline. With the shell's first 1.0 mm printed in the face's filament (shellFrontSwap) the line round the face is a reveal in one colour, so it is narrow; at 0.8 it was a shelf
   shellFrontSwap: 1.0,       // PRINT PLAN, not geometry: the shell's first five 0.2 layers (the plate's front, the stow zone's floor, the wall ends) print in the face's filament, then charcoal. Closed, the bar is a dark bar on a colour field as the brand draws it; dropped, it sits in a cut tray of the face's colour, not in a charcoal mouth
   // The horizon: a full-width groove across the face at the bar's height,
@@ -152,7 +152,7 @@ export const P = Object.freeze({
   // The grip: the horizon's right end, cut deeper, so the middle finger
   // pulls against its left wall. No ribs: ribs are the charcoal's texture.
   gripX0: 101.0,             // a full groove width of flat floor between the window's right rim and the grip's ramp
-  gripD: 3.0,                // the middle finger's wall in a 4.0 plate (1.0 left under it); the floor ramps down to it at 45 degrees from the groove floor (a vertical 1.3 mm step rendered as a chipped notch); 2.0 was a fingertip's edge
+  gripD: 2.2,                // the middle finger's wall in a 3.2 plate (1.0 left under it); the floor ramps down to it at 45 degrees from the groove floor; 2.0 was a fingertip's edge, 3.0 wanted a 4 mm face
   // The model name, "kino D4", engraved on the top deck left of the shutter
   // (the deck is a vertical wall in print, so an engraving there is free).
   modelW: 40.0,              // inside, with the signature: a 0.6 mm stroke engraved at the bed face prints; on a vertical deck it did not
@@ -185,7 +185,7 @@ export const P = Object.freeze({
   bandX: [3.2, 97.2],
   bandChamfer: 1.5,          // with bandRim: the window's inset from bandX (the sixth cut's band is gone; the window kept its place)
   bandRim: 2.0,              // flat rim between the chamfer and the panel
-  bandBottomInset: 4.9,      // panel bottom = outline + chamfer 2.0 + this = the sixth cut's 6.9, so the track, the travel and the detents stay where the bench tuned them
+  bandBottomInset: 5.7,      // panel bottom = outline + chamfer 1.2 + this = the sixth cut's 6.9, so the track, the travel and the detents stay where the bench tuned them (re-based when the chamfer changes: at 4.9 the mid-travel probe touched a bump again)
   panelDepth: 2.4,           // the lips' top above the shell's plate: the cover 2.0 and 0.4 of play under the lip (12 whole 0.2 layers; 2.3 put the groove floor on a half layer); the mark rides 0.4 proud of the groove floor
   windowChamfer: [0.8, 0.4], // 45 degrees on the window's front edges: the bottom rim 0.8 like the horizon's upper lip, the side rims 0.4 like its lower, so the open stow zone is the second line of a cut tray and the bar sits between two lit edges
   cellSink: 0.8,             // 45 degrees at each cell's mouth in the track floor: a rim, so the four read as eyes and not as a microphone array; prints face-up         // plain cones: the stepped rings read as damage at this size

@@ -1,10 +1,10 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-21T03:06:46.482Z",
+  "generated": "2026-11-21T03:11:21.693Z",
   "body": {
     "width": 128.4,
     "height": 80.8,
-    "depth": 61.2,
+    "depth": 59.3,
     "lensRowY": 28.45,
     "cameraXs": [
       17.195,
@@ -22,19 +22,19 @@
     "lensFront": 38.9,
     "camPocketDepth": 3.4,
     "plateInner": 35.5,
-    "plateFront": 40.5,
+    "plateFront": 39.9,
     "glassFront": -13.8,
     "glass": -14.2,
-    "frameRear": -16.7,
+    "frameRear": -16.2,
     "pupil": 37.8,
     "bayFloor": 3.5,
     "bayCeiling": 9.8,
-    "depth": 57.2
+    "depth": 56.1
   },
   "face": {
-    "back": 40.5,
-    "front": 44.5,
-    "trackTop": 42.9,
+    "back": 39.9,
+    "front": 43.1,
+    "trackTop": 42.3,
     "outline": [
       -4.7,
       -4.7,
@@ -60,7 +60,7 @@
       19.2
     ],
     "travel": 17.5,
-    "horizonD": 1.6,
+    "horizonD": 0.8,
     "cellOuterD": 7.5
   },
   "shutter": {
@@ -71,38 +71,38 @@
   "files": {
     "KINO_CARRIER_SHELL.stl": {
       "triangles": 14660,
-      "volumeCm3": 134.93,
+      "volumeCm3": 128.88,
       "size": [
         128.4,
         80.8,
-        54.7
+        54.1
       ]
     },
     "KINO_CARRIER_REAR_FRAME.stl": {
-      "triangles": 4318,
-      "volumeCm3": 10.84,
+      "triangles": 4316,
+      "volumeCm3": 8.77,
       "size": [
         128.4,
         80.8,
-        4
+        3.5
       ]
     },
     "KINO_CARRIER_FACE.stl": {
-      "triangles": 7318,
-      "volumeCm3": 25.63,
+      "triangles": 7322,
+      "volumeCm3": 21.1,
       "size": [
         127.8,
         80.2,
-        4
+        3.2
       ]
     },
     "KINO_CARRIER_LENS_COVER.stl": {
-      "triangles": 2856,
-      "volumeCm3": 2.98,
+      "triangles": 2864,
+      "volumeCm3": 2.95,
       "size": [
         86.8,
         16.5,
-        5.5
+        4.7
       ]
     },
     "KINO_CARRIER_SHUTTER_BUTTON.stl": {
@@ -116,20 +116,20 @@
     },
     "KINO_COUPON_PILLAR.stl": {
       "triangles": 2048,
-      "volumeCm3": 15.83,
+      "volumeCm3": 14.52,
       "size": [
         29.65,
         75.11,
-        28.6
+        28
       ]
     },
     "KINO_COUPON_POCKET.stl": {
       "triangles": 774,
-      "volumeCm3": 0.94,
+      "volumeCm3": 0.82,
       "size": [
         16,
         16,
-        5
+        4.4
       ]
     },
     "KINO_COUPON_DECK.stl": {
@@ -169,21 +169,21 @@
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 30998,
-      "volumeCm3": 331.29,
+      "triangles": 31008,
+      "volumeCm3": 318.62,
       "size": [
         128.4,
         80.8,
-        64.2
+        62.3
       ]
     },
     "KINO_CARRIER_OPEN_PREVIEW.stl": {
-      "triangles": 31016,
-      "volumeCm3": 331.29,
+      "triangles": 31026,
+      "volumeCm3": 318.62,
       "size": [
         128.4,
         80.8,
-        64.2
+        62.3
       ]
     }
   },
@@ -195,17 +195,17 @@
     {
       "name": "depth chain adds up to the body depth",
       "pass": true,
-      "details": "rear frame 2.5 + glass clearance 0.4 + P4 module, glass to PCB back 13.8 + P4 inserts 3.3 + spacers 8 + carrier PCB 1.6 + XIAO socket 8.5 + XIAO header insulator (PROVISIONAL) 2.5 + XIAO back face to lens front 15 + plate ahead of the lens 1.6 + face, over the front 4 = 61.2 mm; body 61.2; nothing stands proud of the face"
+      "details": "rear frame 2 + glass clearance 0.4 + P4 module, glass to PCB back 13.8 + P4 inserts 3.3 + spacers 8 + carrier PCB 1.6 + XIAO socket 8.5 + XIAO header insulator (PROVISIONAL) 2.5 + XIAO back face to lens front 15 + plate ahead of the lens 1 + face, over the front 3.2 = 59.3 mm; body 59.3; nothing stands proud of the face"
     },
     {
       "name": "the horizon sits above the track's lips and the grip leaves plate",
       "pass": true,
-      "details": "groove 1.6 deep over lips 2.4 above the shell's plate (the cover 2, 0.4 of play); 1 mm of plate under the grip"
+      "details": "groove 0.8 deep over lips 2.4 above the shell's plate (the cover 2, 0.4 of play); 1 mm of plate under the grip"
     },
     {
       "name": "the lens front is the pocket floor",
       "pass": true,
-      "details": "XIAO back at Z=23.9 + 15 = lens front Z=38.9; pocket 3.4 deep from the plate's inner face at Z=35.5"
+      "details": "XIAO back at Z=23.9 + 15 = lens front Z=38.9; pocket 3.4000000000000004 deep from the plate's inner face at Z=35.5"
     },
     {
       "name": "the module's PCB has the plate to land on",
@@ -215,7 +215,7 @@
     {
       "name": "the face covers the shell's front, inset from the outline",
       "pass": true,
-      "details": "127.8 x 80.2 face on the plate, 4 mm thick with a 2 mm chamfer"
+      "details": "127.8 x 80.2 face on the plate, 3.2 mm thick with a 1.2 mm chamfer"
     },
     {
       "name": "plan corner leaves wall on the diagonal",
@@ -295,7 +295,7 @@
     {
       "name": "camera pocket at X 17.195 open",
       "pass": true,
-      "details": "8.70 mm pocket, 8.10 mm free between the rib tips and the datum walls for an 8.5 head, 3.4 mm deep, 0.5 mm corner reliefs"
+      "details": "8.70 mm pocket, 8.10 mm free between the rib tips and the datum walls for an 8.5 head, 3.4000000000000004 mm deep, 0.5 mm corner reliefs"
     },
     {
       "name": "camera pocket at X 17.195 has pinch ribs",
@@ -320,7 +320,7 @@
     {
       "name": "field cone at X 17.195 clears the open cover",
       "pass": true,
-      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 24.1"
+      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 24.63"
     },
     {
       "name": "closed cover blankets the cell at X 17.195",
@@ -330,7 +330,7 @@
     {
       "name": "camera pocket at X 39.195 open",
       "pass": true,
-      "details": "8.70 mm pocket, 8.10 mm free between the rib tips and the datum walls for an 8.5 head, 3.4 mm deep, 0.5 mm corner reliefs"
+      "details": "8.70 mm pocket, 8.10 mm free between the rib tips and the datum walls for an 8.5 head, 3.4000000000000004 mm deep, 0.5 mm corner reliefs"
     },
     {
       "name": "camera pocket at X 39.195 has pinch ribs",
@@ -355,7 +355,7 @@
     {
       "name": "field cone at X 39.195 clears the open cover",
       "pass": true,
-      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 24.1"
+      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 24.63"
     },
     {
       "name": "closed cover blankets the cell at X 39.195",
@@ -365,7 +365,7 @@
     {
       "name": "camera pocket at X 61.195 open",
       "pass": true,
-      "details": "8.70 mm pocket, 8.10 mm free between the rib tips and the datum walls for an 8.5 head, 3.4 mm deep, 0.5 mm corner reliefs"
+      "details": "8.70 mm pocket, 8.10 mm free between the rib tips and the datum walls for an 8.5 head, 3.4000000000000004 mm deep, 0.5 mm corner reliefs"
     },
     {
       "name": "camera pocket at X 61.195 has pinch ribs",
@@ -390,7 +390,7 @@
     {
       "name": "field cone at X 61.195 clears the open cover",
       "pass": true,
-      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 24.1"
+      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 24.63"
     },
     {
       "name": "closed cover blankets the cell at X 61.195",
@@ -400,7 +400,7 @@
     {
       "name": "camera pocket at X 83.195 open",
       "pass": true,
-      "details": "8.70 mm pocket, 8.10 mm free between the rib tips and the datum walls for an 8.5 head, 3.4 mm deep, 0.5 mm corner reliefs"
+      "details": "8.70 mm pocket, 8.10 mm free between the rib tips and the datum walls for an 8.5 head, 3.4000000000000004 mm deep, 0.5 mm corner reliefs"
     },
     {
       "name": "camera pocket at X 83.195 has pinch ribs",
@@ -425,7 +425,7 @@
     {
       "name": "field cone at X 83.195 clears the open cover",
       "pass": true,
-      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 24.1"
+      "details": "cover stowed 17.5 mm down; its top edge at Y 19.2 against the cone's bottom at Y 24.63"
     },
     {
       "name": "closed cover blankets the cell at X 83.195",
@@ -480,12 +480,12 @@
     {
       "name": "face pin hole in the face at (30, 73.55) open",
       "pass": true,
-      "details": "2.5 deep into the face's back"
+      "details": "1.8 deep into the face's back"
     },
     {
       "name": "face pin hole at (30, 73.55) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 4"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 3.2"
     },
     {
       "name": "face pin hole in the wall end at (90, 73.55) open",
@@ -495,12 +495,12 @@
     {
       "name": "face pin hole in the face at (90, 73.55) open",
       "pass": true,
-      "details": "2.5 deep into the face's back"
+      "details": "1.8 deep into the face's back"
     },
     {
       "name": "face pin hole at (90, 73.55) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 4"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 3.2"
     },
     {
       "name": "face pin hole in the wall end at (5, -2.75) open",
@@ -510,12 +510,12 @@
     {
       "name": "face pin hole in the face at (5, -2.75) open",
       "pass": true,
-      "details": "2.5 deep into the face's back"
+      "details": "1.8 deep into the face's back"
     },
     {
       "name": "face pin hole at (5, -2.75) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 4"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 3.2"
     },
     {
       "name": "face pin hole in the wall end at (96.7, -2.75) open",
@@ -525,12 +525,12 @@
     {
       "name": "face pin hole in the face at (96.7, -2.75) open",
       "pass": true,
-      "details": "2.5 deep into the face's back"
+      "details": "1.8 deep into the face's back"
     },
     {
       "name": "face pin hole at (96.7, -2.75) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 4"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 3.2"
     },
     {
       "name": "face pin hole in the wall end at (-2.75, 52) open",
@@ -540,12 +540,12 @@
     {
       "name": "face pin hole in the face at (-2.75, 52) open",
       "pass": true,
-      "details": "2.5 deep into the face's back"
+      "details": "1.8 deep into the face's back"
     },
     {
       "name": "face pin hole at (-2.75, 52) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 4"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 3.2"
     },
     {
       "name": "face pin hole in the wall end at (121.15, 52) open",
@@ -555,12 +555,12 @@
     {
       "name": "face pin hole in the face at (121.15, 52) open",
       "pass": true,
-      "details": "2.5 deep into the face's back"
+      "details": "1.8 deep into the face's back"
     },
     {
       "name": "face pin hole at (121.15, 52) is blind",
       "pass": true,
-      "details": "at least 1.0 mm of face ahead of it; the plate is 4"
+      "details": "at least 1.0 mm of face ahead of it; the plate is 3.2"
     },
     {
       "name": "the walls carry the pin holes",
@@ -590,7 +590,7 @@
     {
       "name": "the lip stands proud of the face for the thumb",
       "pass": true,
-      "details": "3.5 mm off the cover, 1.5 above the face, closed and stowed; the thumb pushes it down and lifts it back"
+      "details": "2.7 mm off the cover, 1.5 above the face, closed and stowed; the thumb pushes it down and lifts it back"
     },
     {
       "name": "the carrier slides in from the rear up to the pillar feet",
@@ -625,12 +625,12 @@
     {
       "name": "the window's chamfer is cut",
       "pass": true,
-      "details": "1.5 mm at 45 degrees, widening toward the rear, for the thumb"
+      "details": "1 mm at 45 degrees, widening toward the rear, for the thumb"
     },
     {
       "name": "the frame overlaps the module's border on every side past the chamfer",
       "pass": true,
-      "details": "7.9 mm in X, 2.82 mm in Y"
+      "details": "8.4 mm in X, 3.32 mm in Y"
     },
     {
       "name": "thumb pad and symbol stay on the frame's borders",
@@ -720,7 +720,7 @@
     {
       "name": "the grip is the horizon's right end, past the track",
       "pass": true,
-      "details": "grip from X 101 to the face's edge, 3 mm deep in a 1.6 mm groove; the track ends at X 93.7"
+      "details": "grip from X 101 to the face's edge, 2.2 mm deep in a 0.8 mm groove; the track ends at X 93.7"
     },
     {
       "name": "shutter guide bore open through the top face",
@@ -865,17 +865,17 @@
     {
       "name": "the gasket groove sits on the glass margin past the window's chamfer",
       "pass": true,
-      "details": "a 2 mm strip from 1.8 to 3.8 mm outside the window; 0.52 mm inside the module's long edge, 5.6 inside its short edge; the chamfer reaches 1.5"
+      "details": "a 2 mm strip from 1.8 to 3.8 mm outside the window; 0.52 mm inside the module's long edge, 5.6 inside its short edge; the chamfer reaches 1"
     },
     {
       "name": "the gasket groove is open in the frame's inner face",
       "pass": true,
-      "details": "0.9 mm deep, 2 wide, 1.6 of frame under it"
+      "details": "0.8 mm deep, 2 wide, 1.2 of frame under it"
     },
     {
       "name": "the gasket's squeeze covers the stack's tolerance",
       "pass": true,
-      "details": "2 mm foam in 1.3 mm: 35 % squeezed; 20 to 50 % over +-0.3 mm of stack"
+      "details": "2 mm foam in 1.2 mm: 40 % squeezed; 25 to 55 % over +-0.3 mm of stack"
     },
     {
       "name": "the foam clamps the stack onto the pillar feet",
@@ -885,12 +885,12 @@
     {
       "name": "KINO_CARRIER_SHELL.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0.02 mm^2 facing down past 45 degrees outside the named places (allowed 5), 102.18 inside them: the cavity (the four screw-foot shoulders), the LED slots (4.5 mm bridges), the USB opening's 45 degree gable, the strap tunnels, the six pin holes, the collar's 0.4 recess; the largest stray at (109, 2.8, 25.84)"
+      "details": "1.88 mm^2 facing down past 45 degrees outside the named places (allowed 5), 104.44 inside them: the cavity (the four screw-foot shoulders), the LED slots (4.5 mm bridges), the USB opening's 45 degree gable, the strap tunnels, the six pin holes, the collar's 0.4 recess; the largest stray at (17.94, 44.74, 1)"
     },
     {
       "name": "KINO_CARRIER_SHELL.stl fits the bed",
       "pass": true,
-      "details": "128.4 x 80.8 x 54.7"
+      "details": "128.4 x 80.8 x 54.1"
     },
     {
       "name": "KINO_CARRIER_REAR_FRAME.stl overhangs only where a support's scar would hide",
@@ -900,7 +900,7 @@
     {
       "name": "KINO_CARRIER_REAR_FRAME.stl fits the bed",
       "pass": true,
-      "details": "128.4 x 80.8 x 4"
+      "details": "128.4 x 80.8 x 3.5"
     },
     {
       "name": "KINO_CARRIER_FACE.stl overhangs only where a support's scar would hide",
@@ -910,7 +910,7 @@
     {
       "name": "KINO_CARRIER_FACE.stl fits the bed",
       "pass": true,
-      "details": "127.8 x 80.2 x 4"
+      "details": "127.8 x 80.2 x 3.2"
     },
     {
       "name": "KINO_CARRIER_LENS_COVER.stl overhangs only where a support's scar would hide",
@@ -920,7 +920,7 @@
     {
       "name": "KINO_CARRIER_LENS_COVER.stl fits the bed",
       "pass": true,
-      "details": "86.8 x 16.5 x 5.5"
+      "details": "86.8 x 16.5 x 4.7"
     },
     {
       "name": "KINO_CARRIER_SHUTTER_BUTTON.stl overhangs only where a support's scar would hide",
@@ -940,12 +940,12 @@
     {
       "name": "KINO_COUPON_PILLAR.stl is one piece on the bed",
       "pass": true,
-      "details": "29.65 x 75.11 x 28.6 mm, 1 piece(s)"
+      "details": "29.65 x 75.11 x 28 mm, 1 piece(s)"
     },
     {
       "name": "KINO_COUPON_POCKET.stl is one piece on the bed",
       "pass": true,
-      "details": "16 x 16 x 5 mm, 1 piece(s)"
+      "details": "16 x 16 x 4.4 mm, 1 piece(s)"
     },
     {
       "name": "KINO_COUPON_DECK.stl is one piece on the bed",

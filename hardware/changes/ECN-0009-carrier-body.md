@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; fourteenth cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
+| Status | Design in progress; fifteenth cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -309,11 +309,23 @@ owner's printer. Two parts:
   clearance gate proves the pockets. The plate's front is solid and the
   stow zone's floor plain. Battery change is frame off, stack out. 154
   gates.
+- **As thin as possible** (fifteenth cut, 2026-11-21; the owner). The
+  body's own terms taken to their floor: the frame 2.5 to 2.0 (1.2 under a
+  0.8 gasket groove, the window chamfer 1.0, the foam at 40 %), the plate
+  ahead of the lens 1.6 to 1.0 (the bore and its chamfer; `plate` 4.4 so
+  the pocket depth and the module's landing do not move), the face 4.0 to
+  3.2 (lips 2.4, the horizon 0.8, the chamfer family's own size; the grip
+  2.2 with 1.0 under it; the edge chamfer 1.2, the frame's size, since 2.0
+  ran over the pin holes; pins 4.8 into 1.8). Body 61.2 to 59.3, of which
+  the body is 6.6. The other 52.7 are the electronics; the README's
+  "Thinner" table names the three bench levers (`socketH` 8.5 to 4.3,
+  `xiaoHeaderInsulator` 2.5 to 0, `spacer` 8.0 to 5.0 with a 3 mm cell)
+  that take the camera to 49.6 with the same body files.
 
-Depth, re-added by a gate every build: 2.5 frame + 0.4 off the glass + 13.8 module + 3.3 inserts
+Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 13.8 module + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
-(PROVISIONAL) + 15.0 XIAO back to lens front + 1.6 plate + 4.0 face
-= 61.2 mm, against the field body's 74.5 over its lens bar. The body is 8.5
+(PROVISIONAL) + 15.0 XIAO back to lens front + 1.0 plate + 3.2 face
+= 59.3 mm, against the field body's 74.5 over its lens bar. The body is 6.6
 of it; the XIAO connectors (11.0) are the one
 stack term the bench can shorten, with low-profile sockets and bare pins. The plate's inner face lands at Z 35.4
 from the P4's PCB back, 3.9 mm above the Sense board's top.
