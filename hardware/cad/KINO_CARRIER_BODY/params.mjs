@@ -62,7 +62,13 @@ export const P = Object.freeze({
   p4W: 114.40,               // the bare module, spec p.6
   p4H: 66.80,
   p4Inset: 2.0,              // inside the carrier outline, every side
-  p4T: 13.8,                 // PCB back to display glass front (OFFICIAL_CAD)
+  // The owner measured the P4 with its screen, the standoffs and the bare
+  // carrier (no sockets, no XIAOs) at 17.5 mm, glass front to carrier
+  // front. With the inserts and the standoffs as measured, that leaves 4.6
+  // for the module itself; the official CAD's 13.8 included something that
+  // is not on the bench. A gate re-adds the four terms to the measurement.
+  glassToCarrierFront: 17.5, // MEASURED: P4 + screen + standoffs + carrier, no headers
+  p4T: 4.6,                  // PCB back to display glass front: DERIVED, 17.5 - 1.6 - 8.0 - 3.3 (the split between module and standoffs is the bench's to confirm)
   p4InsertH: 3.3,            // the brass inserts stand this far off the PCB back (MEASURED)
   activeArea: [93.60, 56.16],
   activeCentred: true,       // PROVISIONAL: the active area centred on the PCB

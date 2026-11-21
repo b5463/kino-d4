@@ -9,7 +9,7 @@ either board: the shell clamps the stack, pillar feet on the carrier in
 front and the rear frame's foam on the glass behind, and captures each
 camera head in a pocket with pinch ribs, so the picture does not shake on
 its ribbon. The face
-shell carries the form. Issue #252; fifteenth cut, nothing printed yet; the
+shell carries the form. Issue #252; sixteenth cut, nothing printed yet; the
 night colourway (cobalt face) prints first, the coupons in `coupons/`
 before it.
 
@@ -26,9 +26,9 @@ lenses at positive Z. The chain is re-added by a gate every build.
 
 | Term | mm | Z after | Source |
 |---|---:|---:|---|
-| rear frame | 2.0 | -16.2 | chosen; 1.2 under the gasket groove; the thumb climbs it to the glass, so its window edge is chamfered |
-| glass clearance | 0.4 | -14.2 | chosen; the frame never touches the glass; a foam gasket in the frame's groove takes the stack's tolerance and holds the module |
-| P4 module, glass front to PCB back | 13.8 | 0.0 | OFFICIAL_CAD |
+| rear frame | 2.0 | -7.0 | chosen; 1.2 under the gasket groove; the thumb climbs it to the glass, so its window edge is chamfered |
+| glass clearance | 0.4 | -5.0 | chosen; the frame never touches the glass; a foam gasket in the frame's groove takes the stack's tolerance and holds the module |
+| P4 module, glass front to PCB back | 4.6 | 0.0 | DERIVED: the bench measured the P4 with its screen, the standoffs and the bare carrier at 17.5 glass front to carrier front (MEASURED, a gate); with the inserts and standoffs below as measured, 4.6 is what is left for the module. The official CAD's 13.8 included something not on the bench; the split is the bench's to confirm |
 | P4 inserts | 3.3 | 3.3 | MEASURED |
 | M2 spacers | 8.0 | 11.3 | the bench set; the J100 socket floats 0.3 mm off home |
 | carrier PCB | 1.6 | 12.9 | |
@@ -37,7 +37,7 @@ lenses at positive Z. The chain is re-added by a gate every build.
 | XIAO back face to the lens front | 15.0 | 38.9 | Seeed's assembled Sense stack |
 | plate ahead of the lens | 1.0 | 39.9 | chosen; the shell's front; the bore and its 0.4 chamfer; five whole 0.2 layers |
 | face | 3.2 | 43.1 | its edge a 1.2 mm 45 degree chamfer; the horizon is cut into it and the cover's window through it; nothing stands proud of it but the cover's 1.5 mm lip |
-| **body** | **59.3** | | |
+| **body** | **50.1** | | |
 
 The module's PCB face is the Z datum for the camera, as in the field body: it
 lands on the plate's inner face at Z 35.5 (the Sense board's top is at 31.5, so
@@ -61,16 +61,16 @@ What the depth is made of, lens front to glass, and what the body adds:
 
 | | mm |
 |---|---:|
-| electronics, lens front to glass | 52.7 |
-| of which the P4 module | 13.8 |
+| electronics, lens front to glass | 43.5 |
+| of which the P4 module | 4.6 |
 | of which the P4-to-carrier layer (inserts and spacers; the battery lives in it) | 11.3 |
 | of which the XIAO connectors (8.5 socket + 2.5 male header insulator) | 11.0 |
 | of which the XIAO, Sense board and camera | 15.0 |
 | body in front: plate ahead of the lens 1.0, face 3.2 | 4.2 |
 | body behind: the rear frame 2.0 and its 0.4 off the glass | 2.4 |
-| **in all** | **59.3** |
+| **in all** | **50.1** |
 
-The body is 6.6 mm of the 59.3; the face's 3.2 is the track's lips and the groove
+The body is 6.6 mm of the 50.1; the face's 3.2 is the track's lips and the groove
 and the groove it sits in. The one stack term that is a bench choice
 is the XIAO connectors: the eight 1x07 sockets are hand-fit, so 4.3 mm
 low-profile strips in place of the 8.5 mm Wurth part, and XIAOs soldered on
@@ -83,7 +83,7 @@ socket fixes the 11.3 mm layer.
 The body is 6.6 mm of the depth and is at its floor: 2.0 of frame (1.2
 under the gasket groove), 0.4 off the glass, 1.0 of plate ahead of the
 lens (the bore and its chamfer), 3.2 of face (2.4 of track lips and a 0.8
-groove). The other 52.7 mm are the electronics, and three of those terms
+groove). The other 43.5 mm are the electronics, and three of those terms
 are bench choices, each one number in `params.mjs`:
 
 | Lever | Now | Thin | Saves | What it costs |
@@ -92,7 +92,7 @@ are bench choices, each one number in `params.mjs`:
 | `xiaoHeaderInsulator`, the soldered male header | 2.5 | 0.0 | 2.5 | XIAOs soldered with bare pins, or castellated straight to the carrier: no insulator under the board |
 | `spacer`, the P4-to-carrier layer | 8.0 | 5.0 | 3.0 | a 3 mm cell in the bay (the bay is `cellT` + 0.5 foam + 10 % swell between the P4's 3.5 mm can and the carrier's 1.5 mm back parts); with no cell in the layer, 3.0 and 5.0 saved |
 
-All three together: 49.6 mm, 9.7 thinner, with the same body files. The
+All three together: 40.4 mm, 9.7 thinner, with the same body files. The
 body regenerates from the numbers; nothing else moves.
 
 ## The battery

@@ -1,10 +1,10 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-21T03:11:21.693Z",
+  "generated": "2026-11-21T03:21:20.954Z",
   "body": {
     "width": 128.4,
     "height": 80.8,
-    "depth": 59.3,
+    "depth": 50.1,
     "lensRowY": 28.45,
     "cameraXs": [
       17.195,
@@ -23,13 +23,13 @@
     "camPocketDepth": 3.4,
     "plateInner": 35.5,
     "plateFront": 39.9,
-    "glassFront": -13.8,
-    "glass": -14.2,
-    "frameRear": -16.2,
+    "glassFront": -4.6,
+    "glass": -5,
+    "frameRear": -7,
     "pupil": 37.8,
     "bayFloor": 3.5,
     "bayCeiling": 9.8,
-    "depth": 56.1
+    "depth": 46.9
   },
   "face": {
     "back": 39.9,
@@ -70,12 +70,12 @@
   },
   "files": {
     "KINO_CARRIER_SHELL.stl": {
-      "triangles": 14660,
-      "volumeCm3": 128.88,
+      "triangles": 14192,
+      "volumeCm3": 113.45,
       "size": [
         128.4,
         80.8,
-        54.1
+        44.9
       ]
     },
     "KINO_CARRIER_REAR_FRAME.stl": {
@@ -142,8 +142,8 @@
       ]
     },
     "KINO_COUPON_STRAP_SHELL.stl": {
-      "triangles": 592,
-      "volumeCm3": 1.84,
+      "triangles": 824,
+      "volumeCm3": 1.81,
       "size": [
         26,
         14,
@@ -161,41 +161,46 @@
     },
     "KINO_CARRIER_STACK_DUMMY.stl": {
       "triangles": 2136,
-      "volumeCm3": 156.92,
+      "volumeCm3": 86.62,
       "size": [
         118.4,
         70.8,
-        52.7
+        43.5
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 31008,
-      "volumeCm3": 318.62,
+      "triangles": 30540,
+      "volumeCm3": 232.89,
       "size": [
         128.4,
         80.8,
-        62.3
+        53.1
       ]
     },
     "KINO_CARRIER_OPEN_PREVIEW.stl": {
-      "triangles": 31026,
-      "volumeCm3": 318.62,
+      "triangles": 30558,
+      "volumeCm3": 232.89,
       "size": [
         128.4,
         80.8,
-        62.3
+        53.1
       ]
     }
   },
   "gates": {
-    "total": 154,
+    "total": 155,
     "failed": 0
   },
   "checks": [
     {
+      "name": "the measured stack is the chain's rear",
+      "pass": true,
+      "details": "4.6 module + 3.3 inserts + 8 standoffs + 1.6 carrier = 17.5, the bench's 17.5 glass front to carrier front"
+    },
+    {
       "name": "depth chain adds up to the body depth",
       "pass": true,
-      "details": "rear frame 2 + glass clearance 0.4 + P4 module, glass to PCB back 13.8 + P4 inserts 3.3 + spacers 8 + carrier PCB 1.6 + XIAO socket 8.5 + XIAO header insulator (PROVISIONAL) 2.5 + XIAO back face to lens front 15 + plate ahead of the lens 1 + face, over the front 3.2 = 59.3 mm; body 59.3; nothing stands proud of the face"
+      "details": "rear frame 2 + glass clearance 0.4 + P4 module, glass to PCB back 4.6 + P4 inserts 3.3 + spacers 8 + carrier PCB 1.6 + XIAO socket 8.5 + XIAO header insulator (PROVISIONAL) 2.5 + XIAO back face to lens front 15 + plate ahead of the lens 1 + face, over the front 3.2 = 50.1 mm; body 50.1; nothing stands proud of the face"
     },
     {
       "name": "the horizon sits above the track's lips and the grip leaves plate",
@@ -860,7 +865,7 @@
     {
       "name": "the frame's inner face stands off the glass",
       "pass": true,
-      "details": "0.4 mm from the glass front at Z -13.8 to the frame's inner face at Z -14.2; nothing of the frame inside the module's outline past that"
+      "details": "0.4 mm from the glass front at Z -4.6 to the frame's inner face at Z -5; nothing of the frame inside the module's outline past that"
     },
     {
       "name": "the gasket groove sits on the glass margin past the window's chamfer",
@@ -885,12 +890,12 @@
     {
       "name": "KINO_CARRIER_SHELL.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "1.88 mm^2 facing down past 45 degrees outside the named places (allowed 5), 104.44 inside them: the cavity (the four screw-foot shoulders), the LED slots (4.5 mm bridges), the USB opening's 45 degree gable, the strap tunnels, the six pin holes, the collar's 0.4 recess; the largest stray at (17.94, 44.74, 1)"
+      "details": "1.88 mm^2 facing down past 45 degrees outside the named places (allowed 5), 104.38 inside them: the cavity (the four screw-foot shoulders), the LED slots (4.5 mm bridges), the USB opening's 45 degree gable, the strap tunnels, the six pin holes, the collar's 0.4 recess; the largest stray at (17.94, 44.74, 1)"
     },
     {
       "name": "KINO_CARRIER_SHELL.stl fits the bed",
       "pass": true,
-      "details": "128.4 x 80.8 x 54.1"
+      "details": "128.4 x 80.8 x 44.9"
     },
     {
       "name": "KINO_CARRIER_REAR_FRAME.stl overhangs only where a support's scar would hide",

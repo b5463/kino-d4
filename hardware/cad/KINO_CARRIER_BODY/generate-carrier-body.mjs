@@ -95,6 +95,8 @@ const onePart = (name, m) => check(`${name} is one part`, m.decompose().length =
   ];
   const sum = terms.reduce((t, [, v]) => t + v, 0);
   const depth = FACE.front - Z.frameRear;
+  check("the measured stack is the chain's rear", Math.abs(P.p4T + P.p4InsertH + P.spacer + P.carrierT - P.glassToCarrierFront) < 1e-9,
+    `${P.p4T} module + ${P.p4InsertH} inserts + ${P.spacer} standoffs + ${P.carrierT} carrier = ${r2(P.p4T + P.p4InsertH + P.spacer + P.carrierT)}, the bench's ${P.glassToCarrierFront} glass front to carrier front`);
   check("depth chain adds up to the body depth", Math.abs(sum - depth) < 1e-9,
     terms.map(([n, v]) => `${n} ${v}`).join(" + ") + ` = ${r2(sum)} mm; body ${r2(depth)}; nothing stands proud of the face`);
   check("the horizon sits above the track's lips and the grip leaves plate", FACE.horizonD >= 0.8 && P.panelDepth >= P.sliderT + 0.2 && P.faceBase - P.gripD >= 1.0,

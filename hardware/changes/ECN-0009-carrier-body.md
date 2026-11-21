@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; fifteenth cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
+| Status | Design in progress; sixteenth cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -321,11 +321,23 @@ owner's printer. Two parts:
   "Thinner" table names the three bench levers (`socketH` 8.5 to 4.3,
   `xiaoHeaderInsulator` 2.5 to 0, `spacer` 8.0 to 5.0 with a 3 mm cell)
   that take the camera to 49.6 with the same body files.
+- **The stack measured** (sixteenth cut, 2026-11-21; the owner: "the
+  height of the P4 with screen, the standoffs and the carrier board
+  without the female headers or XIAOs is 17.5 mm"). The chain had 26.7
+  for that: module 13.8 (OFFICIAL_CAD) + inserts 3.3 + standoffs 8.0 +
+  carrier 1.6. The measurement is now `glassToCarrierFront` 17.5 and a
+  gate re-adds the four terms to it; with the inserts and standoffs as
+  measured, `p4T` is 4.6, DERIVED, and the split is the bench's to
+  confirm (if the standoffs are not 8.0, `spacer` moves and `p4T` with
+  it; the body regenerates). Nothing else moved: the frame, the glass
+  clearance, the gasket, the window and the bay are all referenced from
+  the glass or the carrier. Body 59.3 to 50.1; the thin levers now reach
+  40.4.
 
-Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 13.8 module + 3.3 inserts
+Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
 (PROVISIONAL) + 15.0 XIAO back to lens front + 1.0 plate + 3.2 face
-= 59.3 mm, against the field body's 74.5 over its lens bar. The body is 6.6
+= 50.1 mm, against the field body's 74.5 over its lens bar. The body is 6.6
 of it; the XIAO connectors (11.0) are the one
 stack term the bench can shorten, with low-profile sockets and bare pins. The plate's inner face lands at Z 35.4
 from the P4's PCB back, 3.9 mm above the Sense board's top.
