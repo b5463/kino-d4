@@ -132,6 +132,9 @@ export function buildShell() {
   const cuts = [...pod.cuts];
   for (const [hx, hy] of P.carrierHoles) {
     cuts.push(cylZ(hx, hy, S.shaftFloorZ, P.accessShaftD / 2, Z.plateFront + 1 - S.shaftFloorZ, 48));
+    // The shaft's mouth chamfered in the plate's front (the bed face): the
+    // lower two show in the stow zone when the cover is closed.
+    cuts.push(coneZ(hx, hy, Z.plateFront - P.accessShaftChamfer, P.accessShaftD / 2, P.accessShaftD / 2 + P.accessShaftChamfer + 0.01, P.accessShaftChamfer + 0.01, 48));
     cuts.push(cylZ(hx, hy, S.bossFootZ - 0.5, P.screwBore / 2, P.bossFoot + 1, 32));
   }
   for (const [lx, ly] of S.lensXY) {

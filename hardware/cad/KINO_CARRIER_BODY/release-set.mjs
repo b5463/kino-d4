@@ -14,9 +14,6 @@ export const RELEASE_SET = [
   { file: "KINO_COUPON_POCKET.stl", dir: "coupons", parts: 1 },
   { file: "KINO_COUPON_DECK.stl", dir: "coupons", parts: 1 },
   { file: "KINO_COUPON_STRAP_SHELL.stl", dir: "coupons", parts: 1 },
-  { file: "KINO_COUPON_STRAP_FRAME.stl", dir: "coupons", parts: 1 },
-  { file: "KINO_COUPON_TRACK_FACE.stl", dir: "coupons", parts: 1 },
-  { file: "KINO_COUPON_TRACK_COVER.stl", dir: "coupons", parts: 1 },
   { file: "KINO_COUPON_SHRINK_BAR.stl", dir: "coupons", parts: 1 },
 ];
 export const RELEASE_DIRS = ["print", "coupons"];
@@ -30,17 +27,14 @@ export const SWEEP_EXT = [".stl", ".pdf", ".svg", ".3mf"];
 // The stack dummy and the assembled preview stay in .candidate/: they are
 // pictures and gates, not parts.
 export const RELEASE_PROCESS = {
-  "KINO_CARRIER_SHELL.stl": "FDM, PETG, 0.20 mm, face down, no support",
-  "KINO_CARRIER_REAR_FRAME.stl": "FDM, PETG, 0.20 mm, rear face down, no support",
+  "KINO_CARRIER_SHELL.stl": "FDM, PETG, 0.20 mm, front plate on the bed, no support; the first 1.0 mm (five layers) in the face's filament, then charcoal",
+  "KINO_CARRIER_REAR_FRAME.stl": "FDM, PETG, 0.10 mm, rear face UP (the gasket groove on the bed), no support",
   "KINO_CARRIER_FACE.stl": "FDM, PETG, 0.20 mm, back down, no support",
-  "KINO_CARRIER_LENS_COVER.stl": "FDM, PETG, 0.20 mm, back down, no support",
+  "KINO_CARRIER_LENS_COVER.stl": "FDM, PETG, 0.08 mm, back down, no support; filament change to cream at Z 2.00, minimum layer time 10 s for the lip",
   "KINO_COUPON_PILLAR.stl": "FDM, PETG, 0.20 mm, plate down: one pillar with its screw stack and a face pin hole",
   "KINO_COUPON_POCKET.stl": "FDM, PETG, 0.20 mm, plate down: one camera pocket with its ribs, reliefs and bore",
   "KINO_COUPON_DECK.stl": "FDM, PETG, 0.20 mm, cut face down: the deck with the pod, the collar and the guide ribs",
-  "KINO_COUPON_STRAP_SHELL.stl": "FDM, PETG, 0.20 mm, cut face down: a wall end with its tunnel and slots, pulled to 100 N on a 2.5 mm cord",
-  "KINO_COUPON_STRAP_FRAME.stl": "FDM, PETG, 0.12 mm, rear face up: the frame corner with its two slots",
-  "KINO_COUPON_TRACK_FACE.stl": "FDM, PETG, 0.20 mm, back down, no support: 74 mm of the face with the window, its lips and detents",
-  "KINO_COUPON_TRACK_COVER.stl": "FDM, PETG, 0.08 mm, back down: the cover's left 70 mm with its lip; the flush to cream at 2.00",
+  "KINO_COUPON_STRAP_SHELL.stl": "FDM, PETG, 0.20 mm, cut face down: a wall end with its tunnel, slots and the first frame pilot; pulled to 100 N on a 2.5 mm cord, the pilot driven ten times",
   "KINO_COUPON_SHRINK_BAR.stl": "FDM, PETG, 0.20 mm: a 100 x 10 x 3 bar; measure it, set the slicer's shrink compensation, never scale the shell",
-  "KINO_CARRIER_SHUTTER_BUTTON.stl": "FDM, PETG, 0.20 mm, flange down",
+  "KINO_CARRIER_SHUTTER_BUTTON.stl": "FDM, PETG, 0.08 mm, flange down, no support",
 };

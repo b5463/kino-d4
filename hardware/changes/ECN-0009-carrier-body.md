@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; twelfth cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
+| Status | Design in progress; thirteenth cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -262,18 +262,47 @@ owner's printer. Two parts:
   in the open stow zone in plain view, which the jurors scored against
   in the fifth and sixth cuts and the owner now accepts for the
   simplicity. 158 gates. Body 61.1 deep, 8.4 of it the body.
+- **Reviews on the simplified body** (thirteenth cut, 2026-11-21; the
+  owner: "run all the reviews and inspos on the model, and another for
+  the people actually building it"). Two jurors, a print foreman and a
+  first-time builder following the README. Converged and taken: the two
+  stack-screw shafts that show in the open stow zone stay and get a 0.8
+  chamfered mouth and a sentence (the screw ports); the stow zone's floor
+  in the face's colour by a filament change on the shell at Z 1.0 (closed,
+  a dark bar on a colour field as the brand draws it, not a charcoal
+  mouth) with `faceInset` 0.8 to 0.3; the window's front edges chamfered
+  0.8 and 0.4 like the horizon's lips; the grip's floor a 45 degree ramp
+  from 101.0 instead of a step; `facePinFace` 2.5 and 5.5 mm pins with a
+  hang-and-pull test on the real face; the gasket 2 mm wide (a stock
+  tape) with the four strip lengths and spares in the ship list;
+  `strapSlot` 2.8 for the 2.5 cord and `strapTunnelSkin` 1.2 (0.6 was a
+  bridge at the top of the print); the left wall's horizon channel 1.8 so
+  it exposes 1.5 of the face's edge as the pry point; `panelDepth` 2.4
+  and `platePocketAhead` 1.6 on whole layers; `sliderBumpH` 1.0 past the
+  elephant-foot compensation; the frame at 0.10 (every height a whole
+  layer); the cover's minimum layer time and purge; `release-set.mjs`
+  orientations and layer heights brought to the README's; the README
+  rewritten for the builder: assembly in build order (flash and stack
+  first, the switch lead into J103 before the stack goes in, the cover's
+  orientation, the driver's shank, the standoffs, the foam lengths, the
+  power-up check), a "you need" and "which number" column on the coupon
+  table, the preview named per part, the regeneration line. Coupons: the
+  face and cover cut-outs and the frame corner dropped (print the real
+  parts; the frame's slots prove nothing), a frame pilot added to the
+  strap coupon. Stale parameters removed. Not taken: plugging the ports
+  or moving the window (a part and a coupon). 161 gates. Body 61.2.
 
 Depth, re-added by a gate every build: 2.5 frame + 0.4 off the glass + 13.8 module + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
-(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 4.0 face
-= 61.1 mm, against the field body's 74.5 over its lens bar. The body is 8.4
+(PROVISIONAL) + 15.0 XIAO back to lens front + 1.6 plate + 4.0 face
+= 61.2 mm, against the field body's 74.5 over its lens bar. The body is 8.5
 of it; the XIAO connectors (11.0) are the one
 stack term the bench can shorten, with low-profile sockets and bare pins. The plate's inner face lands at Z 35.4
 from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-158 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
+161 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
 front on the pocket floor, the face inset from the outline and over the
 pins, the plan corner's wall on the diagonal, the roof over the stow zone
 clear of the cover and its mark, the lip's slot, the keeper clear of the

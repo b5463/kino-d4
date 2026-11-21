@@ -109,12 +109,31 @@ export function buildFace() {
     cuts.push(prismX(fx0 - 2, fx1 - fx0 + 4, [h1 - 0.01, F.front + 0.01], [h1 + ct, F.front + 0.01], [h1 - 0.01, F.front - ct]));
     cuts.push(prismX(fx0 - 2, fx1 - fx0 + 4, [h0 + 0.01, F.front + 0.01], [h0 - cb, F.front + 0.01], [h0 + 0.01, F.front - cb]));
   }
-  // The grip: the horizon's right end, deeper.
-  cuts.push(box(P.gripX0, F.horizon[0], F.front - P.gripD, fx1 + 2, F.horizon[1], F.front + 2));
+  // The grip: the horizon's right end, deeper, its floor ramping down from
+  // the groove floor at 45 degrees (a chamfer in Z: steps one layer each;
+  // a vertical step rendered as a chipped notch beside the window).
+  {
+    const ramp = P.gripD - F.horizonD;
+    cuts.push(Manifold.hull([
+      box(P.gripX0, F.horizon[0], F.trackTop - 0.01, P.gripX0 + 0.01, F.horizon[1], F.front + 2),
+      box(P.gripX0 + ramp, F.horizon[0], F.front - P.gripD, fx1 + 2, F.horizon[1], F.front + 2),
+    ]));
+  }
   // The panel: the cover's window through the whole plate. The shell's plate
   // is the floor; the window's rims are the stops.
   const [p0x, p0y, p1x, p1y] = F.panel;
   cuts.push(roundedRectZ(p0x, p0y, F.back - 1, p1x - p0x, p1y - p0y, F.front - F.back + 3, P.sliderCornerR + P.sliderClr));
+  // The window's front edges chamfered as the horizon's lips are: the bottom
+  // rim 0.8, the side rims 0.4 up to the groove. The open stow zone is then
+  // the second line of a cut tray, and the bar sits between two lit edges.
+  {
+    const [wb, ws] = P.windowChamfer, cr0 = P.sliderCornerR + P.sliderClr;
+    const prismX = (x, len, ...ptsYZ) => Manifold.hull(ptsYZ.map(([y, z]) => cube(x, y - 0.01, z - 0.01, len, 0.02, 0.02)));
+    cuts.push(prismX(p0x + cr0, p1x - p0x - 2 * cr0, [p0y + 0.01, F.front + 0.01], [p0y - wb, F.front + 0.01], [p0y + 0.01, F.front - wb]));
+    const sy = p0y + cr0, sl = F.horizon[0] - sy + 0.5;
+    cuts.push(prismY(sy, sl, [p0x + 0.01, F.front + 0.01], [p0x - ws, F.front + 0.01], [p0x + 0.01, F.front - ws]));
+    cuts.push(prismY(sy, sl, [p1x - 0.01, F.front + 0.01], [p1x + ws, F.front + 0.01], [p1x - 0.01, F.front - ws]));
+  }
   // Dovetail lips on both X walls and two detent pairs, added AFTER the cuts.
   const lipTop = F.trackTop + 0.02, lipLen = p1y - p0y - 0.4;
   const adds = [
