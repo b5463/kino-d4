@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; twentieth cut generated and gated after the first coupons and the first button printed (2026-11-21: shrink 0.2 % measured, the pocket loose, the head-pocket feet, the frame pilots, the retainer cup and the teardrops refused); the new coupons T02 to T05 are next on the bed |
+| Status | Design in progress; twenty-first cut generated and gated after the first coupons and the first button printed (2026-11-21: shrink 0.2 % measured, the pocket loose, the head-pocket feet, the frame pilots, the retainer cup and the teardrops refused; the button now one part, loaded through the plate under the face); the new coupons T02 to T05 are next on the bed |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -438,6 +438,25 @@ owner's printer. Two parts:
   gone (the LEDs are read with the frame off; the screen carries status)
   and the USB opening is a plain R1 rectangle (`usbOpenR`), its 13.4 mm top
   a bridge inside the wall. 182 gates.
+- **The button, simplified** (twenty-first cut, 2026-11-21; the owner:
+  "this button setup is gonna be a manufacturing and asembly nightmare").
+  Found on the way: the pinned-plate pod could not be assembled at all
+  (the 16 mm flange had no entry past the 9 mm pocket), and a chamber open
+  to the rear fails because the cap stands 2.2 mm above the top wall's
+  inner face and cannot slide along it. Now one printed part and the
+  switch: the chamber (16.3 wide, 6.1 tall, closed at the rear) opens to
+  the FRONT through a hole in the plate's top-right corner (and 2.2 mm into
+  the wall's front end; 1.8 of wall left under a groove, gated) that the
+  face's back covers; the plunger rides in on the floor with its cap under
+  the step (5.9 in 6.1, gated) and, deck down, drops into the guide; the
+  lift from floor to step is the switch's height plus 0.2 (gated), so the
+  switch slides in under the seated flange, legs in two 2 mm channels
+  through the 2 mm floor that run out to the front and stop it centred
+  under the cap, leads trailing through them into the cavity. The face is
+  the door; nothing is in tension; B03, the floor plate, the thirteenth pin
+  and `shutterFloor*`, `shutterPocketX`, `shutterSwitchClearance`,
+  `shutterTravelClr` are gone. The dummy's connectors stay. T05 now
+  includes the plate with the chamber's mouth. 181 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
@@ -449,7 +468,7 @@ from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-182 in `generate-carrier-body.mjs`, 0 failures (the list below is the
+181 in `generate-carrier-body.mjs`, 0 failures (the list below is the
 first cut's; the package README's "Gates" names the current set, which
 adds the ledge, the carrier heads' clearance, the stack and the frame
 refused turned round, the frame pins and their hold, the pry point open at

@@ -1,6 +1,6 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-21T18:03:29.900Z",
+  "generated": "2026-11-21T18:31:22.105Z",
   "body": {
     "width": 128.4,
     "height": 80.8,
@@ -64,8 +64,8 @@
     "cellOuterD": 7.5
   },
   "shutter": {
-    "stem": 4.5,
-    "podInnerY": 64.1,
+    "stem": 4.3,
+    "podInnerY": 65.4,
     "capD": 14
   },
   "print": {
@@ -80,8 +80,8 @@
   },
   "files": {
     "A01-KINO_CARRIER_SHELL.stl": {
-      "triangles": 13162,
-      "volumeCm3": 126.89,
+      "triangles": 12904,
+      "volumeCm3": 125.31,
       "size": [
         128.4,
         80.8,
@@ -116,12 +116,12 @@
       ]
     },
     "B02-KINO_CARRIER_SHUTTER_BUTTON.stl": {
-      "triangles": 1180,
-      "volumeCm3": 1.3,
+      "triangles": 1020,
+      "volumeCm3": 0.97,
       "size": [
-        40.5,
         16,
-        6.1
+        16,
+        5.9
       ]
     },
     "T03-KINO_COUPON_LEDGE_CORNER.stl": {
@@ -143,12 +143,12 @@
       ]
     },
     "T05-KINO_COUPON_DECK.stl": {
-      "triangles": 3068,
-      "volumeCm3": 6.64,
+      "triangles": 2942,
+      "volumeCm3": 6.18,
       "size": [
-        29.4,
-        13.7,
-        28.5
+        30.4,
+        12.4,
+        31.9
       ]
     },
     "T04-KINO_COUPON_STRAP_SHELL.stl": {
@@ -197,8 +197,8 @@
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 32824,
-      "volumeCm3": 257.89,
+      "triangles": 32562,
+      "volumeCm3": 256.31,
       "size": [
         128.4,
         80.8,
@@ -206,8 +206,8 @@
       ]
     },
     "KINO_CARRIER_OPEN_PREVIEW.stl": {
-      "triangles": 32842,
-      "volumeCm3": 257.89,
+      "triangles": 32580,
+      "volumeCm3": 256.31,
       "size": [
         128.4,
         80.8,
@@ -216,7 +216,7 @@
     }
   },
   "gates": {
-    "total": 182,
+    "total": 181,
     "failed": 0
   },
   "checks": [
@@ -296,9 +296,9 @@
       "details": "1 component(s)"
     },
     {
-      "name": "shutter button file is two parts",
+      "name": "shutter button file is one part",
       "pass": true,
-      "details": "2: plunger and retainer"
+      "details": "1: the plunger alone; the switch sits in the pod, nothing else is needed"
     },
     {
       "name": "shell and frame do not overlap",
@@ -498,7 +498,7 @@
     {
       "name": "the stack goes in one way",
       "pass": true,
-      "details": "turned round, 790.88 mm^3 of electronics inside the shell's material; the right way, -0.0000"
+      "details": "turned round, 790.66 mm^3 of electronics inside the shell's material; the right way, -0.0000"
     },
     {
       "name": "frame pin hole in the wall end at (30, 73.55) open",
@@ -783,87 +783,82 @@
     {
       "name": "shutter guide bore open through the deck",
       "pass": true,
-      "details": "14.6 mm, 2.5 long, flat ceiling 0.4 above the circle, round for its last 1; the 14 cap passes"
+      "details": "14.6 mm, 2.3 long, flat ceiling 0.4 above the circle, round for its last 1; the 14 cap passes"
     },
     {
-      "name": "shutter flange bore open under the step",
+      "name": "shutter chamber open from its rear end out through the plate",
       "pass": true,
-      "details": "16.3 mm from Y 70.7 to the step at 73.3; the 16 flange rides in it"
+      "details": "16.3 wide, 6.1 tall from the floor at Y 67.4 to the step at 73.5, from Z 18.05 to the front; the plunger and the switch slide in from the front with the face off"
     },
     {
       "name": "the step holds the flange under the guide",
       "pass": true,
-      "details": "0.85 mm of step all round; the plunger goes in from the cavity and cannot leave through the deck"
+      "details": "0.85 mm of step all round; the plunger cannot leave through the deck"
     },
     {
-      "name": "shutter switch pocket open from the flange bore to the floor",
+      "name": "the floor carries the press",
       "pass": true,
-      "details": "9 x 6.6 mm, 3.3 deep under the flange bore; the 6 x 6 switch with its legs"
+      "details": "2 mm of pod under the switch's base between the leg channels"
     },
     {
-      "name": "shutter floor slit open from the pod's left face",
+      "name": "the chamber is closed at the rear",
       "pass": true,
-      "details": "17.5 x 12.4 x 1.81 mm from X 95; the plate slides in to its stop"
+      "details": "4.05 mm of pod behind the flange's rear edge; the flange rides 0.15 off the end"
     },
     {
-      "name": "the lower lip carries the press",
+      "name": "the face closes the chamber",
       "pass": true,
-      "details": "1.5 mm of pod under the slit: the press lands on it, not on the pin"
+      "details": "the face's back covers the 16.3 x 6.1 hole in the plate; face off, the button comes out the front"
     },
     {
-      "name": "the pin's hole ends in the upper lip",
+      "name": "leg channel -X open through the floor from its stop to the front",
       "pass": true,
-      "details": "pin at X 97.2, 1.5 mm into the pod above the plate; 1.35 of pod to the pocket, 1.25 to the face"
+      "details": "2 wide, from Z 28.95 to the front: the legs ride in it, the leads hang through it; the front legs stop with the switch centred under the cap"
     },
     {
-      "name": "shutter floor pin hole open from the pod's inner face",
+      "name": "leg channel +X open through the floor from its stop to the front",
       "pass": true,
-      "details": "1.9 mm up through the lower lip, the slit and into the upper lip"
+      "details": "2 wide, from Z 28.95 to the front: the legs ride in it, the leads hang through it; the front legs stop with the switch centred under the cap"
     },
     {
-      "name": "the actuator meets the flange at rest and the press stops on the switch",
+      "name": "the actuator sits under the flange at rest",
       "pass": true,
-      "details": "floor at Y 67.4 + switch 4.3 = flange bottom 71.7; the flange bore runs 1 below for a 0.25 stroke"
+      "details": "floor at Y 67.4 + switch 4.3 + 0.2 free = flange bottom 71.9; the first 0.25 of press is the click"
     },
     {
-      "name": "the plate's slots sit under the pocket and pass the legs",
+      "name": "the plunger rides in under the step and lifts the switch's height into the guide",
       "pass": true,
-      "details": "slots 2 x 5.5 at X +-3.25 in a 9 x 6.6 pocket; the legs and both leads go down through them"
+      "details": "chamber 6.1 tall, the plunger 5.9 (flange 1.6 + cap 2 proud + guide 2.3), 0.2 of play riding in; from the floor to the step it lifts 4.5 = switch 4.3 + 0.2"
+    },
+    {
+      "name": "the chamber's reach into the wall's front end leaves wall",
+      "pass": true,
+      "details": "2.2 mm into the 4.5 wall over 16.3 mm, under the face; 1.8 left under a groove"
     },
     {
       "name": "the pod joins the right wall and clears CAM 4",
       "pass": true,
-      "details": "pod from X 95 into the wall at 118.9; CAM 4's XIAO ends at 92.1"
+      "details": "pod from X 94 into the wall at 118.9; CAM 4's XIAO ends at 92.1"
     },
     {
       "name": "shutter pod stays above the carrier and its connectors",
       "pass": true,
-      "details": "pod bottom Z=14, carrier front Z=12.9; the pod's inner face at Y 64.1, J1001's top at 55.9"
+      "details": "pod bottom Z=14, carrier front Z=12.9; the pod's inner face at Y 65.4, J1001's top at 55.9"
     },
     {
-      "name": "shutter bores stay inside the pod",
+      "name": "the chamber stays inside the pod's width",
       "pass": true,
-      "details": "flange bore from Z 17.65 to 34.35; pod Z 14 to 35.8"
+      "details": "chamber from X 95.85 to 112.15; the pod's face at 94, the wall at 118.9"
+    },
+    {
+      "name": "the chamber's hole in the plate clears CAM 4's pocket and the face's pins",
+      "pass": true,
+      "details": "hole from X 95.85, CAM 4's pocket ends at 87.54; the top pins at X 30 and 90"
     },
     {
       "name": "shutter plunger stem is positive",
       "pass": true,
-      "details": "4.5 mm nose above the flange; cap 2 mm proud of the deck at rest"
-    },
-    {
-      "name": "floor plate leg slot -X open",
-      "pass": true,
-      "details": "2 x 5.5 through the 1.6 plate"
-    },
-    {
-      "name": "floor plate leg slot +X open",
-      "pass": true,
-      "details": "2 x 5.5 through the 1.6 plate"
-    },
-    {
-      "name": "floor plate pin hole open",
-      "pass": true,
-      "details": "1.9 mm, 2.2 from the mouth end"
+      "details": "4.3 mm nose above the flange; cap 2 mm proud of the deck at rest"
     },
     {
       "name": "the deck carries the button and nothing else, grooved whole",
@@ -993,7 +988,7 @@
     {
       "name": "A01-KINO_CARRIER_SHELL.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "1.86 mm^2 facing down past 45 degrees outside the named places (allowed 5), 253.59 inside them: the cavity, the USB opening (a 13.4 mm bridge inside the wall), the strap tunnels, the six front pin holes, the pod's bores, pocket, slit and pin hole (flat ceilings, bridges of 16 mm and less, hidden); the ledge and the rear pin holes face up; the largest stray at (17.94, 44.74, 1)"
+      "details": "5 mm^2 facing down past 45 degrees outside the named places (allowed 5), 246.41 inside them: the cavity, the USB opening (a 13.4 mm bridge inside the wall), the strap tunnels, the six front pin holes, the guide's flat ceiling and the chamber's closed rear end (a 16 mm bridge inside the pod, under the face); the ledge and the rear pin holes face up; the largest stray at (107.37, 0.13, 23.56)"
     },
     {
       "name": "A01-KINO_CARRIER_SHELL.stl fits the bed",
@@ -1033,12 +1028,12 @@
     {
       "name": "B02-KINO_CARRIER_SHUTTER_BUTTON.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0.5 mm^2 facing down past 45 degrees outside the named places (allowed 1), 0 inside them: nothing: the plunger's flange and the plate lie on the bed, their holes go through; the largest stray at (14.01, 13.27, 0.29)"
+      "details": "0.5 mm^2 facing down past 45 degrees outside the named places (allowed 1), 0 inside them: nothing: the flange lies on the bed; the largest stray at (14.01, 13.27, 0.29)"
     },
     {
       "name": "B02-KINO_CARRIER_SHUTTER_BUTTON.stl fits the bed",
       "pass": true,
-      "details": "40.5 x 16 x 6.1"
+      "details": "16 x 16 x 5.9"
     },
     {
       "name": "T02-KINO_COUPON_POCKET_GAUGE.stl carries \"7.8\" in material",
@@ -1073,7 +1068,7 @@
     {
       "name": "T05-KINO_COUPON_DECK.stl carries \"T05\" in material",
       "pass": true,
-      "details": "3 mm letters at (96, 72.05) in the face at Z 8, 0.4 deep; 100 % of the engraving in material"
+      "details": "3 mm letters at (95, 72.05) in the face at Z 8, 0.4 deep; 100 % of the engraving in material"
     },
     {
       "name": "T01-KINO_COUPON_SHRINK_BAR.stl carries \"T01\" in material",
@@ -1118,7 +1113,7 @@
     {
       "name": "T05-KINO_COUPON_DECK.stl is one piece on the bed",
       "pass": true,
-      "details": "29.4 x 13.7 x 28.5 mm, 1 piece(s)"
+      "details": "30.4 x 12.4 x 31.9 mm, 1 piece(s)"
     },
     {
       "name": "T04-KINO_COUPON_STRAP_SHELL.stl is one piece on the bed",

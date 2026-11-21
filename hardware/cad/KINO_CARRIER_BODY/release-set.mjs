@@ -14,7 +14,7 @@ export const RELEASE_SET = [
   { file: "A02-KINO_CARRIER_FACE.stl", dir: "print", parts: 1 },
   { file: "A03-KINO_CARRIER_REAR_FRAME.stl", dir: "print", parts: 1 },
   { file: "B01-KINO_CARRIER_LENS_COVER.stl", dir: "print", parts: 1 },
-  { file: "B02-KINO_CARRIER_SHUTTER_BUTTON.stl", dir: "print", parts: 2 },
+  { file: "B02-KINO_CARRIER_SHUTTER_BUTTON.stl", dir: "print", parts: 1 },
   // Coupons: pieces of the real parts cut out with boxes. Print these first.
   { file: "T01-KINO_COUPON_SHRINK_BAR.stl", dir: "coupons", parts: 1 },
   { file: "T02-KINO_COUPON_POCKET_GAUGE.stl", dir: "coupons", parts: 1 },
@@ -40,12 +40,12 @@ export const RELEASE_PROCESS = {
   "A02-KINO_CARRIER_FACE.stl": "FDM, dark blue PLA, 0.20 mm, back down, no support",
   "A03-KINO_CARRIER_REAR_FRAME.stl": "FDM, black PETG, 0.10 mm, rear face UP (the gasket groove on the bed), no support",
   "B01-KINO_CARRIER_LENS_COVER.stl": "FDM, black PETG, 0.08 mm, back down, no support; minimum layer time 10 s for the lip",
-  "B02-KINO_CARRIER_SHUTTER_BUTTON.stl": "FDM, dark blue PLA, 0.08 mm, flange and plate flat on the bed, no support; B02 the plunger and B03 the switch's floor plate in one file",
+  "B02-KINO_CARRIER_SHUTTER_BUTTON.stl": "FDM, dark blue PLA, 0.08 mm, flange down, no support; the plunger alone",
   "T01-KINO_COUPON_SHRINK_BAR.stl": "FDM, black PETG, 0.20 mm: a 100 x 10 x 3 bar; measure it, set the slicer's shrink compensation, never scale the shell",
   "T02-KINO_COUPON_POCKET_GAUGE.stl": "FDM, black PETG, 0.20 mm, plate down: three real camera pockets of 7.8, 8.1 and 8.4 mm with their ribs, reliefs and bores, each labelled; the one that holds the head is the number",
   "T03-KINO_COUPON_LEDGE_CORNER.stl": "FDM, black PETG, 0.20 mm, plate down: the cavity's lower-left corner with 24 mm of ledge on two walls and the face pin hole at X 5; the carrier's corner lands on the ledge",
   "T04-KINO_COUPON_STRAP_SHELL.stl": "FDM, black PETG, 0.20 mm, cut face down: the bottom wall's rear end with its tunnel, two strap slots and the frame pin hole at X 40; pulled to 100 N on a 2.5 mm cord, 500 g hung on the pin",
-  "T05-KINO_COUPON_DECK.stl": "FDM, black PETG, 0.20 mm, cut face down: the whole pod with the deck over it and the wall corner it joins; the guide and its ribs, the step, the flange bore, the switch pocket, the floor slit and its pin hole. Needs the B02 file, the switch and one pin",
+  "T05-KINO_COUPON_DECK.stl": "FDM, black PETG, 0.20 mm, plate down like the shell: the whole pod with the deck over it, the wall corner it joins and the plate with the chamber's mouth; the guide and its ribs, the step, the chamber, the floor and the leg channels. Needs the B02 plunger and the switch; a hand over the mouth stands in for the face",
   "P1-COUPON_PLATE_T01_T02.stl": "FDM, black PETG, 0.20 mm: T01 and T02 on one bed; set the slicer's shrink compensation from T01 (0.2 % measured), find the pocket width on T02",
   "P2-COUPON_PLATE_T03_T04.stl": "FDM, black PETG, 0.20 mm: T03 and T04 on one bed; the ledge under the carrier's corner, a face pin hole, the strap tunnel and a frame pin hole",
 };

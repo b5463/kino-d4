@@ -132,7 +132,6 @@ export const P = Object.freeze({
   // wall, 1.8 into the face's back); six in the walls' rear ends hold the
   // frame (3 into the wall, through the 2.0 frame, 0.2 under its rear
   // face). No screw anywhere.
-  pinLen: 4.8,               // every pin in the body, cut from 1.75 mm filament
   facePinD: 1.9,             // the hole in the wall ends and the face, for 1.75 mm filament: a 1.8 hole at a bed face closed to 1.5 with the elephant foot, 2.0 with the countersink and the 0.2 compensation did not retain; the pins must hold without glue, T03 and T04 decide
   facePinSink: 0.4,          // 45 degree countersink at every bed-face mouth
   facePinWall: 3.0,
@@ -253,41 +252,39 @@ export const P = Object.freeze({
   markDepth: 0.4,            // the wordmark engraved in the bar's top: one material per part (PLA on PETG does not bond, so no raised mark in the face's colour); it reads as shadow, as the symbol on the back does
   bedChamfer: 0.4,           // two whole layers at 0.2 (0.3 sliced as one step and a sliver); 45 degrees on every bed-side edge that meets a fit or shows: the cover's and keeper's backs, the face's back outer edge, the shell's front outer edge
   markMinStroke: 0.8,
-  // ---- The shutter: a pod under the deck with a round guide, a flange bore
-  // and a switch pocket floored by a pinned plate; the cap is the brand's one
-  // blue button. See shutter.mjs for the chain. The first printed pod
-  // (2026-11-21) missed the switch by 0.5 mm, had a loose retainer and no
-  // lead route; every number here is read off the bench's switch.
+  // ---- The shutter: a pod under the deck with a round guide and a chamber
+  // open toward the front through the plate; the plunger and the switch
+  // slide in from the front and the face is the door. One printed part, no
+  // fastener. See shutter.mjs for the chain and why the front. The first
+  // printed pod (2026-11-21) missed the switch by 0.5 mm, had a loose
+  // retainer and no lead route; a pinned floor plate after it could not be
+  // assembled at all (the flange had no way in), and rear entry fails on
+  // the wall's inner face. Every number here is read off the bench's switch.
   shutterX: 104.0,
   shutterZ: 26.2,            // bore axis, between the plate and the carrier
-  shutterPodLeft: 9.0,       // the pod's left face this far left of the axis (X 95: 2.9 clear of CAM 4's XIAO at 92.1); the pod runs into the right wall
+  shutterPodLeft: 10.0,      // the pod's left face this far left of the axis (X 94: 1.9 clear of CAM 4's XIAO at 92.1, 1.85 of pod beside the chamber); the pod runs into the right wall
   shutterPodBottomZ: 14.0,   // 1.1 above the carrier's front face
   shutterSwitchBody: [6.0, 6.0, 4.3],   // X, Z and the whole height, base to actuator top at rest (3.5 body + 0.8 actuator); MEASURE the bench's switch
   shutterSwitchTravel: 0.25, // the actuator's stroke to the click
-  shutterSwitchClearance: 0.6,  // the pocket round the body in Z
-  shutterPocketX: 9.0,       // the pocket in X: the body plus the bent legs either side; the flange locates the press, the pocket only the body
+  shutterSwitchFree: 0.2,    // between the actuator and the flange at rest, so the switch slides in under the seated plunger; it is also the plunger's play riding in
   shutterLegX: 3.25,         // the legs' X off the axis, each side (6.5 pitch)
-  shutterLegSlot: [2.0, 5.5],   // through the floor plate at each leg line: X by Z; the legs and the two leads pass down into the cavity
-  shutterGuideLen: 2.5,      // the guide bore, deck to the step the flange rests under: 1.4 of the 4.5 wall over the collar, then the step
+  shutterLegZ: 2.25,         // the legs' Z off the axis, each side (4.5 pitch)
+  shutterLegClr: 0.5,        // past the front legs to the channels' ends: the switch's stop
+  shutterLegSlot: [2.0, 5.5],   // a leg channel's width in X (the second figure is unused: the channels run to the front)
+  shutterGuideLen: 2.3,      // the guide bore, deck to the step the flange rests under. The plunger riding in (flange 1.6 + cap 2.0 proud + this) must fit under the step with the free play to spare in a chamber that is flange + free + switch tall (gated): 5.9 in 6.1
   shutterGuideRound: 1.0,    // the guide's last mm at the deck is round; below it the ceiling is flat
-  shutterGuideCeil: 0.4,     // the flat ceiling above the circle's top: the print's bridge clears the cap and the flange
+  shutterGuideCeil: 0.4,     // the flat ceiling above the circle's top: the print's bridge clears the cap
   shutterActuatorGuideD: 14.6,
   shutterActuatorFlangeD: 16.0,
   shutterFlangeH: 1.6,
-  shutterFlangeBoreClear: 0.15, // per side; the flange's bed edge is chamfered too. 0.3 ticked in the hand, the first thing a juror touches
-  shutterTravelClr: 1.0,     // the flange bore runs this far below the flange's rest position; the switch's 0.25 stops the press long before it
+  shutterFlangeBoreClear: 0.15, // per side in the chamber; the flange's bed edge is chamfered too. 0.3 ticked in the hand, the first thing a juror touches
   shutterGuideRib: [0.2, 0.8],  // three ribs, proud x wide, along the guide bore on the face side: the cap runs on three lines, not in a 0.6 mm gap
   shutterPressCapD: 14.0,
   shutterProud: 2.0,         // the cap's rim above the top face
   shutterCapEdge: 0.5,       // 45 degrees round the cap's top edge: six even rings at 0.08
   shutterCollarD: 20.0,
   shutterCollarDepth: 0.4,   // a two-layer shadow line round the cap
-  shutterFloorT: 1.6,        // the floor plate B03, dark blue PLA, flat on the bed
-  shutterFloorClr: 0.2,      // in the slit, above the plate
-  shutterFloorW: 12.0,       // across Z; the slit is this plus 0.2 a side
-  shutterFloorLip: 1.5,      // of pod under the slit: the press lands here
-  shutterFloorPast: 4.0,     // the slit runs this far past the pocket: the plate's stop
-  shutterFloorPinX: 2.2,     // the pin's X from the plate's mouth end (1.25 of pod to the face, 1.35 to the pocket), through the lower lip, the plate and into the upper lip: 1.5 + 1.8 + 1.5 of a 4.8 pin
+  shutterFloor: 2.0,         // of pod under the chamber: the press lands here; the leg channels cut through it
   // ---- Strap: cord channels at both lower corners, inside the outline. Two
   // slots through the rear frame's border over a channel in the bottom
   // wall's end: the cord goes in one slot, along the channel, out the other,
@@ -304,11 +301,11 @@ export const P = Object.freeze({
 // pixel codes spoiled the first layer and could not be read). A = enclosure,
 // B = moving and interaction parts, C = consumables (not printed), T = test
 // coupons, P = coupon plates. The same ID is in the file name, the register
-// in the README and on the bin. B01, B02 and B03 carry no mark: each is the
-// only part of its shape and colour, and none has a hidden face that is not
-// the bed.
+// in the README and on the bin. B01 and B02 carry no mark: each is the
+// only part of its shape and colour, and neither has a hidden face that is
+// not the bed.
 export const IDS = Object.freeze({
-  shell: "A01", face: "A02", frame: "A03", cover: "B01", plunger: "B02", retainer: "B03",
+  shell: "A01", face: "A02", frame: "A03", cover: "B01", plunger: "B02",
   pins: "C01", foam: "C02", shrinkBar: "T01",
 });
 

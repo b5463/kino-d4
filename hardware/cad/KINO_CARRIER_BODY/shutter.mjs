@@ -1,26 +1,30 @@
-// The shutter, after the first printed pod (2026-11-21): the plunger did not
-// reach the switch, the retainer cup had nothing to hold it, the two leads
-// had no way out, and the teardrop bores were there for the printer, not
-// the part. Now:
+// The shutter: one printed part (the plunger B02), one 6 x 6 tactile
+// switch with two leads, no fastener, no retainer. The face is the door.
 //
-// The pod is a block under the top wall from X podX0 to the right wall.
-// A round guide bore for the cap through the deck, a wider round bore
-// under it for the plunger's flange (the step between them is what keeps
-// the plunger in), and under that a square pocket the 6 x 6 tactile switch
-// sits in, actuator up against the flange. The pocket's floor is a flat
-// plate (B03) slid into a slit from the pod's left face and locked by one
-// of the body's filament pins through the lower lip, the plate and into
-// the upper lip: the press goes into solid pod, the pin only stops the
-// plate sliding. The switch's legs and its two leads pass down through two
-// slots in the plate into the cavity, to J103. Every bore is round; the
-// guide's ceiling is flat 0.4 above the circle so the print's bridge never
-// touches the cap, and its last 1 mm at the deck is round.
+// The pod is a block under the top wall from X podX0 into the right wall.
+// In it a chamber, 16.3 wide and as tall as the plunger lying in it, open
+// toward the FRONT through the plate (and 2.2 mm into the wall's front end
+// over it), closed at the rear. From the deck down: a 14.6 round guide
+// (ribbed on its face side, round at the deck, flat-ceilinged below), the
+// step the flange rests under, the chamber, and a 2 mm floor with two leg
+// channels through it running out to the front.
 //
-// Assembly, with the stack out: plunger into the pod from the cavity, cap
-// first, out through the deck (its flange cannot pass the guide); switch
-// in behind it, legs down; leads through the plate's slots; plate into the
-// slit; pin up through the pod's inner face.
-import { Manifold, cube, box, cylZ, coneZ, cylY, fuse, status } from "./lib.mjs";
+// Why the front: the cap stands proud of the deck and 2.3 mm of guide
+// above the step, so the plunger is 5.9 mm tall and must ride in with its
+// cap under the step; from the rear it would have to pass under the top
+// wall's inner face, 2.2 mm lower than the step, and there is no lifting it
+// after. From the front the ride ceiling is the step itself. The chamber
+// is 0.2 taller than the plunger: it rides in on the floor, and when it is
+// under the guide it drops in by its own weight (the shell deck down on the
+// bench) and its flange lands on the step. That lift is the switch's
+// height and 0.2: the switch then slides in on the floor under the seated
+// flange, legs in the two channels, leads trailing out through them into
+// the cavity, and stops when its front legs reach the channels' ends,
+// centred under the cap. The face goes on over the plate's hole and
+// nothing can leave. The press goes into the floor. Every bore is round;
+// the chamber's rear end is a 16 mm bridge inside the pod and the guide
+// has its own flat ceiling.
+import { cube, box, cylZ, coneZ, cylY, fuse, status } from "./lib.mjs";
 import { P, Z, XY } from "./params.mjs";
 
 export const SHUTTER = (() => {
@@ -28,26 +32,22 @@ export const SHUTTER = (() => {
   const [, , , oy1] = XY.outer;
   const X = P.shutterX, Zc = P.shutterZ;
   const guideTop = oy1;                                   // the deck
-  const guideBottom = oy1 - P.shutterGuideLen;            // the step the flange rests under
-  const flangeTopRest = guideBottom;
-  const flangeBottomRest = flangeTopRest - P.shutterFlangeH;
-  const flangeBoreBottom = flangeBottomRest - P.shutterTravelClr;   // the flange never reaches it: the switch stops first
-  const switchTop = flangeBottomRest;                     // actuator top at rest, just touching
-  const floorTop = switchTop - P.shutterSwitchBody[2];    // the switch's base, on the plate
-  const floorBottom = floorTop - P.shutterFloorT;
-  const slitBottom = floorBottom - P.shutterFloorClr;     // the slit is floorT + clr tall
-  const slitTop = floorTop + 0.01;
-  const podInnerY = slitBottom - P.shutterFloorLip;       // the pod's face toward the cavity
+  const guideBottom = oy1 - P.shutterGuideLen;            // the step the flange rests under, and the ride ceiling
+  const flangeBottomRest = guideBottom - P.shutterFlangeH;
+  const switchTop = flangeBottomRest - P.shutterSwitchFree;   // the actuator at rest, a hair under the flange
+  const floorTop = switchTop - P.shutterSwitchBody[2];    // the switch's base, and the flange's ride level
+  const podInnerY = floorTop - P.shutterFloor;            // the pod's face toward the cavity
+  const chamberH = guideBottom - floorTop;
+  const plungerH = P.shutterFlangeH + P.shutterProud + P.shutterGuideLen;   // flange bottom to cap top
+  const lift = chamberH - P.shutterFlangeH;               // from the flange on the floor to the flange on the step
   const podX0 = X - P.shutterPodLeft;
   const podX1 = cx1 + 0.5;                                // into the right wall: one block
-  const slitX1 = X + P.shutterPocketX / 2 + P.shutterFloorPast;   // the plate's far stop
-  const plateLen = slitX1 - podX0;
-  const pinX = podX0 + P.shutterFloorPinX;
+  const rF = P.shutterActuatorFlangeD / 2 + P.shutterFlangeBoreClear;
+  const chamberZ0 = Zc - rF;                              // the closed rear end; the flange's rear edge rides 0.15 off it
+  const legStopZ = Zc + P.shutterLegZ + P.shutterLegClr;  // the front legs stop here: the switch centred under the cap
+  const notch = guideBottom - cy1;                        // how far the chamber reaches into the top wall's front end
   const stem = P.shutterProud + P.shutterGuideLen;        // cap top above the flange's top
-  return Object.freeze({
-    X, Zc, oy1, cy1, guideTop, guideBottom, flangeTopRest, flangeBottomRest, flangeBoreBottom, switchTop, floorTop, floorBottom,
-    slitBottom, slitTop, podInnerY, podX0, podX1, slitX1, plateLen, pinX, stem,
-  });
+  return Object.freeze({ X, Zc, oy1, cy1, guideTop, guideBottom, flangeBottomRest, switchTop, floorTop, podInnerY, chamberH, plungerH, lift, podX0, podX1, rF, chamberZ0, legStopZ, notch, stem });
 })();
 
 // A bore along Y with a flat ceiling `up` above the circle's top (-Z is up
@@ -57,27 +57,23 @@ const slotY = (cx, y, cz, r, len, up) => fuse([cylY(cx, y, cz, r, len), box(cx -
 // What the pod adds to the shell and what it cuts from it. Added before the
 // cuts, cut after everything else is fused.
 export function shutterPod() {
-  const S = SHUTTER, X = S.X, Zc = S.Zc;
+  const S = SHUTTER, X = S.X, Zc = S.Zc, rF = S.rF;
   const adds = [cube(S.podX0, S.podInnerY, P.shutterPodBottomZ, S.podX1 - S.podX0, S.cy1 - S.podInnerY + 0.5, Z.plateInner + 0.3 - P.shutterPodBottomZ)];
-  const rG = P.shutterActuatorGuideD / 2, rF = P.shutterActuatorFlangeD / 2 + P.shutterFlangeBoreClear;
-  const pw = P.shutterPocketX, pz = P.shutterSwitchBody[1] + P.shutterSwitchClearance;
+  const rG = P.shutterActuatorGuideD / 2;
   const cuts = [
     // The guide: a flat-topped slot below, round for its last mm at the deck.
     slotY(X, S.guideBottom - 0.01, Zc, rG, P.shutterGuideLen - P.shutterGuideRound + 0.02, P.shutterGuideCeil),
     cylY(X, S.guideTop - P.shutterGuideRound - 0.01, Zc, rG, P.shutterGuideRound + 1.0),
     // The collar recess round the cap.
     cylY(X, S.oy1 - P.shutterCollarDepth, Zc, P.shutterCollarD / 2, P.shutterCollarDepth + 0.2),
-    // The flange bore, from the pocket up to the step.
-    slotY(X, S.flangeBoreBottom - 0.01, Zc, rF, S.guideBottom - S.flangeBoreBottom + 0.02, P.shutterGuideCeil),
-    // The switch pocket, from the plate up into the flange bore: wide in X
-    // for the legs (the flange locates the press, the pocket only the body).
-    box(X - pw / 2, S.floorTop - 0.01, Zc - pz / 2, X + pw / 2, S.flangeBoreBottom + 0.02, Zc + pz / 2),
-    // The slit for the floor plate, open at the pod's left face.
-    box(S.podX0 - 1, S.slitBottom, Zc - P.shutterFloorW / 2 - P.shutterFloorClr, S.slitX1, S.slitTop, Zc + P.shutterFloorW / 2 + P.shutterFloorClr),
-    // The pin: from the pod's inner face up through the lower lip, the slit
-    // and facePinWall of upper lip.
-    cylY(S.pinX, S.podInnerY - 1, Zc, P.facePinD / 2, 1 + P.pinLen + P.shutterFloorClr, 24),
+    // The chamber: from its closed rear end out through the plate's front.
+    box(X - rF, S.floorTop, S.chamberZ0, X + rF, S.guideBottom + 0.01, Z.plateFront + 1),
   ];
+  // Two leg channels through the floor, from the stop under the cap out to
+  // the front; the legs ride in them, the leads hang through them.
+  for (const s of [-1, 1]) {
+    cuts.push(box(X + s * P.shutterLegX - P.shutterLegSlot[0] / 2, S.podInnerY - 1, S.legStopZ - (P.shutterLegZ * 2 + P.shutterLegClr * 2), X + s * P.shutterLegX + P.shutterLegSlot[0] / 2, S.floorTop + 0.5, Z.plateFront + 1));
+  }
   return { adds, cuts };
 }
 
@@ -93,8 +89,7 @@ export function capPreview() {
   return cap.rotate([-90, 0, 0]).translate([P.shutterX, S.oy1 - P.shutterCollarDepth, P.shutterZ]);
 }
 
-// The plunger (B02) and the floor plate (B03), in their own print frame:
-// the flange and the plate flat on the bed.
+// The plunger (B02), in its own print frame: the flange on the bed.
 export function buildShutterButton() {
   const S = SHUTTER;
   const flangeH = P.shutterFlangeH, e = P.shutterCapEdge;
@@ -106,20 +101,5 @@ export function buildShutterButton() {
     cylZ(0, 0, flangeH, P.shutterPressCapD / 2, noseStraightH),
     coneZ(0, 0, flangeH + noseStraightH - 0.01, P.shutterPressCapD / 2, P.shutterPressCapD / 2 - e, e + 0.01, 64),
   ]).translate([9, 9, 0]);
-
-  // The floor plate: plateLen along X (the slide), floorW across, floorT
-  // thick; two slots for the switch's legs and leads under the pocket, one
-  // pin hole near the mouth end. Its bed edge chamfered 0.3 all round.
-  const px0 = 24, py0 = 2, L = S.plateLen, W = P.shutterFloorW, T = P.shutterFloorT;
-  const plate = Manifold.hull([
-    box(px0 + 0.3, py0 + 0.3, 0, px0 + L - 0.3, py0 + W - 0.3, 0.01),
-    box(px0, py0, 0.3, px0 + L, py0 + W, T),
-  ]);
-  const cuts = [];
-  const cxPlate = px0 + (S.X - S.podX0), cyPlate = py0 + W / 2;
-  const [sw, sl] = P.shutterLegSlot;
-  for (const s of [-1, 1]) cuts.push(box(cxPlate + s * P.shutterLegX - sw / 2, cyPlate - sl / 2, -1, cxPlate + s * P.shutterLegX + sw / 2, cyPlate + sl / 2, T + 1));
-  cuts.push(cylZ(px0 + P.shutterFloorPinX, cyPlate, -1, P.facePinD / 2, T + 2, 24));
-  const floor = plate.subtract(fuse(cuts));
-  return status("shutter button", fuse([actuator, floor]).simplify(1e-5));
+  return status("shutter button", actuator.simplify(1e-5));
 }
