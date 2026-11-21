@@ -33,7 +33,7 @@ import { cube, box, cylZ, coneZ, cylY, fuse, vol, rbox, toBed, r2, overhangOutsi
 import { P, Z, XY, IDS } from "./params.mjs";
 import { SHELL, buildShell, buildFrame, cameraPocket } from "./shell.mjs";
 import { FACE, buildFace } from "./face.mjs";
-import { SHUTTER, buildShutterButton, capPreview } from "./shutter.mjs";
+import { SHUTTER, buildShutterButton, capPreview, plungerAtRest } from "./shutter.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const outDir = path.join(here, ".candidate");
@@ -265,9 +265,36 @@ check("the first groove clears the frame pins' floors", P.grooveZ[0] - P.grooveD
     const door = box(X - rF + 0.2, T.floorTop + 0.2, Z.plateFront + 0.05, X + rF - 0.2, T.guideBottom - 0.2, Z.plateFront + 0.8);
     check("the face closes the chamber", vol(face, door) > door.volume() * 0.98, `the face's back covers the ${r2(2 * rF)} x ${r2(T.chamberH)} hole in the plate; face off, the button comes out the front`);
   }
-  for (const s of [-1, 1]) openProbe(`leg channel ${s < 0 ? "-X" : "+X"} open through the floor from its stop to the front`,
-    box(X + s * P.shutterLegX - P.shutterLegSlot[0] / 2 + 0.1, T.podInnerY - 0.2, T.legStopZ - 2 * P.shutterLegZ - 0.3, X + s * P.shutterLegX + P.shutterLegSlot[0] / 2 - 0.1, T.floorTop + 0.3, Z.plateFront + 0.2),
-    `${P.shutterLegSlot[0]} wide, from Z ${r2(T.legStopZ)} to the front: the legs ride in it, the leads hang through it; the front legs stop with the switch centred under the cap`);
+  for (const s of [-1, 1]) {
+    const inner = X + s * (P.shutterLegX - P.shutterLegSlot[0] / 2), ribTip = X + s * (P.shutterLegX + P.shutterLegSlot[0] / 2 - P.shutterLegRib);
+    const [lo, hi] = s < 0 ? [ribTip, inner] : [inner, ribTip];
+    openProbe(`leg channel ${s < 0 ? "-X" : "+X"} open through the floor from its stop to the front past the rib`,
+      box(lo + 0.1, T.podInnerY - 0.2, T.legStopZ - 2 * P.shutterLegZ - 0.3, hi - 0.1, T.floorTop + 0.3, Z.plateFront + 0.2),
+      `${P.shutterLegSlot[0]} wide, from Z ${r2(T.legStopZ - 2 * P.shutterLegZ - 2 * P.shutterLegClr)} to the front: the legs ride in it, the leads hang through it; the rear legs stop at its end with the switch centred under the cap`);
+    const z0 = T.legStopZ + P.shutterLegT / 2;
+    const ribProbe = box(Math.min(ribTip + s * 0.2, X + s * (P.shutterLegX + P.shutterLegSlot[0] / 2) - s * 0.2), T.podInnerY + 0.2, z0 + 0.1, Math.max(ribTip + s * 0.2, X + s * (P.shutterLegX + P.shutterLegSlot[0] / 2) - s * 0.2), T.floorTop - 0.2, z0 + 0.3);
+    check(`leg channel ${s < 0 ? "-X" : "+X"} has its detent rib`, vol(shell, ribProbe) > ribProbe.volume() * 0.9 && P.shutterLegRib < P.shutterLegSlot[0] && P.shutterLegSlot[0] / 2 - P.shutterLegRib <= -P.shutterLegT / 2 - 0.1,
+      `rib ${P.shutterLegRib} proud of the channel's outer wall at Z ${r2(z0)}, square toward the switch, 45 degrees toward the front; its tip ${r2(P.shutterLegRib - P.shutterLegSlot[0] / 2 - P.shutterLegT / 2)} past the leg's inner face with the switch centred, so the ${P.shutterLegT} legs flex in past it and sit behind it; the rib stays under the floor's top`);
+  }
+  // The order of operations, swept: 1. the plunger rides in on the floor
+  // from the plate's mouth to the axis; 2. it lifts into the guide; 3. the
+  // switch rides in on the floor under it to its stop. Each sweep must be
+  // clear of the shell, and the switch's of the seated plunger; and a
+  // switch already at its stop must block the plunger's ride, which is why
+  // the order is the order.
+  {
+    const rest = plungerAtRest();
+    const rFl = P.shutterActuatorFlangeD / 2, hS = P.shutterSwitchBody[2], wS = P.shutterSwitchBody[0], dS = P.shutterSwitchBody[1];
+    const plungerSweep = box(X - rFl, T.floorTop + 0.05, Zc - rFl, X + rFl, T.floorTop + T.plungerH, Z.plateFront + 0.2);
+    check("1. the plunger rides in on the floor to the axis", vol(shell, plungerSweep) < 1e-3, `a ${r2(2 * rFl)} x ${r2(T.plungerH)} sweep from the plate's mouth to Z ${r2(Zc - rFl)}: ${vol(shell, plungerSweep).toFixed(4)} mm^3 of shell in it`);
+    check("2. the plunger lifts into the guide and rests on the step", vol(shell, rest) < 1e-3 && vol(rest, box(X - 3, T.oy1 + P.shutterProud + 0.05, Zc - 3, X + 3, T.oy1 + P.shutterProud + 1, Zc + 3)) < 1e-3 && vol(rest, box(X - 3, T.oy1 + P.shutterProud - 0.3, Zc - 3, X + 3, T.oy1 + P.shutterProud - 0.1, Zc + 3)) > 0.5,
+      `at rest ${vol(shell, rest).toFixed(4)} mm^3 of shell inside it; its cap top at Y ${r2(T.oy1 + P.shutterProud)}, ${P.shutterProud} proud of the deck`);
+    const switchSweep = box(X - wS / 2, T.floorTop + 0.05, Zc - dS / 2, X + wS / 2, T.floorTop + hS, Z.plateFront + 0.2);
+    check("3. the switch rides in on the floor under the seated plunger to its stop", vol(shell, switchSweep) < 1e-3 && vol(rest, switchSweep) < 1e-3,
+      `a ${wS} x ${r2(hS)} sweep from the mouth to Z ${r2(Zc - dS / 2)}: ${vol(shell, switchSweep).toFixed(4)} mm^3 of shell and ${vol(rest, switchSweep).toFixed(4)} of plunger in it; ${P.shutterSwitchFree} under the flange`);
+    const switchAtStop = box(X - wS / 2, T.floorTop, Zc - dS / 2, X + wS / 2, T.floorTop + hS, Zc + dS / 2);
+    check("the switch must go in second: at its stop it blocks the plunger's ride", vol(switchAtStop, plungerSweep) > 10, `${r2(vol(switchAtStop, plungerSweep))} mm^3 of switch in the plunger's sweep; plunger first, switch second, face third`);
+  }
   check("the actuator sits under the flange at rest", Math.abs(T.floorTop + P.shutterSwitchBody[2] + P.shutterSwitchFree - T.flangeBottomRest) < 1e-9 && P.shutterSwitchFree <= 0.3,
     `floor at Y ${r2(T.floorTop)} + switch ${P.shutterSwitchBody[2]} + ${P.shutterSwitchFree} free = flange bottom ${r2(T.flangeBottomRest)}; the first ${P.shutterSwitchTravel} of press is the click`);
   check("the plunger rides in under the step and lifts the switch's height into the guide", T.chamberH - T.plungerH >= P.shutterSwitchFree - 1e-9 && Math.abs(T.lift - P.shutterSwitchBody[2] - P.shutterSwitchFree) < 1e-9,

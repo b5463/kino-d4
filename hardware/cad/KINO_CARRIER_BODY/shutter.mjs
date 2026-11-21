@@ -24,7 +24,7 @@
 // nothing can leave. The press goes into the floor. Every bore is round;
 // the chamber's rear end is a 16 mm bridge inside the pod and the guide
 // has its own flat ceiling.
-import { cube, box, cylZ, coneZ, cylY, fuse, status } from "./lib.mjs";
+import { Manifold, cube, box, cylZ, coneZ, cylY, fuse, status } from "./lib.mjs";
 import { P, Z, XY } from "./params.mjs";
 
 export const SHUTTER = (() => {
@@ -74,7 +74,25 @@ export function shutterPod() {
   for (const s of [-1, 1]) {
     cuts.push(box(X + s * P.shutterLegX - P.shutterLegSlot[0] / 2, S.podInnerY - 1, S.legStopZ - (P.shutterLegZ * 2 + P.shutterLegClr * 2), X + s * P.shutterLegX + P.shutterLegSlot[0] / 2, S.floorTop + 0.5, Z.plateFront + 1));
   }
-  return { adds, cuts };
+  // A detent in each channel, added back after the cuts: a rib on the
+  // channel's outer wall just in front of the switch's front legs, a 45
+  // degree ramp toward the front and a square face toward the switch. The
+  // legs are 0.3 mm strips 3.5 long: they flex inward past the rib on the
+  // way in and sit behind it, so the switch cannot walk forward out from
+  // under the cap; a tug pulls it out for service. The rib stays under the
+  // floor's top so the body never touches it.
+  const legRibs = [];
+  {
+    const z0 = S.legStopZ - P.shutterLegClr + P.shutterLegT / 2 + P.shutterLegClr;   // the front legs' front face plus the clearance
+    const rib = P.shutterLegRib, y0 = S.podInnerY - 0.5, y1 = S.floorTop - 0.01;
+    for (const s of [-1, 1]) {
+      const xw = X + s * (P.shutterLegX + P.shutterLegSlot[0] / 2) + s * 0.05;   // 0.05 into the wall, so the union never leaves a sliver
+      const tip = X + s * (P.shutterLegX + P.shutterLegSlot[0] / 2 - rib - 0.01);  // the 0.01 overshoot in the width: the ramp stays at 45 degrees
+      const pts = s < 0 ? [[xw, z0], [tip, z0], [xw, z0 + rib]] : [[xw, z0], [xw, z0 + rib], [tip, z0]];
+      legRibs.push(Manifold.extrude(pts, y1 - y0).rotate([90, 0, 0]).translate([0, y1, 0]));
+    }
+  }
+  return { adds, cuts, legRibs };
 }
 
 // The cap as it stands in the collar, for the colour previews: the rim
@@ -87,6 +105,13 @@ export function capPreview() {
     coneZ(0, 0, h - e - 0.01, P.shutterPressCapD / 2, P.shutterPressCapD / 2 - e, e + 0.01, 64),
   ]);
   return cap.rotate([-90, 0, 0]).translate([P.shutterX, S.oy1 - P.shutterCollarDepth, P.shutterZ]);
+}
+
+// The plunger at rest in the body frame (flange on the step, cap through
+// the deck), for the order-of-operations gates.
+export function plungerAtRest() {
+  const S = SHUTTER;
+  return buildShutterButton().translate([-9, -9, 0]).rotate([-90, 0, 0]).translate([S.X, S.flangeBottomRest, S.Zc]);
 }
 
 // The plunger (B02), in its own print frame: the flange on the bed.

@@ -1,6 +1,6 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-21T18:31:22.105Z",
+  "generated": "2026-11-21T18:45:59.335Z",
   "body": {
     "width": 128.4,
     "height": 80.8,
@@ -80,7 +80,7 @@
   },
   "files": {
     "A01-KINO_CARRIER_SHELL.stl": {
-      "triangles": 12904,
+      "triangles": 12944,
       "volumeCm3": 125.31,
       "size": [
         128.4,
@@ -143,7 +143,7 @@
       ]
     },
     "T05-KINO_COUPON_DECK.stl": {
-      "triangles": 2942,
+      "triangles": 2982,
       "volumeCm3": 6.18,
       "size": [
         30.4,
@@ -197,8 +197,8 @@
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 32562,
-      "volumeCm3": 256.31,
+      "triangles": 32602,
+      "volumeCm3": 256.32,
       "size": [
         128.4,
         80.8,
@@ -206,8 +206,8 @@
       ]
     },
     "KINO_CARRIER_OPEN_PREVIEW.stl": {
-      "triangles": 32580,
-      "volumeCm3": 256.31,
+      "triangles": 32620,
+      "volumeCm3": 256.32,
       "size": [
         128.4,
         80.8,
@@ -216,7 +216,7 @@
     }
   },
   "gates": {
-    "total": 181,
+    "total": 187,
     "failed": 0
   },
   "checks": [
@@ -811,14 +811,44 @@
       "details": "the face's back covers the 16.3 x 6.1 hole in the plate; face off, the button comes out the front"
     },
     {
-      "name": "leg channel -X open through the floor from its stop to the front",
+      "name": "leg channel -X open through the floor from its stop to the front past the rib",
       "pass": true,
-      "details": "2 wide, from Z 28.95 to the front: the legs ride in it, the leads hang through it; the front legs stop with the switch centred under the cap"
+      "details": "2 wide, from Z 23.45 to the front: the legs ride in it, the leads hang through it; the rear legs stop at its end with the switch centred under the cap"
     },
     {
-      "name": "leg channel +X open through the floor from its stop to the front",
+      "name": "leg channel -X has its detent rib",
       "pass": true,
-      "details": "2 wide, from Z 28.95 to the front: the legs ride in it, the leads hang through it; the front legs stop with the switch centred under the cap"
+      "details": "rib 1.35 proud of the channel's outer wall at Z 29.1, square toward the switch, 45 degrees toward the front; its tip 0.2 past the leg's inner face with the switch centred, so the 0.3 legs flex in past it and sit behind it; the rib stays under the floor's top"
+    },
+    {
+      "name": "leg channel +X open through the floor from its stop to the front past the rib",
+      "pass": true,
+      "details": "2 wide, from Z 23.45 to the front: the legs ride in it, the leads hang through it; the rear legs stop at its end with the switch centred under the cap"
+    },
+    {
+      "name": "leg channel +X has its detent rib",
+      "pass": true,
+      "details": "rib 1.35 proud of the channel's outer wall at Z 29.1, square toward the switch, 45 degrees toward the front; its tip 0.2 past the leg's inner face with the switch centred, so the 0.3 legs flex in past it and sit behind it; the rib stays under the floor's top"
+    },
+    {
+      "name": "1. the plunger rides in on the floor to the axis",
+      "pass": true,
+      "details": "a 16 x 5.9 sweep from the plate's mouth to Z 18.2: 0.0000 mm^3 of shell in it"
+    },
+    {
+      "name": "2. the plunger lifts into the guide and rests on the step",
+      "pass": true,
+      "details": "at rest 0.0000 mm^3 of shell inside it; its cap top at Y 77.8, 2 proud of the deck"
+    },
+    {
+      "name": "3. the switch rides in on the floor under the seated plunger to its stop",
+      "pass": true,
+      "details": "a 6 x 4.3 sweep from the mouth to Z 23.2: 0.0000 mm^3 of shell and 0.0000 of plunger in it; 0.2 under the flange"
+    },
+    {
+      "name": "the switch must go in second: at its stop it blocks the plunger's ride",
+      "pass": true,
+      "details": "153 mm^3 of switch in the plunger's sweep; plunger first, switch second, face third"
     },
     {
       "name": "the actuator sits under the flange at rest",
@@ -988,7 +1018,7 @@
     {
       "name": "A01-KINO_CARRIER_SHELL.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "5 mm^2 facing down past 45 degrees outside the named places (allowed 5), 246.41 inside them: the cavity, the USB opening (a 13.4 mm bridge inside the wall), the strap tunnels, the six front pin holes, the guide's flat ceiling and the chamber's closed rear end (a 16 mm bridge inside the pod, under the face); the ledge and the rear pin holes face up; the largest stray at (107.37, 0.13, 23.56)"
+      "details": "5 mm^2 facing down past 45 degrees outside the named places (allowed 5), 255.85 inside them: the cavity, the USB opening (a 13.4 mm bridge inside the wall), the strap tunnels, the six front pin holes, the guide's flat ceiling and the chamber's closed rear end (a 16 mm bridge inside the pod, under the face); the ledge and the rear pin holes face up; the largest stray at (107.37, 0.13, 23.56)"
     },
     {
       "name": "A01-KINO_CARRIER_SHELL.stl fits the bed",

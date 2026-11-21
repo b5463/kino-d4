@@ -456,7 +456,17 @@ owner's printer. Two parts:
   the door; nothing is in tension; B03, the floor plate, the thirteenth pin
   and `shutterFloor*`, `shutterPocketX`, `shutterSwitchClearance`,
   `shutterTravelClr` are gone. The dummy's connectors stay. T05 now
-  includes the plate with the chamber's mouth. 181 gates.
+  includes the plate with the chamber's mouth. Then, on the owner's two
+  questions ("will the switch not slide" and "the switch has to be put in
+  first ... think about the order of operations"): the switch could walk
+  forward out from under the cap, so each leg channel carries a detent rib
+  (`shutterLegRib` 1.35, a 45 degree ramp toward the front, square toward
+  the switch) that the 0.3 mm legs flex past and sit behind; and the order
+  is now proved by swept gates (the plunger's ride clear of the shell, the
+  seated plunger clear and 2.0 proud, the switch's ride clear of the shell
+  and of the seated plunger, a switch at its stop blocking the plunger's
+  ride): plunger first, switch second, face third; switch-first is
+  geometrically impossible and the README says so. 187 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
@@ -468,7 +478,7 @@ from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-181 in `generate-carrier-body.mjs`, 0 failures (the list below is the
+187 in `generate-carrier-body.mjs`, 0 failures (the list below is the
 first cut's; the package README's "Gates" names the current set, which
 adds the ledge, the carrier heads' clearance, the stack and the frame
 refused turned round, the frame pins and their hold, the pry point open at

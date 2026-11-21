@@ -269,8 +269,10 @@ export const P = Object.freeze({
   shutterSwitchFree: 0.2,    // between the actuator and the flange at rest, so the switch slides in under the seated plunger; it is also the plunger's play riding in
   shutterLegX: 3.25,         // the legs' X off the axis, each side (6.5 pitch)
   shutterLegZ: 2.25,         // the legs' Z off the axis, each side (4.5 pitch)
-  shutterLegClr: 0.5,        // past the front legs to the channels' ends: the switch's stop
+  shutterLegClr: 0.5,        // past the rear legs to the channels' rear ends: the switch's stop, and from the front legs to the detent ribs
+  shutterLegT: 0.3,          // a leg's thickness in X (a 0.3 x 0.7 strip, 3.5 long below the base)
   shutterLegSlot: [2.0, 5.5],   // a leg channel's width in X (the second figure is unused: the channels run to the front)
+  shutterLegRib: 1.35,       // the detent rib in each channel, proud from the outer wall: it reaches 0.2 past the leg's inner face with the switch at its innermost and 0.5 with it centred; the legs flex in past it and sit behind it (gated against the leg's lane)
   shutterGuideLen: 2.3,      // the guide bore, deck to the step the flange rests under. The plunger riding in (flange 1.6 + cap 2.0 proud + this) must fit under the step with the free play to spare in a chamber that is flange + free + switch tall (gated): 5.9 in 6.1
   shutterGuideRound: 1.0,    // the guide's last mm at the deck is round; below it the ceiling is flat
   shutterGuideCeil: 0.4,     // the flat ceiling above the circle's top: the print's bridge clears the cap

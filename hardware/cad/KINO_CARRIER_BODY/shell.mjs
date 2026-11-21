@@ -213,7 +213,7 @@ export function buildShell() {
       guideRibs.push(cube(-rw / 2, y0, rg - rh, rw, len, rh + 0.3).rotate([0, phi, 0]).translate([P.shutterX, 0, P.shutterZ]));
     }
   }
-  return { bare, shell: status("shell", bare.add(fuse([...ribs, ...guideRibs]))) };
+  return { bare, shell: status("shell", bare.add(fuse([...ribs, ...guideRibs, ...pod.legRibs]))) };
 }
 
 export function buildFrame() {
