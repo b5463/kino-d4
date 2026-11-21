@@ -7,7 +7,7 @@ stand in sockets on it, and each camera module hangs off its XIAO on a short
 soft ribbon. The carrier is the chassis. The shell holds the carrier by the
 same four M2 screws that hold the stack and captures each camera head in a
 pocket with pinch ribs, so the picture does not shake on its ribbon. The face
-shell carries the form. Issue #252; ninth cut, nothing printed yet; the
+shell carries the form. Issue #252; eleventh cut, nothing printed yet; the
 night colourway (cobalt face) prints first, the coupons in `coupons/`
 before it.
 
@@ -24,7 +24,8 @@ lenses at positive Z. The chain is re-added by a gate every build.
 
 | Term | mm | Z after | Source |
 |---|---:|---:|---|
-| rear frame | 2.5 | -16.3 | chosen; the thumb climbs it to the glass, so its window edge is chamfered |
+| rear frame | 2.5 | -16.7 | chosen; the thumb climbs it to the glass, so its window edge is chamfered |
+| glass clearance | 0.4 | -14.2 | chosen; the frame never touches the glass; a foam gasket in the frame's groove takes the stack's tolerance and holds the module |
 | P4 module, glass front to PCB back | 13.8 | 0.0 | OFFICIAL_CAD |
 | P4 inserts | 3.3 | 3.3 | MEASURED |
 | M2 spacers | 8.0 | 11.3 | the bench set; the J100 socket floats 0.3 mm off home |
@@ -34,7 +35,7 @@ lenses at positive Z. The chain is re-added by a gate every build.
 | XIAO back face to the lens front | 15.0 | 38.9 | Seeed's assembled Sense stack |
 | plate ahead of the lens | 1.5 | 40.4 | chosen; the shell's front |
 | face | 6.4 | 46.8 | its edge a 2 mm 45 degree chamfer; the horizon, the track and the roof over the stow zone are cut into it; nothing stands proud of it but the cover's 1.5 mm lip |
-| **body** | **63.1** | | |
+| **body** | **63.5** | | |
 
 The module's PCB face is the Z datum for the camera, as in the field body: it
 lands on the plate's inner face at Z 35.4 (the Sense board's top is at 31.5, so
@@ -64,10 +65,10 @@ What the depth is made of, lens front to glass, and what the body adds:
 | of which the XIAO connectors (8.5 socket + 2.5 male header insulator) | 11.0 |
 | of which the XIAO, Sense board and camera | 15.0 |
 | body in front: plate ahead of the lens 1.5, face 6.4 | 7.9 |
-| body behind: the rear frame | 2.5 |
-| **in all** | **63.1** |
+| body behind: the rear frame 2.5 and its 0.4 off the glass | 2.9 |
+| **in all** | **63.5** |
 
-The body is 10.4 mm of the 63.1; 4.9 of the face's 6.4 is the cover's track
+The body is 10.8 mm of the 63.5; 4.9 of the face's 6.4 is the cover's track
 and the groove it sits in. The one stack term that is a bench choice
 is the XIAO connectors: the eight 1x07 sockets are hand-fit, so 4.3 mm
 low-profile strips in place of the 8.5 mm Wurth part, and XIAOs soldered on
@@ -96,6 +97,36 @@ only if the rail is tied to the P4's 5 V (U1001 keeps the rail off the P4 by
 design): one wire from TP101 to the J1001 RAIL pins, and then the IP5306's
 2.1 A boost carries the whole stack. Measure before trusting it.
 
+## The P4, held without its screws
+
+The P4's four inserts carry the carrier's standoffs, so the module cannot
+be screwed to the body as it was in the field body. It is held three ways,
+none of them a screw into it:
+
+- Forward, by the stack: the standoffs in its inserts, the carrier on them,
+  the carrier against the pillar feet, the four stack screws.
+- Backward, by the rear frame through a gasket. The frame's inner face
+  stands 0.4 mm behind the glass front (a gate: a rigid PETG frame never
+  touches glass) and carries a 2 mm closed-cell foam strip, 1.5 mm wide, in
+  a 0.9 mm groove round the window, on the glass's margin: 2 mm outside the
+  window past its chamfer, 0.8 mm inside the module's edge. The four frame
+  screws squeeze the foam to 1.3 mm (35 %; 20 to 50 % over +-0.3 mm of
+  stack tolerance, a gate). The 114 x 67 module hangs 26 mm past its
+  standoffs in X; the foam carries that overhang, so a thumb on the glass
+  loads foam and not the inserts, nothing rattles, and the window is sealed
+  against dust.
+- In plan, by the standoffs on the carrier, which the pillar feet locate;
+  the cavity wall is 2.5 mm from the module's edge. Nothing in the cavity
+  can reach the module: the carrier sweeps in from the rear past every
+  plane the module occupies, so a ledge under it is impossible.
+
+Foam: 2 mm closed-cell PE or EVA with adhesive on one side (a 3M 4000-series
+tape cut to 1.5 mm, or sheet), four strips butted at the corners, stuck into
+the groove before the frame goes on (`previews/KINO_CARRIER_REAR_FRAME_INNER.png`
+shows the groove). That the glass's margin is flat to the
+module's outline is read from OFFICIAL_CAD and is PROVISIONAL; the gasket's
+outer edge stays 0.8 mm inside it.
+
 ## The parts, and the brand
 
 ODD JOBS, as the brand's own camera concept draws it (`ODD JOBS/CAMERA 01`,
@@ -106,7 +137,7 @@ ideas"). Three filaments, each on its own part:
 | File | What | Filament | Print |
 |---|---|---|---|
 | `print/KINO_CARRIER_SHELL.stl` | front plate with the four pockets (0.5 mm corner reliefs) and 7.5 mm bores, all four walls to the display plane with R10 plan corners, 0.5 mm V-grooves at 2.4 mm pitch round the whole body, the deck included whole (one 1.5 mm smooth ring round the collar), clear of the frame pilots; nothing engraved; the horizon carried round the left wall only; four screw pillars, the shutter pod (every bore gabled; the collar a 0.4 mm round shadow line), the LED slots, the USB-C opening, the frame pilots, six countersunk pin holes in the walls' front ends, four strap tunnels inside the top and bottom walls' ends under 0.6 mm of wall, the keeper's foot pocket in the plate's front under the face, three ribs in the shutter's guide bore; the bores, the front edge and the rear edge chamfered 0.4 | charcoal | face down, PETG, 0.20 mm, no support (gated) |
-| `print/KINO_CARRIER_REAR_FRAME.stl` | the 2.5 mm frame around the display, its outer edge chamfered 1.2 toward the rear and 0.4 toward the shell (the joint is a drawn V on the groove rhythm), 95.6 x 58.2 window with a 1.5 mm chamfer toward the rear, a thumb pad with 1.0 x 0.6 grooves over the whole right border (X 109.5 to 121), the ODD JOBS symbol engraved 1 mm deep with a stepped edge on the left, four plain M2 holes (the pan heads sit proud, as the brand's concept shows its rear screws), eight 3.0 x 2.4 strap slots, two at each corner | charcoal | rear face UP, 0.12 mm |
+| `print/KINO_CARRIER_REAR_FRAME.stl` | the 2.5 mm frame around the display, a 0.9 mm gasket groove in its inner face round the window (the P4 is held by 2 mm foam in it), its outer edge chamfered 1.2 toward the rear and 0.4 toward the shell (the joint is a drawn V on the groove rhythm), 95.6 x 58.2 window with a 1.5 mm chamfer toward the rear, a thumb pad with 1.0 x 0.6 grooves over the whole right border (X 109.5 to 121), the ODD JOBS symbol engraved 1 mm deep with a stepped edge on the left, four plain M2 holes (the pan heads sit proud, as the brand's concept shows its rear screws), eight 3.0 x 2.4 strap slots, two at each corner | charcoal | rear face UP, 0.12 mm |
 | `print/KINO_CARRIER_FACE.stl` | the face: a 6.4 mm plate inset 0.8 mm from the shell's outline so a line of charcoal wall end frames it, its front edge a 2 mm 45 degree chamfer, its back edge chamfered 0.4; the horizon, a 1.5 mm groove edge to edge at the bar's height with its lips chamfered 0.8 above and 0.4 below, its right end 3.5 mm deep as the grip; the cover's track cut below the groove; the face itself the roof over the stow zone, with a full-height slot for the cover's lip, right of the wordmark; four 7.5 mm cells with a 0.8 mm rim; six countersunk pin holes in the back; the signature engraved 0.4 mm inside, mirrored (the symbol, "odd jobs", "kino D4") | cobalt (night) or cream (day) | back down, 40 % gyroid with 100 % under the horizon and the track; the roof over the stow zone is a 1.5 mm plate bridging 16 mm |
 | `print/KINO_CARRIER_LENS_COVER.stl` | the sliding cover, 86.8 x 16.5 x 2 with R3 corners, its back edge chamfered 0.4, "odd jobs" raised 0.8 (the flush to CREAM at 2.00 mm, the bar's top face, on both colourways; the lip prints cream too), a 20 x 1.5 lip with a 0.4 mm root on its top edge from 45 to 65 mm off the bar's left end, 1.5 proud of the face | charcoal, then cream | back down, 0.08 mm layers |
 | `print/KINO_CARRIER_KEEPER.stl` | the block that refills the cover's entry gap through the whole plate under the track and is the track's stop, cut from the face's own solid so the edge chamfer runs through it, with a 0.9 x 1.1 foot on its back that sits in a pocket in the shell's plate under the face: captive, no glue, so the cover is a serviceable part | as the face | front down, the foot up |
@@ -416,8 +447,10 @@ sits 12 mm above the pod's bottom.
    into the shell from the rear, carrier first, until the carrier meets the
    four pillar feet. Face off, drive the four M2 screws through the shafts,
    through the pillar feet and the carrier, into the spacers. Face back on.
-5. Frame onto the wall ends with four M2 x 8 thread-forming pan-head screws;
-   the heads sit proud on the back.
+5. Four foam strips into the frame's groove, adhesive to the frame. Frame
+   onto the wall ends with four M2 x 8 thread-forming pan-head screws; the
+   heads sit proud on the back. The screws squeeze the foam onto the
+   glass's margin: that is what holds the P4.
 
 The carrier's USB-C comes out through the bottom wall at the right; the three
 edge LEDs show through three 2 x 4 mm slots beside it. The P4's own USB ports
@@ -430,7 +463,7 @@ are each part in print orientation from `render-stl.py`.
 
 ## Gates
 
-`node generate-carrier-body.mjs` writes `.candidate/` and runs 176 gates,
+`node generate-carrier-body.mjs` writes `.candidate/` and runs 180 gates,
 throwing on the first failure (`KINO_SOFT_GATES=1` collects them): the depth
 chain re-added over the lens band, the lens front on the pocket floor, the
 module PCB with the plate to land on, the battery bay tall enough for the cell
@@ -460,8 +493,9 @@ counts only past 45 degrees, so every chamfer here is exactly 45) and on a
 blade in the band off the lands with its layer of air, the roof's spans
 and the blades at the slot's edges, the witness clear of the mark, the
 battery bay with 10 % of swell, the keeper's stop face under the stowed
-cover with its foot behind the face, and every coupon one piece on the
-bed.
+cover with its foot behind the face, the frame off the glass, the gasket
+groove on the glass's margin, open, and its squeeze over the stack's
+tolerance, and every coupon one piece on the bed.
 
 `node promote.mjs` validates the candidates, copies the six parts into
 `print/`, the nine coupons into `coupons/` and the report into `reports/`,
@@ -517,7 +551,8 @@ that is not supplied is a scored fault.
 - Hardware: four M2 x 8 thread-forming pan-head screws (frame); the four
   M2 stack screws and 8 mm spacers from the carrier's BOM; six pins cut
   from 1.75 mm filament, 4.5 mm; one 6 x 6 x 4.3 tactile switch and two
-  leads to J103.
+  leads to J103; 2 mm closed-cell foam with adhesive, cut to 1.5 mm strips,
+  340 mm, for the frame's gasket groove.
 - Cord: 2.5 mm braided, 1.2 m for the neck through the top slots, 0.3 m for
   the wrist through the bottom slots; a lark's head on the bar between the
   slots, inside the wall.

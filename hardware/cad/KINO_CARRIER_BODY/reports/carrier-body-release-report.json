@@ -1,10 +1,10 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-21T02:02:30.168Z",
+  "generated": "2026-11-21T02:13:49.972Z",
   "body": {
     "width": 128.4,
     "height": 80.8,
-    "depth": 63.1,
+    "depth": 63.5,
     "lensRowY": 28.45,
     "cameraXs": [
       17.195,
@@ -23,12 +23,13 @@
     "camPocketDepth": 3.5,
     "plateInner": 35.4,
     "plateFront": 40.4,
-    "glass": -13.8,
-    "frameRear": -16.3,
+    "glassFront": -13.8,
+    "glass": -14.2,
+    "frameRear": -16.7,
     "pupil": 37.8,
     "bayFloor": 3.5,
     "bayCeiling": 9.8,
-    "depth": 56.7
+    "depth": 57.1
   },
   "face": {
     "back": 40.4,
@@ -77,17 +78,17 @@
   },
   "files": {
     "KINO_CARRIER_SHELL.stl": {
-      "triangles": 15486,
-      "volumeCm3": 132.45,
+      "triangles": 15426,
+      "volumeCm3": 133.13,
       "size": [
         128.4,
         80.8,
-        54.2
+        54.6
       ]
     },
     "KINO_CARRIER_REAR_FRAME.stl": {
-      "triangles": 4286,
-      "volumeCm3": 11.45,
+      "triangles": 4318,
+      "volumeCm3": 11.01,
       "size": [
         128.4,
         80.8,
@@ -131,7 +132,7 @@
       ]
     },
     "KINO_COUPON_PILLAR.stl": {
-      "triangles": 2474,
+      "triangles": 2458,
       "volumeCm3": 14.85,
       "size": [
         29.65,
@@ -140,7 +141,7 @@
       ]
     },
     "KINO_COUPON_POCKET.stl": {
-      "triangles": 790,
+      "triangles": 774,
       "volumeCm3": 0.94,
       "size": [
         16,
@@ -158,7 +159,7 @@
       ]
     },
     "KINO_COUPON_STRAP_SHELL.stl": {
-      "triangles": 572,
+      "triangles": 542,
       "volumeCm3": 1.62,
       "size": [
         22,
@@ -167,8 +168,8 @@
       ]
     },
     "KINO_COUPON_STRAP_FRAME.stl": {
-      "triangles": 218,
-      "volumeCm3": 0.61,
+      "triangles": 242,
+      "volumeCm3": 0.59,
       "size": [
         22,
         14,
@@ -221,33 +222,33 @@
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 33204,
-      "volumeCm3": 350.57,
+      "triangles": 33112,
+      "volumeCm3": 350.8,
       "size": [
         128.4,
         80.8,
-        66.1
+        66.5
       ]
     },
     "KINO_CARRIER_OPEN_PREVIEW.stl": {
-      "triangles": 33204,
-      "volumeCm3": 350.57,
+      "triangles": 33112,
+      "volumeCm3": 350.8,
       "size": [
         128.4,
         80.8,
-        66.1
+        66.5
       ]
     }
   },
   "gates": {
-    "total": 176,
+    "total": 180,
     "failed": 0
   },
   "checks": [
     {
       "name": "depth chain adds up to the body depth",
       "pass": true,
-      "details": "rear frame 2.5 + P4 module, glass to PCB back 13.8 + P4 inserts 3.3 + spacers 8 + carrier PCB 1.6 + XIAO socket 8.5 + XIAO header insulator (PROVISIONAL) 2.5 + XIAO back face to lens front 15 + plate ahead of the lens 1.5 + face, over the front 6.4 = 63.1 mm; body 63.1; nothing stands proud of the face"
+      "details": "rear frame 2.5 + glass clearance 0.4 + P4 module, glass to PCB back 13.8 + P4 inserts 3.3 + spacers 8 + carrier PCB 1.6 + XIAO socket 8.5 + XIAO header insulator (PROVISIONAL) 2.5 + XIAO back face to lens front 15 + plate ahead of the lens 1.5 + face, over the front 6.4 = 63.5 mm; body 63.5; nothing stands proud of the face"
     },
     {
       "name": "the horizon and the track leave face under the floor",
@@ -337,17 +338,17 @@
     {
       "name": "face sits on the shell without overlap",
       "pass": true,
-      "details": "0.0000 mm^3 shared"
+      "details": "-0.0000 mm^3 shared"
     },
     {
       "name": "stack dummy clears the shell (ribs aside)",
       "pass": true,
-      "details": "-0.0000 mm^3 of electronics inside the shell's material"
+      "details": "0.0000 mm^3 of electronics inside the shell's material"
     },
     {
       "name": "stack dummy clears the frame",
       "pass": true,
-      "details": "-0.0000 mm^3"
+      "details": "0.0000 mm^3"
     },
     {
       "name": "pinch ribs bite the heads and nothing else does",
@@ -980,6 +981,26 @@
       "details": "3 mm of wall end between the slots; 1.6 mm beside the tunnel"
     },
     {
+      "name": "the frame's inner face stands off the glass",
+      "pass": true,
+      "details": "0.4 mm from the glass front at Z -13.8 to the frame's inner face at Z -14.2; nothing of the frame inside the module's outline past that"
+    },
+    {
+      "name": "the gasket groove sits on the glass margin past the window's chamfer",
+      "pass": true,
+      "details": "a 1.5 mm strip from 2 to 3.5 mm outside the window; 0.82 mm inside the module's long edge, 5.9 inside its short edge; the chamfer reaches 1.5"
+    },
+    {
+      "name": "the gasket groove is open in the frame's inner face",
+      "pass": true,
+      "details": "0.9 mm deep, 1.5 wide, 1.6 of frame under it"
+    },
+    {
+      "name": "the gasket's squeeze covers the stack's tolerance",
+      "pass": true,
+      "details": "2 mm foam in 1.3 mm: 35 % squeezed; 20 to 50 % over +-0.3 mm of stack"
+    },
+    {
       "name": "the cover rides on two lands in a relieved floor",
       "pass": true,
       "details": "0 mm^3 of plate in the band's relief (0.25 below the floor); the land 100 % solid"
@@ -1027,12 +1048,12 @@
     {
       "name": "KINO_CARRIER_SHELL.stl fits the bed",
       "pass": true,
-      "details": "128.4 x 80.8 x 54.2"
+      "details": "128.4 x 80.8 x 54.6"
     },
     {
       "name": "KINO_CARRIER_REAR_FRAME.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 0 inside them: nothing: holes through, the chamfer and the pad face up"
+      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 494.28 inside them: the gasket groove's ceiling (a 1.5 mm bridge at the bed); holes through, the chamfer and the pad face up"
     },
     {
       "name": "KINO_CARRIER_REAR_FRAME.stl fits the bed",

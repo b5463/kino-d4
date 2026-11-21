@@ -245,6 +245,15 @@ export function buildFrame() {
   for (const x of P.frameScrewXs) for (const y of XY.wallMidY) {
     cuts.push(cylZ(x, y, Z.frameRear - 3, P.frameScrewHoleD / 2, P.rearFrameT + 4, 24));
   }
+  // The gasket groove in the inner face round the window: the P4 module is
+  // held at the rear by foam in it, squeezed on the glass's margin by the
+  // frame screws; the frame itself stands glassClear off the glass. In the
+  // rear-up print the groove is in the bed face, its ceiling a 1.5 mm bridge.
+  {
+    const [gIn, gW, , gD] = P.gasket;
+    cuts.push(box(wx0 - gIn - gW, wy0 - gIn - gW, Z.glass - gD, wx1 + gIn + gW, wy1 + gIn + gW, Z.glass + 1)
+      .subtract(box(wx0 - gIn, wy0 - gIn, Z.glass - gD - 1, wx1 + gIn, wy1 + gIn, Z.glass + 2)));
+  }
   for (let y = P.thumbPadY[0] + 2.4; y + P.thumbGroove[0] <= P.thumbPadY[1] - 2.0; y += P.grooveP) {
     cuts.push(box(P.thumbPadX[0] - 1, y, padZ0 - 1, P.thumbPadX[1] + 1, y + P.thumbGroove[0], padZ0 + P.thumbGroove[1]));
   }

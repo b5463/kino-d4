@@ -114,6 +114,14 @@ export const P = Object.freeze({
   screwBore: 2.4,            // M2 clearance
   accessShaftD: 4.0,         // the driver's way in from the front; an M2 pan head is 3.8
   rearFrameT: 2.5,           // the thumb climbs this to the glass; the window's inner edge is chamfered for it
+  // The P4 is held at the rear without a screw into it: its inserts carry
+  // the carrier's standoffs. The frame's inner face stands off the glass
+  // front and carries a foam strip in a groove round the window, on the
+  // glass's margin; the four frame screws squeeze it, so the 114 x 67
+  // module (26 mm past its standoffs in X) is clamped between foam and
+  // standoffs, and a rigid PETG frame never touches glass.
+  glassClear: 0.4,           // frame's inner face behind the glass front, gated against the module
+  gasket: [2.0, 1.5, 2.0, 0.9],  // inset from the window's edge (past the 1.5 chamfer), strip width, foam thickness, groove depth: 2 mm closed-cell foam squeezed to 1.3 (35 %), 20 to 50 % over +-0.3 of stack
   framePilotD: 1.8,          // M2 thread-forming into PETG; 1.7 modelled prints 1.5 to 1.6
   framePilotDepth: 6.0,
   frameScrewHoleD: 2.4,      // plain holes: the four M2 pan heads sit proud on the back, as the brand's concept shows its rear screws; a counterbore broke out through the edge round
@@ -286,14 +294,15 @@ export const Z = (() => {
   const camPocketDepth = P.plate - P.platePocketAhead;
   const plateInner = lensFront - camPocketDepth;   // the module's PCB face lands here
   const plateFront = plateInner + P.plate;
-  const glass = -P.p4T;
+  const glassFront = -P.p4T;
+  const glass = glassFront - P.glassClear;   // the shell's rear face and the frame's inner face
   const frameRear = glass - P.rearFrameT;
   const pupil = lensFront - P.camPupilBackFromLens;
   const bayFloor = P.p4CanH;
   const bayCeiling = carrierBack - P.carrierBackPartsH;
   return Object.freeze({
     carrierBack, carrierFront, socketTop, xiaoBack, senseTop, lensFront,
-    camPocketDepth, plateInner, plateFront, glass, frameRear, pupil,
+    camPocketDepth, plateInner, plateFront, glassFront, glass, frameRear, pupil,
     bayFloor, bayCeiling, depth: plateFront - frameRear,
   });
 })();

@@ -44,7 +44,7 @@ const S = SHELL;
 
 function buildDummy() {
   const [px0, py0, px1, py1] = XY.p4;
-  const parts = [box(px0, py0, Z.glass, px1, py1, 0)];
+  const parts = [box(px0, py0, Z.glassFront, px1, py1, 0)];
   for (const [hx, hy] of P.carrierHoles) parts.push(cylZ(hx, hy, 0, 1.75, Z.carrierBack, 24));
   const [wx0, wy0, wx1, wy1] = P.usbWindow;
   parts.push(rbox(0, 0, Z.carrierBack, P.carrierW, P.carrierH, Z.carrierFront, P.carrierR)
@@ -88,7 +88,7 @@ const onePart = (name, m) => check(`${name} is one part`, m.decompose().length =
 
 {
   const terms = [
-    ["rear frame", P.rearFrameT], ["P4 module, glass to PCB back", P.p4T],
+    ["rear frame", P.rearFrameT], ["glass clearance", P.glassClear], ["P4 module, glass to PCB back", P.p4T],
     ["P4 inserts", P.p4InsertH], ["spacers", P.spacer], ["carrier PCB", P.carrierT],
     ["XIAO socket", P.socketH], ["XIAO header insulator (PROVISIONAL)", P.xiaoHeaderInsulator],
     ["XIAO back face to lens front", P.camStackH], ["plate ahead of the lens", P.platePocketAhead],
@@ -247,6 +247,24 @@ check("strap slots clear the frame screws and the frame's edge", Math.min(...S.s
   && S.strapSlots[0][1] >= oy0 + P.frameEdgeR, `nearest screw ${r2(Math.min(...S.strapSlots.map(([x0, , x1]) => Math.min(...P.frameScrewXs.map((sx) => Math.min(Math.abs(sx - x0), Math.abs(sx - x1)))))))} mm from a slot; slots from Y ${r2(S.strapSlots[0][1])}, the round to ${r2(oy0 + P.frameEdgeR)}`);
 check("the shell's bar between the slots carries a cord", P.strapSlotXs[1] - P.strapSlotXs[0] - P.strapSlot[0] >= 3.0 && P.strapTunnelSkin >= 0.6 && P.wall - P.strapChannelD - 0.5 >= 1.0, `${r2(P.strapSlotXs[1] - P.strapSlotXs[0] - P.strapSlot[0])} mm of wall end between the slots; ${r2(P.wall - P.strapSlot[1] - 0.5)} mm beside the tunnel`);
 
+// The P4 held at the rear: the frame stands off the glass and clamps the
+// module's glass margin through a foam gasket in a groove round the window.
+const GASK = (() => {
+  const [pcx, pcy] = XY.p4Centre, [gIn, gW, gT, gD] = P.gasket;
+  return { x0: pcx - S.windowHalf[0] - gIn, y0: pcy - S.windowHalf[1] - gIn, x1: pcx + S.windowHalf[0] + gIn, y1: pcy + S.windowHalf[1] + gIn, gIn, gW, gT, gD };
+})();
+{
+  const [px0, py0, px1, py1] = XY.p4, { x0: gx0, y0: gy0, x1: gx1, y1: gy1, gIn, gW, gT, gD } = GASK;
+  check("the frame's inner face stands off the glass", P.glassClear >= 0.3 && vol(frame, box(px0, py0, Z.glassFront - P.glassClear + 0.01, px1, py1, Z.glassFront + 1)) < 1e-3,
+    `${P.glassClear} mm from the glass front at Z ${r2(Z.glassFront)} to the frame's inner face at Z ${r2(Z.glass)}; nothing of the frame inside the module's outline past that`);
+  check("the gasket groove sits on the glass margin past the window's chamfer", gIn > P.frameWindowChamfer + 0.3 && gx0 - gW >= px0 + 0.8 && gy0 - gW >= py0 + 0.8 && gx1 + gW <= px1 - 0.8 && gy1 + gW <= py1 - 0.8,
+    `a ${gW} mm strip from ${gIn} to ${r2(gIn + gW)} mm outside the window; ${r2(gy0 - gW - py0)} mm inside the module's long edge, ${r2(gx0 - gW - px0)} inside its short edge; the chamfer reaches ${P.frameWindowChamfer}`);
+  openProbe("the gasket groove is open in the frame's inner face", box(gx0 - gW + 0.1, gy0 + 0.1, Z.glass - gD + 0.05, gx0 - 0.1, gy1 - 0.1, Z.glass - 0.05), `${gD} mm deep, ${gW} wide, ${r2(P.rearFrameT - gD)} of frame under it`, frame);
+  const space = P.glassClear + gD, squeeze = (t) => 1 - (space + t) / gT;
+  check("the gasket's squeeze covers the stack's tolerance", P.rearFrameT - gD >= 1.2 && squeeze(0) >= 0.3 && squeeze(0.3) >= 0.15 && squeeze(-0.3) <= 0.55,
+    `${gT} mm foam in ${r2(space)} mm: ${Math.round(squeeze(0) * 100)} % squeezed; ${Math.round(squeeze(0.3) * 100)} to ${Math.round(squeeze(-0.3) * 100)} % over +-0.3 mm of stack`);
+}
+
 // The track floor and the roof's blades.
 {
   const [p0x, p0y, p1x, p1y] = FACE.panel;
@@ -299,7 +317,7 @@ const faceZones = [
 const retD = P.shutterRetainerPlateD;
 const printSpec = {
   "KINO_CARRIER_SHELL.stl": [shell, [180, 0, 0], shellZones, 5, "the cavity (the four screw-foot shoulders), the LED slots (4.5 mm bridges), the USB opening's 45 degree gable, the strap tunnels, the six pin holes, the keeper's foot pocket at the bed, the collar's 0.4 recess"],
-  "KINO_CARRIER_REAR_FRAME.stl": [frame, [180, 0, 0], [], 2, "nothing: holes through, the chamfer and the pad face up"],
+  "KINO_CARRIER_REAR_FRAME.stl": [frame, [180, 0, 0], [[GASK.x0 - GASK.gW - 1, GASK.y0 - GASK.gW - 1, Z.glass - GASK.gD - 0.5, GASK.x1 + GASK.gW + 1, GASK.y1 + GASK.gW + 1, Z.glass + 0.5]], 2, "the gasket groove's ceiling (a 1.5 mm bridge at the bed); holes through, the chamfer and the pad face up"],
   "KINO_CARRIER_FACE.stl": [facePrint, [0, 0, 0], faceZones, 5, "the six pin holes, the track (the roof bridged onto its blades) and the signature's 0.4 mm ceilings at the bed"],
   "KINO_CARRIER_LENS_COVER.stl": [cover, [0, 0, 0], [FACE.panel[0] + P.sliderClr, FACE.panel[2] - P.sliderClr].map((ex) => [ex - 1.5, -1e3, FACE.floorZ - 1, ex + 1.5, 1e3, FACE.floorZ + P.sliderT - P.sliderBevel + 0.05]), 2, "the 0.2 mm ledges over the edge reliefs"],
   "KINO_CARRIER_KEEPER.stl": [keeper, [180, 0, 0], [], 1, "nothing: the foot faces up, its underside 47 degrees"],
@@ -358,7 +376,7 @@ writeStl(outDir, "preview-mark.stl", markTop);
 writeStl(outDir, "preview-mark-open.stl", markTop.translate([0, -FACE.travel, 0]));
 {
   const [px0, py0, px1, py1] = XY.p4;
-  writeStl(outDir, "preview-glass.stl", box(px0 + 0.5, py0 + 0.5, Z.glass - 0.2, px1 - 0.5, py1 - 0.5, Z.glass + 2));
+  writeStl(outDir, "preview-glass.stl", box(px0 + 0.5, py0 + 0.5, Z.glassFront - 0.2, px1 - 0.5, py1 - 0.5, Z.glassFront + 2));
 }
 files["KINO_CARRIER_ASSEMBLED_PREVIEW.stl"] = writeStl(outDir, "KINO_CARRIER_ASSEMBLED_PREVIEW.stl", fuse([shell, frame, dummy, face, cover, keeper]));
 files["KINO_CARRIER_OPEN_PREVIEW.stl"] = writeStl(outDir, "KINO_CARRIER_OPEN_PREVIEW.stl", fuse([shell, frame, dummy, face, coverOpen, keeper]));

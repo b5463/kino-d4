@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; tenth cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
+| Status | Design in progress; eleventh cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -231,18 +231,35 @@ owner's printer. Two parts:
   off on every part, written into the print plan with the reasons; tree
   supports allowed by hand under the roof only. Not changed: geometry the
   eye sees. 176 gates.
+- **The P4 held** (eleventh cut, 2026-11-21; the owner: "the P4 can't
+  screw into the body on its own now that we have the carrier; figure out
+  a system to hold it in place"). Its inserts carry the carrier's
+  standoffs, so there is no screw into it. Taken: the module clamped
+  between the standoffs and the rear frame through a gasket. The frame's
+  inner face now stands 0.4 mm behind the glass front (`glassClear`; the
+  shell's walls and the frame move back by it; a gate probes the module's
+  outline past that plane) and carries a 2 mm closed-cell foam strip, 1.5
+  wide, in a 0.9 mm groove round the window, 2.0 outside the window past
+  its chamfer and 0.8 inside the module's edge; the four frame screws
+  squeeze it to 1.3 (35 %; 20 to 50 % over +-0.3 of stack). The 114 x 67
+  module hangs 26 mm past its standoffs in X, and the foam carries that,
+  so a thumb on the glass loads foam, not the inserts. In plan the
+  standoffs locate it; a ledge under it in the cavity is ruled out by the
+  carrier's sweep. Not taken: corner cradles on the frame (they would
+  stand on the print's bed face), ledges in the shell (the sweep). Four
+  gates; 180. Body 63.5 deep, 10.8 of it the body.
 
-Depth, re-added by a gate every build: 2.5 frame + 13.8 module + 3.3 inserts
+Depth, re-added by a gate every build: 2.5 frame + 0.4 off the glass + 13.8 module + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
 (PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 6.4 face
-= 63.1 mm, against the field body's 74.5 over its lens bar. The body is 10.4
+= 63.5 mm, against the field body's 74.5 over its lens bar. The body is 10.8
 of it; the XIAO connectors (11.0) are the one
 stack term the bench can shorten, with low-profile sockets and bare pins. The plate's inner face lands at Z 35.4
 from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-176 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
+180 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
 front on the pocket floor, the face inset from the outline and over the
 pins, the plan corner's wall on the diagonal, the roof over the stow zone
 clear of the cover and its mark, the lip's slot, the keeper clear of the
@@ -264,8 +281,9 @@ inside the carrier's 7 mm fastener keep-out, the carrier's sweep from the rear
 clear up to the feet, the frame window over the whole active area, every
 print's overhang inside its named bridges, holes and pockets (nothing
 down-facing anywhere else), the cover on two lands over a relieved floor,
-the roof's blades in the band with their air and their spans, all on the
-bed. `validate-stl.mjs`: 15 files, manifold, at their part counts.
+the roof's blades in the band with their air and their spans, the frame off
+the glass and the gasket groove on the glass's margin with its squeeze, all
+on the bed. `validate-stl.mjs`: 15 files, manifold, at their part counts.
 No independent scan yet; `promote.mjs` says so every run. Found by the gates
 while the face was written: a face hull 0.01 mm into the shell (100 mm^3), a
 straight frustum probe that bulged past the bore, a 6 mm band that put the
