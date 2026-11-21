@@ -18,11 +18,23 @@ export const P = Object.freeze({
   carrierH: 70.80,
   carrierR: 3.0,             // outline corner radius
   carrierT: 1.6,
-  carrierClear: 0.5,         // per side in the cavity: the stack slides in from the rear; PETG shrinks 0.3 to 0.5 % and 54 mm walls bow, so 0.3 wedged on paper
+  carrierClear: 0.5,         // per side in the cavity: the stack slides in from the rear; 54 mm walls bow, so 0.3 wedged on paper. The shrink itself is the slicer's (shrinkPct)
+  shrinkPct: 0.2,            // MEASURED on T01 (2026-11-21): the 100.0 mm bar printed 99.8. Set in the slicer as compensation; the model is never scaled
   // The four M2 holes, on the P4's insert pattern (61.9 x 54.8), 8.0 mm from
-  // the carrier's top and bottom edges. H1 H2 top, H3 H4 bottom.
+  // the carrier's top and bottom edges. H1 H2 top, H3 H4 bottom. The body
+  // uses them for nothing: the dummy carries the standoffs and the carrier's
+  // own pan heads, so the ledge is gated clear of them.
   carrierHoles: [[18.95, 62.80], [80.85, 62.80], [18.95, 8.00], [80.85, 8.00]],
-  fastenerKeepOutD: 7.0,     // nothing but silk inside this on the carrier
+  carrierHead: [3.8, 1.3],   // the carrier's M2 pan head, D x H (DIN 7985), on its front face at each hole
+  // The ledge: a step in the cavity at the carrier's front face, every
+  // side, on which the carrier's edge lands. Nothing on the carrier's front
+  // face is within 4.3 mm of its edge (J1001 at the right is the nearest),
+  // and the P4 is 2.0 inside the carrier's outline, so behind the ledge the
+  // cavity is full width down to the glass and the stack still slides in
+  // from the rear. The owner's rule after the first prints: no M2 anywhere
+  // in the body's hold, neither the carrier's heads nor screws of its own.
+  ledgeW: 2.0,               // 1.5 of bearing with the carrier pushed 0.5 to one side
+  carrierEdgeKeepOut: 4.0,   // the nearest front-face part to the carrier's edge, gated against the ledge and the clearance
   // Camera stations: the XIAO socket centres, 22 mm pitch, 9 mm left of the
   // board centre so CAM 4 clears the USB window.
   cameraXs: [17.195, 39.195, 61.195, 83.195],
@@ -83,8 +95,9 @@ export const P = Object.freeze({
   xiaoBoardH: 21.0,
   camModulePcb: [15.5, 17.9],
   camModulePcbT: 3.5,
-  camBody: 8.5,              // the head square, verify by coupon
+  camBody: 8.5,              // the head square. The first T02 (8.7 pocket, 0.3 ribs) was "extremely loose" on the bench: the head is not 8.5. The gauge coupon T02 now has three pockets; the one that holds sets this with camBodySlack
   camBodySlack: 0.20,
+  camGaugePockets: [7.8, 8.1, 8.4],   // T02's three pocket widths (ribs the same): a sizing gauge, one print answers which width holds
   camPocketCornerRelief: 0.5, // round reliefs in the pocket corners: a printed inside corner has its own radius and an 8.5 mm square head hits it before the ribs
   camRibProud: 0.30,         // triangular crush ribs, 0.8 wide at the wall: two extrusion lines, prints every time (0.4 mm round columns did not)
   camRibBase: 0.80,
@@ -98,48 +111,47 @@ export const P = Object.freeze({
   camPupilBackFromLens: 1.1, // entrance pupil behind the lens's front face
 
   // ---- The shell -----------------------------------------------------------
-  wall: 4.5,                 // thick enough for the rear frame's pilots in the wall ends
+  wall: 4.5,                 // carries a pin hole in each end with 1.3 of wall a side
   plate: 4.4,                // the front plate: pocket depth 3.4 + platePocketAhead
   cornerR: 10.0,             // near the most the plan allows: the carrier's R3 corners sit inside the wall, and at R10 the wall on the diagonal is 2.65 mm (gated)
-  frameEdgeR: 1.2,           // the rear frame's outer edge, a 45 degree chamfer toward the rear: chamfers in Z step one layer each and read as the grooves do, rounds in Z terrace (R1.5 at 0.2 stepped 0.77, 0.32, 0.25); rounds stay in plan. The screw holes 2.55 from the outline cap it
-  // Six filament pins (1.75 mm, cut 4.8 long) in the walls' front ends locate
-  // and hold the face: 3 mm into the wall, 1.8 into the face's back. No
-  // screw anywhere in the front.
-  facePinD: 1.9,             // for 1.75 mm filament: a 1.8 hole at a bed face closed to 1.5 with the elephant foot, 2.0 with the countersink and the 0.2 compensation did not retain; the pins must hold the face without glue, the pillar coupon decides
-  facePinSink: 0.4,          // 45 degree countersink at every mouth, both parts
+  frameEdgeR: 1.2,           // the rear frame's outer edge, a 45 degree chamfer toward the rear: chamfers in Z step one layer each and read as the grooves do, rounds in Z terrace (R1.5 at 0.2 stepped 0.77, 0.32, 0.25); rounds stay in plan. The pin holes 1.35 from the outline cap it
+  // One fastener in the body: a 4.8 mm length of 1.75 mm filament, twelve
+  // of them. Six in the walls' front ends hold the face (3 mm into the
+  // wall, 1.8 into the face's back); six in the walls' rear ends hold the
+  // frame (3 into the wall, through the 2.0 frame, 0.2 under its rear
+  // face). No screw anywhere.
+  facePinD: 1.9,             // the hole in the wall ends and the face, for 1.75 mm filament: a 1.8 hole at a bed face closed to 1.5 with the elephant foot, 2.0 with the countersink and the 0.2 compensation did not retain; the pins must hold without glue, T03 and T04 decide
+  facePinSink: 0.4,          // 45 degree countersink at every bed-face mouth
   facePinWall: 3.0,
-  facePinFace: 1.8,          // into the face's back (the face is 3.2 with a 1.2 edge chamfer over the holes' outer edges, so 1.2 of plate stays ahead): the pins are 4.8 long, 3 in the wall and 1.8 here; the pull test on the real face decides
+  facePinFace: 1.8,          // into the face's back (the face is 4.2 with a 1.2 edge chamfer over the holes' outer edges): the pins are 4.8 long, 3 in the wall and 1.8 here; the pull test on the real face decides
   facePinsTop: [30.0, 90.0],   // X on the top and bottom walls; the bottom pair dodges the LED slots and the USB opening
   facePinsBottom: [5.0, 96.7],  // under the window's bottom rim, between the LED slots, short of the corner
   facePinsSideY: 52.0,         // one on each side wall, above the horizon channel
-  bossD: 6.8,                // the pillars, inside the 7 mm keep-out round the carrier's holes; each ends in a foot with a pocket for the carrier's own screw head
-  bossRib: 2.0,              // the rib tying each pillar to the wall
-  // No screw from the body enters the carrier or the P4 (the owner's rule):
-  // the carrier's own M2 pan heads, on its front face at the four holes,
-  // sit in pockets in the pillar feet, and the rear frame's foam clamps the
-  // stack onto the feet.
-  carrierHead: [3.8, 1.3],   // the carrier's M2 pan head, D x H (DIN 7985)
-  carrierHeadClr: 0.3,       // a side and above it in the foot's pocket
-  idPx: 0.6,                 // one pixel of the 5 x 7 block font: 3 characters are 10.2 x 4.2 mm
-  idDepth: 0.4,              // engraved, two layers
-  idFaceAt: [100.0, 46.0],   // A02 on the face's back, right of the signature, above the horizon band, clear of the side pin
-  idShellAt: [44.3, 35.5],   // A01 on the plate's inner face between cells 2 and 3, above the lens row
-  idFrameAt: [100.0, 69.4],  // A03 on the frame's inner face, top border, between the groove and the edge chamfer
+  framePinsTop: [30.0, 90.0],  // the frame's pins in the walls' rear ends: clear of the strap tunnels (X 2 to 11 from each end)
+  framePinsBottom: [40.0, 100.0],  // not the top pair's mirror: turned round, the frame's holes miss the shell's pins by 2.4 mm (a gate), so it goes on one way
+  framePinsSideY: 52.0,
+  framePinHoleD: 1.8,        // through the frame, countersunk at its inner face (the bed): tighter than the wall end's 1.9, so the pins stay in the frame when it comes off
+  pinHoldN: 5,               // PROVISIONAL: one pin's hold in a wall-end hole, 500 g hung on T04's pin; six against the foam's 16 N
+  idCap: 5.0,                // cap height of the IDs on the big hidden faces (A01, the coupons)
+  idCapSmall: 3.0,           // A03 on the rear, under the thumb pad
+  idCapEdge: 2.2,            // A02 in the face's bottom edge wall: 2.6 mm of vertical edge between its two chamfers
+  idDepth: 0.4,              // engraved into an up-facing surface in print: two layers at 0.20, four at 0.10
+  idDepthWall: 0.3,          // engraved into a vertical wall in print
+  idShellAt: [44.3, 35.5],   // A01 on the plate's inner face (up in print) between cells 2 and 3, above the lens row
+  idFrameAt: [110.5, 12.0],  // A03 on the rear face (up in print), right border under the thumb pad, between the strap slots and the pad
+  idFaceX: 52.0,             // A02 centred here in the face's bottom edge wall (vertical in print), hidden in the 0.3 reveal
   gasketKPa: 25,             // PROVISIONAL: PORON or silicone foam at 35 % squeeze; PE takes a set in a year and the clamp with it
   stackMassG: 130,           // PROVISIONAL: P4 module, standoffs, carrier, four nodes, the cell
   rearFrameT: 2.0,           // 1.2 under the gasket groove; the thumb climbs this to the glass, so its window edge is chamfered for it
   // The P4 is held at the rear without a screw into it: its inserts carry
   // the carrier's standoffs. The frame's inner face stands off the glass
   // front and carries a foam strip in a groove round the window, on the
-  // glass's margin; the four frame screws squeeze it, so the 114 x 67
-  // module (26 mm past its standoffs in X) is clamped between foam and
-  // standoffs, and a rigid PETG frame never touches glass.
+  // glass's margin; the frame, seated on the wall ends and held by its six
+  // pins, squeezes it, so the 114 x 67 module (26 mm past its standoffs in
+  // X) is clamped between foam and standoffs, and a rigid PETG frame never
+  // touches glass.
   glassClear: 0.4,           // frame's inner face behind the glass front, gated against the module
   gasket: [1.8, 2.0, 2.0, 0.8],  // inset from the window's edge (past the 1.0 chamfer), strip width, foam thickness, groove depth: 2 mm PORON, 2 mm wide (a stock tape width), squeezed to 1.2 (40 %), 25 to 55 % over +-0.3 of stack; the strip's outer edge 0.5 inside the module's edge
-  framePilotD: 1.8,          // M2 thread-forming into PETG; 1.7 modelled prints 1.5 to 1.6
-  framePilotDepth: 6.0,
-  frameScrewHoleD: 2.4,      // plain holes: the four M2 pan heads sit proud on the back, as the brand's concept shows its rear screws; a counterbore broke out through the edge round
-  frameScrewXs: [17.0, 76.0],  // clear of the LED slots and the USB opening on the bottom wall
   frameWindowChamfer: 1.0,   // 45 degrees, widening toward the rear, so the thumb slides onto the glass's edge targets; 1.0 of frame left at the window's edge
   thumbPadProud: 1.2,        // the thumb pad stands off the frame; grooves cut into it
   usbGable: 45,              // degrees, the opening's roof in print
@@ -170,7 +182,7 @@ export const P = Object.freeze({
   // shutter collar and the engraving. The body is one thing.
   grooveP: 2.4,
   grooveD: 0.5,              // 0.25 was three layers deep, at PETG's own ripple; these read as ribs
-  grooveZ: [-6.6, 37.0],     // the waist on a whole 0.2 layer in print (Z -6.5 fell mid-layer and the V bottomed on a flat); -6.6 - 3 x 2.4 = -13.8 puts the frame joint on the rhythm; the first groove's bottom at -7.2 clears the pilots' floors at -7.8
+  grooveZ: [-6.6, 37.0],     // the waist on a whole 0.2 layer in print (Z -6.5 fell mid-layer and the V bottomed on a flat); -6.6 - 3 x 2.4 = -13.8 puts the frame joint on the rhythm; the first groove's bottom at -7.2 clears the frame pins' floors at -8.0 by 0.8 of wall
   deckRing: 1.5,             // the deck is grooved whole, one idea carried through; one smooth ring this wide round the shutter collar. The plateau carried a name that is gone, and bare 0.2 layer lines beside deliberate ribs lose the comparison
   // The rear frame: a thumb pad with three half-round ridges on the right
   // border, the ODD JOBS symbol engraved on the left border, cut deep enough
@@ -186,7 +198,7 @@ export const P = Object.freeze({
   // The horizon carried round the body: the same groove continues across
   // both side walls from the face's edge to the rear frame (a vertical
   // channel in print, no overhang). The face and the shell share one line.
-  horizonWallD: 1.8,         // the LEFT wall only: carried round the right wall the band erased the ribs under the two fingers that hold the camera; the line ends where the hand begins. 1.8 so the channel exposes 1.5 mm of the face's back edge at its left end: the pry point, a nail lifts the face there (six pins and no lever was a knife on the blue)
+  horizonWallD: 1.8,         // the LEFT wall only: carried round the right wall the band erased the ribs under the two fingers that hold the camera; the line ends where the hand begins. 1.8 so the channel exposes 1.5 mm of the face's back edge at its front end and 1.8 of the frame's inner face at its rear end: the pry points, a nail lifts either part there (pins and no lever was a knife on the blue)
   horizonChamfer: [0.8, 0.4], // 45 degrees on the groove's upper and lower lips: a flat-floored slot had no highlight and the jury's one move was invisible from the front
   // The cover's window: its X extent is bandX inset by bandChamfer + bandRim
   // (names kept from the sixth cut's lens band), its Y extent DERIVED from
@@ -264,16 +276,20 @@ export const P = Object.freeze({
   strapTop: true,            // a second pair at the top corners: on a neck cord the camera hangs upright, button up, lenses still; the bottom pair is the wrist loop
   strapSlotXs: [2.0, 8.0],   // the two slots' X, from the body's left edge; mirrored at the right
   strapChannelD: 3.0,        // the tunnel's depth into the wall end; its width is the slot's
-  strapTunnelSkin: 1.2,      // of wall end over the tunnel: the bar the cord loops. 0.6 was three layers, two of them a bridge at the top of the print, so the frame's screws carried the drop; six layers now, proved at 100 N on the strap coupon
+  strapTunnelSkin: 1.2,      // of wall end over the tunnel: the bar the cord loops. 0.6 was three layers, two of them a bridge at the top of the print, so the frame's pins would carry the drop; six layers now, to be proved at 100 N on the strap coupon
 });
 
-// ---- Part IDs, embossed in each part on a hidden face --------------------------
-// A = enclosure, B = moving and interaction parts, C = consumables (not
-// printed), T = test coupons. The same ID is in the file name, the register
-// in the README and on the bin.
+// ---- Part IDs, engraved in a real font on a face that is up or vertical in
+// print, never the bed (the owner, after the first coupons: the bed-face
+// pixel codes spoiled the first layer and could not be read). A = enclosure,
+// B = moving and interaction parts, C = consumables (not printed), T = test
+// coupons, P = coupon plates. The same ID is in the file name, the register
+// in the README and on the bin. B01, B02 and B03 carry no mark: each is the
+// only part of its shape and colour, and none has a hidden face that is not
+// the bed.
 export const IDS = Object.freeze({
   shell: "A01", face: "A02", frame: "A03", cover: "B01", plunger: "B02", retainer: "B03",
-  pins: "C01", foam: "C02", frameScrews: "C03", shrinkBar: "T01",
+  pins: "C01", foam: "C02", shrinkBar: "T01",
 });
 
 // ---- The stack chain, derived once ------------------------------------------

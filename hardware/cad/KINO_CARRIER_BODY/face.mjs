@@ -17,7 +17,7 @@
 // closed cover's. The cover loads from the face's back before the face
 // goes on; the face's own floor closes the track.
 import fs from "node:fs";
-import { Manifold, CrossSection, cube, box, cylZ, coneZ, fuse, rbox, prismY, status, blockText } from "./lib.mjs";
+import { Manifold, CrossSection, cube, box, cylZ, coneZ, fuse, rbox, prismY, status, textSolid, textWidth } from "./lib.mjs";
 import { P, Z, XY, IDS } from "./params.mjs";
 
 const MAKER = JSON.parse(fs.readFileSync(new URL("./brand/odd-jobs-wordmark.json", import.meta.url), "utf8"));
@@ -94,7 +94,16 @@ export function buildFace() {
     const sy0 = new CrossSection([pts], "Positive");
     const sym = sy0.area() > 0 ? sy0 : new CrossSection([pts.slice().reverse()], "Positive");
     cuts.push(fuse([wm.extrude(P.innerMarkD + 1), model.extrude(P.innerMarkD + 1), sym.extrude(P.innerMarkD + 1)]).translate([0, 0, F.back - 1]));
-    cuts.push(blockText(IDS.face, P.idFaceAt[0], P.idFaceAt[1], F.back - 1, P.idPx, P.idDepth + 1, true));
+  }
+  // A02, engraved in the face's bottom edge wall (vertical in print, hidden
+  // in the reveal), between the back's 0.4 chamfer and the front's 1.2,
+  // read from below with X to the right. The text is drawn flat, stood up
+  // about X (its height becomes Z, its depth runs toward -Y) and set 0.3
+  // into the edge.
+  {
+    const w = textWidth(IDS.face, P.idCapEdge);
+    cuts.push(textSolid(IDS.face, P.idFaceX - w / 2, F.back + P.bedChamfer + 0.2, 0, P.idCapEdge, P.idDepthWall + 1, false)
+      .rotate([90, 0, 0]).translate([0, fy0 + P.idDepthWall, 0]));
   }
   // The horizon: edge to edge, its two lips chamfered (upper 0.8, lower
   // 0.4) so the line catches light from every angle.
@@ -184,7 +193,9 @@ export function buildFace() {
   const cs = new CrossSection(MAKER.polygons, "EvenOdd").scale([ms, ms]).translate([markX, markY]);
   const mark = (cs.area() > 0 ? cs : new CrossSection(MAKER.polygons.map((p) => p.slice().reverse()), "EvenOdd").scale([ms, ms]).translate([markX, markY]))
     .extrude(P.markDepth + 1).translate([0, 0, sFront - P.markDepth]);
-  const edgeCuts = [mark, blockText(IDS.cover, sx0 + 4, sy0 + 2.5, sBack - 1, P.idPx, P.idDepth + 1, true)];
+  // No ID on the cover: its back is the bed, its top carries the brand, and
+  // it is the only black bar in the kit.
+  const edgeCuts = [mark];
   {
     const zc0 = sBack - 0.01, zc1 = sFront - Math.min(b0, b1) + 0.01;
     const y0 = sy0 + P.sliderEdgeCrest, y1 = sy1 - P.sliderEdgeCrest, r = P.sliderEdgeRamp;

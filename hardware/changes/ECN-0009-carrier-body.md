@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; eighteenth cut generated and gated, the coupon plates ready to print, nothing printed; the night colourway prints first, the coupons before it |
+| Status | Design in progress; nineteenth cut generated and gated after the first coupons printed (2026-11-21: shrink 0.2 % measured, the pocket loose, the head-pocket feet and the frame pilots refused); the new coupons T02 to T04 are next on the bed |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -364,6 +364,52 @@ owner's printer. Two parts:
   their own IDs in their bed faces (a gate proves each engraving sits in
   material); two bed plates ship as one file each, P1 (T01 + T02) and P2
   (T03 + T04), so a print job is one file.
+- **The first prints** (nineteenth cut, 2026-11-21; the owner printed P1,
+  P2 and T05 and reported: "t01 is 99.8mm", "t02 it is extremely loose
+  and doesnt hold the camera", "for the foot and the wall end you need to
+  figure out a completely different mounting mechanism for the boards
+  inside that doesnt at all utilise the m2s", "dont put the part codes on
+  the bottom side of prints it screws up the print a bit and is
+  unreadable", "dont use pixelated codes use a normal font and something
+  understandable for a factory"). Shrink: 0.2 %, `shrinkPct`, set in the
+  slicer; the model is never scaled. Pocket: the 8.7 pocket with 0.3 ribs
+  does not hold the head, so the head is not 8.5; T02 is now a gauge, three
+  real pockets of 7.8, 8.1 and 8.4 in one plate, each labelled, drawn by
+  the same `cameraPocket` function as the shell's. The hold, with no M2
+  anywhere in it: the pillars, their head pockets, the frame pilots, the
+  frame screws (C03) and `carrierHeadClr`, `bossD`, `bossRib`,
+  `fastenerKeepOutD`, `framePilotD`, `framePilotDepth`,
+  `frameScrewHoleD`, `frameScrewXs` are gone. The cavity is 2.0 mm
+  narrower from the carrier's front face to the plate (`ledgeW`), so the
+  carrier's edge lands on a ledge all round (1.5 of bearing at 0.5 of
+  clearance; nothing on the carrier's front face within 4.3 of its edge,
+  `carrierEdgeKeepOut` 4.0 gated; the P4 is 2.0 inside the outline, so the
+  stack still enters from the rear); gates: the ledge ring in material,
+  the bearing inside the keep-out, nothing of the body within 1 mm of any
+  carrier head, the stack refused turned round (the heads meet the plate,
+  the USB-C the top wall). The frame is held by six of the same 4.8 mm
+  filament pins as the face: blind 1.9 holes 3 mm into the walls' rear
+  ends (`framePinsTop` 30/90, `framePinsBottom` 40/100, `framePinsSideY`
+  52), 1.8 holes through the frame countersunk at its inner face
+  (`framePinHoleD`), the pin 0.2 under the rear face; the frame seats on
+  the wall ends, so the pins carry the foam's 16 N and nothing else, six
+  at `pinHoldN` 5 N (PROVISIONAL, the hang test on T04) gated at 1.5
+  times; the bottom pair is not the top pair's mirror, so turned round the
+  frame misses by 2.4 mm (gated), and the pattern differs from the face's
+  (gated). The left wall's horizon channel now runs through to the joint:
+  at its rear end it exposes 1.8 mm of the frame's inner face, the frame's
+  pry point, as its front end is the face's (gated, and probed open). IDs:
+  the 5 x 7 pixel font is gone; `text-outline.py` draws DejaVu Sans Bold
+  outlines with matplotlib at build time and `textSolid` extrudes them.
+  A01 5 mm in the plate's inner face (up in print), A03 3 mm in the rear
+  face under the thumb pad (up in print), A02 2.2 mm in the face's bottom
+  edge wall (vertical in print, inside the reveal); B01, B02 and B03 carry
+  no mark (their only hidden faces are the bed, and each is the only part
+  of its shape and colour); every coupon carries its ID in the face that
+  is up in print, gated in material. T03 is now the cavity's lower-left
+  corner with 24 mm of ledge and the face pin hole at X 5; T04 the bottom
+  wall's rear end with the frame pin hole at X 40 in place of the pilot.
+  Pins C01: twelve. One fastener type, no screwdriver.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
@@ -375,7 +421,11 @@ from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-156 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
+176 in `generate-carrier-body.mjs`, 0 failures (the list below is the
+first cut's; the package README's "Gates" names the current set, which
+adds the ledge, the carrier heads' clearance, the stack and the frame
+refused turned round, the frame pins and their hold, the pry point open at
+the joint, and every coupon's ID in material): the depth chain, the lens
 front on the pocket floor, the face inset from the outline and over the
 pins, the plan corner's wall on the diagonal, the roof over the stow zone
 clear of the cover and its mark, the lip's slot, the keeper clear of the
@@ -471,12 +521,13 @@ unchanged.
 
 The P4's TF slot opening and the C6 service access, an interference gate
 against the carrier's own part model, the serial engraving and any line under
-4 mm of cap height ("made for bad ideas."), the coupon prints and their
-results (the track coupon decides whether the roof's blades snap clean and
-the 16 mm bridges hold), a `hand` parameter, the independent scan. Issue #252 carries the open
-inputs: the soldered header's insulator height, the spacer height with the
-socket home, the head size and stack height on a seated node, the active
-area's position, the field of view.
+4 mm of cap height ("made for bad ideas."), the second round of coupons
+(the gauge T02 for the head size, T03 for the ledge and the face pin, T04
+for the strap skin and the frame pin's hold), a `hand` parameter, the
+independent scan. Issue #252 carries the open inputs: the soldered
+header's insulator height, the spacer height with the socket home, the
+head size (the first pocket was loose) and stack height on a seated node,
+the pins' hold, the active area's position, the field of view.
 
 ## Files changed
 
@@ -487,7 +538,7 @@ area's position, the field of view.
 
 ## Verification
 
-- [x] BOM and manifest agree (no new BOM lines; four M2 x 8 thread-forming screws from stock).
+- [x] BOM and manifest agree (no new BOM lines; no screw in the body, the pins are cut from filament).
 - [x] Wiring and GPIO records agree (unchanged).
 - [ ] Assembly and acceptance procedures: the package README carries the assembly; `hardware/TESTING.md` unchanged until a body is printed.
 - [x] Affected firmware and KDP assumptions were tested (none affected).
@@ -496,6 +547,8 @@ area's position, the field of view.
 
 ## Decision
 
-Design in progress. The first print waits on the owner's measurements of the
-soldered header insulator, the P4 module can and the spacer height, and on a
-cell that fits the bay.
+Design in progress. The first coupons are printed and read (2026-11-21); the
+second round (T02 gauge, T03 ledge corner, T04 strap end with a frame pin)
+decides the head size, the ledge fit and the pins' hold before the body
+prints. Still open: the soldered header insulator, the P4 module can, the
+spacer height, a cell that fits the bay.

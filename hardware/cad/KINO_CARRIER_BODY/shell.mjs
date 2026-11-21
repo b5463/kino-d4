@@ -1,18 +1,18 @@
 // A01 the shell and A03 the rear frame: the black PETG parts.
 //
-// The shell is the front plate with the camera pockets, all four walls down
-// to the display plane and forward past the plate by faceBase, so the face
-// sits inside a black reveal; four pillars whose feet stand on the carrier
-// round its own screw heads; the shutter pod on the top wall;
-// V-grooves around the side and bottom walls, parallel to the print's layers,
-// the brand's layer texture; the LED slots, the USB-C opening and the frame
-// pilots. Printed face down.
+// The shell is the front plate with the camera pockets and all four walls
+// down to the display plane; a ledge in the cavity at the carrier's front
+// face, on which the carrier's edge lands (no pillar, no screw, nothing at
+// the carrier's holes); the shutter pod on the top wall; V-grooves around
+// the walls, parallel to the print's layers, the brand's layer texture; the
+// LED slots, the USB-C opening, six pin holes in the walls' front ends for
+// the face and six in their rear ends for the frame. Printed face down.
 //
-// The rear frame is a 3 mm plate around the display with the thumb pad as
-// grooves on its right border and the ODD JOBS symbol engraved on its left,
-// both recesses because its rear face is the bed.
+// The rear frame is a 2 mm plate around the display with the thumb pad on
+// its right border and the ODD JOBS symbol engraved on its left, printed
+// rear face up, held on the wall ends by six filament pins through it.
 import fs from "node:fs";
-import { Manifold, CrossSection, cube, box, cylZ, coneZ, cylY, fuse, rbox, status, blockText } from "./lib.mjs";
+import { Manifold, CrossSection, cube, box, cylZ, coneZ, cylY, fuse, rbox, status, textSolid } from "./lib.mjs";
 import { P, Z, XY, IDS } from "./params.mjs";
 import { shutterPod, SHUTTER } from "./shutter.mjs";
 
@@ -42,21 +42,55 @@ export const SHELL = (() => {
     ...P.facePinsTop.map((x) => [x, XY.wallMidY[1]]), ...P.facePinsBottom.map((x) => [x, XY.wallMidY[0]]),
     [ox0 + P.wall / 2, P.facePinsSideY], [ox1 - P.wall / 2, P.facePinsSideY],
   ];
+  // The frame's six pins in the walls' rear ends, a different pattern from
+  // the face's so neither part fits the other's end and the frame goes on
+  // one way (the bottom pair is not the top pair's mirror).
+  const pinRearXY = [
+    ...P.framePinsTop.map((x) => [x, XY.wallMidY[1]]), ...P.framePinsBottom.map((x) => [x, XY.wallMidY[0]]),
+    [ox0 + P.wall / 2, P.framePinsSideY], [ox1 - P.wall / 2, P.framePinsSideY],
+  ];
   // The face sits ON the plate inside a flat margin the width of the
   // wall. Walls running past the plate to pocket the face were tried first:
   // printed face down, the recessed plate hung 2.5 mm over the bed as
   // 10,000 mm^2 of overhang.
   const rimFront = Z.plateFront;
   const pocket = [cx0, cy0, cx1, cy1];        // the face's plan, the cavity's
-  const bossTopZ = Z.plateInner + 0.3;
-  const bossFootZ = Z.carrierFront;
+  const ledgeZ = Z.carrierFront;              // the carrier's front face lands here, all round its edge
   const usbOpenH = P.usbPlug[1] + 2 * P.usbPlugClear;
   const usbOpenW = P.usbPlug[0] + 2 * P.usbPlugClear;
   const usbOpenZ = [Z.carrierBack - P.usbShellH / 2 - usbOpenH / 2, Z.carrierBack - P.usbShellH / 2 + usbOpenH / 2];
   const windowHalf = [P.activeArea[0] / 2 + P.windowMargin, P.activeArea[1] / 2 + P.windowMargin];
-  return Object.freeze({ strapSlots, strapChannels, pinXY, rimFront, pocket, bossTopZ, bossFootZ, usbOpenZ, usbOpenW, windowHalf,
+  return Object.freeze({ strapSlots, strapChannels, pinXY, pinRearXY, rimFront, pocket, ledgeZ, usbOpenZ, usbOpenW, windowHalf,
     lensXY: P.cameraXs.map((x) => [x, XY.lensY]), headPocket: P.camBody + P.camBodySlack });
 })();
+
+// One camera pocket in a plate whose inner face is at Z.plateInner: the
+// square pocket with its corner reliefs, the bore and its chamfer (cuts),
+// and the two pinch ribs per axis (adds, fused after the cuts). The shell
+// and the gauge coupon T02 draw their pockets from this one function, so a
+// fit proved on the gauge is the fit in the part.
+export function cameraPocket(lx, ly, pocket) {
+  const h = pocket / 2, cuts = [], ribs = [];
+  cuts.push(cube(lx - h, ly - h, Z.plateInner - 0.01, pocket, pocket, Z.camPocketDepth + 0.01));
+  // Round reliefs in the four corners: a printed inside corner has its own
+  // radius and the square head would land on it before the ribs.
+  for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    cuts.push(cylZ(lx + sx * h, ly + sy * h, Z.plateInner - 0.01, P.camPocketCornerRelief, Z.camPocketDepth + 0.01, 24));
+  }
+  cuts.push(cylZ(lx, ly, Z.lensFront - 0.01, P.lensBoreD / 2, P.platePocketAhead + 1, 64));
+  // Exactly 45 degrees (the 0.01 overshoot in the radius, not the height).
+  cuts.push(coneZ(lx, ly, Z.plateFront - P.lensBoreChamfer, P.lensBoreD / 2, P.lensBoreD / 2 + P.lensBoreChamfer + 0.01, P.lensBoreChamfer + 0.01, 64));
+  // Pinch ribs: triangular, camRibBase wide at the wall, camRibProud at the
+  // tip, the full pocket depth. Two extrusion lines at the base.
+  const tri = (pts) => { const cs = new CrossSection([pts], "Positive"); return (cs.area() > 0 ? cs : new CrossSection([pts.slice().reverse()], "Positive")).extrude(Z.camPocketDepth).translate([0, 0, Z.plateInner]); };
+  for (const t of P.camRibSpan) {
+    const wx = lx - h, wy = ly - h, b = P.camRibBase / 2, p = P.camRibProud;
+    const ry = wy + pocket * t, rx = wx + pocket * t;
+    ribs.push(tri([[wx - 0.01, ry - b], [wx + p, ry], [wx - 0.01, ry + b]]));
+    ribs.push(tri([[rx - b, wy - 0.01], [rx, wy + p], [rx + b, wy - 0.01]]));
+  }
+  return { cuts, ribs };
+}
 
 // An rbox of the outer outline inset by `d` (negative grows it), between z0 and z1.
 const outerAt = (d, z0, z1) => {
@@ -69,7 +103,15 @@ export function buildShell() {
   const [cx0, cy0, cx1, cy1] = XY.cavity;
   const [ox0, oy0, ox1, oy1] = XY.outer;
   const outer = outerAt(0, Z.glass, Z.plateFront);
-  const cavity = rbox(cx0, cy0, Z.glass - 1, cx1, cy1, Z.plateInner, P.carrierR + P.carrierClear);
+  // The cavity in two depths: full width from the glass to the carrier's
+  // front face, so the stack slides in from the rear, and ledgeW narrower
+  // from there to the plate, so the carrier's edge lands on the step. The
+  // step faces the rear, which is up in print: no overhang anywhere in it.
+  const L = P.ledgeW, rc = P.carrierR + P.carrierClear;
+  const cavity = fuse([
+    rbox(cx0, cy0, Z.glass - 1, cx1, cy1, S.ledgeZ, rc),
+    rbox(cx0 + L, cy0 + L, S.ledgeZ - 0.01, cx1 - L, cy1 - L, Z.plateInner, Math.max(0.5, rc - L)),
+  ]);
   let shell = outer.subtract(cavity);
 
   // Layer texture: V-grooves around the walls, stopped short of the top deck
@@ -102,48 +144,25 @@ export function buildShell() {
     // The horizon carried round the LEFT wall only, from the front to the rear
     // frame at the bar's height. On the right the band erased the ribs under
     // the two fingers that hold the camera: the line ends where the hand begins.
-    // At the rear it runs out in a 45 degree ramp that ends at the joint's
-    // chamfer (a 0.01 mm skin over its end was a 27 mm^2 ceiling at the top
-    // of the print; an open end would notch the joint under the frame).
+    // Open at both ends: at the front it exposes the face's back edge, at
+    // the rear the frame's inner face, 1.8 mm of each. A nail in the channel
+    // lifts either part. (A 0.01 mm skin over the rear end was a 27 mm^2
+    // ceiling at the top of the print; a ramp closed the pry point.)
     const [hy0, hy1] = [XY.lensY - P.sliderH / 2 - P.horizonPad, XY.lensY + P.sliderH / 2 + P.horizonPad];
-    const hStop = Z.glass + P.bedChamfer + P.horizonWallD + 0.02;
-    shell = shell.subtract(box(ox0 - 1, hy0, hStop, ox0 + P.horizonWallD, hy1, Z.plateFront + 1));
-    shell = shell.subtract(Manifold.hull([
-      box(ox0 - 1, hy0, hStop - 0.01, ox0 + P.horizonWallD, hy1, hStop + 0.01),
-      box(ox0 - 1, hy0, Z.glass + P.bedChamfer - 0.01, ox0, hy1, Z.glass + P.bedChamfer + 0.01),
-    ]));
+    shell = shell.subtract(box(ox0 - 1, hy0, Z.glass - 1, ox0 + P.horizonWallD, hy1, Z.plateFront + 1));
   }
 
   const pod = shutterPod();
-  const adds = [...pod.adds];
-  for (const [hx, hy] of P.carrierHoles) {
-    adds.push(cylZ(hx, hy, S.bossFootZ, P.bossD / 2, S.bossTopZ - S.bossFootZ));
-    const toTop = hy > P.carrierH / 2;
-    adds.push(box(hx - P.bossRib / 2, toTop ? hy : cy0 - 0.5, S.bossFootZ, hx + P.bossRib / 2, toTop ? cy1 + 0.5 : hy, S.bossTopZ));
-  }
-  shell = shell.add(fuse(adds));
+  shell = shell.add(fuse(pod.adds));
   // No engraving on the deck: a 0.6 mm stroke in a vertical wall is one
   // wobbling perimeter and the top wall of every letter droops. The deck
   // carries the button and nothing else; the name is inside, on the face.
 
   const cuts = [...pod.cuts];
-  // Each foot pocketed for the carrier's own screw head: the foot lands on
-  // the PCB round the head, and no screw from the shell enters the carrier.
-  // The plate's front stays solid (no driver shafts).
-  for (const [hx, hy] of P.carrierHoles) {
-    cuts.push(cylZ(hx, hy, S.bossFootZ - 0.5, P.carrierHead[0] / 2 + P.carrierHeadClr, P.carrierHead[1] + P.carrierHeadClr + 0.5, 32));
-  }
+  const ribs = [];
   for (const [lx, ly] of S.lensXY) {
-    const h = S.headPocket / 2;
-    cuts.push(cube(lx - h, ly - h, Z.plateInner - 0.01, S.headPocket, S.headPocket, Z.camPocketDepth + 0.01));
-    // Round reliefs in the four corners: a printed inside corner has its own
-    // radius and the square head would land on it before the ribs.
-    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-      cuts.push(cylZ(lx + sx * h, ly + sy * h, Z.plateInner - 0.01, P.camPocketCornerRelief, Z.camPocketDepth + 0.01, 24));
-    }
-    cuts.push(cylZ(lx, ly, Z.lensFront - 0.01, P.lensBoreD / 2, P.platePocketAhead + 1, 64));
-    // Exactly 45 degrees (the 0.01 overshoot in the radius, not the height).
-    cuts.push(coneZ(lx, ly, Z.plateFront - P.lensBoreChamfer, P.lensBoreD / 2, P.lensBoreD / 2 + P.lensBoreChamfer + 0.01, P.lensBoreChamfer + 0.01, 64));
+    const pk = cameraPocket(lx, ly, S.headPocket);
+    cuts.push(...pk.cuts); ribs.push(...pk.ribs);
   }
   // The rear outer edge chamfered bedChamfer too (the top edge in print,
   // uniform steps): with the frame's bed edge chamfered the same, the joint
@@ -163,12 +182,14 @@ export function buildShell() {
       [[x0, S.usbOpenZ[0]], [(x0 + x1) / 2, S.usbOpenZ[0] - gable], [x1, S.usbOpenZ[0]], [x1, S.usbOpenZ[1]], [x0, S.usbOpenZ[1]]],
       cy0 - oy0 + 2).rotate([90, 0, 0]).translate([0, cy0 + 1, 0])));
   }
-  for (const x of P.frameScrewXs) for (const y of XY.wallMidY) {
-    cuts.push(cylZ(x, y, Z.glass - 0.5, P.framePilotD / 2, P.framePilotDepth + 0.5, 24));
+  // Blind holes in the walls' rear ends for the frame's six pins. The wall
+  // ends are the top of the print: no elephant foot, so no countersink.
+  for (const [px, py] of S.pinRearXY) {
+    cuts.push(cylZ(px, py, Z.glass - 1, P.facePinD / 2, P.facePinWall + 1, 24));
   }
   // The strap tunnels inside the bottom wall's end, under a skin of wall: the
   // cord loops the shell's own wall, so a drop never loads the frame's
-  // screws. Each tunnel opens through the skin at the two slots.
+  // pins. Each tunnel opens through the skin at the two slots.
   for (const [x0, y0, x1, y1] of S.strapChannels) {
     cuts.push(box(x0, y0, Z.glass + P.strapTunnelSkin, x1, y1, Z.glass + P.strapTunnelSkin + P.strapChannelD));
   }
@@ -179,8 +200,9 @@ export function buildShell() {
     cuts.push(cylZ(px, py, Z.plateFront - P.facePinWall, P.facePinD / 2, P.facePinWall + 1, 24));
     cuts.push(coneZ(px, py, Z.plateFront - P.facePinSink, P.facePinD / 2, P.facePinD / 2 + P.facePinSink + 0.01, P.facePinSink + 0.01, 24));
   }
-  // A01, engraved in the plate's inner face (read from the cavity, so mirrored).
-  cuts.push(blockText(IDS.shell, P.idShellAt[0], P.idShellAt[1], Z.plateInner - 1, P.idPx, P.idDepth + 1, true));
+  // A01, engraved in the plate's inner face, which is up in print (read
+  // from the cavity, so mirrored).
+  cuts.push(textSolid(IDS.shell, P.idShellAt[0], P.idShellAt[1], Z.plateInner - 1, P.idCap, P.idDepth + 1, true));
   const bare = shell.subtract(fuse(cuts));
   // Three ribs along the shutter's guide bore on its face side (the floor of
   // the bore in print): the cap runs on three lines instead of ticking in a
@@ -192,16 +214,6 @@ export function buildShell() {
     for (const phi of [-50, 0, 50]) {
       guideRibs.push(cube(-rw / 2, y0, rg - rh, rw, len, rh + 0.3).rotate([0, phi, 0]).translate([P.shutterX, 0, P.shutterZ]));
     }
-  }
-  // Pinch ribs: triangular, camRibBase wide at the wall, camRibProud at the
-  // tip, the full pocket depth. Two extrusion lines at the base.
-  const ribs = [];
-  const tri = (pts) => { const cs = new CrossSection([pts], "Positive"); return (cs.area() > 0 ? cs : new CrossSection([pts.slice().reverse()], "Positive")).extrude(Z.camPocketDepth).translate([0, 0, Z.plateInner]); };
-  for (const [lx, ly] of S.lensXY) for (const t of P.camRibSpan) {
-    const wx = lx - S.headPocket / 2, wy = ly - S.headPocket / 2, b = P.camRibBase / 2, p = P.camRibProud;
-    const ry = wy + S.headPocket * t, rx = wx + S.headPocket * t;
-    ribs.push(tri([[wx - 0.01, ry - b], [wx + p, ry], [wx - 0.01, ry + b]]));
-    ribs.push(tri([[rx - b, wy - 0.01], [rx, wy + p], [rx + b, wy - 0.01]]));
   }
   return { bare, shell: status("shell", bare.add(fuse([...ribs, ...guideRibs]))) };
 }
@@ -235,13 +247,17 @@ export function buildFrame() {
     Manifold.hull([box(wx0, wy0, Z.frameRear + c, wx1, wy1, Z.frameRear + c + 0.01), box(wx0 - c, wy0 - c, Z.frameRear - 0.01, wx1 + c, wy1 + c, Z.frameRear)]),
     box(wx0 - c, wy0 - c, Z.frameRear - 2, wx1 + c, wy1 + c, Z.frameRear),
   ];
-  for (const x of P.frameScrewXs) for (const y of XY.wallMidY) {
-    cuts.push(cylZ(x, y, Z.frameRear - 3, P.frameScrewHoleD / 2, P.rearFrameT + 4, 24));
+  // Six pin holes through the frame, countersunk at the inner face (the
+  // bed) against the elephant foot; the pins end 0.2 under the rear face.
+  for (const [px, py] of S.pinRearXY) {
+    cuts.push(cylZ(px, py, Z.frameRear - 1, P.framePinHoleD / 2, P.rearFrameT + 2, 24));
+    cuts.push(coneZ(px, py, Z.glass - P.facePinSink, P.framePinHoleD / 2, P.framePinHoleD / 2 + P.facePinSink + 0.01, P.facePinSink + 0.01, 24));
   }
   // The gasket groove in the inner face round the window: the P4 module is
   // held at the rear by foam in it, squeezed on the glass's margin by the
-  // frame screws; the frame itself stands glassClear off the glass. In the
-  // rear-up print the groove is in the bed face, its ceiling a 1.5 mm bridge.
+  // frame seated on the wall ends; the frame itself stands glassClear off
+  // the glass. In the rear-up print the groove is in the bed face, its
+  // ceiling a 1.5 mm bridge.
   {
     const [gIn, gW, , gD] = P.gasket;
     cuts.push(box(wx0 - gIn - gW, wy0 - gIn - gW, Z.glass - gD, wx1 + gIn + gW, wy1 + gIn + gW, Z.glass + 1)
@@ -252,8 +268,10 @@ export function buildFrame() {
   }
   // The strap slots through the frame's border at the corners.
   for (const [x0, y0, x1, y1] of S.strapSlots) cuts.push(box(x0, y0, Z.frameRear - 3, x1, y1, Z.glass + 1));
-  // A03, engraved in the inner face (read from the shell side, so as is).
-  cuts.push(blockText(IDS.frame, P.idFrameAt[0], P.idFrameAt[1], Z.glass - P.idDepth, P.idPx, P.idDepth + 1, false));
+  // A03, engraved in the rear face (up in print), the right border under
+  // the thumb pad; read from the rear, so mirrored. Small, as a mark on a
+  // camera's back is.
+  cuts.push(textSolid(IDS.frame, P.idFrameAt[0], P.idFrameAt[1], Z.frameRear - 1, P.idCapSmall, P.idDepth + 1, true));
   // The ODD JOBS symbol, engraved on the left border, deep enough to read as
   // shadow, with a shallower step outside its outline. Pixel rows run down.
   {

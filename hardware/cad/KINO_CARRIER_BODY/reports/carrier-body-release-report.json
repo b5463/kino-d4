@@ -1,6 +1,6 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-21T14:39:37.605Z",
+  "generated": "2026-11-21T16:44:47.235Z",
   "body": {
     "width": 128.4,
     "height": 80.8,
@@ -68,10 +68,20 @@
     "podInnerY": 67.3,
     "capD": 14
   },
+  "print": {
+    "shrinkPct": 0.2,
+    "ledgeW": 2,
+    "pins": 12,
+    "gaugePockets": [
+      7.8,
+      8.1,
+      8.4
+    ]
+  },
   "files": {
     "A01-KINO_CARRIER_SHELL.stl": {
-      "triangles": 14750,
-      "volumeCm3": 113.44,
+      "triangles": 13458,
+      "volumeCm3": 124.97,
       "size": [
         128.4,
         80.8,
@@ -79,8 +89,8 @@
       ]
     },
     "A03-KINO_CARRIER_REAR_FRAME.stl": {
-      "triangles": 4964,
-      "volumeCm3": 8.76,
+      "triangles": 5492,
+      "volumeCm3": 8.77,
       "size": [
         128.4,
         80.8,
@@ -88,7 +98,7 @@
       ]
     },
     "A02-KINO_CARRIER_FACE.stl": {
-      "triangles": 9530,
+      "triangles": 9398,
       "volumeCm3": 31.08,
       "size": [
         127.8,
@@ -97,8 +107,8 @@
       ]
     },
     "B01-KINO_CARRIER_LENS_COVER.stl": {
-      "triangles": 3432,
-      "volumeCm3": 2.87,
+      "triangles": 2764,
+      "volumeCm3": 2.88,
       "size": [
         86.8,
         16.5,
@@ -106,35 +116,35 @@
       ]
     },
     "B02-KINO_CARRIER_SHUTTER_BUTTON.stl": {
-      "triangles": 3066,
-      "volumeCm3": 1.76,
+      "triangles": 1576,
+      "volumeCm3": 1.77,
       "size": [
         40.75,
         19.5,
         6.3
       ]
     },
-    "T03-KINO_COUPON_PILLAR.stl": {
-      "triangles": 2630,
-      "volumeCm3": 14.51,
+    "T03-KINO_COUPON_LEDGE_CORNER.stl": {
+      "triangles": 2136,
+      "volumeCm3": 9.48,
       "size": [
-        29.65,
-        75.11,
-        28
+        26,
+        26,
+        30.6
       ]
     },
-    "T02-KINO_COUPON_POCKET.stl": {
-      "triangles": 1392,
-      "volumeCm3": 0.81,
+    "T02-KINO_COUPON_POCKET_GAUGE.stl": {
+      "triangles": 4398,
+      "volumeCm3": 4.44,
       "size": [
-        16,
-        16,
+        60,
+        20,
         4.4
       ]
     },
     "T05-KINO_COUPON_DECK.stl": {
-      "triangles": 3046,
-      "volumeCm3": 4.45,
+      "triangles": 3078,
+      "volumeCm3": 4.9,
       "size": [
         36,
         7.5,
@@ -142,17 +152,17 @@
       ]
     },
     "T04-KINO_COUPON_STRAP_SHELL.stl": {
-      "triangles": 1414,
-      "volumeCm3": 1.81,
+      "triangles": 1216,
+      "volumeCm3": 3.22,
       "size": [
-        26,
+        49,
         14,
         14
       ]
     },
     "T01-KINO_COUPON_SHRINK_BAR.stl": {
-      "triangles": 508,
-      "volumeCm3": 2.99,
+      "triangles": 392,
+      "volumeCm3": 3,
       "size": [
         100,
         10,
@@ -160,21 +170,21 @@
       ]
     },
     "P1-COUPON_PLATE_T01_T02.stl": {
-      "triangles": 1900,
-      "volumeCm3": 3.81,
+      "triangles": 4790,
+      "volumeCm3": 7.44,
       "size": [
-        126,
-        16,
+        170,
+        20,
         4.4
       ]
     },
     "P2-COUPON_PLATE_T03_T04.stl": {
-      "triangles": 4044,
-      "volumeCm3": 16.32,
+      "triangles": 3352,
+      "volumeCm3": 12.7,
       "size": [
-        65.65,
-        75.11,
-        28
+        85,
+        26,
+        30.6
       ]
     },
     "KINO_CARRIER_STACK_DUMMY.stl": {
@@ -187,8 +197,8 @@
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 34616,
-      "volumeCm3": 242.77,
+      "triangles": 33006,
+      "volumeCm3": 254.32,
       "size": [
         128.4,
         80.8,
@@ -196,8 +206,8 @@
       ]
     },
     "KINO_CARRIER_OPEN_PREVIEW.stl": {
-      "triangles": 34602,
-      "volumeCm3": 242.77,
+      "triangles": 33024,
+      "volumeCm3": 254.32,
       "size": [
         128.4,
         80.8,
@@ -206,7 +216,7 @@
     }
   },
   "gates": {
-    "total": 162,
+    "total": 176,
     "failed": 0
   },
   "checks": [
@@ -303,7 +313,7 @@
     {
       "name": "stack dummy clears the shell (ribs aside)",
       "pass": true,
-      "details": "0.0000 mm^3 of electronics inside the shell's material"
+      "details": "-0.0000 mm^3 of electronics inside the shell's material"
     },
     {
       "name": "stack dummy clears the frame",
@@ -456,44 +466,114 @@
       "details": "cover 16.5 tall over a 7.5 mm cell; the firmware's cover-closed test needs all four dark"
     },
     {
-      "name": "the carrier's screw head sits in the foot at (18.95, 62.8)",
+      "name": "the ledge stands round the whole cavity at the carrier's front face",
       "pass": true,
-      "details": "an M2 pan head 3.8 x 1.3 with 0.3 of air; no screw from the body enters the carrier"
+      "details": "2 mm wide at Z 12.9, 99.11 % of the ring in material (the pod and the pockets are elsewhere)"
     },
     {
-      "name": "foot stands on the carrier round the head at (18.95, 62.8)",
+      "name": "the ledge bears on bare carrier edge",
       "pass": true,
-      "details": "pillar 6.8 mm with a 4.4 mm pocket, 1.2 of wall, inside the 7 mm fastener keep-out"
+      "details": "1.5 mm of bearing with the carrier pushed 0.5 to one side; the ledge reaches 2.5 in from the carrier's edge, the nearest front-face part (J1001) is 4"
     },
     {
-      "name": "the carrier's screw head sits in the foot at (80.85, 62.8)",
+      "name": "nothing of the body within 1 mm of the carrier's head at (18.95, 62.8)",
       "pass": true,
-      "details": "an M2 pan head 3.8 x 1.3 with 0.3 of air; no screw from the body enters the carrier"
+      "details": "the 3.8 mm pan head, 1.3 tall, with 1 mm round it; no pillar, no pocket, no screw"
     },
     {
-      "name": "foot stands on the carrier round the head at (80.85, 62.8)",
+      "name": "nothing of the body within 1 mm of the carrier's head at (80.85, 62.8)",
       "pass": true,
-      "details": "pillar 6.8 mm with a 4.4 mm pocket, 1.2 of wall, inside the 7 mm fastener keep-out"
+      "details": "the 3.8 mm pan head, 1.3 tall, with 1 mm round it; no pillar, no pocket, no screw"
     },
     {
-      "name": "the carrier's screw head sits in the foot at (18.95, 8)",
+      "name": "nothing of the body within 1 mm of the carrier's head at (18.95, 8)",
       "pass": true,
-      "details": "an M2 pan head 3.8 x 1.3 with 0.3 of air; no screw from the body enters the carrier"
+      "details": "the 3.8 mm pan head, 1.3 tall, with 1 mm round it; no pillar, no pocket, no screw"
     },
     {
-      "name": "foot stands on the carrier round the head at (18.95, 8)",
+      "name": "nothing of the body within 1 mm of the carrier's head at (80.85, 8)",
       "pass": true,
-      "details": "pillar 6.8 mm with a 4.4 mm pocket, 1.2 of wall, inside the 7 mm fastener keep-out"
+      "details": "the 3.8 mm pan head, 1.3 tall, with 1 mm round it; no pillar, no pocket, no screw"
     },
     {
-      "name": "the carrier's screw head sits in the foot at (80.85, 8)",
+      "name": "the stack goes in one way",
       "pass": true,
-      "details": "an M2 pan head 3.8 x 1.3 with 0.3 of air; no screw from the body enters the carrier"
+      "details": "turned round, 790.66 mm^3 of electronics inside the shell's material; the right way, -0.0000"
     },
     {
-      "name": "foot stands on the carrier round the head at (80.85, 8)",
+      "name": "frame pin hole in the wall end at (30, 73.55) open",
       "pass": true,
-      "details": "pillar 6.8 mm with a 4.4 mm pocket, 1.2 of wall, inside the 7 mm fastener keep-out"
+      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+    },
+    {
+      "name": "frame pin hole through the frame at (30, 73.55) open",
+      "pass": true,
+      "details": "1.8 mm through the 2 frame, countersunk 0.4 at the inner face"
+    },
+    {
+      "name": "frame pin hole in the wall end at (90, 73.55) open",
+      "pass": true,
+      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+    },
+    {
+      "name": "frame pin hole through the frame at (90, 73.55) open",
+      "pass": true,
+      "details": "1.8 mm through the 2 frame, countersunk 0.4 at the inner face"
+    },
+    {
+      "name": "frame pin hole in the wall end at (40, -2.75) open",
+      "pass": true,
+      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+    },
+    {
+      "name": "frame pin hole through the frame at (40, -2.75) open",
+      "pass": true,
+      "details": "1.8 mm through the 2 frame, countersunk 0.4 at the inner face"
+    },
+    {
+      "name": "frame pin hole in the wall end at (100, -2.75) open",
+      "pass": true,
+      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+    },
+    {
+      "name": "frame pin hole through the frame at (100, -2.75) open",
+      "pass": true,
+      "details": "1.8 mm through the 2 frame, countersunk 0.4 at the inner face"
+    },
+    {
+      "name": "frame pin hole in the wall end at (-2.75, 52) open",
+      "pass": true,
+      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+    },
+    {
+      "name": "frame pin hole through the frame at (-2.75, 52) open",
+      "pass": true,
+      "details": "1.8 mm through the 2 frame, countersunk 0.4 at the inner face"
+    },
+    {
+      "name": "frame pin hole in the wall end at (121.15, 52) open",
+      "pass": true,
+      "details": "1.9 mm, 3 deep in a 4.5 mm wall"
+    },
+    {
+      "name": "frame pin hole through the frame at (121.15, 52) open",
+      "pass": true,
+      "details": "1.8 mm through the 2 frame, countersunk 0.4 at the inner face"
+    },
+    {
+      "name": "the frame's pin holes sit inside its rear chamfer",
+      "pass": true,
+      "details": "1.35 mm from the outline to the hole, the rear chamfer 1.2; the countersink 0.95 from it at the inner face, the bed chamfer 0.4"
+    },
+    {
+      "name": "the frame goes on one way",
+      "pass": true,
+      "details": "turned round in its plane, the nearest hole misses a pin by 11.6 mm; the face's pattern is another, so neither part fits the other's end"
+    },
+    {
+      "name": "the frame's pattern is not the face's",
+      "pass": true,
+      "details": "one frame hole is 35 mm from every face pin, so neither part fits the other's end (the top and side pairs coincide in plan, the bottom pairs do not)"
     },
     {
       "name": "face pin hole in the wall end at (30, 73.55) open",
@@ -606,9 +686,14 @@
       "details": "2.2 mm of wall under the channel where a layer groove crosses it"
     },
     {
-      "name": "the horizon channel is the face's pry point",
+      "name": "the horizon channel is the pry point for the face and the frame",
       "pass": true,
-      "details": "1.5 mm of the face's back edge exposed in the left wall's channel; a nail lifts the face there"
+      "details": "1.5 mm of the face's back edge exposed at the channel's front end, 1.4 of the frame's inner face past its chamfer at the rear end; a nail lifts either part there"
+    },
+    {
+      "name": "the horizon channel runs out under the frame",
+      "pass": true,
+      "details": "open to the joint; the frame's inner face shows in it"
     },
     {
       "name": "the lip stands proud of the face for the thumb",
@@ -616,9 +701,9 @@
       "details": "2.7 mm off the cover, 1.5 above the face, closed and stowed; the thumb pushes it down and lifts it back"
     },
     {
-      "name": "the carrier slides in from the rear up to the pillar feet",
+      "name": "the carrier slides in from the rear up to the ledge",
       "pass": true,
-      "details": "0.5 mm a side; the feet at Z=12.9 are the stop; the shutter pod ends at Z=14"
+      "details": "0.5 mm a side; the ledge at Z=12.9 is the stop; the shutter pod ends at Z=14"
     },
     {
       "name": "USB-C plug passes the bottom wall",
@@ -661,54 +746,14 @@
       "details": "window from X 11.4 to 107; thumb pad X 109.5 to 121; symbol from X -1.5, 8 mm tall"
     },
     {
-      "name": "frame pilot at (17, -2.75) open",
-      "pass": true,
-      "details": "1.8 mm pilot 6 mm into the wall end"
-    },
-    {
-      "name": "frame screw hole at (17, -2.75) open",
-      "pass": true,
-      "details": "2.4 mm through the frame; the M2 pan head sits proud on the back"
-    },
-    {
-      "name": "frame pilot at (17, 73.55) open",
-      "pass": true,
-      "details": "1.8 mm pilot 6 mm into the wall end"
-    },
-    {
-      "name": "frame screw hole at (17, 73.55) open",
-      "pass": true,
-      "details": "2.4 mm through the frame; the M2 pan head sits proud on the back"
-    },
-    {
-      "name": "frame pilot at (76, -2.75) open",
-      "pass": true,
-      "details": "1.8 mm pilot 6 mm into the wall end"
-    },
-    {
-      "name": "frame screw hole at (76, -2.75) open",
-      "pass": true,
-      "details": "2.4 mm through the frame; the M2 pan head sits proud on the back"
-    },
-    {
-      "name": "frame pilot at (76, 73.55) open",
-      "pass": true,
-      "details": "1.8 mm pilot 6 mm into the wall end"
-    },
-    {
-      "name": "frame screw hole at (76, 73.55) open",
-      "pass": true,
-      "details": "2.4 mm through the frame; the M2 pan head sits proud on the back"
-    },
-    {
-      "name": "wall carries the frame pilots",
-      "pass": true,
-      "details": "1.35 mm a side"
-    },
-    {
       "name": "layer grooves leave the wall",
       "pass": true,
       "details": "0.5 mm V-grooves at 2.4 mm pitch in a 4.5 mm wall"
+    },
+    {
+      "name": "the first groove clears the frame pins' floors",
+      "pass": true,
+      "details": "groove bottom at Z -7.22, the pins' floors at -8"
     },
     {
       "name": "cover closed: held by the detent and nothing else",
@@ -743,7 +788,7 @@
     {
       "name": "wordmark strokes clear one nozzle line with margin",
       "pass": true,
-      "details": "about 1.3 mm; print its last undefined mm in cream on both colourways"
+      "details": "about 1.3 mm, engraved 0.4"
     },
     {
       "name": "the grip is the horizon's right end, past the track",
@@ -876,9 +921,9 @@
       "details": "the bar the cord pulls on is 1.2 mm of shell between the slots"
     },
     {
-      "name": "strap slots clear the frame screws and the frame's edge",
+      "name": "strap slots and tunnels clear the frame pins and the frame's edge",
       "pass": true,
-      "details": "nearest screw 11 mm from a slot; slots from Y -3.6, the round to -3.8"
+      "details": "nearest pin 12.4 mm from a slot, 12.4 from a tunnel; slots from Y -3.6, the round to -3.8"
     },
     {
       "name": "the shell's bar between the slots carries a cord",
@@ -906,14 +951,19 @@
       "details": "2 mm foam in 1.2 mm: 40 % squeezed; 25 to 55 % over +-0.3 mm of stack"
     },
     {
-      "name": "the foam clamps the stack onto the pillar feet",
+      "name": "the foam clamps the stack onto the ledge",
       "pass": true,
-      "details": "643.84 mm^2 of foam at 25 kPa (PROVISIONAL) is 16.1 N on the glass, 12.62 times the 130 g stack; the only screws in the body go from the frame into the shell"
+      "details": "643.84 mm^2 of foam at 25 kPa (PROVISIONAL) is 16.1 N on the glass, 12.62 times the 130 g stack; no screw anywhere in the body"
+    },
+    {
+      "name": "six pins hold the frame against the foam",
+      "pass": true,
+      "details": "6 pins at 5 N each (PROVISIONAL, T04's hang test) against 16.1 N of foam; the frame seats on the wall ends, so the pins see the foam's push and nothing else"
     },
     {
       "name": "A01-KINO_CARRIER_SHELL.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "1.88 mm^2 facing down past 45 degrees outside the named places (allowed 5), 104.38 inside them: the cavity (the four screw-foot shoulders), the LED slots (4.5 mm bridges), the USB opening's 45 degree gable, the strap tunnels, the six pin holes, the collar's 0.4 recess; the largest stray at (17.94, 44.74, 1)"
+      "details": "1.88 mm^2 facing down past 45 degrees outside the named places (allowed 5), 104.38 inside them: the cavity, the LED slots (4.5 mm bridges), the USB opening's 45 degree gable, the strap tunnels, the six front pin holes, the collar's 0.4 recess; the ledge and the rear pin holes face up; the largest stray at (17.94, 44.74, 1)"
     },
     {
       "name": "A01-KINO_CARRIER_SHELL.stl fits the bed",
@@ -923,7 +973,7 @@
     {
       "name": "A03-KINO_CARRIER_REAR_FRAME.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 680.5 inside them: the gasket groove's ceiling (a 2 mm bridge at the bed) and the A03 engraving's; holes through, the chamfer and the pad face up"
+      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 659.84 inside them: the gasket groove's ceiling (a 2 mm bridge at the bed) and the pin holes' countersinks at the bed; the chamfer, the pad and the A03 engraving face up"
     },
     {
       "name": "A03-KINO_CARRIER_REAR_FRAME.stl fits the bed",
@@ -933,7 +983,7 @@
     {
       "name": "A02-KINO_CARRIER_FACE.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 5), 199.97 inside them: the six pin holes and the signature's 0.4 mm ceilings at the bed; the lips' undersides are steeper than 45"
+      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 5), 181.29 inside them: the six pin holes and the signature's 0.4 mm ceilings at the bed, the A02 letters' top edges in the bottom edge wall (0.3 mm bridges); the lips' undersides are steeper than 45"
     },
     {
       "name": "A02-KINO_CARRIER_FACE.stl fits the bed",
@@ -943,7 +993,7 @@
     {
       "name": "B01-KINO_CARRIER_LENS_COVER.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 21.26 inside them: the 0.2 mm ledges over the edge reliefs and the B01 engraving's ceiling"
+      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 1.53 inside them: the 0.2 mm ledges over the edge reliefs"
     },
     {
       "name": "B01-KINO_CARRIER_LENS_COVER.stl fits the bed",
@@ -953,7 +1003,7 @@
     {
       "name": "B02-KINO_CARRIER_SHUTTER_BUTTON.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0.5 mm^2 facing down past 45 degrees outside the named places (allowed 1), 74.53 inside them: the retainer's leg-slot bridge and wire notches, inside the pod, and the two ID engravings' ceilings; the largest stray at (6.19, 16.78, 0.29)"
+      "details": "0.5 mm^2 facing down past 45 degrees outside the named places (allowed 1), 44.02 inside them: the retainer's leg-slot bridge and wire notches, inside the pod; the largest stray at (6.19, 16.78, 0.29)"
     },
     {
       "name": "B02-KINO_CARRIER_SHUTTER_BUTTON.stl fits the bed",
@@ -961,49 +1011,79 @@
       "details": "40.75 x 19.5 x 6.3"
     },
     {
-      "name": "T02-KINO_COUPON_POCKET.stl carries its ID in its bed face",
+      "name": "T02-KINO_COUPON_POCKET_GAUGE.stl carries \"7.8\" in material",
       "pass": true,
-      "details": "T02 at (0.5, 12.3) in the bed face, 0.4 deep; 100 % of the engraving in material"
+      "details": "2.5 mm letters at (6.1838, 15.4) in the face at Z 35.5, 0.4 deep; 100 % of the engraving in material"
     },
     {
-      "name": "T03-KINO_COUPON_PILLAR.stl carries its ID in its bed face",
+      "name": "T02-KINO_COUPON_POCKET_GAUGE.stl carries \"8.1\" in material",
       "pass": true,
-      "details": "T03 at (2, 2) in the bed face, 0.4 deep; 100 % of the engraving in material"
+      "details": "2.5 mm letters at (23.1854, 15.55) in the face at Z 35.5, 0.4 deep; 100 % of the engraving in material"
     },
     {
-      "name": "T04-KINO_COUPON_STRAP_SHELL.stl carries its ID in its bed face",
+      "name": "T02-KINO_COUPON_POCKET_GAUGE.stl carries \"8.4\" in material",
       "pass": true,
-      "details": "T04 at (6, 9.8) in the bed face, 0.4 deep; 100 % of the engraving in material"
+      "details": "2.5 mm letters at (40.1463, 15.7) in the face at Z 35.5, 0.4 deep; 100 % of the engraving in material"
     },
     {
-      "name": "T05-KINO_COUPON_DECK.stl carries its ID in its bed face",
+      "name": "T02-KINO_COUPON_POCKET_GAUGE.stl carries \"T02\" in material",
       "pass": true,
-      "details": "T05 at (2, 0.6) in the bed face, 0.4 deep; 100 % of the engraving in material"
+      "details": "3 mm letters at (51, 8.5) in the face at Z 35.5, 0.4 deep; 100 % of the engraving in material"
+    },
+    {
+      "name": "T03-KINO_COUPON_LEDGE_CORNER.stl carries \"T03\" in material",
+      "pass": true,
+      "details": "3 mm letters at (8, -4.25) in the face at Z 9.3, 0.4 deep; 100 % of the engraving in material"
+    },
+    {
+      "name": "T04-KINO_COUPON_STRAP_SHELL.stl carries \"T04\" in material",
+      "pass": true,
+      "details": "3 mm letters at (14, -4.25) in the face at Z -5, 0.4 deep; 100 % of the engraving in material"
+    },
+    {
+      "name": "T05-KINO_COUPON_DECK.stl carries \"T05\" in material",
+      "pass": true,
+      "details": "3 mm letters at (87, 72.05) in the face at Z 8, 0.4 deep; 100 % of the engraving in material"
+    },
+    {
+      "name": "T01-KINO_COUPON_SHRINK_BAR.stl carries \"T01\" in material",
+      "pass": true,
+      "details": "3 mm letters at (3, 3.5) in the face at Z 3, 0.4 deep; 100 % of the engraving in material"
+    },
+    {
+      "name": "every coupon is labelled",
+      "pass": true,
+      "details": "7.8 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.1 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.4 in T02-KINO_COUPON_POCKET_GAUGE.stl; T02 in T02-KINO_COUPON_POCKET_GAUGE.stl; T03 in T03-KINO_COUPON_LEDGE_CORNER.stl; T04 in T04-KINO_COUPON_STRAP_SHELL.stl; T05 in T05-KINO_COUPON_DECK.stl; T01 in T01-KINO_COUPON_SHRINK_BAR.stl"
+    },
+    {
+      "name": "the ledge coupon carries a face pin hole and the ledge",
+      "pass": true,
+      "details": "pin hole at X 5 inside the coupon's 27 mm; 2 mm of ledge along 24 mm of two walls"
+    },
+    {
+      "name": "the strap coupon carries a frame pin hole",
+      "pass": true,
+      "details": "pin hole at X 40, 3 deep; 500 g hung on the pin is the hold (pinHoldN 5 N, PROVISIONAL)"
     },
     {
       "name": "P1-COUPON_PLATE_T01_T02.stl is two pieces on the bed",
       "pass": true,
-      "details": "126 x 16 mm, 2 pieces"
+      "details": "170 x 20 mm, 2 pieces"
     },
     {
       "name": "P2-COUPON_PLATE_T03_T04.stl is two pieces on the bed",
       "pass": true,
-      "details": "65.65 x 75.11 mm, 2 pieces"
+      "details": "85 x 26 mm, 2 pieces"
     },
     {
-      "name": "the strap coupon carries a frame pilot",
+      "name": "T03-KINO_COUPON_LEDGE_CORNER.stl is one piece on the bed",
       "pass": true,
-      "details": "pilot at X 17 inside the coupon's 27 mm; M2 x 8 driven and backed out ten times proves the thread-forming pilots"
+      "details": "26 x 26 x 30.6 mm, 1 piece(s)"
     },
     {
-      "name": "T03-KINO_COUPON_PILLAR.stl is one piece on the bed",
+      "name": "T02-KINO_COUPON_POCKET_GAUGE.stl is one piece on the bed",
       "pass": true,
-      "details": "29.65 x 75.11 x 28 mm, 1 piece(s)"
-    },
-    {
-      "name": "T02-KINO_COUPON_POCKET.stl is one piece on the bed",
-      "pass": true,
-      "details": "16 x 16 x 4.4 mm, 1 piece(s)"
+      "details": "60 x 20 x 4.4 mm, 1 piece(s)"
     },
     {
       "name": "T05-KINO_COUPON_DECK.stl is one piece on the bed",
@@ -1013,7 +1093,7 @@
     {
       "name": "T04-KINO_COUPON_STRAP_SHELL.stl is one piece on the bed",
       "pass": true,
-      "details": "26 x 14 x 14 mm, 1 piece(s)"
+      "details": "49 x 14 x 14 mm, 1 piece(s)"
     },
     {
       "name": "T01-KINO_COUPON_SHRINK_BAR.stl is one piece on the bed",

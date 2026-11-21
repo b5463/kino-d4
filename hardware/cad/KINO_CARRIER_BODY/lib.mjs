@@ -3,6 +3,8 @@
 // Y up as the camera is seen from the front, Z toward the viewer.
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import Module from "manifold-3d";
 
 export const wasm = await Module();
@@ -42,39 +44,36 @@ export const status = (name, m) => { if (m.status() !== "NoError") throw new Err
 export const toBed = (m) => { const b = m.boundingBox(); return m.translate([-b.min[0], -b.min[1], -b.min[2]]); };
 export const r2 = (v) => Math.round(v * 100) / 100;
 
-// A 5 x 7 block font for the part IDs, embossed as pixels so it prints at
-// any orientation (strokes thinner than a nozzle line do not). Returns a
-// solid of cubes from z up h, the text's lower-left at (x, y); mirrored in X
-// when it is cut into a face that is read from -Z (a bed face).
-const GLYPHS = {
-  "0": ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
-  "1": ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
-  "2": ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
-  "3": ["11111", "00010", "00100", "00010", "00001", "10001", "01110"],
-  "4": ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
-  "5": ["11111", "10000", "11110", "00001", "00001", "10001", "01110"],
-  "6": ["00110", "01000", "10000", "11110", "10001", "10001", "01110"],
-  "7": ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
-  "8": ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
-  "9": ["01110", "10001", "10001", "01111", "00001", "00010", "01100"],
-  "A": ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
-  "B": ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
-  "C": ["01110", "10001", "10000", "10000", "10000", "10001", "01110"],
-  "T": ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
-};
-export function blockText(text, x, y, z, px, h, mirror = false) {
-  const cubes = [];
-  const width = text.length * 6 * px - px;
-  [...text].forEach((ch, i) => {
-    const g = GLYPHS[ch]; if (!g) throw new Error(`blockText: no glyph for ${ch}`);
-    g.forEach((row, r) => [...row].forEach((bit, c) => {
-      if (bit !== "1") return;
-      const cx = i * 6 * px + c * px, cy = (6 - r) * px;
-      const gx = mirror ? width - cx - px : cx;
-      cubes.push(cube(x + gx - 0.03, y + cy - 0.03, z, px + 0.06, px + 0.06, h));   // pixels overlap 0.03 so the union never leaves a sliver
-    }));
-  });
-  return fuse(cubes);
+// Text for the part IDs in a real font (DejaVu Sans Bold, drawn by
+// text-outline.py, which needs python with matplotlib). Returns a solid
+// from z up h, the glyph box's lower-left at (x, y), capH tall; mirrored in
+// X when it is cut into a face that is read from -Z. Never on a bed face
+// (the first layer squashes an engraving there) and never under 2 mm of
+// cap height: the strokes must clear one nozzle line.
+const here = path.dirname(fileURLToPath(import.meta.url));
+const glyphs = new Map();
+export function textOutline(text, capH) {
+  const key = `${text}|${capH}`;
+  if (!glyphs.has(key)) {
+    let out;
+    try {
+      out = execFileSync("python", ["-I", path.join(here, "text-outline.py"), text, String(capH)], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    } catch (e) {
+      throw new Error(`text-outline.py failed for "${text}" (python with matplotlib draws the part IDs): ${e.stderr || e.message}`);
+    }
+    glyphs.set(key, JSON.parse(out));
+  }
+  return glyphs.get(key);
+}
+export const textWidth = (text, capH) => textOutline(text, capH).widthMm;
+export function textSolid(text, x, y, z, capH, h, mirror = false) {
+  const g = textOutline(text, capH);
+  if (capH < 2.0) throw new Error(`textSolid: "${text}" at ${capH} mm is under one nozzle line of stroke`);
+  const cs = new CrossSection(g.polygons, "EvenOdd");
+  const placed = mirror ? cs.scale([-1, 1]).translate([x + g.x0 + g.widthMm, y - g.y0]) : cs.translate([x - g.x0, y - g.y0]);
+  const solid = placed.extrude(h).translate([0, 0, z]);
+  if (solid.volume() < 1e-3) throw new Error(`textSolid: "${text}" drew nothing`);
+  return solid;
 }
 
 // Down-facing area past 45 degrees, above the bed, split by whether each
