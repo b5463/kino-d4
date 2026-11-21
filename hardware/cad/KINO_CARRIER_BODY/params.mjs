@@ -52,9 +52,21 @@ export const P = Object.freeze({
   usbShellH: 3.26,
   usbPlug: [12.4, 6.5],      // overmold width x height
   usbPlugClear: 0.5,         // per side
-  // The three edge LEDs on the back face at the bottom edge: PWR CAM FLT.
-  ledXs: [87.695, 93.695, 99.695],
-  ledSlot: [2.0, 4.0],       // width x height of each slot through the bottom wall
+  // The carrier's front-face connectors, for the dummy and the pod gate
+  // (placement.py, restated in the body frame): J1001 (XH 6-way, rot 270),
+  // J103 and J101 (XH 2-way, the shutter lead's target) and the four JP
+  // links, each as [x0, y0, x1, y1, height].
+  frontParts: [
+    [108.3, 38.4, 114.1, 55.9, 7.0],   // J1001
+    [34.75, 10.2, 42.65, 15.95, 7.0],  // J103
+    [49.8, 9.2, 55.6, 17.1, 7.0],      // J101
+    [3.7, 49.3, 8.7, 51.9, 6.0], [25.7, 49.3, 30.7, 51.9, 6.0], [47.7, 49.3, 52.7, 51.9, 6.0], [69.7, 49.3, 74.7, 51.9, 6.0],   // JP200 to JP500
+  ],
+  // The three edge LEDs on the back face at the bottom edge (PWR CAM FLT, X
+  // 87.7, 93.7, 99.7) are NOT shown through the wall: three slots there did
+  // nothing for the body (the owner, 2026-11-21), and the screen carries
+  // status. They are read with the frame off.
+  usbOpenR: 1.0,             // the USB opening's corners: a plain opening, no gable (the gable was a house on the bottom wall)
 
   // ---- The battery bay: the layer between the P4 and the carrier ----------
   // The owner's placement (2026-11-20). In plan the bay is what the four
@@ -120,12 +132,13 @@ export const P = Object.freeze({
   // wall, 1.8 into the face's back); six in the walls' rear ends hold the
   // frame (3 into the wall, through the 2.0 frame, 0.2 under its rear
   // face). No screw anywhere.
+  pinLen: 4.8,               // every pin in the body, cut from 1.75 mm filament
   facePinD: 1.9,             // the hole in the wall ends and the face, for 1.75 mm filament: a 1.8 hole at a bed face closed to 1.5 with the elephant foot, 2.0 with the countersink and the 0.2 compensation did not retain; the pins must hold without glue, T03 and T04 decide
   facePinSink: 0.4,          // 45 degree countersink at every bed-face mouth
   facePinWall: 3.0,
   facePinFace: 1.8,          // into the face's back (the face is 4.2 with a 1.2 edge chamfer over the holes' outer edges): the pins are 4.8 long, 3 in the wall and 1.8 here; the pull test on the real face decides
   facePinsTop: [30.0, 90.0],   // X on the top and bottom walls; the bottom pair dodges the LED slots and the USB opening
-  facePinsBottom: [5.0, 96.7],  // under the window's bottom rim, between the LED slots, short of the corner
+  facePinsBottom: [5.0, 96.7],  // under the window's bottom rim, short of the corner and the USB opening
   facePinsSideY: 52.0,         // one on each side wall, above the horizon channel
   framePinsTop: [30.0, 90.0],  // the frame's pins in the walls' rear ends: clear of the strap tunnels (X 2 to 11 from each end)
   framePinsBottom: [40.0, 100.0],  // not the top pair's mirror: turned round, the frame's holes miss the shell's pins by 2.4 mm (a gate), so it goes on one way
@@ -154,7 +167,6 @@ export const P = Object.freeze({
   gasket: [1.8, 2.0, 2.0, 0.8],  // inset from the window's edge (past the 1.0 chamfer), strip width, foam thickness, groove depth: 2 mm PORON, 2 mm wide (a stock tape width), squeezed to 1.2 (40 %), 25 to 55 % over +-0.3 of stack; the strip's outer edge 0.5 inside the module's edge
   frameWindowChamfer: 1.0,   // 45 degrees, widening toward the rear, so the thumb slides onto the glass's edge targets; 1.0 of frame left at the window's edge
   thumbPadProud: 1.2,        // the thumb pad stands off the frame; grooves cut into it
-  usbGable: 45,              // degrees, the opening's roof in print
 
   // ---- The face: the form lives here, printed back-face down ---------------
   // ODD JOBS in two materials: a black PETG ribbed shell, a dark blue PLA
@@ -241,33 +253,41 @@ export const P = Object.freeze({
   markDepth: 0.4,            // the wordmark engraved in the bar's top: one material per part (PLA on PETG does not bond, so no raised mark in the face's colour); it reads as shadow, as the symbol on the back does
   bedChamfer: 0.4,           // two whole layers at 0.2 (0.3 sliced as one step and a sliver); 45 degrees on every bed-side edge that meets a fit or shows: the cover's and keeper's backs, the face's back outer edge, the shell's front outer edge
   markMinStroke: 0.8,
-  // ---- The shutter: the field body's pod, button and retainer, the cap grown
-  // to the brand's one blue button. The bore's teardrop roof points -Z, so the
-  // axis sits sqrt(2) x the access radius above the pod's bottom.
+  // ---- The shutter: a pod under the deck with a round guide, a flange bore
+  // and a switch pocket floored by a pinned plate; the cap is the brand's one
+  // blue button. See shutter.mjs for the chain. The first printed pod
+  // (2026-11-21) missed the switch by 0.5 mm, had a loose retainer and no
+  // lead route; every number here is read off the bench's switch.
   shutterX: 104.0,
   shutterZ: 26.2,            // bore axis, between the plate and the carrier
-  shutterPodW: 24.0,
-  shutterPodReach: 4.0,      // pod pilaster inward from the cavity's top face
+  shutterPodLeft: 9.0,       // the pod's left face this far left of the axis (X 95: 2.9 clear of CAM 4's XIAO at 92.1); the pod runs into the right wall
   shutterPodBottomZ: 14.0,   // 1.1 above the carrier's front face
-  shutterSwitchBody: [6.0, 6.0, 4.3],
-  shutterSwitchClearance: 0.6,
-  shutterActuatorGuideD: 14.6,  // the bore's upper flanks sag inward in PETG
+  shutterSwitchBody: [6.0, 6.0, 4.3],   // X, Z and the whole height, base to actuator top at rest (3.5 body + 0.8 actuator); MEASURE the bench's switch
+  shutterSwitchTravel: 0.25, // the actuator's stroke to the click
+  shutterSwitchClearance: 0.6,  // the pocket round the body in Z
+  shutterPocketX: 9.0,       // the pocket in X: the body plus the bent legs either side; the flange locates the press, the pocket only the body
+  shutterLegX: 3.25,         // the legs' X off the axis, each side (6.5 pitch)
+  shutterLegSlot: [2.0, 5.5],   // through the floor plate at each leg line: X by Z; the legs and the two leads pass down into the cavity
+  shutterGuideLen: 2.5,      // the guide bore, deck to the step the flange rests under: 1.4 of the 4.5 wall over the collar, then the step
+  shutterGuideRound: 1.0,    // the guide's last mm at the deck is round; below it the ceiling is flat
+  shutterGuideCeil: 0.4,     // the flat ceiling above the circle's top: the print's bridge clears the cap and the flange
+  shutterActuatorGuideD: 14.6,
   shutterActuatorFlangeD: 16.0,
+  shutterFlangeH: 1.6,
   shutterFlangeBoreClear: 0.15, // per side; the flange's bed edge is chamfered too. 0.3 ticked in the hand, the first thing a juror touches
+  shutterTravelClr: 1.0,     // the flange bore runs this far below the flange's rest position; the switch's 0.25 stops the press long before it
   shutterGuideRib: [0.2, 0.8],  // three ribs, proud x wide, along the guide bore on the face side: the cap runs on three lines, not in a 0.6 mm gap
   shutterPressCapD: 14.0,
-  shutterProud: 2.0,         // the cap's rim above the top face; the dome adds shutterDomeH
+  shutterProud: 2.0,         // the cap's rim above the top face
   shutterCapEdge: 0.5,       // 45 degrees round the cap's top edge: six even rings at 0.08
   shutterCollarD: 20.0,
-  shutterCollarDepth: 0.4,   // a two-layer shadow line round the cap; at 1.6 the gabled recess was an arrow on the deck
-  shutterAssemblyAccessD: 17.0,
-  shutterRetainerCupD: 16.4,
-  shutterRetainerPlateD: 19.5,
-  shutterRetainerCupH: 4.0,
-  shutterWireBayW: 8.0,
-  shutterSwitchLegBand: 1.8,
-  shutterSwitchLegSink: 0.6,
-  shutterSideWireW: 3.0,
+  shutterCollarDepth: 0.4,   // a two-layer shadow line round the cap
+  shutterFloorT: 1.6,        // the floor plate B03, dark blue PLA, flat on the bed
+  shutterFloorClr: 0.2,      // in the slit, above the plate
+  shutterFloorW: 12.0,       // across Z; the slit is this plus 0.2 a side
+  shutterFloorLip: 1.5,      // of pod under the slit: the press lands here
+  shutterFloorPast: 4.0,     // the slit runs this far past the pocket: the plate's stop
+  shutterFloorPinX: 2.2,     // the pin's X from the plate's mouth end (1.25 of pod to the face, 1.35 to the pocket), through the lower lip, the plate and into the upper lip: 1.5 + 1.8 + 1.5 of a 4.8 pin
   // ---- Strap: cord channels at both lower corners, inside the outline. Two
   // slots through the rear frame's border over a channel in the bottom
   // wall's end: the cord goes in one slot, along the channel, out the other,

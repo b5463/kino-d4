@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; nineteenth cut generated and gated after the first coupons printed (2026-11-21: shrink 0.2 % measured, the pocket loose, the head-pocket feet and the frame pilots refused); the new coupons T02 to T04 are next on the bed |
+| Status | Design in progress; twentieth cut generated and gated after the first coupons and the first button printed (2026-11-21: shrink 0.2 % measured, the pocket loose, the head-pocket feet, the frame pilots, the retainer cup and the teardrops refused); the new coupons T02 to T05 are next on the bed |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -410,6 +410,34 @@ owner's printer. Two parts:
   corner with 24 mm of ledge and the face pin hole at X 5; T04 the bottom
   wall's rear end with the frame pin hole at X 40 in place of the pilot.
   Pins C01: twelve. One fastener type, no screwdriver.
+- **The button, after its first print** (twentieth cut, 2026-11-21; the
+  owner: "the button has two wires ... there is no clearance there for
+  them or a way to route them", "no need for the water droplet shape",
+  "the button doesnt even reach the upper printed button", "there is no
+  way to hold the bottom part to the body", and on the bottom wall "these
+  holes are doing nothing for the esthetic too much like the teardrop").
+  The retainer cup, the 17 mm access bore, the side lead channels and
+  every teardrop are gone (`shutterAssemblyAccessD`, `shutterRetainer*`,
+  `shutterWireBayW`, `shutterSwitchLeg*`, `shutterSideWireW`,
+  `shutterPodW`, `shutterPodReach`, `teardropY`). The pod now runs from X
+  95 into the right wall and 7.2 mm below it; from the deck: a round 14.6
+  guide 2.5 long (ribbed, round at the deck, flat-ceilinged 0.4 above the
+  circle below), a 16.3 flange bore 2.6 long with the step that keeps the
+  plunger in, a 9 x 6.6 switch pocket, and a 1.8 slit across the pod's
+  foot for a floor plate B03 (17.5 x 12 x 1.6 PLA, two 2 x 5.5 slots for
+  the legs and leads, one pin hole) slid in from the pod's left face and
+  locked by one 4.8 mm filament pin up through the lower lip, the plate
+  and into the pod. The press lands on 1.5 mm of pod; the pin is in shear.
+  The chain is a gate: floor + the switch's whole height (4.3, base to
+  actuator top, `shutterSwitchBody[2]`) = the flange's underside at rest,
+  the flange bore 1.0 below that (`shutterTravelClr`) for a 0.25 stroke.
+  The dummy now carries the carrier's front-face connectors and links
+  (`frontParts`: J1001, J103, J101, JP200 to JP500) and the pod is gated
+  5 mm above them and 2.5 clear of CAM 4's XIAO. T05 is the whole pod with
+  the wall corner it joins. On the bottom wall: the three LED slots are
+  gone (the LEDs are read with the frame off; the screen carries status)
+  and the USB opening is a plain R1 rectangle (`usbOpenR`), its 13.4 mm top
+  a bridge inside the wall. 182 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
@@ -421,7 +449,7 @@ from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-176 in `generate-carrier-body.mjs`, 0 failures (the list below is the
+182 in `generate-carrier-body.mjs`, 0 failures (the list below is the
 first cut's; the package README's "Gates" names the current set, which
 adds the ledge, the carrier heads' clearance, the stack and the frame
 refused turned round, the frame pins and their hold, the pry point open at

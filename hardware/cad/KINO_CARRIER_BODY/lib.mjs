@@ -34,12 +34,6 @@ export const rbox = (x0, y0, z0, x1, y1, z1, rIn, seg = 48) => {
 };
 // A convex prism along Y from [x, z] points.
 export const prismY = (y, len, ...pointsXZ) => Manifold.hull(pointsXZ.map(([x, z]) => cube(x - 0.01, y, z - 0.01, 0.02, len, 0.02)));
-// A hole along Y whose roof points toward -Z: the shell prints with its
-// front on the bed, so body -Z is UP in print and that is where a roof goes.
-export const teardropY = (cx, y, cz, r, len) => {
-  const t = r / Math.SQRT2;
-  return fuse([cylY(cx, y, cz, r, len), prismY(y, len, [cx - t, cz - t], [cx + t, cz - t], [cx, cz - Math.SQRT2 * r])]);
-};
 export const status = (name, m) => { if (m.status() !== "NoError") throw new Error(`${name}: ${m.status()}`); return m; };
 export const toBed = (m) => { const b = m.boundingBox(); return m.translate([-b.min[0], -b.min[1], -b.min[2]]); };
 export const r2 = (v) => Math.round(v * 100) / 100;

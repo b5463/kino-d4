@@ -5,8 +5,8 @@
 // face, on which the carrier's edge lands (no pillar, no screw, nothing at
 // the carrier's holes); the shutter pod on the top wall; V-grooves around
 // the walls, parallel to the print's layers, the brand's layer texture; the
-// LED slots, the USB-C opening, six pin holes in the walls' front ends for
-// the face and six in their rear ends for the frame. Printed face down.
+// USB-C opening, six pin holes in the walls' front ends for the face and
+// six in their rear ends for the frame. Printed face down.
 //
 // The rear frame is a 2 mm plate around the display with the thumb pad on
 // its right border and the ODD JOBS symbol engraved on its left, printed
@@ -172,15 +172,13 @@ export function buildShell() {
   // The front outer edge chamfered: the bed edge, under the face's reveal.
   cuts.push(outerAt(-1, Z.plateFront - P.bedChamfer, Z.plateFront + 1).subtract(Manifold.hull([
     outerAt(P.bedChamfer, Z.plateFront, Z.plateFront + 0.01), outerAt(0, Z.plateFront - P.bedChamfer - 0.01, Z.plateFront - P.bedChamfer)])));
-  for (const lx of P.ledXs) {
-    cuts.push(box(lx - P.ledSlot[0] / 2, oy0 - 1, Z.carrierBack - P.ledSlot[1], lx + P.ledSlot[0] / 2, cy0 + 1, Z.carrierBack));
-  }
+  // The USB-C opening through the bottom wall: a plain rounded rectangle
+  // (its 13.4 mm top bridges in print; the gable that avoided the bridge
+  // was a house drawn on the wall). No LED slots: three holes beside it
+  // did nothing for the body, and the screen carries status.
   {
     const [x0, x1] = [P.usbCX - S.usbOpenW / 2, P.usbCX + S.usbOpenW / 2];
-    const gable = (S.usbOpenW / 2) * Math.tan((P.usbGable * Math.PI) / 180);
-    cuts.push(status("USB opening", Manifold.extrude(
-      [[x0, S.usbOpenZ[0]], [(x0 + x1) / 2, S.usbOpenZ[0] - gable], [x1, S.usbOpenZ[0]], [x1, S.usbOpenZ[1]], [x0, S.usbOpenZ[1]]],
-      cy0 - oy0 + 2).rotate([90, 0, 0]).translate([0, cy0 + 1, 0])));
+    cuts.push(status("USB opening", rbox(x0, S.usbOpenZ[0], 0, x1, S.usbOpenZ[1], cy0 - oy0 + 2, P.usbOpenR, 24).rotate([90, 0, 0]).translate([0, cy0 + 1, 0])));
   }
   // Blind holes in the walls' rear ends for the frame's six pins. The wall
   // ends are the top of the print: no elephant foot, so no countersink.
@@ -210,7 +208,7 @@ export function buildShell() {
   const guideRibs = [];
   {
     const [rh, rw] = P.shutterGuideRib, rg = P.shutterActuatorGuideD / 2;
-    const y0 = SHUTTER.oy1 - 2.3, len = 2.3 - P.shutterCollarDepth - 0.05;
+    const y0 = SHUTTER.guideBottom + 0.1, len = P.shutterGuideLen - P.shutterCollarDepth - 0.15;
     for (const phi of [-50, 0, 50]) {
       guideRibs.push(cube(-rw / 2, y0, rg - rh, rw, len, rh + 0.3).rotate([0, phi, 0]).translate([P.shutterX, 0, P.shutterZ]));
     }
