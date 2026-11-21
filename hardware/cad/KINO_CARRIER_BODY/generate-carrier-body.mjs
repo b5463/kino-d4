@@ -14,12 +14,12 @@
 // each. See shell.mjs, face.mjs, shutter.mjs.
 //
 // PETG, FDM, no support:
-//   KINO_CARRIER_SHELL.stl           charcoal; front plate, four walls, pillars, shutter pod, strap tabs; face down
-//   KINO_CARRIER_REAR_FRAME.stl      charcoal; the frame around the display; rear face up
-//   KINO_CARRIER_FACE.stl            cream or cobalt; the face shell; back down
-//   KINO_CARRIER_LENS_COVER.stl      charcoal; the sliding cover, its wordmark in the face's filament; back down
-//   KINO_CARRIER_SHUTTER_BUTTON.stl  pink; plunger and switch retainer
-// plus six pins cut from 1.75 mm filament, and KINO_CARRIER_STACK_DUMMY.stl,
+//   A01-KINO_CARRIER_SHELL.stl           black PETG; front plate, four walls, pillars, shutter pod; front plate on the bed
+//   A02-KINO_CARRIER_FACE.stl            dark blue PLA; the face with its own track floor; back down
+//   A03-KINO_CARRIER_REAR_FRAME.stl      black PETG; the frame around the display; rear face up
+//   B01-KINO_CARRIER_LENS_COVER.stl      black PETG; the sliding cover, keyed; back down
+//   B02-KINO_CARRIER_SHUTTER_BUTTON.stl  dark blue PLA; plunger (B02) and switch retainer (B03)
+// plus six pins cut from 1.75 mm filament (C01), and KINO_CARRIER_STACK_DUMMY.stl,
 // the electronics as blocks, for the previews and the interference gates.
 //
 //   node generate-carrier-body.mjs     writes .candidate/, gates throw on the first failure
@@ -27,8 +27,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { cube, box, cylZ, coneZ, cylY, fuse, vol, rbox, toBed, r2, overhangOutside, writeStl } from "./lib.mjs";
-import { P, Z, XY } from "./params.mjs";
+import { cube, box, cylZ, coneZ, cylY, fuse, vol, rbox, toBed, r2, overhangOutside, writeStl, blockText } from "./lib.mjs";
+import { P, Z, XY, IDS } from "./params.mjs";
 import { SHELL, buildShell, buildFrame } from "./shell.mjs";
 import { FACE, buildFace } from "./face.mjs";
 import { SHUTTER, buildShutterButton, capPreview } from "./shutter.mjs";
@@ -66,7 +66,7 @@ function buildDummy() {
 const { bare, shell } = buildShell();
 const frame = buildFrame();
 const dummy = buildDummy();
-const { face, cover, markTop, lipProud, markBox } = buildFace();
+const { face, cover, coverTurned, lipProud, markBox } = buildFace();
 const button = buildShutterButton();
 const coverOpen = cover.translate([0, -FACE.travel, 0]);
 const coverMid = cover.translate([0, -FACE.travel / 2, 0]);
@@ -99,8 +99,8 @@ const onePart = (name, m) => check(`${name} is one part`, m.decompose().length =
     `${P.p4T} module + ${P.p4InsertH} inserts + ${P.spacer} standoffs + ${P.carrierT} carrier = ${r2(P.p4T + P.p4InsertH + P.spacer + P.carrierT)}, the bench's ${P.glassToCarrierFront} glass front to carrier front`);
   check("depth chain adds up to the body depth", Math.abs(sum - depth) < 1e-9,
     terms.map(([n, v]) => `${n} ${v}`).join(" + ") + ` = ${r2(sum)} mm; body ${r2(depth)}; nothing stands proud of the face`);
-  check("the horizon sits above the track's lips and the grip leaves plate", FACE.horizonD >= 0.8 && P.panelDepth >= P.sliderT + 0.2 && P.faceBase - P.gripD >= 1.0,
-    `groove ${r2(FACE.horizonD)} deep over lips ${P.panelDepth} above the shell's plate (the cover ${P.sliderT}, ${r2(P.panelDepth - P.sliderT)} of play); ${r2(P.faceBase - P.gripD)} mm of plate under the grip`);
+  check("the horizon sits above the track's lips and the grip leaves plate", FACE.horizonD >= 0.8 && P.panelDepth >= P.sliderT + 0.2 && P.faceBase - P.gripD >= 1.0 && P.faceFloor >= 1.0,
+    `groove ${r2(FACE.horizonD)} deep over lips ${P.panelDepth} above the face's own ${P.faceFloor} floor (the cover ${P.sliderT}, ${r2(P.panelDepth - P.sliderT)} of play); ${r2(P.faceBase - P.gripD)} mm of plate under the grip`);
   check("the lens front is the pocket floor", Math.abs((Z.plateInner + Z.camPocketDepth) - Z.lensFront) < 1e-9,
     `XIAO back at Z=${r2(Z.xiaoBack)} + ${P.camStackH} = lens front Z=${r2(Z.lensFront)}; pocket ${Z.camPocketDepth} deep from the plate's inner face at Z=${r2(Z.plateInner)}`);
   check("the module's PCB has the plate to land on", Z.plateInner - Z.senseTop >= P.camModulePcbT + 0.3,
@@ -110,7 +110,7 @@ const onePart = (name, m) => check(`${name} is one part`, m.decompose().length =
   check("plan corner leaves wall on the diagonal", P.cornerR <= (P.wall + P.carrierClear) * (1 + Math.SQRT2) - 1.0,
     `R${P.cornerR} outer corner against the cavity's near-square corner: ${r2(P.cornerR - (P.cornerR - P.wall - P.carrierClear) * Math.SQRT2)} mm of wall on the diagonal, ${r2(P.cornerR - (P.cornerR - P.wall - P.carrierClear) * Math.SQRT2 - P.grooveD)} under a groove`);
   check("the face steps in from the shell and still covers the pins", P.faceInset >= 0.3 && P.faceInset + P.facePinD / 2 + 0.4 <= P.wall / 2,
-    `${P.faceInset} mm of wall end shows around the face (in the face's filament, shellFrontSwap ${P.shellFrontSwap}); the pins at the wall's middle sit ${r2(P.wall / 2 - P.faceInset - P.facePinD / 2)} mm inside the face's edge`);
+    `${P.faceInset} mm of black wall end shows around the blue face; the pins at the wall's middle sit ${r2(P.wall / 2 - P.faceInset - P.facePinD / 2)} mm inside the face's edge`);
 }
 {
   const [bx0, by0, bx1, by1] = P.batteryBay;
@@ -208,7 +208,9 @@ check("layer grooves leave the wall", P.wall - P.grooveD >= 4.0, `${P.grooveD} m
   check("cover mid-travel: free in the track", mid < 1e-3, `${mid.toFixed(4)} mm^3; the edge relief clears the bumps between the crests`);
   check("cover travel is positive and the cover stows above the rim", FACE.travel > 10 && FACE.openY0 >= FACE.panel[1] + 0.4, `${r2(FACE.travel)} mm down from Y ${r2(FACE.closedY0)}; stowed bottom edge at Y ${r2(FACE.openY0)}, panel from Y ${r2(FACE.panel[1])}`);
   check("wordmark fits under the lip", markBox.y > FACE.closedY0 + 0.8 && markBox.y + markBox.h < FACE.closedY1 - P.coverLip[1] - 0.6 && markBox.w < (FACE.panel[2] - FACE.panel[0]) - 10,
-    `${r2(markBox.w)} x ${r2(markBox.h)} mm raised ${P.markProud}; "odd jobs" at ${P.markW} mm has strokes about ${r2(1.3 * P.markW / 30)} mm, floor ${P.markMinStroke}`);
+    `${r2(markBox.w)} x ${r2(markBox.h)} mm engraved ${P.markDepth}; "odd jobs" at ${P.markW} mm has strokes about ${r2(1.3 * P.markW / 30)} mm, floor ${P.markMinStroke}`);
+  check("the cover goes in one way only", vol(face, coverTurned) > 0.5 && vol(face, cover) < 1.0,
+    `turned round in its plane the cover's 1.0 bevel meets the 1.5 lip: ${r2(vol(face, coverTurned))} mm^3 of lip inside it; the right way, ${r2(vol(face, cover))} (the detent's bite)`);
   check("wordmark strokes clear one nozzle line with margin", 1.3 * P.markW / 30 >= P.markMinStroke, `about ${r2(1.3 * P.markW / 30)} mm; print its last ${P.markProud} mm in cream on both colourways`);
   check("the grip is the horizon's right end, past the track", P.gripX0 > FACE.panel[2] + 3 && P.gripX0 < FACE.outline[2] - 12,
     `grip from X ${P.gripX0} to the face's edge, ${P.gripD} mm deep in a ${r2(FACE.horizonD)} mm groove; the track ends at X ${r2(FACE.panel[2])}`);
@@ -282,13 +284,14 @@ const faceZones = [
   ...pinZone(FACE.back - 0.5, FACE.back + P.facePinFace + 1),
   [P.innerMarkAt[0] - (P.modelW - P.innerMarkW) - 3, P.innerMarkAt[1] - MODEL_H - 5, FACE.back - 0.5, P.innerMarkAt[0] + P.innerMarkW + 3 + P.innerSymbolH * 1.25 + 3, P.innerMarkAt[1] + 10, FACE.back + P.innerMarkD + 0.5],
 ];
+faceZones.push([P.idFaceAt[0] - 1, P.idFaceAt[1] - 1, FACE.back - 0.5, P.idFaceAt[0] + (3 * 6 * P.idPx) + 1, P.idFaceAt[1] + 7 * P.idPx + 1, FACE.back + P.idDepth + 0.5]);   // the A02 engraving's ceiling
 const retD = P.shutterRetainerPlateD;
 const printSpec = {
-  "KINO_CARRIER_SHELL.stl": [shell, [180, 0, 0], shellZones, 5, "the cavity (the four screw-foot shoulders), the LED slots (4.5 mm bridges), the USB opening's 45 degree gable, the strap tunnels, the six pin holes, the collar's 0.4 recess"],
-  "KINO_CARRIER_REAR_FRAME.stl": [frame, [180, 0, 0], [[GASK.x0 - GASK.gW - 1, GASK.y0 - GASK.gW - 1, Z.glass - GASK.gD - 0.5, GASK.x1 + GASK.gW + 1, GASK.y1 + GASK.gW + 1, Z.glass + 0.5]], 2, "the gasket groove's ceiling (a 1.5 mm bridge at the bed); holes through, the chamfer and the pad face up"],
-  "KINO_CARRIER_FACE.stl": [face, [0, 0, 0], faceZones, 5, "the six pin holes and the signature's 0.4 mm ceilings at the bed; the lips' undersides are steeper than 45"],
-  "KINO_CARRIER_LENS_COVER.stl": [cover, [0, 0, 0], [FACE.panel[0] + P.sliderClr, FACE.panel[2] - P.sliderClr].map((ex) => [ex - 1.5, -1e3, FACE.floorZ - 1, ex + 1.5, 1e3, FACE.floorZ + P.sliderT - P.sliderBevel + 0.05]), 2, "the 0.2 mm ledges over the edge reliefs"],
-  "KINO_CARRIER_SHUTTER_BUTTON.stl": [button, [0, 0, 0], [[32 - retD / 2 - 1, -1, 0.3, 32 + retD / 2 + 1, retD + 1, 10]], 1, "the retainer's leg-slot bridge and wire notches, inside the pod"],
+  "A01-KINO_CARRIER_SHELL.stl": [shell, [180, 0, 0], shellZones, 5, "the cavity (the four screw-foot shoulders), the LED slots (4.5 mm bridges), the USB opening's 45 degree gable, the strap tunnels, the six pin holes, the collar's 0.4 recess"],
+  "A03-KINO_CARRIER_REAR_FRAME.stl": [frame, [180, 0, 0], [[GASK.x0 - GASK.gW - 1, GASK.y0 - GASK.gW - 1, Z.glass - GASK.gD - 0.5, GASK.x1 + GASK.gW + 1, GASK.y1 + GASK.gW + 1, Z.glass + 0.5], [P.idFrameAt[0] - 1, P.idFrameAt[1] - 1, Z.glass - P.idDepth - 0.5, P.idFrameAt[0] + (3 * 6 * P.idPx) + 1, P.idFrameAt[1] + 7 * P.idPx + 1, Z.glass + 0.5]], 2, "the gasket groove's ceiling (a 2 mm bridge at the bed) and the A03 engraving's; holes through, the chamfer and the pad face up"],
+  "A02-KINO_CARRIER_FACE.stl": [face, [0, 0, 0], faceZones, 5, "the six pin holes and the signature's 0.4 mm ceilings at the bed; the lips' undersides are steeper than 45"],
+  "B01-KINO_CARRIER_LENS_COVER.stl": [cover, [0, 0, 0], [[FACE.panel[0] + P.sliderClr - 1.5, -1e3, FACE.floorZ - 1, FACE.panel[0] + P.sliderClr + 1.5, 1e3, FACE.floorZ + P.sliderT - P.sliderBevel[0] + 0.05], [FACE.panel[2] - P.sliderClr - 1.5, -1e3, FACE.floorZ - 1, FACE.panel[2] - P.sliderClr + 1.5, 1e3, FACE.floorZ + P.sliderT - P.sliderBevel[1] + 0.05], [FACE.panel[0] + P.sliderClr + 3, FACE.closedY0 + 1.5, FACE.floorZ - 0.5, FACE.panel[0] + P.sliderClr + 4 + (3 * 6 * P.idPx) + 1, FACE.closedY0 + 2.5 + 7 * P.idPx + 1, FACE.floorZ + P.idDepth + 0.5]], 2, "the 0.2 mm ledges over the edge reliefs and the B01 engraving's ceiling"],
+  "B02-KINO_CARRIER_SHUTTER_BUTTON.stl": [button, [0, 0, 0], [[32 - retD / 2 - 1, -1, 0.3, 32 + retD / 2 + 1, retD + 1, 10], [3, 6, -0.5, 16, 12, 0.6]], 1, "the retainer's leg-slot bridge and wire notches, inside the pod, and the two ID engravings' ceilings"],
 };
 const placed = (part, rot, zones) => {
   const b = part.rotate(rot).boundingBox(), t = [-b.min[0], -b.min[1], -b.min[2]];
@@ -314,11 +317,11 @@ const coupons = (() => {
   const [lx, ly] = S.lensXY[0];
   const cut = (m, b) => m.intersect(b);
   return {
-    "KINO_COUPON_PILLAR.stl": toBed(cut(shell, box(2, oy0 - 1, S.bossFootZ - 1, hx + 12, hy + 8, Z.plateFront + 1)).rotate([180, 0, 0])),
-    "KINO_COUPON_POCKET.stl": toBed(cut(shell, box(lx - 8, ly - 8, Z.plateInner - 1.5, lx + 8, ly + 8, Z.plateFront + 1)).rotate([180, 0, 0])),
-    "KINO_COUPON_DECK.stl": toBed(cut(shell, box(P.shutterX - 18, cy1 - 3, 8, P.shutterX + 18, oy1 + 1, Z.plateInner + 1)).rotate([180, 0, 0])),
-    "KINO_COUPON_STRAP_SHELL.stl": toBed(cut(shell, box(ox0 - 1, oy0 - 1, Z.glass - 1, P.frameScrewXs[0] + 4, oy0 + 14, Z.glass + 14)).rotate([180, 0, 0])),   // a wall end with its tunnel, slots and the first frame pilot
-    "KINO_COUPON_SHRINK_BAR.stl": box(0, 0, 0, 100, 10, 3),
+    "T03-KINO_COUPON_PILLAR.stl": toBed(cut(shell, box(2, oy0 - 1, S.bossFootZ - 1, hx + 12, hy + 8, Z.plateFront + 1)).rotate([180, 0, 0])),
+    "T02-KINO_COUPON_POCKET.stl": toBed(cut(shell, box(lx - 8, ly - 8, Z.plateInner - 1.5, lx + 8, ly + 8, Z.plateFront + 1)).rotate([180, 0, 0])),
+    "T05-KINO_COUPON_DECK.stl": toBed(cut(shell, box(P.shutterX - 18, cy1 - 3, 8, P.shutterX + 18, oy1 + 1, Z.plateInner + 1)).rotate([180, 0, 0])),
+    "T04-KINO_COUPON_STRAP_SHELL.stl": toBed(cut(shell, box(ox0 - 1, oy0 - 1, Z.glass - 1, P.frameScrewXs[0] + 4, oy0 + 14, Z.glass + 14)).rotate([180, 0, 0])),   // a wall end with its tunnel, slots and the first frame pilot
+    "T01-KINO_COUPON_SHRINK_BAR.stl": box(0, 0, 0, 100, 10, 3).subtract(blockText(IDS.shrinkBar, 3, 2.9, 3 - P.idDepth, P.idPx, 1, false)),
   };
 })();
 {
@@ -339,10 +342,6 @@ for (const [name, m] of [["shell", shell], ["frame", frame], ["face", face], ["c
   writeStl(outDir, `preview-${name}.stl`, m);
 }
 writeStl(outDir, "preview-shutter.stl", capPreview());
-// The shell's first shellFrontSwap mm, printed in the face's filament: for the previews.
-writeStl(outDir, "preview-shell-front.stl", shell.intersect(box(ox0 - 1, oy0 - 1, Z.plateFront - P.shellFrontSwap, ox1 + 1, oy1 + 1, Z.plateFront + 0.1)));
-writeStl(outDir, "preview-mark.stl", markTop);
-writeStl(outDir, "preview-mark-open.stl", markTop.translate([0, -FACE.travel, 0]));
 {
   const [px0, py0, px1, py1] = XY.p4;
   writeStl(outDir, "preview-glass.stl", box(px0 + 0.5, py0 + 0.5, Z.glassFront - 0.2, px1 - 0.5, py1 - 0.5, Z.glassFront + 2));

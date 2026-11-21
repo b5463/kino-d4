@@ -4,7 +4,7 @@ This log tracks released design-package versions inside the physical revision na
 
 ## 0.1.10 - 2026-11-20
 
-Status: a third CAD package for the dev carrier stack, sixteenth cut generated and gated; nothing printed; the night colourway prints first, the coupons before it.
+Status: a third CAD package for the dev carrier stack, seventeenth cut generated and gated; nothing printed; the night colourway prints first, the coupons before it.
 
 - New package `cad/KINO_CARRIER_BODY/`: a PETG shell around the D1 stack (P4 on its inserts, 8 mm spacers, carrier, XIAOs in 8.5 mm sockets, camera modules on their ribbons). The carrier is the chassis: four pillars from the front plate stand on the carrier at its M2 holes, and the four stack screws hold the shell through 4 mm driver shafts in the front face. Each camera head sits in an 8.65 mm pocket with 0.2 mm pinch ribs, the module PCB on the plate's inner face as the Z datum, the lens front on the pocket floor. 128.0 x 80.4 x 57.2 mm; the depth chain (3.0 + 13.8 + 3.3 + 8.0 + 1.6 + 8.5 + 2.5 + 15.0 + 1.5) is a gate. The soldered XIAO header insulator (2.5 mm) is provisional.
 - Two prints, both support-free: the shell face down, the 3 mm rear frame (95.6 x 58.2 window) rear face down, four M2 thread-forming screws into the wall ends. USB-C opening and three LED slots in the bottom wall.
@@ -24,7 +24,8 @@ Status: a third CAD package for the dev carrier stack, sixteenth cut generated a
 - Fourteenth cut (2026-11-21), no screw into either board: the stack screws, the driver shafts and the screw ports are gone; each pillar foot has a pocket for the carrier's own M2 pan head, and the rear frame's foam clamps the stack onto the feet (about 16 N, gated, provisional). The frame's four screws into the shell are the only fasteners in the body. Foam specified PORON or silicone.
 - Fifteenth cut (2026-11-21), as thin as possible: frame 2.0, plate ahead of the lens 1.0, face 3.2 (horizon 0.8, grip 2.2, edge chamfer 1.2, pins 4.8); the body's share 6.6 of 59.3 mm. The README's "Thinner" table names the three electronics levers (low-profile sockets, bare pins, a 3 mm cell) that reach 49.6 with the same files.
 - Sixteenth cut (2026-11-21), the stack measured: the P4 with its screen, the standoffs and the bare carrier are 17.5 mm glass front to carrier front on the bench (the chain had 26.7); `glassToCarrierFront` 17.5 is gated and the module's own depth is 4.6, derived. Body 128.4 x 80.8 x 50.1 mm.
-- 155 gates, 0 failures; `validate-stl` 10 files manifold. No independent scan yet. Staged: the TF slot opening, the serial and any small line, the coupon results.
+- Seventeenth cut (2026-11-21), two materials: black PETG (shell, frame, cover) and dark blue PLA (face, button), one per part, no filament change; the face's own track floor back (51.1 mm); the wordmark engraved; the cover keyed by asymmetric bevels (gated); part IDs A01 to B03, C01 to C03, T01 to T05 embossed in every part and in every file name; the README's component register, QC plan, counted assembly and jury paragraph; every cut's renders archived under `docs/assets/making-of/` for the website.
+- 156 gates, 0 failures; `validate-stl` 10 files manifold. No independent scan yet. Staged: the TF slot opening, the serial and any small line, the coupon results.
 
 Engineering change notice: [ECN-0009](changes/ECN-0009-carrier-body.md). Tracking: [issue #252](https://github.com/b5463/kino-d4/issues/252).
 

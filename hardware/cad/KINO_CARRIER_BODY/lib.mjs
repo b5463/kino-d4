@@ -42,6 +42,41 @@ export const status = (name, m) => { if (m.status() !== "NoError") throw new Err
 export const toBed = (m) => { const b = m.boundingBox(); return m.translate([-b.min[0], -b.min[1], -b.min[2]]); };
 export const r2 = (v) => Math.round(v * 100) / 100;
 
+// A 5 x 7 block font for the part IDs, embossed as pixels so it prints at
+// any orientation (strokes thinner than a nozzle line do not). Returns a
+// solid of cubes from z up h, the text's lower-left at (x, y); mirrored in X
+// when it is cut into a face that is read from -Z (a bed face).
+const GLYPHS = {
+  "0": ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
+  "1": ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
+  "2": ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
+  "3": ["11111", "00010", "00100", "00010", "00001", "10001", "01110"],
+  "4": ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
+  "5": ["11111", "10000", "11110", "00001", "00001", "10001", "01110"],
+  "6": ["00110", "01000", "10000", "11110", "10001", "10001", "01110"],
+  "7": ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
+  "8": ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
+  "9": ["01110", "10001", "10001", "01111", "00001", "00010", "01100"],
+  "A": ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
+  "B": ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
+  "C": ["01110", "10001", "10000", "10000", "10000", "10001", "01110"],
+  "T": ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+};
+export function blockText(text, x, y, z, px, h, mirror = false) {
+  const cubes = [];
+  const width = text.length * 6 * px - px;
+  [...text].forEach((ch, i) => {
+    const g = GLYPHS[ch]; if (!g) throw new Error(`blockText: no glyph for ${ch}`);
+    g.forEach((row, r) => [...row].forEach((bit, c) => {
+      if (bit !== "1") return;
+      const cx = i * 6 * px + c * px, cy = (6 - r) * px;
+      const gx = mirror ? width - cx - px : cx;
+      cubes.push(cube(x + gx - 0.01, y + cy - 0.01, z, px + 0.02, px + 0.02, h));
+    }));
+  });
+  return fuse(cubes);
+}
+
 // Area of faces pointing down more than 45 degrees off vertical, above the bed.
 export function overhangArea(m) {
   const mesh = m.getMesh(); const s = mesh.numProp; let area = 0;

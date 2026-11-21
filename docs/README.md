@@ -9,6 +9,7 @@ Start with the question you need answered. The repository contains working contr
 | What is KINO? | [Project README](../README.md) |
 | What hardware is in D4 V1? | [Hardware reference](HARDWARE.md) |
 | How do I wire, assemble, and accept a physical unit? | [Hardware build package](../hardware/README.md) |
+| What did the hardware go through to get here (every board and body revision, with pictures)? | [Making of](MAKING_OF.md) |
 | How do the applications and packages fit together? | [Architecture](ARCHITECTURE.md) |
 | How do I install, run, test, or change it? | [Development guide](DEVELOPMENT.md) |
 | Something failed. Where do I start? | [Troubleshooting](TROUBLESHOOTING.md) |

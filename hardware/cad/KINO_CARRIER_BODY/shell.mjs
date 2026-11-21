@@ -12,8 +12,8 @@
 // grooves on its right border and the ODD JOBS symbol engraved on its left,
 // both recesses because its rear face is the bed.
 import fs from "node:fs";
-import { Manifold, CrossSection, cube, box, cylZ, coneZ, cylY, fuse, rbox, status } from "./lib.mjs";
-import { P, Z, XY } from "./params.mjs";
+import { Manifold, CrossSection, cube, box, cylZ, coneZ, cylY, fuse, rbox, status, blockText } from "./lib.mjs";
+import { P, Z, XY, IDS } from "./params.mjs";
 import { shutterPod, SHUTTER } from "./shutter.mjs";
 
 const SYMBOL = JSON.parse(fs.readFileSync(new URL("../../pcb/kino-d4-carrier-a0/brand/odd-jobs-symbol.json", import.meta.url), "utf8"));
@@ -181,6 +181,8 @@ export function buildShell() {
     cuts.push(cylZ(px, py, Z.plateFront - P.facePinWall, P.facePinD / 2, P.facePinWall + 1, 24));
     cuts.push(coneZ(px, py, Z.plateFront - P.facePinSink, P.facePinD / 2, P.facePinD / 2 + P.facePinSink + 0.01, P.facePinSink + 0.01, 24));
   }
+  // A01, engraved in the plate's inner face (read from the cavity, so mirrored).
+  cuts.push(blockText(IDS.shell, P.idShellAt[0], P.idShellAt[1], Z.plateInner - 1, P.idPx, P.idDepth + 1, true));
   const bare = shell.subtract(fuse(cuts));
   // Three ribs along the shutter's guide bore on its face side (the floor of
   // the bore in print): the cap runs on three lines instead of ticking in a
@@ -252,6 +254,8 @@ export function buildFrame() {
   }
   // The strap slots through the frame's border at the corners.
   for (const [x0, y0, x1, y1] of S.strapSlots) cuts.push(box(x0, y0, Z.frameRear - 3, x1, y1, Z.glass + 1));
+  // A03, engraved in the inner face (read from the shell side, so as is).
+  cuts.push(blockText(IDS.frame, P.idFrameAt[0], P.idFrameAt[1], Z.glass - P.idDepth, P.idPx, P.idDepth + 1, false));
   // The ODD JOBS symbol, engraved on the left border, deep enough to read as
   // shadow, with a shallower step outside its outline. Pixel rows run down.
   {

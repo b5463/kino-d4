@@ -9,9 +9,11 @@ either board: the shell clamps the stack, pillar feet on the carrier in
 front and the rear frame's foam on the glass behind, and captures each
 camera head in a pocket with pinch ribs, so the picture does not shake on
 its ribbon. The face
-shell carries the form. Issue #252; sixteenth cut, nothing printed yet; the
-night colourway (cobalt face) prints first, the coupons in `coupons/`
-before it.
+shell carries the form. Issue #252; seventeenth cut, nothing printed yet;
+two materials, black PETG and dark blue PLA, one per part; the coupons in
+`coupons/` print before the body. Every part has an ID (A01 to B03, C01 to
+C03 for what is not printed, T01 to T05 for the coupons), embossed on a
+hidden face, in its file name and in the register below.
 
 Not a variant of [`KINO_FIELD_BODY`](../KINO_FIELD_BODY/README.md) (loose XIAOs
 on pads, a Dupont loom, a component bay, the P4 on posts behind foam) or of
@@ -36,8 +38,8 @@ lenses at positive Z. The chain is re-added by a gate every build.
 | XIAO male header insulator | 2.5 | 23.9 | **PROVISIONAL**: the headers soldered to the owner's XIAOs; the carrier's assembly print left this out |
 | XIAO back face to the lens front | 15.0 | 38.9 | Seeed's assembled Sense stack |
 | plate ahead of the lens | 1.0 | 39.9 | chosen; the shell's front; the bore and its 0.4 chamfer; five whole 0.2 layers |
-| face | 3.2 | 43.1 | its edge a 1.2 mm 45 degree chamfer; the horizon is cut into it and the cover's window through it; nothing stands proud of it but the cover's 1.5 mm lip |
-| **body** | **50.1** | | |
+| face | 4.2 | 44.1 | its own 1.0 floor under the track, the lips 2.4, the horizon 0.8; its edge a 1.2 mm 45 degree chamfer; nothing stands proud of it but the cover's 1.5 mm lip |
+| **body** | **51.1** | | |
 
 The module's PCB face is the Z datum for the camera, as in the field body: it
 lands on the plate's inner face at Z 35.5 (the Sense board's top is at 31.5, so
@@ -66,11 +68,11 @@ What the depth is made of, lens front to glass, and what the body adds:
 | of which the P4-to-carrier layer (inserts and spacers; the battery lives in it) | 11.3 |
 | of which the XIAO connectors (8.5 socket + 2.5 male header insulator) | 11.0 |
 | of which the XIAO, Sense board and camera | 15.0 |
-| body in front: plate ahead of the lens 1.0, face 3.2 | 4.2 |
+| body in front: plate ahead of the lens 1.0, face 4.2 | 5.2 |
 | body behind: the rear frame 2.0 and its 0.4 off the glass | 2.4 |
-| **in all** | **50.1** |
+| **in all** | **51.1** |
 
-The body is 6.6 mm of the 50.1; the face's 3.2 is the track's lips and the groove
+The body is 7.6 mm of the 51.1; the face's 4.2 is its own floor under the track, the lips and the groove
 and the groove it sits in. The one stack term that is a bench choice
 is the XIAO connectors: the eight 1x07 sockets are hand-fit, so 4.3 mm
 low-profile strips in place of the 8.5 mm Wurth part, and XIAOs soldered on
@@ -80,10 +82,11 @@ socket fixes the 11.3 mm layer.
 
 ## Thinner
 
-The body is 6.6 mm of the depth and is at its floor: 2.0 of frame (1.2
+The body is 7.6 mm of the depth and is at its floor: 2.0 of frame (1.2
 under the gasket groove), 0.4 off the glass, 1.0 of plate ahead of the
-lens (the bore and its chamfer), 3.2 of face (2.4 of track lips and a 0.8
-groove). The other 43.5 mm are the electronics, and three of those terms
+lens (the bore and its chamfer), 4.2 of face (its own 1.0 track floor, so
+the face and the cover are one tested subassembly in one material, 2.4 of
+track lips and a 0.8 groove). The other 43.5 mm are the electronics, and three of those terms
 are bench choices, each one number in `params.mjs`:
 
 | Lever | Now | Thin | Saves | What it costs |
@@ -92,7 +95,7 @@ are bench choices, each one number in `params.mjs`:
 | `xiaoHeaderInsulator`, the soldered male header | 2.5 | 0.0 | 2.5 | XIAOs soldered with bare pins, or castellated straight to the carrier: no insulator under the board |
 | `spacer`, the P4-to-carrier layer | 8.0 | 5.0 | 3.0 | a 3 mm cell in the bay (the bay is `cellT` + 0.5 foam + 10 % swell between the P4's 3.5 mm can and the carrier's 1.5 mm back parts); with no cell in the layer, 3.0 and 5.0 saved |
 
-All three together: 40.4 mm, 9.7 thinner, with the same body files. The
+All three together: 41.4 mm, 9.7 thinner, with the same body files. The
 body regenerates from the numbers; nothing else moves.
 
 ## The battery
@@ -160,18 +163,27 @@ outer edge stays 0.8 mm inside it.
 ## The parts, and the brand
 
 ODD JOBS, as the brand's own camera concept draws it (`ODD JOBS/CAMERA 01`,
-v18 and v6: a charcoal body with the layer texture on its walls, a cobalt or
-cream fascia, a pink shutter, quiet lowercase markings, "made for bad
-ideas"). Three filaments, each on its own part:
+v18 and v6: a dark body with the layer texture on its walls, a colour
+fascia, one button in the accent, quiet lowercase markings, "made for bad
+ideas"), in the two production materials. Black PETG is structure and
+everything that takes load or wear: the shell, the frame, the cover. Dark
+blue PLA is what you look at and the one thing you press: the face and the
+button. One material per part, never two: PLA on PETG does not bond (it is
+the breakaway pair), so there is no filament change anywhere, and the
+colour boundary is always a part boundary. Every part carries its ID on a
+hidden face, in a 5 x 7 block font 0.6 mm a pixel, 0.4 deep, that prints
+at any orientation:
 
-| File | What | Filament | Print |
+| ID, file | What | Material | Print |
 |---|---|---|---|
-| `print/KINO_CARRIER_SHELL.stl` | front plate with the four pockets (0.5 mm corner reliefs) and 7.5 mm bores, all four walls to the display plane with R10 plan corners, 0.5 mm V-grooves at 2.4 mm pitch round the whole body, the deck included whole (one 1.5 mm smooth ring round the collar), clear of the frame pilots; nothing engraved; the horizon carried round the left wall only; four pillars ending in feet with a pocket for the carrier's own screw heads (no screw from the shell), the shutter pod (every bore gabled; the collar a 0.4 mm round shadow line), the LED slots, the USB-C opening, the frame pilots, six countersunk pin holes in the walls' front ends, four strap tunnels inside the top and bottom walls' ends under 1.2 mm of wall, three ribs in the shutter's guide bore; the bores, the front edge and the rear edge chamfered 0.4 | charcoal, its first 1.0 mm in the face's filament | front plate on the bed (`previews/KINO_CARRIER_SHELL_PRINT.png`), PETG, 0.20 mm, no support (gated) |
-| `print/KINO_CARRIER_REAR_FRAME.stl` | the 2.0 mm frame around the display, a 0.8 mm gasket groove in its inner face round the window (the P4 is held by 2 mm foam in it), its outer edge chamfered 1.2 toward the rear and 0.4 toward the shell (the joint is a drawn V on the groove rhythm), 95.6 x 58.2 window with a 1.0 mm chamfer toward the rear, a thumb pad with 1.0 x 0.6 grooves over the whole right border (X 109.5 to 121), the ODD JOBS symbol engraved 1 mm deep with a stepped edge on the left, four plain M2 holes (the pan heads sit proud, as the brand's concept shows its rear screws), eight 3.0 x 2.8 strap slots, two at each corner | charcoal | rear face UP (`previews/KINO_CARRIER_REAR_FRAME_PRINT.png`; the gasket groove on the bed), 0.10 mm |
-| `print/KINO_CARRIER_FACE.stl` | the face: a 3.2 mm plate inset 0.3 mm from the shell's outline (a reveal line in one colour), its front edge a 1.2 mm 45 degree chamfer, its back edge chamfered 0.4; the horizon, a 0.8 mm groove edge to edge at the bar's height with its lips chamfered 0.8 above and 0.4 below, its right end ramping at 45 degrees to 2.2 mm deep as the grip; the cover's window, 87 x 34.5 with R3.1 corners, through the whole plate, its front edges chamfered 0.8 (bottom rim) and 0.4 (sides), with dovetail lips on its two side walls (the short ones, along the travel) and two detent pairs; six countersunk pin holes in the back; the signature engraved 0.4 mm inside, mirrored (the symbol, "odd jobs", "kino D4") | cobalt (night) or cream (day) | back down (`previews/KINO_CARRIER_FACE_PRINT.png`), 0.20 mm, no support |
-| `print/KINO_CARRIER_LENS_COVER.stl` | the sliding cover, 86.8 x 16.5 x 2 with R3 corners, its back edge chamfered 0.4, "odd jobs" raised 0.8 (the flush to CREAM at 2.00 mm, the bar's top face, on both colourways; the lip prints cream too), a 20 x 1.5 lip with a 0.4 mm root on its top edge from 45 to 65 mm off the bar's left end, 1.5 proud of the face | charcoal, then cream | back down (`previews/KINO_CARRIER_LENS_COVER_PRINT.png`), 0.08 mm layers, filament change at Z 2.00 |
-| `print/KINO_CARRIER_SHUTTER_BUTTON.stl` | the plunger (14 mm flat cap with a 0.5 mm 45 degree edge, 2 mm proud of the deck, the 16 mm flange chamfered at the bed, 0.15 a side in its bore, the cap running on three 0.2 mm ribs in the guide) and the switch retainer (6 x 6 x 4.3 mm tactile switch) | pink | flange down (`previews/KINO_CARRIER_SHUTTER_BUTTON_PRINT.png`), 0.08 mm layers |
-| six pins | 1.75 mm filament cut 4.8 mm long into 1.9 mm holes countersunk 0.4: 3 into the wall end, 1.8 into the face, pushed flush; they locate and retain, no glue; the pull test on the real face decides | any | |
+| A01, `print/A01-KINO_CARRIER_SHELL.stl` | front plate with the four pockets (0.5 mm corner reliefs) and 7.5 mm bores, all four walls to the display plane with R10 plan corners, 0.5 mm V-grooves at 2.4 mm pitch round the whole body, the deck included whole (one 1.5 mm smooth ring round the collar), clear of the frame pilots; nothing engraved; the horizon carried round the left wall only; four pillars ending in feet with a pocket for the carrier's own screw heads (no screw from the shell), the shutter pod (every bore gabled; the collar a 0.4 mm round shadow line), the LED slots, the USB-C opening, the frame pilots, six countersunk pin holes in the walls' front ends, four strap tunnels inside the top and bottom walls' ends under 1.2 mm of wall, three ribs in the shutter's guide bore; the bores, the front edge and the rear edge chamfered 0.4; A01 engraved in the plate's inner face | black PETG | front plate on the bed (`previews/A01-KINO_CARRIER_SHELL_PRINT.png`), 0.20 mm, no support (gated) |
+| A03, `print/A03-KINO_CARRIER_REAR_FRAME.stl` | the 2.0 mm frame around the display, a 0.8 mm gasket groove in its inner face round the window (the P4 is held by 2 mm foam in it), its outer edge chamfered 1.2 toward the rear and 0.4 toward the shell (the joint is a drawn V on the groove rhythm), 95.6 x 58.2 window with a 1.0 mm chamfer toward the rear, a thumb pad with 1.0 x 0.6 grooves over the whole right border (X 109.5 to 121), the ODD JOBS symbol engraved 1 mm deep with a stepped edge on the left, four plain M2 holes (the pan heads sit proud, as the brand's concept shows its rear screws), eight 3.0 x 2.8 strap slots, two at each corner; A03 engraved in the inner face | black PETG | rear face UP (`previews/A03-KINO_CARRIER_REAR_FRAME_PRINT.png`; the gasket groove on the bed), 0.10 mm |
+| A02, `print/A02-KINO_CARRIER_FACE.stl` | the face: a 4.2 mm plate inset 0.3 mm from the shell's outline (a black reveal line round it), its front edge a 1.2 mm 45 degree chamfer, its back edge chamfered 0.4; the horizon, a 0.8 mm groove edge to edge at the bar's height with its lips chamfered 0.8 above and 0.4 below, its right end ramping at 45 degrees to 2.2 mm deep as the grip; the cover's window, 87 x 34.5 with R3.1 corners, cut down to the face's own 1.0 mm floor, its front edges chamfered 0.8 (bottom rim) and 0.4 (sides), dovetail lips on its two side walls (left 1.0, right 1.5: the key) and two detent pairs; four 7.5 mm cells through the floor with a 0.8 mm rim; six countersunk pin holes in the back; the signature and A02 engraved 0.4 mm inside, mirrored | dark blue PLA | back down (`previews/A02-KINO_CARRIER_FACE_PRINT.png`, the back in `_FACE_BACK.png`), 0.20 mm, no support |
+| B01, `print/B01-KINO_CARRIER_LENS_COVER.stl` | the sliding cover, 86.8 x 16.5 x 2 with R3 corners, its back edge chamfered 0.4, its two long edges bevelled 45 degrees, 1.0 on the left and 1.5 on the right, so it goes in one way; "odd jobs" engraved 0.4 in its top; a 20 x 1.5 lip with a 0.4 mm root on its top edge from 45 to 65 mm off the bar's left end, 1.5 proud of the face; B01 engraved in its back | black PETG | back down (`previews/B01-KINO_CARRIER_LENS_COVER_PRINT.png`), 0.08 mm layers |
+| B02 and B03, `print/B02-KINO_CARRIER_SHUTTER_BUTTON.stl` | the plunger B02 (14 mm flat cap with a 0.5 mm 45 degree edge, 2 mm proud of the deck, the 16 mm flange chamfered at the bed, 0.15 a side in its bore, the cap running on three 0.2 mm ribs in the guide) and the switch retainer B03 (6 x 6 x 4.3 mm tactile switch); each ID in its bed face | dark blue PLA | flange down (`previews/B02-KINO_CARRIER_SHUTTER_BUTTON_PRINT.png`), 0.08 mm layers |
+| C01, six pins | 1.75 mm filament cut 4.8 mm long into 1.9 mm holes countersunk 0.4: 3 into the wall end, 1.8 into the face, pushed flush; they locate and retain, no glue; the pull test on the real face decides | filament, any colour | cut, not printed |
+| C02, foam | 2 mm PORON or silicone foam with adhesive, 2 mm wide: two strips of 101 mm and two of 60 mm in A03's groove; the clamp that holds the stack | foam | cut |
+| C03, frame screws | four M2 x 8 thread-forming pan heads into A01's wall-end pilots; the only screws in the body | steel | |
 
 Where it comes from, and what each thing is for:
 
@@ -181,7 +193,7 @@ Where it comes from, and what each thing is for:
   and left by the stack) becomes a position on that line rather than a
   misalignment. The jury's one move.
 - **The hand.** The right hand holds the right end (the on-device UI is laid
-  out for it: `firmware/UI_DIRECTION.md`). The pink shutter is on the top deck
+  out for it: `firmware/UI_DIRECTION.md`). The blue shutter is on the top deck
   at X 104 under the index finger; the grip is the horizon's right end cut
   2.2 mm deep, so the middle finger pulls against its wall; the thumb pad
   stands 1.5 mm off the rear frame's right border with three ridges, and the
@@ -207,16 +219,19 @@ Where it comes from, and what each thing is for:
 - **The four-mark.** The cover closed is one dark bar in the line, the UI's
   landed bar, and it carries the brand; dropped, it slides down its window
   into the open stow zone and the four bores show in the line, the UI's
-  four-mark. The window is open: the charcoal plate shows through it under
-  the bar, and the dropped cover sits in it in plain view. The twelfth cut
+  four-mark. The window is open: the face's own blue floor shows through
+  it under the bar, and the dropped cover sits in it in plain view. The twelfth cut
   chose that over a roof, a slot, a keeper and five breakaway blades.
-- **Colour is an event.** Charcoal and cream (or cobalt) at rest; the one
-  pink thing is the button you press. No other colour on the body.
+- **Colour is the architecture.** Black PETG is everything structural and
+  everything that wears: the shell, the frame, the cover. Dark blue PLA is
+  what you look at and the one thing you press: the face and the button.
+  One material per part; the cover is a black bar in a blue field, the
+  button a blue dot in a black deck, and every colour boundary is a part
+  boundary, so the assembler reads the colour as a bin.
 - **One word outside, the rest inside.** The brand on the bar: "odd jobs"
   (traced from the logo by `brand/trace-wordmark.py`, 30 x 6.8 mm, strokes
-  1.3) raised 0.8 on the cover, its last four layers in cream on both
-  colourways (one filament change on one small part; charcoal on cobalt was
-  a low pair). The symbol on the back, engraved 1 mm with a 0.3 mm stepped
+  1.3) engraved 0.4 in the cover's top, reading as shadow (a raised mark
+  in the face's colour would be PLA on PETG, which does not bond). The symbol on the back, engraved 1 mm with a 0.3 mm stepped
   edge so it reads as shadow. Nothing else on the outside: no model name on
   the deck (a 0.6 mm stroke in a vertical wall is one wobbling perimeter,
   and the deck carries the button and nothing else). The signature is
@@ -375,7 +390,7 @@ listed in ECN-0009.
 ### The face and the cover
 
 The shell's front plate prints on the bed, so it can carry no relief; the
-face does. It covers the front to 0.3 mm of the walls' outer edge, 3.2 mm
+face does. It covers the front to 0.3 mm of the walls' outer edge, 4.2 mm
 thick with its front edge a 1.2 mm 45 degree chamfer (the frame's own size; 2.0 ran over the pin holes on a 3.2 plate) and its back edge
 chamfered 0.4 against the elephant foot. Into it, from the front: the
 horizon, 0.8 mm deep across the full width (the chamfer family's own
@@ -384,21 +399,24 @@ chamfered 0.8 and its lower 0.4 so the line catches light from every
 angle, its right end ramping down at 45 degrees to 2.2 deep as the grip
 (1.0 of plate left under it). Through it: the cover's
 window, 87 x 34.5 mm with R3.1 corners, from the stow zone's bottom rim to
-0.5 above the closed cover's top. The shell's own plate is the track
-floor, and the shell prints its first 1.0 mm in the face's filament, so
-the tray is a cut pocket in the face's colour and not a charcoal mouth
-(closed, a dark bar on a colour field, as the brand draws it). The
-window's two side walls (the short ones, along the travel) carry the
-dovetail lips (1.0 wide, 1.1 deep from 2.4 above the plate, so the
-cover's 1.0 bevel runs under them with 0.4 of play) and two detent pairs
+0.5 above the closed cover's top, cut down to the face's own 1.0 mm
+floor, so the tray is a pocket in the face's colour (closed, a black bar
+on a blue field, as the brand draws it) and the face with its cover is one
+subassembly, slid and tested before it goes near the shell. The window's
+two side walls (the short ones, along the travel) carry the dovetail lips,
+the left 1.0 wide and 1.2 deep, the right 1.5 wide and 1.7 deep (each
+deeper than it is wide, so its underside is steeper than 45 degrees in
+print; the cover's bevels match side for side, so turned round it meets
+the wrong lip and stops at the mouth, a gate), with 0.4 of play, and two
+detent pairs
 past the cover's R3 corners, 1.0 tall so three layers bite after the
 elephant-foot compensation; 0.1 mm a side. The window's bottom rim is the
 stowed cover's stop and its top rim the closed cover's. Its front edges
 are chamfered as the horizon's lips are, 0.8 on the bottom rim and 0.4 on
 the sides, so the open stow zone reads as the second line of a cut tray
 and the bar sits between two lit edges. The tray's floor is plain plate
-in the face's colour. The four cells are the shell's 7.5 mm bores with their 0.4
-chamfer, seen through the window.
+in the face's colour. The four cells are 7.5 mm bores through the floor with a 0.8 mm rim,
+over the shell's own bores.
 
 The cover drops 17.6 mm to shoot; the travel is derived from the face's
 edge. 16.5 mm tall, it blankets the 7.5 mm cells by 4.5 a side when closed
@@ -422,7 +440,7 @@ pushed flush). They locate and retain; there is no glue anywhere in the
 body. The pillar coupon sets the hole; the real face, hung face-down from
 the cord for an hour and then pulled, proves the hold. To take the face
 off: the horizon channel on the left wall exposes 1.5 mm of the face's
-back edge at its left end; a nail lifts it there. No knife on cobalt.
+back edge at its left end; a nail lifts it there. No knife on the blue.
 
 Earlier drafts, each thrown out by a gate or a review: a rim pocket (the
 face flush inside walls run past the plate: 10,000 mm^2 of overhang face
@@ -460,27 +478,29 @@ sits 12 mm above the pod's bottom.
    lead to J1001 RAIL (the carrier README's bring-up step 7 with an SW6106
    is superseded here), the carrier on the standoffs, the nodes in their
    sockets, outside the body.
-1. Plunger into the pod from the cavity, cap first, out through the top
+1. B02 plunger into A01's pod from the cavity, cap first, out through the top
    face: its 16 mm flange cannot pass the 14.6 mm guide, so it never goes in
-   from the top. Then the switch into the retainer, the retainer into the
+   from the top. Then the switch into the B03 retainer, the retainer into the
    pod from the rear behind the flange, leads out through the side channels.
    Plug the switch lead's JST XH housing into J103 on the carrier's front
    NOW: J103 is inside the cavity and unreachable once the stack is in.
 2. Slide the stack into the shell from the rear, carrier first, until the
    carrier meets the four pillar feet, its screw heads in their pockets.
    Nothing screws here: the frame clamps it in step 5.
-3. Cover into the face's window from the face's back: wordmark toward the
-   face's front, lip toward the horizon (the top), bevels under the lips,
-   up to its closed detent. The lips hold it from falling out forward, so
-   with the shell front-up on the bench and the face lowered back-down
-   onto it the cover cannot drop.
-4. Six 4.8 mm filament pins into the walls' front ends, 3 mm in (1.8
+3. B01 cover into A02's window from the face's back: wordmark toward the
+   face's front, lip toward the horizon (the top), the wide bevel on the
+   right. It goes in one way only: turned round, its narrow bevel meets the
+   wide lip and it stops at the mouth. Slide it to both detents: that is
+   the face subassembly's test, done before it goes near the shell. The
+   lips hold it from falling out forward, so with the shell front-up on the
+   bench and the face lowered back-down onto it the cover cannot drop.
+4. Six C01 pins (4.8 mm) into the walls' front ends, 3 mm in (1.8
    proud); face pressed on over them until flush, the shell's plate closing
    the track. To service the cover: nail into the left wall's horizon
    channel under the face's edge, face off, cover out.
-5. Four foam strips into the frame's groove (two of 101 mm, two of 60 mm,
-   adhesive down, butted at the corners, pressed flat). Frame onto the wall
-   ends with four M2 x 8 thread-forming pan-head screws; the heads sit
+5. Four C02 foam strips into A03's groove (two of 101 mm, two of 60 mm,
+   adhesive down, butted at the corners, pressed flat). A03 onto the wall
+   ends with the four C03 M2 x 8 thread-forming pan-head screws; the heads sit
    proud on the back. The screws squeeze the foam onto the glass's margin
    and the stack onto the pillar feet: that is what holds the whole stack,
    and they are the only four screws in the body.
@@ -496,14 +516,22 @@ The carrier's USB-C comes out through the bottom wall at the right; the three
 edge LEDs show through three 2 x 4 mm slots beside it. The P4's own USB ports
 are reached through the carrier's window only with the shell off.
 
-Previews: `previews/KINO_CARRIER_NIGHT_*.png` (the print target) and
-`DAY_*.png` are the colour views from `render-parts.py` (each part's STL in its filament's colour,
-triangles split to 5 mm so the painter's order holds); the `*_PRINT.png` views
-are each part in print orientation from `render-stl.py`. `KINO_CARRIER_EXPLODED.png` and `_EXPLODED_SIDE.png` pull every part apart along the depth axis: rear frame, the electronics stack (green) with its glass, the shell with its button, the face, the cover; the pins, the foam strips and the switch are too small to show.
+Previews: `previews/KINO_CARRIER_FRONT.png`, `_OPEN`, `_FLAT`, `_LOW`,
+`_REAR`, `_TOP` and `_SIDE` are the colour views from `render-parts.py`
+(each part's STL in its material's colour, triangles split to 5 mm so the
+painter's order holds); the `<ID>-*_PRINT.png` views are each part in print
+orientation from `render-stl.py`, with `A02-KINO_CARRIER_FACE_BACK.png` and
+`A03-KINO_CARRIER_REAR_FRAME_INNER.png` for the hidden faces that carry the
+IDs. `KINO_CARRIER_EXPLODED.png` (labelled by ID) and `_EXPLODED_SIDE.png`
+pull every part apart along the depth axis: A03, the electronics stack
+(green) with its glass, A01 with B02, A02, B01; the pins, the foam strips
+and the switch are too small to show. Every cut's renders are kept under
+`docs/assets/making-of/carrier-body/` by `archive-previews.py`, for the
+making-of page (`docs/MAKING_OF.md`).
 
 ## Gates
 
-`node generate-carrier-body.mjs` writes `.candidate/` and runs 161 gates,
+`node generate-carrier-body.mjs` writes `.candidate/` and runs 156 gates,
 throwing on the first failure (`KINO_SOFT_GATES=1` collects them): the depth
 chain re-added over the lens band, the lens front on the pocket floor, the
 module PCB with the plate to land on, the battery bay tall enough for the cell
@@ -518,8 +546,8 @@ hole open and blind, the carrier's sweep from the rear clear up to the feet
 with the pod above it, the USB plug and the LED slots through the bottom wall,
 the frame window over the whole active area with 3 mm of border, the frame
 pilots and holes aligned, the cover held by the detents closed and open and
-free between, stowed above the window's rim, the wordmark inside the cover's
-band, the shutter bores open from the top face and from the cavity, the lead
+free between, refused turned round, stowed above the window's rim, the
+wordmark inside the cover's band, the shutter bores open from the top face and from the cavity, the lead
 routes open, the pod above the carrier, the stem positive, the retainer
 passing its bore, the strap tunnels open under their skin, the signature
 inside the plate clear of the track and the pins, the deck bare, every
@@ -548,16 +576,15 @@ button. Orientations are in the parts table, each with its preview, and in
 | | |
 |---|---|
 | supports | off, on every part. No part needs any: every down-facing surface is a bridge of 4.5 mm or less, a blind hole or a groove at the bed (the gate lists them per print, and anything else fails with its position). Supports here do damage: trees in the pin holes and the strap tunnels block them, trees in the gasket groove and the collar's recess fill a 0.9 and a 0.4 mm fit. If the slicer insists, set its overhang threshold so the 45 degree chamfers, the 49 degree groove flanks and the track lips' 48 degree undersides never trigger (faces steeper than 40 degrees from the bed unsupported) and keep bridge detection on |
-| the shell's first 1.0 mm | in the face's filament (cobalt or cream), then a filament change at Z 1.00 (layer 6) to charcoal. The plate's front, the stow zone's floor, the lens bores' rims and the wall ends come out in the face's colour; the ribs start charcoal |
-| filament changes | M600 or the slicer's change at a layer: the shell at Z 1.00 to charcoal; the cover at Z 2.00 (layer 26 at 0.08) to cream. On a single-extruder printer purge about 200 mm^3 by hand each time (the first cream layers on a 1.3 mm stroke come out grey; the mark's ten layers hide them) |
 | elephant foot compensation | 0.2 mm (the chamfers are a second defence, not the first; it takes the detent bumps' first layer, which is why they are 1.0 tall) |
 | seam | scarf, painted onto the bottom wall; the grooves hide a seam only where it is straight |
 | bridges | fan 100 %, bridge speed 20 mm/s, thick bridges off: the strap tunnels, the LED slots, the frame's gasket groove |
-| face | 40 % gyroid with six top layers (1.2 mm) and two 100 % modifier boxes, 128 x 24 x 3.2 over the horizon band (Y 18 to 42) and 100 x 42 x 3.2 round the window (X 0 to 100, Y 0 to 42) (100 % over 128 mm bowed at the corners and kept moving for weeks); top solid lines monotonic along X on the face, the horizon's floor and the cover's front, line width 0.42, flow +2 %; no ironing (PETG gums and the gloss goes uneven on cobalt); no modelled texture on the front (nothing under one layer exists, and a 0.2 relief reads as a sticker) |
+| face | 40 % gyroid with six top layers (1.2 mm) and two 100 % modifier boxes, 128 x 24 x 3.2 over the horizon band (Y 18 to 42) and 100 x 42 x 3.2 round the window (X 0 to 100, Y 0 to 42) (100 % over 128 mm bowed at the corners and kept moving for weeks); top solid lines monotonic along X on the face, the horizon's floor and the cover's front, line width 0.42, flow +2 %; no ironing (it gums at the nozzle and the gloss goes uneven); no modelled texture on the front (nothing under one layer exists, and a 0.2 relief reads as a sticker) |
 | frame | 0.10 mm layers throughout (20 layers: the groove 0.8, the chamfers 1.2, 1.0 and 0.4, the pad 1.5 and the 2.0 plate are all whole layers; at 0.12 none was); bed 75 C, a 2 mm ring lifts at the corners at 65 |
-| cover | charcoal to 2.00 mm, the bar's top face, then the flush to cream: the lip and the mark's raised layers print cream; both colourways; purge 200 mm^3; minimum layer time 10 s with the fan at 100 % (after Z 2.8 only the 20 x 1.5 lip is printing, 3 s a layer, and PETG slumps), or print the spare cover on the same plate; three perimeters make the 1.5 lip |
+| cover | black PETG at 0.08; minimum layer time 10 s with the fan at 100 % (after Z 2.8 only the 20 x 1.5 lip is printing, 3 s a layer, and PETG slumps), or print the spare cover on the same plate; three perimeters make the 1.5 lip; the wordmark is a 0.4 engraving in the top, two layers, that needs nothing |
+| the PLA parts | A02 and B02/B03 in dark blue PLA: 0.20 and 0.08, bed 60 C, fan 100 % from layer 3, no enclosure heat. PLA softens from about 55 C, so the camera does not live in a parked car; the PETG parts take 75. The cover (PETG) slides on the face (PLA): a dissimilar pair, which slides better than like on like |
 | seams | scarf, painted: the face's into the window's lower-left corner and into the horizon's left wall corner above it; the shell's into the left wall's horizon channel corner (vertical in print), not the bottom wall (the grooves hide a seam only on straight runs and it jumps at the USB and LED openings); the cover's into the edge-relief notch; the button's toward the rear |
-| bed | 80 C under the shell, 70 to 75 under the plates; no brim (the chamfered bed edges are the brim's job) |
+| bed | 80 C under the PETG shell, 70 under the PETG frame and cover, 60 under the PLA; no brim (the chamfered bed edges are the brim's job) |
 | cavity | 0.5 mm a side as modelled; do not scale the shell to fit, measure the coupon |
 | the track lips | slow the overhang perimeters on layers 7 to 12 of the face (the lips' 47 degree undersides); their roughness comes out of the 0.4 of play |
 | regenerating | after a number changes in `params.mjs`: `npm i manifold-3d` once in the repository root, then `node generate-carrier-body.mjs` and `node promote.mjs` in this folder; a failed gate names what moved |
@@ -568,11 +595,11 @@ orientation as the parent. Pass criteria, in numbers:
 
 | Coupon | What it proves | You need | Pass | If not, the number |
 |---|---|---|---|---|
-| `KINO_COUPON_SHRINK_BAR` + `_POCKET` on one plate, first | the printer's shrink; the pinch ribs, the corner reliefs, the 7.5 bore | callipers; one camera module seated on its XIAO | the 100.0 mm bar measures 99.5 to 100.0 (set the slicer's shrink compensation, never scale the shell); a seated head pushes in with a thumb, does not fall out inverted, the lens centred in the bore by eye | `camBodySlack` (pocket), `lensBoreD` (bore) |
-| `KINO_COUPON_PILLAR` + `_STRAP_SHELL`, second | a pillar foot's head pocket, a 1.9 pin hole, the strap tunnel and slots, a frame pilot | the carrier with a screw in one hole (or an M2 pan head in any scrap PCB), a 4.8 mm filament pin, 0.3 m of 2.5 mm cord, 10 kg, one M2 x 8 | the foot sits flat on the PCB with the pan head inside its pocket, no rock; the pin pushed 3 mm holds the coupon inverted and pulls with a finger; 100 N on the cord, no tear at the 1.2 mm skin; an M2 x 8 drives into the pilot and backs out ten times | `facePinD`, `carrierHeadClr`, `strapSlot`, `strapTunnelSkin`, `framePilotD` |
-| the real `KINO_CARRIER_SHUTTER_BUTTON` then `KINO_COUPON_DECK`, third | the gabled bores, the 0.4 collar, the guide ribs | the printed button and the switch | the slicer preview shows the three 0.2 ribs; the plunger runs without tick and returns on the switch; the retainer passes the 17 bore | `shutterGuideRib` [0.4, 0.8] if the ribs vanish; `shutterFlangeBoreClear` 0.2 in reserve |
-| the real `KINO_CARRIER_FACE` and `KINO_CARRIER_LENS_COVER`, fourth | the window, its lips, the detents, the pins' hold | the shell's plate or any flat plate; the six pins | the cover drops at 45 degrees of tilt and stays shut at 90, does not lift past the lips by hand, the cream mark clears the window's top rim; the face on its pins hangs face-down for an hour and takes a 10 N pull. If they pass they are the parts | `sliderClr`, `sliderBumpBite`, `facePinD` |
-| the frame at 0.10, then the shell, last | | | | |
+| T01 + T02 on one plate, first | the printer's shrink; the pinch ribs, the corner reliefs, the 7.5 bore | callipers; one camera module seated on its XIAO | the 100.0 mm bar measures 99.5 to 100.0 (set the slicer's shrink compensation, never scale the shell); a seated head pushes in with a thumb, does not fall out inverted, the lens centred in the bore by eye | `camBodySlack` (pocket), `lensBoreD` (bore) |
+| T03 + T04, second | a pillar foot's head pocket, a 1.9 pin hole, the strap tunnel and slots, a frame pilot | the carrier with a screw in one hole (or an M2 pan head in any scrap PCB), a 4.8 mm filament pin, 0.3 m of 2.5 mm cord, 10 kg, one M2 x 8 | the foot sits flat on the PCB with the pan head inside its pocket, no rock; the pin pushed 3 mm holds the coupon inverted and pulls with a finger; 100 N on the cord, no tear at the 1.2 mm skin; an M2 x 8 drives into the pilot and backs out ten times | `facePinD`, `carrierHeadClr`, `strapSlot`, `strapTunnelSkin`, `framePilotD` |
+| the real B02 (blue PLA) then T05, third | the gabled bores, the 0.4 collar, the guide ribs | the printed button and the switch | the slicer preview shows the three 0.2 ribs; the plunger runs without tick and returns on the switch; the retainer passes the 17 bore | `shutterGuideRib` [0.4, 0.8] if the ribs vanish; `shutterFlangeBoreClear` 0.2 in reserve |
+| the real A02 (blue PLA) and B01 (black PETG), fourth | the window, its lips, the detents, the pins' hold | the shell's plate or any flat plate; the six pins | the cover drops at 45 degrees of tilt and stays shut at 90, does not lift past the lips by hand, and refuses to enter turned round (the key); the face on its pins hangs face-down for an hour and takes a 10 N pull. If they pass they are the parts | `sliderClr`, `sliderBumpBite`, `facePinD` |
+| A03 at 0.10, then A01, last | | | | |
 
 There is no face or cover coupon: a cut piece of the window ran the drop
 test cocked on one lip, and the real parts cost 40 g. The field body's
@@ -584,17 +611,16 @@ the cover held closed through 1,000 jogs on the top cord.
 The entry is the files, the print plan, the coupons and this list; a strap
 that is not supplied is a scored fault.
 
-- Prints: shell (its first 1.0 mm in the face's filament), rear frame,
-  face, cover, shutter button (plunger and retainer). Night body: charcoal, cobalt, pink, and cream for the
-  mark's last layers and the lip (four spools). Day body: charcoal, cream,
-  pink (three).
-- Hardware: four M2 x 8 thread-forming pan-head screws (frame; the only
-  screws in the body); the carrier's own four M2 8 mm male-female
+- Prints: A01 shell, A03 rear frame and B01 cover in black PETG; A02 face
+  and B02/B03 button in dark blue PLA. Two spools, no filament change on
+  any part.
+- Hardware: four M2 x 8 thread-forming pan-head screws (C03, the frame; the
+  only screws in the body); the carrier's own four M2 8 mm male-female
   standoffs and four M2 x 4 pan heads (male into the P4's brass inserts;
   the P4 ships with them, add none; nothing from the body screws into a
-  board); six pins cut from 1.75 mm filament, 4.8 mm; one 6 x 6 x 4.3
+  board); six pins (C01) cut from 1.75 mm filament, 4.8 mm; one 6 x 6 x 4.3
   tactile switch on an 80 mm lead ending in a JST XH 2-way housing for
-  J103; 2 mm closed-cell foam with adhesive, 2 mm wide, two strips of
+  J103; 2 mm PORON or silicone foam with adhesive (C02), 2 mm wide, two strips of
   101 mm and two of 60 mm for the frame's gasket groove, and the same
   again as spares; the cell for CN4 with its lead to J1001.
 - Tools: a Phillips for M2; a 1.7 mm drill for the frame pilots' eleventh
@@ -613,8 +639,95 @@ that is not supplied is a scored fault.
   down, because the carrier puts the USB-C on the bottom edge (the next
   carrier moves it); the horizon is an open shelf and the track is open at
   the bottom, so grit rides the cover across the lens fronts, as on the
-  XA; cream and pink PETG yellow first in sun (the button is a 2 g
-  reprint).
+  XA; the blue PLA face and button soften from about 55 C, so the camera
+  does not stay in a parked car (both are cheap reprints).
+
+## Component register
+
+The one list for the bins, the slicer, the CAD and the instructions. Two
+printed materials, one fastener type, nothing glued.
+
+| ID | Part | Function | Material, colour | Qty | Print orientation | Supports | Joined by | Fit that matters | Step |
+|---|---|---|---|---:|---|---|---|---|---:|
+| A01 | shell | front plate with the four camera pockets, four walls, pillar feet, shutter pod, pin holes, strap tunnels, frame pilots | black PETG | 1 | front plate on the bed | none | C01 pins hold A02 on it; C03 screws hold A03 to it | pockets 8.65 with 0.3 ribs (T02); cavity 0.5 a side (T01) | 1 |
+| A02 | face | the blue front: horizon, grip, the cover's window with its floor, lips and detents, the four cells | dark blue PLA | 1 | back down | none | six C01 pins, 3 in A01 and 1.8 in A02 | pin holes 1.9 (T03); track 0.1 a side | 3, 4 |
+| A03 | rear frame | the ring round the display with the gasket groove, thumb pad, strap slots, screw holes | black PETG | 1 | rear face up | none | four C03 into A01's pilots | pilots 1.8 (T04) | 5 |
+| B01 | lens cover | the sliding bar: closed over the cells, dropped into the tray; keyed by its bevels | black PETG | 1 | back down | none | captive in A02's lips | 0.1 a side, 0.4 play under the lips | 3 |
+| B02 | shutter plunger | the blue cap on the deck, 0.15 a side on three ribs | dark blue PLA | 1 | flange down | none | captive behind A01's guide by its flange | bore 14.6 (T05) | 1 |
+| B03 | switch retainer | holds the 6 x 6 tactile switch behind the plunger | dark blue PLA | 1 | plate down (same file as B02) | none | pushed into the pod from the cavity | 17 mm bore (T05) | 1 |
+| C01 | pins | six 4.8 mm lengths of 1.75 filament | any filament | 6 | | | friction | 1.9 holes, countersunk 0.4 | 4 |
+| C02 | foam strips | the clamp on the stack: 2 mm PORON, 2 wide, 101 + 101 + 60 + 60 | foam | 4 | | | adhesive to A03 | 40 % squeeze | 5 |
+| C03 | frame screws | M2 x 8 thread-forming pan heads | steel | 4 | | | | 1.8 pilots, ten cycles | 5 |
+| T01 to T05 | coupons | shrink bar, pocket, pillar, strap wall end, deck | black PETG | 1 each | as the parent | none | | each row of the coupon table | 0 |
+
+Not in the body: the carrier's own four standoffs and four M2 x 4 (the
+carrier's BOM), the switch and its 80 mm XH lead, the cell and its lead,
+the cord.
+
+Orientation keys, so nothing goes in two ways: A02 on A01 by the pin
+pattern (top pair at X 30 and 90, bottom pair at 5 and 96.7); B01 in A02
+by its 1.0 and 1.5 bevels; A03 on A01 by its screw holes (X 17 and 76 on a
+128 body) and the thumb pad; the stack in A01 by the camera pockets (turned
+round, the heads hit the plate) and the USB opening; B02 by its flange
+(cannot pass the guide from outside). B03 is rotationally symmetric and
+has no wrong way.
+
+## Quality control
+
+Inspection points, in the order they happen:
+
+| When | Check | Pass |
+|---|---|---|
+| after T01 | the shrink bar | 99.5 to 100.0 mm; the slicer's compensation set |
+| every print, off the bed | the ID on the hidden face reads; no support scars (there are no supports); the bed chamfer present on every fitted edge; no elephant foot proud of it | by eye and thumbnail |
+| A01 | the four pockets take a seated head with a thumb and hold it inverted; the six pin holes take a pin pushed 3 mm; the pilots take an M2 x 8 by hand | T02, T03, T04 criteria |
+| A02 + B01 (the face subassembly) | the cover drops at 45 degrees of tilt, stays shut at 90, cannot lift past the lips, refuses turned round; the wordmark reads; the four cells clear | before the face goes on |
+| B02 + B03 in A01 | the cap runs 200 times without tick, returns on the switch | before the stack goes in |
+| A02 on A01 | flush all round, the 0.3 reveal even; hangs face-down from the cord for an hour, takes a 10 N pull | pins hold |
+| the stack in | the carrier's heads in the four pockets, the carrier flat on the feet; the LEDs in their slots; the USB plug passes | no rock |
+| A03 on | the foam in its groove, butted; four screws seated, heads proud; the window centred on the active area by eye; the glass does not touch the frame (a 0.1 feeler at the window's edge) | |
+| finished | cover closed: the firmware sees four dark; dropped: four live; the button fires; the seams: the reveal round the face and the V at the frame joint even all round | |
+
+## Assembly, counted
+
+Measured on the files, not on a bench; the bench numbers come with the
+first ten units.
+
+| | this cut |
+|---|---:|
+| unique printed parts | 5 (in 5 files) |
+| fastener types | 1 (M2 x 8) |
+| fasteners | 4 |
+| glue | none |
+| assembly operations (the numbered steps and their sub-steps) | 14 |
+| product reorientations | 1 (front up for the face, then face down for the stack and frame) |
+| operations needing more than two hands or a fixture | 0 |
+| ambiguous orientations | 0 (every part keyed, B03 symmetric) |
+| distinct tools | 2 (a Phillips for M2, side cutters for the pins) |
+| slicer supports | none on any part; support removal 0 min |
+| hands-on assembly time | estimate 12 min; measure |
+| cover replacement | pins out, face off, cover out: estimate 3 min |
+| battery change | frame off, stack out: estimate 4 min |
+| printed parts per camera, mass | shell about 95 g, face 35, frame 20, cover 5, button 2 (estimates from the slicer; measure) |
+
+## What a jury would read
+
+Not a claim of novelty, a description of what holds together. The camera
+is one silhouette in two materials, and the colour boundary is always a
+part boundary, so what you see tells you how it is built: black carries,
+blue is touched. Nothing is glued; four screws of one size, case into case,
+are the only fasteners, and no screw enters a circuit board: the stack is
+clamped on foam against four feet, so the electronics are a subassembly
+built and flashed on the bench and dropped in. The face and its cover are
+a second subassembly, tested on the bench before they meet the shell. Every
+part goes in one way, and every part says what it is on a face you only
+see when you open it. The form is the brand's: a black bar in a blue
+field, one groove across the face, ribs on the layer rhythm, rounds in
+plan and chamfers in Z, and the four eyes in the line when the bar drops.
+The printed parts need no support anywhere, which the gates prove on every
+build, and the whole thing is 51 mm deep around a 43.5 mm stack. What it
+does not yet have is a printed unit; the coupons and the first body are
+the next entry.
 
 ## Not in this cut
 

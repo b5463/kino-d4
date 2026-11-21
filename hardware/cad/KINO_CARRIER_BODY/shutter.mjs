@@ -7,8 +7,8 @@
 // Every bore along Y carries a teardrop roof pointing -Z, which is UP in the
 // shell's print (face down). The actuator and retainer register on the round
 // lower halves, so the roof clearance is inert.
-import { Manifold, cube, cylZ, coneZ, cylY, fuse, prismY, teardropY, status } from "./lib.mjs";
-import { P, Z, XY } from "./params.mjs";
+import { Manifold, cube, cylZ, coneZ, cylY, fuse, prismY, teardropY, status, blockText } from "./lib.mjs";
+import { P, Z, XY, IDS } from "./params.mjs";
 
 export const SHUTTER = (() => {
   const [, , , cy1] = XY.cavity;
@@ -98,5 +98,8 @@ export function buildShutterButton() {
   const legSlotW = cradleW - 2.0;
   const legSlot = cube(rcx - P.shutterRetainerCupD / 2 - 0.3, rcy - legSlotW / 2, plateH - 0.1, P.shutterRetainerCupD + 0.6, legSlotW, P.shutterSwitchLegBand);
   const legSink = cube(rcx - cradleW / 2, rcy - cradleW / 2, plateH - P.shutterSwitchLegSink, cradleW, cradleW, P.shutterSwitchLegSink + 0.1);
-  return status("shutter button", fuse([actuator, retainerBlank.subtract(fuse([cradle, ...notches, legSlot, legSink]))]).simplify(1e-5));
+  // B02 and B03 engraved in the bed faces, mirrored (read from below).
+  const idA = blockText(IDS.plunger, 9 - 4.5, 9 - 1.75, -1, 0.5, P.idDepth + 1, true);
+  const idR = blockText(IDS.retainer, rcx - 4.5, rcy - 1.75, -1, 0.5, P.idDepth + 1, true);
+  return status("shutter button", fuse([actuator.subtract(idA), retainerBlank.subtract(fuse([cradle, ...notches, legSlot, legSink, idR]))]).simplify(1e-5));
 }

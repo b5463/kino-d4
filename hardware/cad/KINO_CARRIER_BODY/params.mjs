@@ -123,6 +123,11 @@ export const P = Object.freeze({
   // stack onto the feet.
   carrierHead: [3.8, 1.3],   // the carrier's M2 pan head, D x H (DIN 7985)
   carrierHeadClr: 0.3,       // a side and above it in the foot's pocket
+  idPx: 0.6,                 // one pixel of the 5 x 7 block font: 3 characters are 10.2 x 4.2 mm
+  idDepth: 0.4,              // engraved, two layers
+  idFaceAt: [100.0, 46.0],   // A02 on the face's back, right of the signature, above the horizon band, clear of the side pin
+  idShellAt: [44.3, 35.5],   // A01 on the plate's inner face between cells 2 and 3, above the lens row
+  idFrameAt: [100.0, 69.4],  // A03 on the frame's inner face, top border, between the groove and the edge chamfer
   gasketKPa: 25,             // PROVISIONAL: PORON or silicone foam at 35 % squeeze; PE takes a set in a year and the clamp with it
   stackMassG: 130,           // PROVISIONAL: P4 module, standoffs, carrier, four nodes, the cell
   rearFrameT: 2.0,           // 1.2 under the gasket groove; the thumb climbs this to the glass, so its window edge is chamfered for it
@@ -147,10 +152,10 @@ export const P = Object.freeze({
   // over the whole front with a pillow edge, a pink shutter, quiet markings.
   // The face covers the plate and the walls' front ends (the concept's v18
   // front: the fascia fills the front, the charcoal is the sides and the cap).
-  faceBase: 3.2,             // the face plate: the track's lips 2.4 + the horizon 0.8 above them (thin: the groove is now the chamfer family's own size); the window through it is the cover's track, the shell's plate its floor
+  faceBase: 4.2,             // the face plate: its own floor 1.0 under the track, the lips 2.4, the horizon 0.8; the cover rides on the face, so face + cover is one subassembly, tested before it goes on
+  faceFloor: 1.0,            // the track floor, the face's own (dark blue PLA): the open stow zone is a tray in the face's colour, and no two-material part is needed for it
   faceEdgeR: 1.2,            // its front edge, a 45 degree chamfer, the frame's own size (2.0 on a 3.2 plate ran over the pin holes' outer edges). A quarter round at 0.2 mm layers terraces; the chamfer steps one layer each, one texture with the grooves. Rounds in plan (R10), chamfers in Z
-  faceInset: 0.3,            // the face steps in from the shell's outline. With the shell's first 1.0 mm printed in the face's filament (shellFrontSwap) the line round the face is a reveal in one colour, so it is narrow; at 0.8 it was a shelf
-  shellFrontSwap: 1.0,       // PRINT PLAN, not geometry: the shell's first five 0.2 layers (the plate's front, the stow zone's floor, the wall ends) print in the face's filament, then charcoal. Closed, the bar is a dark bar on a colour field as the brand draws it; dropped, it sits in a cut tray of the face's colour, not in a charcoal mouth
+  faceInset: 0.3,            // the face steps in from the shell's outline: a black reveal line round the blue face; at 0.8 it was a shelf
   // The horizon: a full-width groove across the face at the bar's height,
   // its ends open through the edge round. The bar sits in it; the face is
   // built around the line. The jury's one move.
@@ -199,8 +204,8 @@ export const P = Object.freeze({
   sliderH: 16.5,             // blankets the 7.5 mm cells by 4.5 a side; the lens row sits low, so every mm of cover is a mm of travel (the travel is DERIVED: closed to the window's bottom rim)
   sliderT: 2.0,
   sliderClr: 0.1,            // per side, in X
-  sliderBevel: 1.0,          // 45-degree edge bevel, and the lip that traps it
-  sliderLipZ: 1.1,           // lip depth from the band's front: deeper than the bevel is wide, so the lip's underside is steeper than 45 degrees in print (0.95 read as an overhang)
+  sliderBevel: [1.0, 1.5],   // 45-degree edge bevels, left and right, and the lips that trap them. NOT the same: the orientation key. Turned round, the cover's 1.0 bevel meets the 1.5 lip and stops at the window's mouth; a gate proves it
+  sliderLipOver: 0.2,        // each lip is this much deeper than its bevel is wide, so its underside is steeper than 45 degrees in print
   sliderCornerR: 3.0,        // the bar is the thing the eye reads; square corners inside a pill band were the last box on the front
   sliderBumpR: 0.4,
   sliderBumpBite: 0.15,
@@ -212,7 +217,7 @@ export const P = Object.freeze({
   coverLipLeft: 45.0,        // the lip's left end from the bar's left edge, past the wordmark's end at 36, so the thumb never covers a letter
   coverLipRoot: 0.4,         // 45 degree root on the lip's three free sides: the lip takes a face-down drop     // the thumb lip on the cover's TOP edge, width x height; the thumb pushes down on its top face (the coupon says whether 1.5 is enough)
   coverLipAboveFace: 1.5,    // visible as a slide from across the room, as the XA's and the Minox's sills are; 0.5 was invisible, and a glove or a dry thumb could not lift the cover closed on 1.0    // the lip stands this far proud of the face, closed and stowed, so the thumb pad can push it down and lift it back; its height off the cover is derived
-  // The brand on the bar: "odd jobs" raised on the cover, as the concept's
+  // The brand on the bar: "odd jobs" engraved in the cover, as the concept's
   // nameplate. Print its last 0.6 mm in CREAM on both colourways (one swap on
   // one small part): charcoal on cobalt was a low pair and cobalt type on it
   // lower still.
@@ -225,7 +230,7 @@ export const P = Object.freeze({
   innerSymbolH: 8.0,
   innerMarkAt: [44.0, 56.0],   // the wordmark's lower-left; the symbol sits to its left
   innerMarkD: 0.4,
-  markProud: 0.8,            // the first cream layer after the flush comes out grey; at 0.8 it is one layer in four
+  markDepth: 0.4,            // the wordmark engraved in the bar's top: one material per part (PLA on PETG does not bond, so no raised mark in the face's colour); it reads as shadow, as the symbol on the back does
   bedChamfer: 0.4,           // two whole layers at 0.2 (0.3 sliced as one step and a sliver); 45 degrees on every bed-side edge that meets a fit or shows: the cover's and keeper's backs, the face's back outer edge, the shell's front outer edge
   markMinStroke: 0.8,
   // ---- The shutter: the field body's pod, button and retainer, the cap grown
@@ -269,6 +274,15 @@ export const P = Object.freeze({
   strapSlotXs: [2.0, 8.0],   // the two slots' X, from the body's left edge; mirrored at the right
   strapChannelD: 3.0,        // the tunnel's depth into the wall end; its width is the slot's
   strapTunnelSkin: 1.2,      // of wall end over the tunnel: the bar the cord loops. 0.6 was three layers, two of them a bridge at the top of the print, so the frame's screws carried the drop; six layers now, proved at 100 N on the strap coupon
+});
+
+// ---- Part IDs, embossed in each part on a hidden face --------------------------
+// A = enclosure, B = moving and interaction parts, C = consumables (not
+// printed), T = test coupons. The same ID is in the file name, the register
+// in the README and on the bin.
+export const IDS = Object.freeze({
+  shell: "A01", face: "A02", frame: "A03", cover: "B01", plunger: "B02", retainer: "B03",
+  pins: "C01", foam: "C02", frameScrews: "C03", shrinkBar: "T01",
 });
 
 // ---- The stack chain, derived once ------------------------------------------

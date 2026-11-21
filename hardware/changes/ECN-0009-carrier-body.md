@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; sixteenth cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
+| Status | Design in progress; seventeenth cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -333,18 +333,36 @@ owner's printer. Two parts:
   clearance, the gasket, the window and the bay are all referenced from
   the glass or the carrier. Body 59.3 to 50.1; the thin levers now reach
   40.4.
+- **Two materials, IDs, keys** (seventeenth cut, 2026-11-21; the owner's
+  master brief: an award-credible two-colour camera in black PETG and dark
+  blue PLA, exceptional to assemble, built on the existing design). Taken:
+  one material per part (PLA on PETG does not bond), so the shell, frame
+  and cover are black PETG and the face and button dark blue PLA; the
+  face's own 1.0 mm track floor is back (the tray in the face's colour
+  without a filament change, and the face with its cover a subassembly
+  tested on the bench; +1.0 depth, 51.1); the wordmark engraved 0.4 in the
+  cover; the cover keyed by its bevels (1.0 left, 1.5 right, lips to
+  match, a gate that the turned cover is refused); part IDs A01 to B03,
+  C01 to C03, T01 to T05, embossed in a 5 x 7 block font on a hidden face
+  of every printed part (`blockText` in lib), in every file name
+  (`release-set.mjs`), in the README's register and on the bins; the
+  renderer labels the exploded view by ID; the README gains the component
+  register, the orientation keys, the QC plan, the counted assembly and
+  the jury paragraph. Every cut's renders are now archived under
+  `docs/assets/making-of/` by `archive-previews.py` for the website's
+  making-of page (`docs/MAKING_OF.md`). 156 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
-(PROVISIONAL) + 15.0 XIAO back to lens front + 1.0 plate + 3.2 face
-= 50.1 mm, against the field body's 74.5 over its lens bar. The body is 6.6
+(PROVISIONAL) + 15.0 XIAO back to lens front + 1.0 plate + 4.2 face
+= 51.1 mm, against the field body's 74.5 over its lens bar. The body is 7.6
 of it; the XIAO connectors (11.0) are the one
 stack term the bench can shorten, with low-profile sockets and bare pins. The plate's inner face lands at Z 35.4
 from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-154 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
+156 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
 front on the pocket floor, the face inset from the outline and over the
 pins, the plan corner's wall on the diagonal, the roof over the stow zone
 clear of the cover and its mark, the lip's slot, the keeper clear of the
@@ -450,6 +468,7 @@ area's position, the field of view.
 ## Files changed
 
 - `hardware/cad/KINO_CARRIER_BODY/` (new; `print/` and `coupons/`)
+- `docs/MAKING_OF.md`, `docs/assets/making-of/` (the archive of every cut's renders)
 - `hardware/cad/README.md`
 - `hardware/manifest.json`, `hardware/CHANGELOG.md`, `versions.json`
 
