@@ -18,7 +18,6 @@
 //   KINO_CARRIER_REAR_FRAME.stl      charcoal; the frame around the display; rear face up
 //   KINO_CARRIER_FACE.stl            cream or cobalt; the face shell; back down
 //   KINO_CARRIER_LENS_COVER.stl      charcoal; the sliding cover, its wordmark in the face's filament; back down
-//   KINO_CARRIER_KEEPER.stl          as the face; the block in the cover's entry gap, the track's stop, glued
 //   KINO_CARRIER_SHUTTER_BUTTON.stl  pink; plunger and switch retainer
 // plus six pins cut from 1.75 mm filament, and KINO_CARRIER_STACK_DUMMY.stl,
 // the electronics as blocks, for the previews and the interference gates.
@@ -67,7 +66,7 @@ function buildDummy() {
 const { bare, shell } = buildShell();
 const frame = buildFrame();
 const dummy = buildDummy();
-const { face, facePrint, props, propY, propBase, propTop, cover, keeper, markTop, lipProud, markBox } = buildFace();
+const { face, cover, markTop, lipProud, markBox } = buildFace();
 const button = buildShutterButton();
 const coverOpen = cover.translate([0, -FACE.travel, 0]);
 const coverMid = cover.translate([0, -FACE.travel / 2, 0]);
@@ -98,9 +97,8 @@ const onePart = (name, m) => check(`${name} is one part`, m.decompose().length =
   const depth = FACE.front - Z.frameRear;
   check("depth chain adds up to the body depth", Math.abs(sum - depth) < 1e-9,
     terms.map(([n, v]) => `${n} ${v}`).join(" + ") + ` = ${r2(sum)} mm; body ${r2(depth)}; nothing stands proud of the face`);
-  check("the horizon and the track leave face under the floor", P.faceBase - P.horizonD - P.panelDepth - P.coverRailProud >= P.panelFloorMin && P.faceBase - P.gripD >= 2.0,
-    `${r2(P.faceBase - P.horizonD - P.panelDepth - P.coverRailProud)} mm of plate under the relieved floor; ${r2(P.faceBase - P.gripD)} under the grip`);
-  check("the roof over the stow zone clears the cover and its mark", P.panelDepth + 1e-9 >= P.sliderT + P.markProud + 0.2, `${r2(P.panelDepth - P.sliderT - P.markProud)} mm between the raised mark and the face's roof; the roof is ${P.horizonD} mm of plate`);
+  check("the horizon sits above the track's lips and the grip leaves plate", FACE.horizonD >= 1.5 && P.panelDepth >= P.sliderT + 0.2 && P.faceBase - P.gripD >= 1.0,
+    `groove ${r2(FACE.horizonD)} deep over lips ${P.panelDepth} above the shell's plate (the cover ${P.sliderT}, ${r2(P.panelDepth - P.sliderT)} of play); ${r2(P.faceBase - P.gripD)} mm of plate under the grip`);
   check("the lens front is the pocket floor", Math.abs((Z.plateInner + Z.camPocketDepth) - Z.lensFront) < 1e-9,
     `XIAO back at Z=${r2(Z.xiaoBack)} + ${P.camStackH} = lens front Z=${r2(Z.lensFront)}; pocket ${Z.camPocketDepth} deep from the plate's inner face at Z=${r2(Z.plateInner)}`);
   check("the module's PCB has the plate to land on", Z.plateInner - Z.senseTop >= P.camModulePcbT + 0.3,
@@ -121,7 +119,7 @@ const onePart = (name, m) => check(`${name} is one part`, m.decompose().length =
   check("battery bay clears the four spacers", spacerGap >= 1.0, `${r2(bx1 - bx0)} x ${r2(by1 - by0)} mm in plan, ${r2(spacerGap)} mm from the nearest 3.5 mm spacer; a 55 x 73 pouch does not fit this plan`);
   check("battery bay is inside the carrier outline", bx0 >= 0 && by0 >= 0 && bx1 <= P.carrierW && by1 <= P.carrierH, "the cell never meets a wall");
 }
-for (const [n, m] of [["shell", shell], ["rear frame", frame], ["face", face], ["cover", cover], ["keeper", keeper]]) onePart(n, m);
+for (const [n, m] of [["shell", shell], ["rear frame", frame], ["face", face], ["cover", cover]]) onePart(n, m);
 check("shutter button file is two parts", button.decompose().length === 2, `${button.decompose().length}: plunger and retainer`);
 check("shell and frame do not overlap", vol(shell, frame) < 1e-6, `${vol(shell, frame).toFixed(4)} mm^3 shared`);
 check("face sits on the shell without overlap", vol(shell, face) < 1e-6, `${vol(shell, face).toFixed(4)} mm^3 shared`);
@@ -152,7 +150,6 @@ for (const [lx, ly] of S.lensXY) {
   openProbe(`field cone at X ${lx} clears the shell`, cone, `${P.camFovDeg + 2 * P.fovMarginDeg} degrees from a pupil ${P.camPupilBackFromLens} mm behind the lens face`);
   openProbe(`field cone at X ${lx} clears the face`, cone, `cell ${r2(2 * FACE.outerR)} mm at the panel floor, rings ${P.lensRingStep} mm proud of the cone`, face);
   openProbe(`field cone at X ${lx} clears the open cover`, cone, `cover stowed ${r2(FACE.travel)} mm down; its top edge at Y ${r2(FACE.openY1)} against the cone's bottom at Y ${r2(ly - FACE.coneR(zTop))}`, coverOpen);
-  openProbe(`field cone at X ${lx} clears the keeper`, cone, `keeper under Y ${r2(FACE.panel[1])}`, keeper);
   check(`closed cover blankets the cell at X ${lx}`, vol(cover, cylZ(lx, ly, FACE.floorZ + 0.1, FACE.outerR, 1.0, 48)) > 0.9 * Math.PI * FACE.outerR ** 2,
     `cover ${P.sliderH} tall over a ${r2(2 * FACE.outerR)} mm cell; the firmware's cover-closed test needs all four dark`);
 }
@@ -199,25 +196,18 @@ for (const x of P.frameScrewXs) for (const y of XY.wallMidY) {
 }
 check("wall carries the frame pilots", (P.wall - P.framePilotD) / 2 >= 1.2, `${r2((P.wall - P.framePilotD) / 2)} mm a side`);
 check("layer grooves leave the wall", P.wall - P.grooveD >= 4.0, `${P.grooveD} mm V-grooves at ${P.grooveP} mm pitch in a ${P.wall} mm wall`);
-// The cover in its track, the roof over it, the keeper under it.
+// The cover in its window.
 {
   const closed = vol(face, cover), open = vol(face, coverOpen), mid = vol(face, coverMid);
   check("cover closed: held by the detent and nothing else", closed > 0.01 && closed < 1.0, `${closed.toFixed(3)} mm^3 of bump inside the cover's edge crests`);
   check("cover open: held by the detent and nothing else", open > 0.01 && open < 1.0, `${open.toFixed(3)} mm^3`);
   check("cover mid-travel: free in the track", mid < 1e-3, `${mid.toFixed(4)} mm^3; the edge relief clears the bumps between the crests`);
   check("cover travel is positive and the cover stows above the rim", FACE.travel > 10 && FACE.openY0 >= FACE.panel[1] + 0.4, `${r2(FACE.travel)} mm down from Y ${r2(FACE.closedY0)}; stowed bottom edge at Y ${r2(FACE.openY0)}, panel from Y ${r2(FACE.panel[1])}`);
-  for (const [n, c] of [["closed", cover], ["open", coverOpen], ["mid", coverMid]]) {
-    check(`keeper clears the cover ${n}`, vol(keeper, c) < 1e-6, `${vol(keeper, c).toFixed(4)} mm^3`);
-  }
-  check("keeper sits in the gap without overlap and is the stop", vol(keeper, face) < 1e-6 && FACE.keeper.y1 <= FACE.openY0 - 0.3 && FACE.keeper.y1 >= FACE.openY0 - 1.0,
-    `${vol(keeper, face).toFixed(4)} mm^3 shared; the keeper's stop face at Y ${r2(FACE.keeper.y1)} (its foot behind the face reaches ${r2(keeper.boundingBox().max[1])}), the stowed cover's bottom edge at ${r2(FACE.openY0)}`);
-  check("the lip's slot runs from the stowed lip into the horizon", FACE.lipSlotY0 <= FACE.openY1 - P.coverLip[1] - P.lipSlotClear + 1e-9 && FACE.lipSlotY0 > FACE.panel[1] + 2,
-    `slot from Y ${r2(FACE.lipSlotY0)} to the groove at ${r2(FACE.horizon[0])}; closed, ${r2(FACE.closedY0 - FACE.lipSlotY0)} mm of it shows below the bar as the thumb's cue`);
   check("wordmark fits under the lip", markBox.y > FACE.closedY0 + 0.8 && markBox.y + markBox.h < FACE.closedY1 - P.coverLip[1] - 0.6 && markBox.w < (FACE.panel[2] - FACE.panel[0]) - 10,
     `${r2(markBox.w)} x ${r2(markBox.h)} mm raised ${P.markProud}; "odd jobs" at ${P.markW} mm has strokes about ${r2(1.3 * P.markW / 30)} mm, floor ${P.markMinStroke}`);
   check("wordmark strokes clear one nozzle line with margin", 1.3 * P.markW / 30 >= P.markMinStroke, `about ${r2(1.3 * P.markW / 30)} mm; print its last ${P.markProud} mm in cream on both colourways`);
   check("the grip is the horizon's right end, past the track", P.gripX0 > FACE.panel[2] + 3 && P.gripX0 < FACE.outline[2] - 12,
-    `grip from X ${P.gripX0} to the face's edge, ${P.gripD} mm deep in a ${P.horizonD} mm groove; the track ends at X ${r2(FACE.panel[2])}`);
+    `grip from X ${P.gripX0} to the face's edge, ${P.gripD} mm deep in a ${r2(FACE.horizonD)} mm groove; the track ends at X ${r2(FACE.panel[2])}`);
 }
 // The shutter.
 {
@@ -265,36 +255,8 @@ const GASK = (() => {
     `${gT} mm foam in ${r2(space)} mm: ${Math.round(squeeze(0) * 100)} % squeezed; ${Math.round(squeeze(0.3) * 100)} to ${Math.round(squeeze(-0.3) * 100)} % over +-0.3 mm of stack`);
 }
 
-// The track floor and the roof's blades.
-{
-  const [p0x, p0y, p1x, p1y] = FACE.panel;
-  const rw = P.coverRailW, [propW, propGap, neckW, neckH] = P.roofProp;
-  const zRelief = [FACE.floorZ - P.coverRailProud + 0.03, FACE.floorZ - 0.03];
-  const bandProbe = box(p0x + P.sliderBevel + 1.0, p0y + 2, zRelief[0], FACE.railXs[0] - rw / 2 - 0.5, p1y - 2, zRelief[1]);
-  const landProbe = box(FACE.railXs[0] - rw / 2 + 0.2, p0y + 2, zRelief[0], FACE.railXs[0] + rw / 2 - 0.2, FACE.horizon[0] - 1, zRelief[1]);   // in the stow zone; the cells cut the lands above it
-  check("the cover rides on two lands in a relieved floor", vol(face, bandProbe) < 0.01 && vol(face, landProbe) > 0.9 * landProbe.volume(),
-    `${r2(vol(face, bandProbe))} mm^3 of plate in the band's relief (${P.coverRailProud} below the floor); the land ${r2(100 * vol(face, landProbe) / landProbe.volume())} % solid`);
-  const lipX0 = p0x + P.sliderClr + P.coverLipLeft;
-  const slotX0 = lipX0 - P.lipSlotClear, slotX1 = lipX0 + P.coverLip[0] + P.lipSlotClear;
-  for (const x of P.roofPropXs) {
-    const landGap = Math.min(...FACE.railXs.map((rx) => Math.abs(rx - x) - rw / 2 - propW / 2));
-    const inBand = x - propW / 2 > p0x + P.sliderBevel + 0.5 && x + propW / 2 < p1x - P.sliderBevel - 0.5 && (x + propW / 2 < slotX0 - 0.1 || x - propW / 2 > slotX1 + 0.1);
-    const air = box(x - propW / 2, propY[0] + 1, propTop + 0.02, x + propW / 2, propY[1] - 1, FACE.trackTop - 0.02);
-    const blade = box(x - propW / 2 + 0.05, propY[0] + 1, propBase + neckH + 0.05, x + propW / 2 - 0.05, propY[1] - 1, propTop - 0.05);
-    check(`roof blade at X ${x} stands in the band with air under the roof`, landGap >= 1.0 && inBand && vol(facePrint, air) < 1e-3 && vol(facePrint, blade) > 0.95 * blade.volume() && vol(face, blade) < 1e-3,
-      `${r2(landGap)} mm off the nearest land; ${r2(vol(facePrint, air))} mm^3 in the ${propGap} mm of air under the roof; the blade ${r2(100 * vol(facePrint, blade) / blade.volume())} % there in the print, ${r2(vol(face, blade))} mm^3 of it in the part`);
-  }
-  const anchorsL = [p0x, ...P.roofPropXs.filter((x) => x < slotX0), slotX0], anchorsR = [slotX1, ...P.roofPropXs.filter((x) => x > slotX1), p1x];
-  const spans = [anchorsL, anchorsR].flatMap((a) => a.slice(1).map((x, i) => x - a[i]));
-  const flank = P.roofPropXs.some((x) => slotX0 - x - propW / 2 >= 0 && slotX0 - x - propW / 2 <= 0.5) && P.roofPropXs.some((x) => x - propW / 2 - slotX1 >= 0 && x - propW / 2 - slotX1 <= 0.5);
-  check("the roof bridges onto the blades and never hangs past the lip slot", flank && Math.max(...spans) <= 18,
-    `bridges of ${spans.map(r2).join(", ")} mm between the walls, the blades and the slot's edges; a blade within 0.5 of each edge of the slot (X ${r2(slotX0)} to ${r2(slotX1)})`);
-  check("a blade's witness on the roof leaves the mark its air", P.panelDepth - P.sliderT - P.markProud - propGap >= 0.3,
-    `${r2(P.panelDepth - P.sliderT - P.markProud)} mm over the raised mark, less a ${propGap} mm witness where the roof's first layer sat on a blade`);
-}
-
 // Print orientations: the shell face down; the frame rear face up; the
-// rest as drawn, bearing face on the bed. The face prints with its blades.
+// rest as drawn, bearing face on the bed.
 // Each print names the places where a face may point down past 45 degrees:
 // a bridge, a hole or a pocket, where a support could not stand or its scar
 // would never show. Everything else must be clean, so the slicer's supports
@@ -306,21 +268,18 @@ const shellZones = [
   [P.usbCX - S.usbOpenW / 2 - 1, oy0 - 1, S.usbOpenZ[0] - S.usbOpenW / 2 - 1, P.usbCX + S.usbOpenW / 2 + 1, cy0 + 1, S.usbOpenZ[1] + 1],
   ...S.strapChannels.map(([x0, y0, x1, y1]) => [x0 - 0.5, y0 - 0.5, Z.glass - 1, x1 + 0.5, y1 + 0.5, Z.glass + P.strapTunnelSkin + P.strapChannelD + 1]),
   ...pinZone(Z.plateFront - P.facePinWall - 1, Z.plateFront + 0.5),
-  [FACE.keeper.x0, FACE.keeper.y0 - 1, Z.plateFront - P.keeperFoot[0] - 1, FACE.keeper.x1, FACE.keeper.y1 + P.keeperFoot[1] + 1, Z.plateFront + 0.5],
   [P.shutterX - P.shutterCollarD / 2 - 1, oy1 - P.wall - 3, P.shutterZ - P.shutterCollarD / 2 - 1, P.shutterX + P.shutterCollarD / 2 + 1, oy1 + 1, P.shutterZ + P.shutterCollarD / 2 + 1],
 ];
 const faceZones = [
   ...pinZone(FACE.back - 0.5, FACE.back + P.facePinFace + 1),
-  [FACE.panel[0] - 1, FACE.gapY0 - 2, FACE.back - 0.5, FACE.panel[2] + 1, FACE.panel[3] + 1, FACE.front - P.horizonD + 0.5],
   [P.innerMarkAt[0] - (P.modelW - P.innerMarkW) - 3, P.innerMarkAt[1] - MODEL_H - 5, FACE.back - 0.5, P.innerMarkAt[0] + P.innerMarkW + 3 + P.innerSymbolH * 1.25 + 3, P.innerMarkAt[1] + 10, FACE.back + P.innerMarkD + 0.5],
 ];
 const retD = P.shutterRetainerPlateD;
 const printSpec = {
-  "KINO_CARRIER_SHELL.stl": [shell, [180, 0, 0], shellZones, 5, "the cavity (the four screw-foot shoulders), the LED slots (4.5 mm bridges), the USB opening's 45 degree gable, the strap tunnels, the six pin holes, the keeper's foot pocket at the bed, the collar's 0.4 recess"],
+  "KINO_CARRIER_SHELL.stl": [shell, [180, 0, 0], shellZones, 5, "the cavity (the four screw-foot shoulders), the LED slots (4.5 mm bridges), the USB opening's 45 degree gable, the strap tunnels, the six pin holes, the collar's 0.4 recess"],
   "KINO_CARRIER_REAR_FRAME.stl": [frame, [180, 0, 0], [[GASK.x0 - GASK.gW - 1, GASK.y0 - GASK.gW - 1, Z.glass - GASK.gD - 0.5, GASK.x1 + GASK.gW + 1, GASK.y1 + GASK.gW + 1, Z.glass + 0.5]], 2, "the gasket groove's ceiling (a 1.5 mm bridge at the bed); holes through, the chamfer and the pad face up"],
-  "KINO_CARRIER_FACE.stl": [facePrint, [0, 0, 0], faceZones, 5, "the six pin holes, the track (the roof bridged onto its blades) and the signature's 0.4 mm ceilings at the bed"],
+  "KINO_CARRIER_FACE.stl": [face, [0, 0, 0], faceZones, 5, "the six pin holes and the signature's 0.4 mm ceilings at the bed; the lips' undersides are steeper than 45"],
   "KINO_CARRIER_LENS_COVER.stl": [cover, [0, 0, 0], [FACE.panel[0] + P.sliderClr, FACE.panel[2] - P.sliderClr].map((ex) => [ex - 1.5, -1e3, FACE.floorZ - 1, ex + 1.5, 1e3, FACE.floorZ + P.sliderT - P.sliderBevel + 0.05]), 2, "the 0.2 mm ledges over the edge reliefs"],
-  "KINO_CARRIER_KEEPER.stl": [keeper, [180, 0, 0], [], 1, "nothing: the foot faces up, its underside 47 degrees"],
   "KINO_CARRIER_SHUTTER_BUTTON.stl": [button, [0, 0, 0], [[32 - retD / 2 - 1, -1, 0.3, 32 + retD / 2 + 1, retD + 1, 10]], 1, "the retainer's leg-slot bridge and wire notches, inside the pod"],
 };
 const placed = (part, rot, zones) => {
@@ -353,9 +312,8 @@ const coupons = (() => {
     "KINO_COUPON_DECK.stl": toBed(cut(shell, box(P.shutterX - 18, cy1 - 3, 8, P.shutterX + 18, oy1 + 1, Z.plateInner + 1)).rotate([180, 0, 0])),
     "KINO_COUPON_STRAP_SHELL.stl": toBed(cut(shell, box(ox0 - 1, oy0 - 1, Z.glass - 1, ox0 + 22, oy0 + 14, Z.glass + 14)).rotate([180, 0, 0])),
     "KINO_COUPON_STRAP_FRAME.stl": toBed(cut(frame, box(ox0 - 1, oy0 - 1, Z.frameRear - 1, ox0 + 22, oy0 + 14, Z.glass + 1)).rotate([180, 0, 0])),
-    "KINO_COUPON_TRACK_FACE.stl": toBed(cut(facePrint, box(p0x - 4, FACE.outline[1] - 1, FACE.back - 1, p0x + 70, FACE.horizon[1] + 4, FACE.front + 1))),
+    "KINO_COUPON_TRACK_FACE.stl": toBed(cut(face, box(p0x - 4, FACE.outline[1] - 1, FACE.back - 1, p0x + 70, FACE.horizon[1] + 4, FACE.front + 1))),
     "KINO_COUPON_TRACK_COVER.stl": toBed(cut(cover, box(p0x - 4, FACE.outline[1] - 1, FACE.back - 1, p0x + 70, FACE.horizon[1] + 4, FACE.front + 3))),
-    "KINO_COUPON_TRACK_KEEPER.stl": toBed(cut(keeper, box(p0x - 4, FACE.outline[1] - 1, FACE.back - 2, p0x + 70, FACE.horizon[1] + 4, FACE.front + 1)).rotate([180, 0, 0])),
     "KINO_COUPON_SHRINK_BAR.stl": box(0, 0, 0, 100, 10, 3),
   };
 })();
@@ -368,7 +326,7 @@ const files = {};
 for (const [name, m] of Object.entries(prints)) files[name] = writeStl(outDir, name, m);
 for (const [name, m] of Object.entries(coupons)) files[name] = writeStl(outDir, name, m);
 files["KINO_CARRIER_STACK_DUMMY.stl"] = writeStl(outDir, "KINO_CARRIER_STACK_DUMMY.stl", dummy);
-for (const [name, m] of [["shell", shell], ["frame", frame], ["face", face], ["cover", cover], ["cover-open", coverOpen], ["keeper", keeper]]) {
+for (const [name, m] of [["shell", shell], ["frame", frame], ["face", face], ["cover", cover], ["cover-open", coverOpen]]) {
   writeStl(outDir, `preview-${name}.stl`, m);
 }
 writeStl(outDir, "preview-shutter.stl", capPreview());
@@ -378,13 +336,13 @@ writeStl(outDir, "preview-mark-open.stl", markTop.translate([0, -FACE.travel, 0]
   const [px0, py0, px1, py1] = XY.p4;
   writeStl(outDir, "preview-glass.stl", box(px0 + 0.5, py0 + 0.5, Z.glassFront - 0.2, px1 - 0.5, py1 - 0.5, Z.glassFront + 2));
 }
-files["KINO_CARRIER_ASSEMBLED_PREVIEW.stl"] = writeStl(outDir, "KINO_CARRIER_ASSEMBLED_PREVIEW.stl", fuse([shell, frame, dummy, face, cover, keeper]));
-files["KINO_CARRIER_OPEN_PREVIEW.stl"] = writeStl(outDir, "KINO_CARRIER_OPEN_PREVIEW.stl", fuse([shell, frame, dummy, face, coverOpen, keeper]));
+files["KINO_CARRIER_ASSEMBLED_PREVIEW.stl"] = writeStl(outDir, "KINO_CARRIER_ASSEMBLED_PREVIEW.stl", fuse([shell, frame, dummy, face, cover]));
+files["KINO_CARRIER_OPEN_PREVIEW.stl"] = writeStl(outDir, "KINO_CARRIER_OPEN_PREVIEW.stl", fuse([shell, frame, dummy, face, coverOpen]));
 const report = {
   package: "KINO_CARRIER_BODY", generated: new Date().toISOString(),
   body: { width: r2(XY.bodyW), height: r2(XY.bodyH), depth: r2(FACE.front - Z.frameRear), lensRowY: r2(XY.lensY), cameraXs: P.cameraXs },
   stack: Object.fromEntries(Object.entries(Z).map(([k, v]) => [k, r2(v)])),
-  face: { back: r2(FACE.back), front: r2(FACE.front), trackTop: r2(FACE.trackTop), outline: FACE.outline.map(r2), panel: FACE.panel.map(r2), horizon: FACE.horizon.map(r2), coverClosed: [r2(FACE.closedY0), r2(FACE.closedY1)], coverOpen: [r2(FACE.openY0), r2(FACE.openY1)], travel: r2(FACE.travel), lipSlotY0: r2(FACE.lipSlotY0), cellOuterD: r2(2 * FACE.outerR), roofBlades: P.roofPropXs, roofBladeAir: P.roofProp[1] },
+  face: { back: r2(FACE.back), front: r2(FACE.front), trackTop: r2(FACE.trackTop), outline: FACE.outline.map(r2), panel: FACE.panel.map(r2), horizon: FACE.horizon.map(r2), coverClosed: [r2(FACE.closedY0), r2(FACE.closedY1)], coverOpen: [r2(FACE.openY0), r2(FACE.openY1)], travel: r2(FACE.travel), horizonD: r2(FACE.horizonD), cellOuterD: r2(2 * FACE.outerR) },
   shutter: { stem: r2(SHUTTER.stem), podInnerY: r2(SHUTTER.podInnerY), capD: P.shutterPressCapD },
   files, gates: { total: checks.length, failed: checks.filter((c) => !c.pass).length }, checks,
 };

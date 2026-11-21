@@ -135,18 +135,17 @@ export const P = Object.freeze({
   // over the whole front with a pillow edge, a pink shutter, quiet markings.
   // The face covers the plate and the walls' front ends (the concept's v18
   // front: the fascia fills the front, the charcoal is the sides and the cap).
-  faceBase: 6.4,             // the face plate: horizon 1.5 + track 3.4 + 0.25 relief + 1.25 under the floor; nothing stands proud of it but the cover's lip
+  faceBase: 4.0,             // the face plate: the track's lips 2.3 + the horizon 1.7 above them; the window through it is the cover's track, the shell's plate its floor
   faceEdgeR: 2.0,            // its front edge, a 45 degree chamfer. The R3.5 quarter round at 0.2 mm layers terraced 1.17, 0.46, 0.33 mm wide along 400 mm of the first edge a juror touches; the chamfer steps 0.2 every layer, one texture with the grooves. Rounds in plan (R10), chamfers in Z
   faceInset: 0.8,            // the face steps in from the shell's outline, so a charcoal line of wall end frames it (the concept frames its colour field)
   // The horizon: a full-width groove across the face at the bar's height,
   // its ends open through the edge round. The bar sits in it; the face is
   // built around the line. The jury's one move.
-  horizonD: 1.5,             // 1.0 did not read in a render or on a table; the roof over the stow zone is this thick too
   horizonPad: 1.5,           // of groove floor above and below the closed bar, so the line shows round it
   // The grip: the horizon's right end, cut deeper, so the middle finger
   // pulls against its left wall. No ribs: ribs are the charcoal's texture.
   gripX0: 100.0,
-  gripD: 3.5,                // the middle finger's wall; 2.0 was a fingertip's edge, the Sigma BF critique ("ergonomics non-existent")
+  gripD: 3.0,                // the middle finger's wall in a 4.0 plate (1.0 left under it); 2.0 was a fingertip's edge, the Sigma BF critique
   // The model name, "kino D4", engraved on the top deck left of the shutter
   // (the deck is a vertical wall in print, so an engraving there is free).
   modelW: 40.0,              // inside, with the signature: a 0.6 mm stroke engraved at the bed face prints; on a vertical deck it did not
@@ -178,27 +177,11 @@ export const P = Object.freeze({
   // The lens band: proud of the base, chamfered, with a recessed panel that is
   // the cover's track. Its Y extent is DERIVED from the cover's travel.
   bandX: [3.2, 97.2],
-  panelFloorMin: 1.2,        // face left under the panel floor
-  // The stow zone is roofed by the face itself (the plate above the track,
-  // a 1 mm bridge in print); the cover slides under it with its raised mark.
-  // A slot through the roof carries the cover's lip. The keeper block
-  // refills the cover's entry gap and is the track's stop, glued.
-  lipSlotClear: 0.5,         // per side around the lip, and below it when stowed
   bandChamfer: 1.5,
   bandRim: 2.0,              // flat rim between the chamfer and the panel
   bandBottomInset: 4.9,      // panel bottom = outline + chamfer 2.0 + this = the sixth cut's 6.9, so the track, the travel and the detents stay where the bench tuned them
   bandR: 9.0,                // pill ends; R12 cut 0.1 mm into the panel's corners through a 3.5 mm rim (gated now)
-  panelDepth: 3.4,           // cover 2.0, its raised mark 0.8, and 0.3 under the face's roof over the stow zone (PETG bridges sag 0.2 to 0.3 over 16 mm at full fan); the coupon confirms
-  // The roof over the stow zone, in a back-down print, is a plate with both
-  // Y edges free (the entry gap below, the horizon above) and the lip slot
-  // through it: two flaps hanging 45 and 21 mm from one wall each. A slicer
-  // fills the track with tree supports and scars the roof and the floor.
-  // Breakaway blades in the print file instead: in the relieved band, off
-  // the lands, one at each edge of the slot, so the roof's lines bridge 10
-  // to 16 mm onto them. Snapped out through the entry gap before the keeper
-  // goes in; the stubs sit below the lands, where the cover never touches.
-  roofPropXs: [23.0, 37.0, 50.7, 72.9, 83.3],
-  roofProp: [0.8, 0.2, 0.42, 0.4],   // blade width, air under the roof (one layer), neck width (one line), neck height at the floor
+  panelDepth: 2.3,           // the lips' top above the shell's plate: the cover 2.0 and 0.3 of play under the lip, as the field body's track had; the mark rides 0.5 proud of the groove floor
   lensRingStep: 0.0,
   cellSink: 0.8,             // 45 degrees at each cell's mouth in the track floor: a rim, so the four read as eyes and not as a microphone array; prints face-up         // plain cones: the stepped rings read as damage at this size
   // The cover: the field body's bench-tuned track, restated. Drops to open.
@@ -214,12 +197,6 @@ export const P = Object.freeze({
   sliderEdgeCrest: 4.0,      // past the R3 corners, so each detent meets a straight edge
   sliderEdgeRamp: 0.6,
   sliderEdgeRelief: 0.2,
-  keeperClr: 0.1,
-  keeperFoot: [0.9, 1.1],    // Y proud above the keeper's body, Z into the shell's plate; its underside slopes 47 degrees back to the body so the foot-up print hangs nothing: the foot sits in a pocket in the plate under the face, so the keeper is captive without glue and the cover is a serviceable part
-  keeperFootClr: 0.1,
-  coverRailW: 2.5,
-  coverRailProud: 0.25,
-  coverRailOffset: 30.0,
   coverLip: [20.0, 1.5],     // a thumb needs 16; at 30 the open slot under the eyes read as a mouth
   coverLipLeft: 45.0,        // the lip's left end from the bar's left edge: the wordmark ends at 36, so the roof's slot shows plain bar and never a letter (a stray "s" showed through it, the one wrong detail at the point of use)
   coverLipRoot: 0.4,         // 45 degree root on the lip's three free sides: the lip takes a face-down drop     // the thumb lip on the cover's TOP edge, width x height; the thumb pushes down on its top face (the coupon says whether 1.5 is enough)

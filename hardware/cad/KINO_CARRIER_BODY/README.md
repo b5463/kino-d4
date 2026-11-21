@@ -7,7 +7,7 @@ stand in sockets on it, and each camera module hangs off its XIAO on a short
 soft ribbon. The carrier is the chassis. The shell holds the carrier by the
 same four M2 screws that hold the stack and captures each camera head in a
 pocket with pinch ribs, so the picture does not shake on its ribbon. The face
-shell carries the form. Issue #252; eleventh cut, nothing printed yet; the
+shell carries the form. Issue #252; twelfth cut, nothing printed yet; the
 night colourway (cobalt face) prints first, the coupons in `coupons/`
 before it.
 
@@ -34,8 +34,8 @@ lenses at positive Z. The chain is re-added by a gate every build.
 | XIAO male header insulator | 2.5 | 23.9 | **PROVISIONAL**: the headers soldered to the owner's XIAOs; the carrier's assembly print left this out |
 | XIAO back face to the lens front | 15.0 | 38.9 | Seeed's assembled Sense stack |
 | plate ahead of the lens | 1.5 | 40.4 | chosen; the shell's front |
-| face | 6.4 | 46.8 | its edge a 2 mm 45 degree chamfer; the horizon, the track and the roof over the stow zone are cut into it; nothing stands proud of it but the cover's 1.5 mm lip |
-| **body** | **63.5** | | |
+| face | 4.0 | 44.4 | its edge a 2 mm 45 degree chamfer; the horizon is cut into it and the cover's window through it; nothing stands proud of it but the cover's 1.5 mm lip |
+| **body** | **61.1** | | |
 
 The module's PCB face is the Z datum for the camera, as in the field body: it
 lands on the plate's inner face at Z 35.4 (the Sense board's top is at 31.5, so
@@ -64,11 +64,11 @@ What the depth is made of, lens front to glass, and what the body adds:
 | of which the P4-to-carrier layer (inserts and spacers; the battery lives in it) | 11.3 |
 | of which the XIAO connectors (8.5 socket + 2.5 male header insulator) | 11.0 |
 | of which the XIAO, Sense board and camera | 15.0 |
-| body in front: plate ahead of the lens 1.5, face 6.4 | 7.9 |
+| body in front: plate ahead of the lens 1.5, face 4.0 | 5.5 |
 | body behind: the rear frame 2.5 and its 0.4 off the glass | 2.9 |
-| **in all** | **63.5** |
+| **in all** | **61.1** |
 
-The body is 10.8 mm of the 63.5; 4.9 of the face's 6.4 is the cover's track
+The body is 8.4 mm of the 61.1; the face's 4.0 is the track's lips and the groove
 and the groove it sits in. The one stack term that is a bench choice
 is the XIAO connectors: the eight 1x07 sockets are hand-fit, so 4.3 mm
 low-profile strips in place of the 8.5 mm Wurth part, and XIAOs soldered on
@@ -136,11 +136,10 @@ ideas"). Three filaments, each on its own part:
 
 | File | What | Filament | Print |
 |---|---|---|---|
-| `print/KINO_CARRIER_SHELL.stl` | front plate with the four pockets (0.5 mm corner reliefs) and 7.5 mm bores, all four walls to the display plane with R10 plan corners, 0.5 mm V-grooves at 2.4 mm pitch round the whole body, the deck included whole (one 1.5 mm smooth ring round the collar), clear of the frame pilots; nothing engraved; the horizon carried round the left wall only; four screw pillars, the shutter pod (every bore gabled; the collar a 0.4 mm round shadow line), the LED slots, the USB-C opening, the frame pilots, six countersunk pin holes in the walls' front ends, four strap tunnels inside the top and bottom walls' ends under 0.6 mm of wall, the keeper's foot pocket in the plate's front under the face, three ribs in the shutter's guide bore; the bores, the front edge and the rear edge chamfered 0.4 | charcoal | face down, PETG, 0.20 mm, no support (gated) |
+| `print/KINO_CARRIER_SHELL.stl` | front plate with the four pockets (0.5 mm corner reliefs) and 7.5 mm bores, all four walls to the display plane with R10 plan corners, 0.5 mm V-grooves at 2.4 mm pitch round the whole body, the deck included whole (one 1.5 mm smooth ring round the collar), clear of the frame pilots; nothing engraved; the horizon carried round the left wall only; four screw pillars, the shutter pod (every bore gabled; the collar a 0.4 mm round shadow line), the LED slots, the USB-C opening, the frame pilots, six countersunk pin holes in the walls' front ends, four strap tunnels inside the top and bottom walls' ends under 0.6 mm of wall, three ribs in the shutter's guide bore; the bores, the front edge and the rear edge chamfered 0.4 | charcoal | face down, PETG, 0.20 mm, no support (gated) |
 | `print/KINO_CARRIER_REAR_FRAME.stl` | the 2.5 mm frame around the display, a 0.9 mm gasket groove in its inner face round the window (the P4 is held by 2 mm foam in it), its outer edge chamfered 1.2 toward the rear and 0.4 toward the shell (the joint is a drawn V on the groove rhythm), 95.6 x 58.2 window with a 1.5 mm chamfer toward the rear, a thumb pad with 1.0 x 0.6 grooves over the whole right border (X 109.5 to 121), the ODD JOBS symbol engraved 1 mm deep with a stepped edge on the left, four plain M2 holes (the pan heads sit proud, as the brand's concept shows its rear screws), eight 3.0 x 2.4 strap slots, two at each corner | charcoal | rear face UP, 0.12 mm |
-| `print/KINO_CARRIER_FACE.stl` | the face: a 6.4 mm plate inset 0.8 mm from the shell's outline so a line of charcoal wall end frames it, its front edge a 2 mm 45 degree chamfer, its back edge chamfered 0.4; the horizon, a 1.5 mm groove edge to edge at the bar's height with its lips chamfered 0.8 above and 0.4 below, its right end 3.5 mm deep as the grip; the cover's track cut below the groove; the face itself the roof over the stow zone, with a full-height slot for the cover's lip, right of the wordmark; four 7.5 mm cells with a 0.8 mm rim; six countersunk pin holes in the back; the signature engraved 0.4 mm inside, mirrored (the symbol, "odd jobs", "kino D4") | cobalt (night) or cream (day) | back down, 40 % gyroid with 100 % under the horizon and the track; the roof over the stow zone is a 1.5 mm plate bridging 16 mm |
+| `print/KINO_CARRIER_FACE.stl` | the face: a 4.0 mm plate inset 0.8 mm from the shell's outline so a line of charcoal wall end frames it, its front edge a 2 mm 45 degree chamfer, its back edge chamfered 0.4; the horizon, a 1.7 mm groove edge to edge at the bar's height with its lips chamfered 0.8 above and 0.4 below, its right end 3.0 mm deep as the grip; the cover's window, 87 x 34.5 with R3.1 corners, through the whole plate, with dovetail lips on its two long walls and two detent pairs; six countersunk pin holes in the back; the signature engraved 0.4 mm inside, mirrored (the symbol, "odd jobs", "kino D4") | cobalt (night) or cream (day) | back down, no support |
 | `print/KINO_CARRIER_LENS_COVER.stl` | the sliding cover, 86.8 x 16.5 x 2 with R3 corners, its back edge chamfered 0.4, "odd jobs" raised 0.8 (the flush to CREAM at 2.00 mm, the bar's top face, on both colourways; the lip prints cream too), a 20 x 1.5 lip with a 0.4 mm root on its top edge from 45 to 65 mm off the bar's left end, 1.5 proud of the face | charcoal, then cream | back down, 0.08 mm layers |
-| `print/KINO_CARRIER_KEEPER.stl` | the block that refills the cover's entry gap through the whole plate under the track and is the track's stop, cut from the face's own solid so the edge chamfer runs through it, with a 0.9 x 1.1 foot on its back that sits in a pocket in the shell's plate under the face: captive, no glue, so the cover is a serviceable part | as the face | front down, the foot up |
 | `print/KINO_CARRIER_SHUTTER_BUTTON.stl` | the plunger (14 mm flat cap with a 0.5 mm 45 degree edge, 2 mm proud of the deck, the 16 mm flange chamfered at the bed, 0.15 a side in its bore, the cap running on three 0.2 mm ribs in the guide) and the switch retainer (6 x 6 x 4.3 mm tactile switch) | pink | flange down, 0.08 mm layers |
 | six pins | 1.75 mm filament cut 4.5 mm long into 1.9 mm holes countersunk 0.4: 3 into the wall end, 2 into the face; they locate and retain, no glue | any | |
 
@@ -174,10 +173,11 @@ Where it comes from, and what each thing is for:
   horizon's wall side, plus the firmware's `body.hand`; one `hand` switch
   that drives all four is on the list, not in this cut.
 - **The four-mark.** The cover closed is one dark bar in the line, the UI's
-  landed bar, and it carries the brand; dropped, it slides under the face
-  (the plate above the track is the roof over the stow zone) and the four
-  cells show in the line, the UI's four-mark. Only the lip shows, in its
-  slot, as the thumb's cue. No door, no apron: the face is the door.
+  landed bar, and it carries the brand; dropped, it slides down its window
+  into the open stow zone and the four bores show in the line, the UI's
+  four-mark. The window is open: the charcoal plate shows through it under
+  the bar, and the dropped cover sits in it in plain view. The twelfth cut
+  chose that over a roof, a slot, a keeper and five breakaway blades.
 - **Colour is an event.** Charcoal and cream (or cobalt) at rest; the one
   pink thing is the button you press. No other colour on the body.
 - **One word outside, the rest inside.** The brand on the bar: "odd jobs"
@@ -343,79 +343,52 @@ listed in ECN-0009.
 ### The face and the cover
 
 The shell's front plate prints on the bed, so it can carry no relief; the
-face does. It covers the front to 0.8 mm of the walls' outer edge, 6.4 mm
+face does. It covers the front to 0.8 mm of the walls' outer edge, 4.0 mm
 thick with its front edge a 2 mm 45 degree chamfer and its back edge
 chamfered 0.4 against the elephant foot. Into it, from the front: the
-horizon, 1.5 mm deep across the full width, its upper lip chamfered 0.8 and
-its lower 0.4 so the line catches light from every angle (a flat-floored
-slot had no highlight and the jury's one move was invisible from the
-front), its right end 3.5 deep as the grip; below the groove's floor, the
-cover's track, 3.4 mm deep (the cover 2.0, its raised mark 0.8 and 0.6
-under the roof), its panel from the entry gap at the bottom to 0.5 above
-the closed cover's top, with 1.25 mm of plate left under the relieved
-floor (the relief is 0.25 mm cut into the plate between two 2.5 mm lands;
-the first nine cuts cut it upward into the track's own void, so the lands
-were 0.01 mm and the cover dragged on the whole floor; a gate now probes
-the relief and a land). The plate above the track outside the groove is
-the roof over the stow zone, 1.5 mm thick (the technician's call: 1 mm
-sagged onto the mark in his experience; 0.6 under it after the generalist
-jury found the mark riding on the sag; the coupon decides). In a back-down
-print that roof is a plate with both of its Y edges free, the entry gap
-below it and the horizon above, and the lip slot through it: two flaps
-hanging 45 and 21 mm from one wall each, not a bridge, and a slicer would
-fill the track with tree supports and scar the roof's underside and the
-floor the cover rides on. So the print file carries five breakaway
-blades, 0.8 mm wide, standing on the relieved band off the lands, one
-within 0.2 mm of each edge of the lip slot, rising to one layer (0.2 mm)
-under the roof: the roof's lines bridge 10 to 16 mm onto them (gated:
-every span, a blade at each slot edge, the witness leaving the mark 0.4).
-Each blade stands on a one-line neck and snaps out through the entry gap
-before the keeper goes in; the stubs sit 0.25 below the lands, where the
-cover never touches, and the witness is on a ceiling nothing rides on.
-They are in `KINO_CARRIER_FACE.stl` and the track coupon only; the
-previews show the part. In the track: dovetail lips on both walls, two
-detent pairs past the cover's R3 corners, 0.1 mm a side, the cover riding
-on the two lands. The four cells are
-plain 7.5 mm bores with a 0.8 mm 45 degree rim at the mouth, so they read
-as eyes and not as a microphone array: with the pupil 1.1 mm behind the
-lens face, the 82 degree field does not outgrow 7.5 mm inside this face,
-so the stepped cones of the earlier cuts collapsed to the bore (a gate
-probes the true cone through every part).
+horizon, 1.7 mm deep across the full width, its upper lip chamfered 0.8 and
+its lower 0.4 so the line catches light from every angle, its right end
+3.0 deep as the grip (1.0 of plate left under it). Through it: the cover's
+window, 87 x 34.5 mm with R3.1 corners, from the stow zone's bottom rim to
+0.5 above the closed cover's top. The shell's own charcoal plate is the
+track floor; the window's two long walls carry the dovetail lips (1.0
+wide, 1.1 deep from 2.3 above the plate, so the cover's 1.0 bevel runs
+under them with 0.3 of play) and two detent pairs past the cover's R3
+corners; 0.1 mm a side. The window's bottom rim is the stowed cover's
+stop and its top rim the closed cover's. The four cells are the shell's
+7.5 mm bores with their 0.4 chamfer, seen through the window.
 
-The cover drops 17.6 mm to shoot, from the groove down under the roof; the
-travel is derived from the face's edge. 16.5 mm tall, it blankets the 7.5 mm
-cells by 4.5 a side when closed and its top edge clears the field cone when
-stowed. Both are gates, as is the closed cover blanketing every cell (the
-firmware's cover-closed test needs all four dark). Its lip, 20 mm wide
-with a 0.4 mm root, from 45 to 65 mm off the bar's left end and 1.5 mm
-proud of the face (a thumb needs 16; at 30 the open slot read as a mouth;
-at 1.0 a glove could not lift it), rides in a 21 mm slot through the roof that runs the roof's full height,
-from the panel's bottom rim up into the groove (the roof's bridge lines
-run across the slot's edges onto the blades beside them); dropped, plain
-bar shows through the slot, never a letter (the wordmark ends at 36 mm;
-the seventh cut's centred slot showed the "s").
+The cover drops 17.6 mm to shoot; the travel is derived from the face's
+edge. 16.5 mm tall, it blankets the 7.5 mm cells by 4.5 a side when closed
+and its top edge clears the field cone when stowed. Both are gates, as is
+the closed cover blanketing every cell (the firmware's cover-closed test
+needs all four dark). Closed, its top sits 0.3 below the groove floor and
+its raised mark 0.5 above it. Its lip, 20 mm wide with a 0.4 mm root,
+from 45 to 65 mm off the bar's left end and 1.5 mm proud of the face (a
+thumb needs 16; at 1.0 a glove could not lift it), is what the thumb
+pushes down and lifts back. Dropped, the cover sits in the open stow zone
+in plain view, the bar's top 1.7 below the face.
 
-The keeper refills the cover's entry gap, which now runs through the
-whole plate below the track, and is the track's stop, cut from the face's
-own solid so the edge chamfer runs through it, in the face's filament. No
-glue: a 0.9 x 1.1 mm foot on its back, under the plate above the gap, sits
-in a pocket in the shell's plate; the face traps it forward, the pocket
-holds it down and back. The cover is the wear part, and it comes out: six
-pins, face off, keeper lifts, cover drops. The foot's underside slopes 47
-degrees back to the body, so the keeper prints front down with the foot
-up and hangs nothing. The face is held by six 1.75 mm filament
-pins in 1.9 mm holes countersunk 0.4 at every mouth (a 1.8 hole at a bed
-face closed to 1.5 with the elephant foot; 2.0 with the countersink and the
-0.2 compensation did not retain), 3 mm into the walls' front ends and 2 mm
-into its back (the two bottom pins sit outside the entry gap). They locate
-and retain; there is no glue anywhere in the body. The pillar coupon sets
-the hole.
+Loading: the cover goes into the window from the face's back, bevels
+under the lips, before the face goes onto the shell; the shell's plate
+then closes the track. To service it: six pins, face off, cover out. The
+face is held by six 1.75 mm filament pins in 1.9 mm holes countersunk 0.4
+at every mouth (a 1.8 hole at a bed face closed to 1.5 with the elephant
+foot; 2.0 with the countersink and the 0.2 compensation did not retain),
+3 mm into the walls' front ends and 2 mm into its back. They locate and
+retain; there is no glue anywhere in the body. The pillar coupon sets the
+hole.
 
 Earlier drafts, each thrown out by a gate or a review: a rim pocket (the
 face flush inside walls run past the plate: 10,000 mm^2 of overhang face
 down); a proud face inside a flat margin (a lid on a tin); a 1 mm band rim
 with rivet bosses over the pin holes; a glued apron plate over the stow
-zone (a door that did nothing, and 0.6 mm proud by arithmetic).
+zone (a door that did nothing, and 0.6 mm proud by arithmetic); the face
+roofing the stow zone with a slot for the lip, an entry gap below the
+track and a captive keeper refilling it (sixth to eleventh cuts: the roof
+was two cantilevers in print and needed five breakaway blades, the keeper
+a foot and a pocket, the track a relieved floor; the owner's call on the
+twelfth cut was to open the stow zone and drop all of it).
 
 ### The shutter
 
@@ -437,12 +410,11 @@ sits 12 mm above the pod's bottom.
    face: its 16 mm flange cannot pass the 14.6 mm guide, so it never goes in
    from the top. Then the switch into the retainer, the retainer into the
    pod from the rear behind the flange, leads out through the side channels.
-2. Cover into the face's track from below through the entry gap, up under
-   the roof to its detent.
-3. Six filament pins into the walls' front ends; keeper into its pocket in
-   the plate, foot down; face pressed on over it, the keeper's body rising
-   into the gap. To service the cover, reverse: face off, keeper out, cover
-   drops.
+2. Cover into the face's window from the face's back, bevels under the
+   lips, to its closed detent.
+3. Six filament pins into the walls' front ends; face pressed on over them,
+   the shell's plate closing the track. To service the cover: face off,
+   cover out.
 4. Stack the P4, spacers, carrier and nodes outside the body. Slide the stack
    into the shell from the rear, carrier first, until the carrier meets the
    four pillar feet. Face off, drive the four M2 screws through the shafts,
@@ -463,7 +435,7 @@ are each part in print orientation from `render-stl.py`.
 
 ## Gates
 
-`node generate-carrier-body.mjs` writes `.candidate/` and runs 180 gates,
+`node generate-carrier-body.mjs` writes `.candidate/` and runs 158 gates,
 throwing on the first failure (`KINO_SOFT_GATES=1` collects them): the depth
 chain re-added over the lens band, the lens front on the pocket floor, the
 module PCB with the plate to land on, the battery bay tall enough for the cell
@@ -478,8 +450,7 @@ hole open and blind, the carrier's sweep from the rear clear up to the feet
 with the pod above it, the USB plug and the LED slots through the bottom wall,
 the frame window over the whole active area with 3 mm of border, the frame
 pilots and holes aligned, the cover held by the detents closed and open and
-free between, stowed above the panel's rim, the keeper filling the gap and
-sitting under the stowed cover as its stop, the wordmark inside the cover's
+free between, stowed above the window's rim, the wordmark inside the cover's
 band, the shutter bores open from the top face and from the cavity, the lead
 routes open, the pod above the carrier, the stem positive, the retainer
 passing its bore, the strap tunnels open under their skin, the signature
@@ -489,16 +460,13 @@ lists the places a face may point down past 45 degrees, a bridge, a hole
 or a pocket where a support could not stand or its scar would never show;
 anything down-facing outside them fails, with its position; a chamfer
 counts only past 45 degrees, so every chamfer here is exactly 45) and on a
-250 x 210 bed, the cover on two lands over a relieved floor, each roof
-blade in the band off the lands with its layer of air, the roof's spans
-and the blades at the slot's edges, the witness clear of the mark, the
-battery bay with 10 % of swell, the keeper's stop face under the stowed
-cover with its foot behind the face, the frame off the glass, the gasket
+250 x 210 bed, the horizon above the track's lips with plate under the
+grip, the battery bay with 10 % of swell, the frame off the glass, the gasket
 groove on the glass's margin, open, and its squeeze over the stack's
 tolerance, and every coupon one piece on the bed.
 
-`node promote.mjs` validates the candidates, copies the six parts into
-`print/`, the nine coupons into `coupons/` and the report into `reports/`,
+`node promote.mjs` validates the candidates, copies the five parts into
+`print/`, the eight coupons into `coupons/` and the report into `reports/`,
 sweeps stale files and validates again. There is no independent scan yet; promote says so every run.
 
 ## Print plan
@@ -509,16 +477,14 @@ frame and the face; 0.08 on the cover and the button.
 
 | | |
 |---|---|
-| supports | off, on every part. No part needs any: every down-facing surface is a bridge of 4.5 mm or less, a blind hole, a pocket at the bed, or the roof on its blades (the gate lists them per print, and anything else fails). Supports here do damage: trees in the track scar the roof and the floor the cover rides on, trees in the pin holes and the strap tunnels block them, trees in the keeper's pocket and the collar's recess fill a 0.9 and a 0.4 mm fit. If the slicer insists, set its overhang threshold so the 45 degree chamfers and the 49 degree groove flanks never trigger (faces steeper than 40 degrees from the bed unsupported) and keep bridge detection on; tree supports painted on by hand are allowed under the face's roof only, and the blades make them unnecessary |
-| the face's roof | five breakaway blades are in the STL, in the track under the roof; after the print, snap each out through the entry gap (pull toward the gap; the neck is one line), before the keeper goes in. Check the roof's underside is clean over the slot's edges and the floor's lands are untouched |
+| supports | off, on every part. No part needs any: every down-facing surface is a bridge of 4.5 mm or less, a blind hole or a groove at the bed (the gate lists them per print, and anything else fails with its position). Supports here do damage: trees in the pin holes and the strap tunnels block them, trees in the gasket groove and the collar's recess fill a 0.9 and a 0.4 mm fit. If the slicer insists, set its overhang threshold so the 45 degree chamfers, the 49 degree groove flanks and the track lips' 48 degree undersides never trigger (faces steeper than 40 degrees from the bed unsupported) and keep bridge detection on |
 | elephant foot compensation | 0.2 mm (the chamfers are a second defence, not the first) |
 | seam | scarf, painted onto the bottom wall; the grooves hide a seam only where it is straight |
-| bridges | fan 100 %, bridge speed 20 mm/s, thick bridges off: the roof over the track, the strap tunnels, the LED slots |
-| face | 40 % gyroid with six top layers (1.2 mm) and 100 % modifier volumes under the horizon and the track (100 % over 128 mm bowed at the corners and kept moving for weeks; 40 g lighter); top solid lines monotonic along X on the face, the horizon's floor, the keeper and the cover's front, line width 0.42, flow +2 %; no ironing (PETG gums and the gloss goes uneven on cobalt); no modelled texture on the front (nothing under one layer exists, and a 0.2 relief reads as a sticker) |
-| keeper | front down, the foot up, 0.20 mm |
+| bridges | fan 100 %, bridge speed 20 mm/s, thick bridges off: the strap tunnels, the LED slots, the frame's gasket groove |
+| face | 40 % gyroid with six top layers (1.2 mm) and 100 % modifier volumes under the horizon and round the window (100 % over 128 mm bowed at the corners and kept moving for weeks); top solid lines monotonic along X on the face, the horizon's floor and the cover's front, line width 0.42, flow +2 %; no ironing (PETG gums and the gloss goes uneven on cobalt); no modelled texture on the front (nothing under one layer exists, and a 0.2 relief reads as a sticker) |
 | frame | 0.12 mm layers throughout (21 layers; the 1.2 chamfer steps 0.12) |
 | cover | charcoal to 2.00 mm, the bar's top face, then the flush to cream: the lip and the mark's four raised layers print cream; both colourways; purge 120 mm^3 (the first cream layers on a 1.3 mm stroke come out grey) |
-| seams | scarf, painted: the face's into the inside corner of the entry gap below the track and into the horizon's left wall corner above it; the shell's into the left wall's horizon channel corner (vertical in print), not the bottom wall (the grooves hide a seam only on straight runs and it jumps at the USB and LED openings); the cover's into the edge-relief notch; the button's toward the rear |
+| seams | scarf, painted: the face's into the window's lower-left corner and into the horizon's left wall corner above it; the shell's into the left wall's horizon channel corner (vertical in print), not the bottom wall (the grooves hide a seam only on straight runs and it jumps at the USB and LED openings); the cover's into the edge-relief notch; the button's toward the rear |
 | bed | 80 C under the shell, 65 under the plates; no brim (the chamfered bed edges are the brim's job) |
 | cavity | 0.5 mm a side as modelled; do not scale the shell to fit, measure the coupon |
 
@@ -531,7 +497,7 @@ orientation as the parent. Pass criteria, in numbers:
 | `KINO_COUPON_SHRINK_BAR` | the printer's shrink | 100.0 mm bar measures 99.5 to 100.0; set the slicer's compensation, never scale the shell |
 | `KINO_COUPON_PILLAR` | the screw stack and a 1.9 pin hole | M2 drives into the spacer by hand; a 1.75 pin pushed 3 mm holds the coupon inverted and pulls with a finger |
 | `KINO_COUPON_POCKET` | the pinch ribs, the corner reliefs, the 7.5 bore | a seated head pushes in with a thumb, does not fall out inverted, the lens centred in the bore by eye |
-| `KINO_COUPON_TRACK_FACE` + `_COVER` + `_KEEPER` | the track, the roof on three of its blades, the lip slot, the detents, the keeper's foot | the three blades snap out through the gap without lifting a land; the roof's underside is flat to 0.3 between them (the mark clears it); the cover drops at 45 degrees of tilt and stays shut at 90; the keeper's foot clicks into the pocket coupon of the plate (print `KINO_COUPON_PILLAR`'s plate face against it) |
+| `KINO_COUPON_TRACK_FACE` + `_COVER` | the window, its lips, the detents | with the coupon's back on a flat plate, the cover drops at 45 degrees of tilt and stays shut at 90; it does not lift past the lips by hand |
 | `KINO_COUPON_DECK` | the gabled bores, the 0.4 collar, the guide ribs | the plunger runs without tick and returns on the switch; the retainer passes the 17 bore |
 | `KINO_COUPON_STRAP_SHELL` + `_FRAME` | the tunnel and slots | 100 N on a 2.5 mm cord, no tear at the 0.6 skin |
 
@@ -544,8 +510,8 @@ the cover held closed through 1,000 jogs on the top cord.
 The entry is the files, the print plan, the coupons and this list; a strap
 that is not supplied is a scored fault.
 
-- Prints: shell, rear frame, face, cover, keeper, shutter button (plunger
-  and retainer). Night body: charcoal, cobalt, pink, and cream for the
+- Prints: shell, rear frame, face, cover, shutter button (plunger and
+  retainer). Night body: charcoal, cobalt, pink, and cream for the
   mark's last layers and the lip (four spools). Day body: charcoal, cream,
   pink (three).
 - Hardware: four M2 x 8 thread-forming pan-head screws (frame); the four
@@ -556,13 +522,13 @@ that is not supplied is a scored fault.
 - Cord: 2.5 mm braided, 1.2 m for the neck through the top slots, 0.3 m for
   the wrist through the bottom slots; a lark's head on the bar between the
   slots, inside the wall.
-- Spares in the box: one cover (the wear part), one button, one keeper,
-  six pins, eight M2 x 8. The frame pilots are thread-forming in PETG and
+- Spares in the box: one cover (the wear part), one button, six pins,
+  eight M2 x 8. The frame pilots are thread-forming in PETG and
   are on the battery's path: count on about ten cycles, then the spare
   screws and a 1.7 drill.
 - The body's contract with any future carrier: the lens row at the four
-  `cameraXs` (22 mm pitch) and `lensY`; keep those and the face, cover and
-  keeper files do not change when the shell does.
+  `cameraXs` (22 mm pitch) and `lensY`; keep those and the face and cover
+  files do not change when the shell does.
 - Known and accepted: the camera charges lying on its back, with the LEDs
   down, because the carrier puts the USB-C on the bottom edge (the next
   carrier moves it); the horizon is an open shelf and the track is open at
@@ -583,10 +549,6 @@ that is not supplied is a scored fault.
 - A 1/4-20 boss on the bottom wall: the next carrier should leave a 12 x 7
   notch at X 50 for it.
 - Slicer profiles per part as files, and a per-part time and mass table.
-- A print of the face with the blades: whether five 0.8 mm blades on a
-  one-line neck snap clean in PETG or need a notch, and whether 16 mm
-  bridges between them sag under 0.3 at full fan. The track coupon decides;
-  the fallback is a blade every 10 mm.
 - The serial and revision engraving, the face grain.
 - The independent scan.
 

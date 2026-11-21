@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; eleventh cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
+| Status | Design in progress; twelfth cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -248,18 +248,32 @@ owner's printer. Two parts:
   carrier's sweep. Not taken: corner cradles on the frame (they would
   stand on the print's bed face), ledges in the shell (the sweep). Four
   gates; 180. Body 63.5 deep, 10.8 of it the body.
+- **Simplified** (twelfth cut, 2026-11-21; the owner: "open it up and
+  let's simplify", choosing "keep the cover, open the stow zone"). The
+  cover's panel is now a window through the whole face plate; the shell's
+  own plate is the track floor; the cover goes in from the face's back
+  before the face goes on. Gone: the roof over the stow zone, the lip
+  slot, the entry gap, the keeper with its foot and pocket, the five
+  breakaway blades, the relieved floor and its lands, the cells in the
+  face (the shell's bores show through the window), the keeper coupon,
+  a part, 22 gates and three parameters' worth of fits. The face is 4.0
+  (lips 2.3 over the plate with 0.3 of play under them, the horizon 1.7
+  above), the grip 3.0 with 1.0 of plate under it. The dropped cover sits
+  in the open stow zone in plain view, which the jurors scored against
+  in the fifth and sixth cuts and the owner now accepts for the
+  simplicity. 158 gates. Body 61.1 deep, 8.4 of it the body.
 
 Depth, re-added by a gate every build: 2.5 frame + 0.4 off the glass + 13.8 module + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
-(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 6.4 face
-= 63.5 mm, against the field body's 74.5 over its lens bar. The body is 10.8
+(PROVISIONAL) + 15.0 XIAO back to lens front + 1.5 plate + 4.0 face
+= 61.1 mm, against the field body's 74.5 over its lens bar. The body is 8.4
 of it; the XIAO connectors (11.0) are the one
 stack term the bench can shorten, with low-profile sockets and bare pins. The plate's inner face lands at Z 35.4
 from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-180 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
+158 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
 front on the pocket floor, the face inset from the outline and over the
 pins, the plan corner's wall on the diagonal, the roof over the stow zone
 clear of the cover and its mark, the lip's slot, the keeper clear of the
@@ -281,9 +295,8 @@ inside the carrier's 7 mm fastener keep-out, the carrier's sweep from the rear
 clear up to the feet, the frame window over the whole active area, every
 print's overhang inside its named bridges, holes and pockets (nothing
 down-facing anywhere else), the cover on two lands over a relieved floor,
-the roof's blades in the band with their air and their spans, the frame off
-the glass and the gasket groove on the glass's margin with its squeeze, all
-on the bed. `validate-stl.mjs`: 15 files, manifold, at their part counts.
+the frame off the glass and the gasket groove on the glass's margin with
+its squeeze, all on the bed. `validate-stl.mjs`: 15 files, manifold, at their part counts.
 No independent scan yet; `promote.mjs` says so every run. Found by the gates
 while the face was written: a face hull 0.01 mm into the shell (100 mm^3), a
 straight frustum probe that bulged past the bore, a 6 mm band that put the
