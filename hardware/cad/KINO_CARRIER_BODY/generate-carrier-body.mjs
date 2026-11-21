@@ -499,7 +499,9 @@ const coupons = (() => {
   const t06Box = box(ox0 - 1, oy0 - 1, FACE.back - 1, ox0 + 21, FACE.leafSlitEndY + 3, FACE.front + 1);   // the face's lower-left corner: the insert station at (4, 4), the window's corner with its chamfers, the left leaf with its bumps
   const t05Z0 = P.shutterPodBottomZ - 6;
   const t05Box = box(SHUTTER.podX0 - 1, SHUTTER.podInnerY - 2, t05Z0, ox1 + 1, oy1 + 1, Z.plateFront + 1);   // the whole pod with the deck over it, the wall corner it joins and the plate with the mouth
-  let t03 = cut(shell, t03Box), t04 = cut(shell, t04Box), t05 = cut(shell, t05Box), t06 = cut(face, t06Box);
+  const t07Box = box(FACE.panel[0] - 8, oy0 - 1, FACE.back - 1, FACE.panel[2] + 8, FACE.panel[3] + 3, FACE.front + 1);   // the slide: the face's whole window band, both walls with their lips and leaves, the bottom rim; the real B01 runs in it
+  let t03 = cut(shell, t03Box), t04 = cut(shell, t04Box), t05 = cut(shell, t05Box), t06 = cut(face, t06Box), t07 = cut(face, t07Box);
+  t07 = engrave("T07-KINO_COUPON_TRACK.stl", t07, "T07", FACE.panel[0] + 14, FACE.outline[1] + P.faceEdgeR + 0.6, FACE.front, 1, 3.0);
   t03 = engrave("T03-KINO_COUPON_LEDGE_CORNER.stl", t03, "T03", 8.0, oy0 + 0.75, Z.carrierBack - 2, -1, 3.0);
   t04 = engrave("T04-KINO_COUPON_STRAP_SHELL.stl", t04, "T04", 14.0, oy0 + 0.75, Z.glass, -1, 3.0);
   t05 = engrave("T05-KINO_COUPON_DECK.stl", t05, "T05", SHUTTER.podX0 + 1.0, cy1 + 0.75, t05Z0, -1, 3.0);
@@ -511,10 +513,21 @@ const coupons = (() => {
     "T05-KINO_COUPON_DECK.stl": toBed(t05.rotate([180, 0, 0])),
     "T04-KINO_COUPON_STRAP_SHELL.stl": toBed(t04.rotate([180, 0, 0])),
     "T06-KINO_COUPON_FACE_CORNER.stl": toBed(t06),
+    "T07-KINO_COUPON_TRACK.stl": toBed(t07),
     "T01-KINO_COUPON_SHRINK_BAR.stl": bar,
   };
 })();
-check("every coupon is labelled", ["T01", "T02", "T03", "T04", "T05", "T06"].every((id) => couponText.some(([, t]) => t === id)), couponText.map(([n, t]) => `${t} in ${n}`).join("; "));
+check("every coupon is labelled", ["T01", "T02", "T03", "T04", "T05", "T06", "T07"].every((id) => couponText.some(([, t]) => t === id)), couponText.map(([n, t]) => `${t} in ${n}`).join("; "));
+{
+  // T07 is the whole track: both leaves, every lip run, the window's two
+  // rims, so the real cover runs in it as it runs in the face.
+  const t07 = coupons["T07-KINO_COUPON_TRACK.stl"].translate([FACE.panel[0] - 8, FACE.outline[1], FACE.back]);
+  const [p0x, , p1x] = FACE.panel, lt = P.sliderLeafT;
+  const leaves = [box(p0x - lt + 0.2, FACE.leafRootY + 0.5, FACE.back + 0.2, p0x - 0.2, FACE.leafTipY - 0.3, FACE.leafTop - 0.2), box(p1x + 0.2, FACE.leafRootY + 0.5, FACE.back + 0.2, p1x + lt - 0.2, FACE.leafTipY - 0.3, FACE.leafTop - 0.2)];
+  const rims = [box(p0x + 10, FACE.panel[1] - 2.0, FACE.back + 0.2, p1x - 10, FACE.panel[1] - 0.2, FACE.front - 1.5), box(p0x + 10, FACE.panel[3] + 0.2, FACE.back + 0.2, p1x - 10, FACE.panel[3] + 1.5, FACE.trackTop - 0.2)];
+  check("the track coupon carries both leaves, both rims and the cover's whole run", leaves.every((l) => vol(t07, l) > l.volume() * 0.97) && rims.every((r) => vol(t07, r) > r.volume() * 0.9) && vol(t07, cover) < 0.02 && vol(t07, coverOpen) < 0.02 && vol(t07, cover.translate([0, -0.4, 0])) > 0.02,
+    `the window band from X ${r2(p0x - 8)} to ${r2(p1x + 8)}, Y ${r2(FACE.outline[1])} to ${r2(FACE.panel[3] + 3)}; the real B01 closed, open and 0.4 past closed meet it as they meet the face`);
+}
 {
   // T03 holds the face's station at (4, 4) and a piece of ledge; T04 holds
   // the frame's station at X 40 with its boss and the first two strap

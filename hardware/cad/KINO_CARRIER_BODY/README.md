@@ -19,7 +19,7 @@ Issue #252; twenty-fifth cut (2026-11-21): the button proved on the bench
 made leaf springs; two materials, black PETG and dark blue PLA, one per
 part; the coupons in `coupons/` print before the body. Every
 part has an ID (A01 to B02, C01 to C03 for what is not printed, T01 to
-T06 for the coupons, P1 and P2 for the plates) in its file name and in the
+T07 for the coupons, P1 and P2 for the plates) in its file name and in the
 register below; A01 to A03 and the coupons carry it engraved in a real
 font on a face that is up or vertical in print, never the bed.
 
@@ -584,7 +584,7 @@ making-of page (`docs/MAKING_OF.md`).
 
 ## Gates
 
-`node generate-carrier-body.mjs` writes `.candidate/` and runs 241 gates,
+`node generate-carrier-body.mjs` writes `.candidate/` and runs 244 gates,
 throwing on the first failure (`KINO_SOFT_GATES=1` collects them): the depth
 chain re-added over the lens band, the lens front on the pocket floor, the
 module PCB with the plate to land on, the battery bay tall enough for the cell
@@ -625,7 +625,7 @@ counts only past 45 degrees, so every chamfer here is exactly 45) and on a
 grip, the battery bay with 10 % of swell, the foam's clamp on the stack and
 six inserts' hold against it, the horizon channel as both pry points and open
 to the joint, the first groove leaving wall outside the insert holes, the corner coupon
-carrying a face screw station and the ledge, the strap coupon a frame insert station, the face coupon its station and the left leaf,
+carrying a face screw station and the ledge, the strap coupon a frame insert station, the face coupon its station and the left leaf, the track coupon both leaves, both rims and the cover's whole run,
 every coupon labelled with its ID in material, the frame off the glass, the gasket
 groove on the glass's margin, open, and its squeeze over the stack's
 tolerance, and every coupon one piece on the bed.
@@ -678,14 +678,17 @@ reported. Pass criteria, in numbers:
 | T01 + T02 on one plate (done) | the printer's shrink (0.2 %); which pocket width holds the head (8.1) | callipers; one camera module seated on its XIAO | the bar measures 99.8 to 100.0 with the compensation on (99.9); on the gauge, the head pushes into one of the 7.8, 8.1 and 8.4 pockets with a thumb and does not fall out inverted, the lens centred in the bore by eye (8.1, "fits perfectly") | `camBody` + `camBodySlack` = the pocket that held (7.9 + 0.2); `lensBoreD` (bore) |
 | T03 + T04, reprinted with the 6.0 walls | the ledge under the carrier's corner (done on the first piece: flat), the face's screw station in the plate, the strap tunnel and slots, the frame's insert station in a wall end | the carrier, two M2 inserts, an M2 x 6 and an M2 x 4, the iron, 0.3 m of 2.5 mm cord, 10 kg, 5 kg | the carrier's corner drops into T03 and sits flat on the ledge with no rock (done); an insert set in T04's wall end sits flush with no bulge on the outer wall or in the cavity, takes the M2 x 4 ten times, and holds 50 N pulled on the screw; 100 N on T04's cord, no tear at the 1.2 mm skin; T06 screwed onto T03 through the counterbore with the M2 x 6 seats flat and the head sits flush in the counterbore | `insertHoleD`, `insertPullN`, `strapSlot`, `strapTunnelSkin` (`ledgeW`, `carrierClear` confirmed) |
 | T06 (blue PLA), with T03 | the insert in the face's back at 4.2 thick, the window's corner, the left leaf and its bumps | one M2 insert, the iron at 200 C, the M2 x 6 | the insert set flush with no mark on the front and no bulge at the window's wall; the leaf flexes 0.3 under a fingernail and springs back; the two bumps stand 0.35 past the edge line | `insertHoleD`, `sliderLeafT`, `sliderBumpReach` |
+| T07 (blue PLA) with the real B01 (black PETG, 0.08) | the slide: the whole window band with both walls, every lip run, both leaves and their four bumps, the two rims, the cells | the printed cover; any flat plate held behind the coupon for the shell's plate | the cover goes in from the back, bevels under the lips, one way only (turned round it stops at the mouth); with a plate behind, it clicks closed and clicks open under a thumb, about 4 N, and sits at each stop with no play; closed, it does not drop at 90 degrees of tilt or when shaken and does not lift past the lips; open, it stays open inverted; mid-travel nothing rubs; 200 cycles and the closed click still holds. If the click is weak or absent, say whether the corners reach the bumps at all (the leaves' reach) or ride over them too easily (the leaves' stiffness) | `sliderBumpReach` (0.25 softer, 0.45 harder), `sliderLeafT` (1.5 softer, 2.5 stiffer), `sliderClr` if it binds |
 | the real B02 (blue PLA) then T05, third piece (done, 2026-11-21: "the button mechanism now works perfectly") | the slot and its ribs, the step, the chamber, the pocket, the leg channels, the mouth | the printed plunger, the switch with its two leads; a thumb over the mouth and the slot's front for the face | the slicer preview shows the four 0.2 ribs; deck up, the switch goes in through the mouth, legs in the channels, slides back and drops into its pocket; deck down, the plunger goes in with its cap in the slot and slides back over the switch to the round end, and cannot leave through the deck; deck up, the cap stands 2.0 proud, clicks within 0.6 of travel, returns on the switch, and runs 200 times without tick; shaken with a thumb over the mouth, nothing moves. If the plunger will not pass over the switch, or the cap does not click, report the switch's measured height, base to actuator top | `shutterSwitchBody[2]` (the switch's whole height), `shutterSwitchFree`, `shutterSwitchPocket` if the switch does not drop in or climbs out, `shutterGuideRib` [0.4, 0.8] if the ribs vanish, `shutterFlangeBoreClear` 0.7 in reserve |
 | the real A02 (blue PLA) and B01 (black PETG), fourth | the window, its lips, the leaf detents, the slide's feel | six inserts, the iron; the shell's plate or any flat plate to close the track | the cover clicks closed and clicks open with a thumb, about 4 N; closed, it does not drop at 90 degrees of tilt or when shaken, and does not lift past the lips by hand; open, it stays open inverted; it refuses to enter turned round (the key); 200 cycles without the leaves taking a set (the closed click still holds). If they pass they are the parts | `sliderClr`, `sliderBumpReach` (0.25 softer, 0.45 harder), `sliderLeafT` |
 | A03 at 0.10, then A01, last | | | | |
 
-There is no track coupon: a cut piece of the window ran the drop test
-cocked on one lip, and the real parts cost 40 g; T06 is the face's corner
-for the insert and one leaf, not the track. The field body's
-`KINO_SLIDER_TRACK_COUPON` set the clearances this track reuses. Before any detent number moves, the hang test on the whole body:
+T07 is the track coupon the owner asked for (2026-11-21): the window's
+whole band, 103 x 46 x 4.2 (about 11 g), not a one-sided cut (a cut piece
+of the window ran the drop test cocked on one lip), and it takes the real
+cover, which is its own part. T06 is the face's corner for the insert and
+one leaf, not the track. The field body's `KINO_SLIDER_TRACK_COUPON` set
+the clearances this track reuses. Before any detent number moves, the hang test on the whole body:
 the cover held closed through 1,000 jogs on the top cord.
 
 ## What ships
@@ -739,7 +742,7 @@ printed materials, one fastener type, nothing glued.
 | C01 | inserts | M2 brass heat-set, OD 3.2 x 3: six in A02's back, six in A01's rear wall ends | brass | 12 | | | heat-set | 3.0 holes 3.4 deep, countersunk 0.3 | 4 |
 | C03 | screws | M2 pan head: six x 6 (face, from inside), six x 4 (frame, from the back) | steel | 12 | | | into C01 | 2.4 clearance holes, counterbores 4.4 x 1.4 (plate) and 4.0 x 0.6 (frame) | 4, 5 |
 | C02 | foam strips | the clamp on the stack: 2 mm PORON, 2 wide, 101 + 101 + 60 + 60 | foam | 4 | | | adhesive to A03 | 40 % squeeze | 5 |
-| T01 to T05 | coupons | shrink bar, pocket gauge, ledge corner, strap wall end, deck | black PETG | 1 each | as the parent | none | | each row of the coupon table | 0 |
+| T01 to T07 | coupons | shrink bar, pocket gauge, ledge corner, strap wall end, deck (PETG); face corner, track (PLA) | as the parent | 1 each | as the parent | none | | each row of the coupon table | 0 |
 
 Not in the body: the carrier's own four standoffs and four M2 x 4 (the
 carrier's BOM), the switch and its 80 mm XH lead, the cell and its lead,

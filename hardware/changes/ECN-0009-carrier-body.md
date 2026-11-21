@@ -518,7 +518,10 @@ owner's printer. Two parts:
   crest 4.5; the lips skip the leaves. T06 is the face's corner (the
   insert station and the left leaf, blue PLA); T03 carries the plate's
   counterbore and T04 a wall-end insert hole. IDs: C01 inserts, C03
-  screws. 241 gates.
+  screws. 241 gates. Then, the owner: "gimme the coupons for the slide
+  too": T07, the window's whole band (103 x 46 x 4.2, both walls, every
+  lip run, both leaves, the rims, the cells) in blue PLA for the real
+  cover, gated to meet the cover at both stops as the face does. 244 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
@@ -530,7 +533,7 @@ from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-241 in `generate-carrier-body.mjs`, 0 failures (the list below is the
+244 in `generate-carrier-body.mjs`, 0 failures (the list below is the
 first cut's; the package README's "Gates" names the current set, which
 adds the ledge, the carrier heads' clearance, the stack and the frame
 refused turned round, the frame pins and their hold, the pry point open at

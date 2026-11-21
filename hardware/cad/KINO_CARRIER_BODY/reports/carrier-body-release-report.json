@@ -1,6 +1,6 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-21T22:20:31.742Z",
+  "generated": "2026-11-21T22:32:29.272Z",
   "body": {
     "width": 131.4,
     "height": 83.8,
@@ -190,6 +190,15 @@
         4.2
       ]
     },
+    "T07-KINO_COUPON_TRACK.stl": {
+      "triangles": 3470,
+      "volumeCm3": 9.16,
+      "size": [
+        103,
+        46.4,
+        4.2
+      ]
+    },
     "T01-KINO_COUPON_SHRINK_BAR.stl": {
       "triangles": 392,
       "volumeCm3": 3,
@@ -246,7 +255,7 @@
     }
   },
   "gates": {
-    "total": 241,
+    "total": 244,
     "failed": 0
   },
   "checks": [
@@ -1371,6 +1380,11 @@
       "details": "3 mm letters at (51, 8.5) in the face at Z 35.5, 0.4 deep; 100 % of the engraving in material"
     },
     {
+      "name": "T07-KINO_COUPON_TRACK.stl carries \"T07\" in material",
+      "pass": true,
+      "details": "3 mm letters at (20.7, -4.4) in the face at Z 44.1, 0.4 deep; 100 % of the engraving in material"
+    },
+    {
       "name": "T03-KINO_COUPON_LEDGE_CORNER.stl carries \"T03\" in material",
       "pass": true,
       "details": "3 mm letters at (8, -5.75) in the face at Z 9.3, 0.4 deep; 100 % of the engraving in material"
@@ -1398,7 +1412,12 @@
     {
       "name": "every coupon is labelled",
       "pass": true,
-      "details": "7.8 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.1 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.4 in T02-KINO_COUPON_POCKET_GAUGE.stl; T02 in T02-KINO_COUPON_POCKET_GAUGE.stl; T03 in T03-KINO_COUPON_LEDGE_CORNER.stl; T04 in T04-KINO_COUPON_STRAP_SHELL.stl; T05 in T05-KINO_COUPON_DECK.stl; T06 in T06-KINO_COUPON_FACE_CORNER.stl; T01 in T01-KINO_COUPON_SHRINK_BAR.stl"
+      "details": "7.8 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.1 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.4 in T02-KINO_COUPON_POCKET_GAUGE.stl; T02 in T02-KINO_COUPON_POCKET_GAUGE.stl; T07 in T07-KINO_COUPON_TRACK.stl; T03 in T03-KINO_COUPON_LEDGE_CORNER.stl; T04 in T04-KINO_COUPON_STRAP_SHELL.stl; T05 in T05-KINO_COUPON_DECK.stl; T06 in T06-KINO_COUPON_FACE_CORNER.stl; T01 in T01-KINO_COUPON_SHRINK_BAR.stl"
+    },
+    {
+      "name": "the track coupon carries both leaves, both rims and the cover's whole run",
+      "pass": true,
+      "details": "the window band from X -1.3 to 101.7, Y -6.2 to 40.2; the real B01 closed, open and 0.4 past closed meet it as they meet the face"
     },
     {
       "name": "the ledge coupon carries a face screw station and the ledge",
@@ -1449,6 +1468,11 @@
       "name": "T06-KINO_COUPON_FACE_CORNER.stl is one piece on the bed",
       "pass": true,
       "details": "20.7 x 32.05 x 4.2 mm, 1 piece(s)"
+    },
+    {
+      "name": "T07-KINO_COUPON_TRACK.stl is one piece on the bed",
+      "pass": true,
+      "details": "103 x 46.4 x 4.2 mm, 1 piece(s)"
     },
     {
       "name": "T01-KINO_COUPON_SHRINK_BAR.stl is one piece on the bed",
