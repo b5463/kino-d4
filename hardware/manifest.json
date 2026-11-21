@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "product": "KINO D4",
   "hardwareRevision": "D4-V1",
-  "designVersion": "0.1.9",
+  "designVersion": "0.1.10",
   "status": "prototype",
   "sourceLocation": "https://github.com/b5463/kino-d4",
   "license": "CERN-OHL-S-2.0",
@@ -26,7 +26,7 @@
     },
     "cad": {
       "path": "hardware/cad",
-      "revision": 4,
+      "revision": 5,
       "status": "prototype"
     },
     "pcb": {

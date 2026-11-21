@@ -72,6 +72,7 @@ path = [
   # these terms; the generator reads it at build time rather than embedding it
   # in CERN-OHL-S source.
   "hardware/cad/KINO_FIELD_BODY/brand/**",
+  "hardware/cad/KINO_CARRIER_BODY/brand/**",
   "hardware/pcb/kino-d4-carrier-a0/brand/**",
   # The marks the camera draws: the wordmark baked from the white-on-dark
   # crop above, and the ODD JOBS symbol baked from the carrier's trace. Both

@@ -1,0 +1,2 @@
+# Staging output from generate-carrier-body.mjs; promoted into print/ only after the gates and the validator pass.
+.candidate/
