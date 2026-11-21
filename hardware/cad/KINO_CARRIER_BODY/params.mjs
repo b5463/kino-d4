@@ -181,6 +181,16 @@ export const P = Object.freeze({
   bandBottomInset: 4.9,      // panel bottom = outline + chamfer 2.0 + this = the sixth cut's 6.9, so the track, the travel and the detents stay where the bench tuned them
   bandR: 9.0,                // pill ends; R12 cut 0.1 mm into the panel's corners through a 3.5 mm rim (gated now)
   panelDepth: 3.4,           // cover 2.0, its raised mark 0.8, and 0.3 under the face's roof over the stow zone (PETG bridges sag 0.2 to 0.3 over 16 mm at full fan); the coupon confirms
+  // The roof over the stow zone, in a back-down print, is a plate with both
+  // Y edges free (the entry gap below, the horizon above) and the lip slot
+  // through it: two flaps hanging 45 and 21 mm from one wall each. A slicer
+  // fills the track with tree supports and scars the roof and the floor.
+  // Breakaway blades in the print file instead: in the relieved band, off
+  // the lands, one at each edge of the slot, so the roof's lines bridge 10
+  // to 16 mm onto them. Snapped out through the entry gap before the keeper
+  // goes in; the stubs sit below the lands, where the cover never touches.
+  roofPropXs: [23.0, 37.0, 50.7, 72.9, 83.3],
+  roofProp: [0.8, 0.2, 0.42, 0.4],   // blade width, air under the roof (one layer), neck width (one line), neck height at the floor
   lensRingStep: 0.0,
   cellSink: 0.8,             // 45 degrees at each cell's mouth in the track floor: a rim, so the four read as eyes and not as a microphone array; prints face-up         // plain cones: the stepped rings read as damage at this size
   // The cover: the field body's bench-tuned track, restated. Drops to open.

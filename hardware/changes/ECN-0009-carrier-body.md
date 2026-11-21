@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; ninth cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
+| Status | Design in progress; tenth cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -204,6 +204,33 @@ owner's printer. Two parts:
   cycle count and spares instead), a tripod boss (the next carrier's), one
   `hand` parameter (listed). Face 6.4; 128.4 x 80.8 x 63.1 mm, the body
   10.4 of it.
+- **Supports** (tenth cut, 2026-11-21; the owner: "printable with
+  supports, tree supports, but minimal, they affect the look"). Every
+  print's down-facing area was binned by position. Five parts need none:
+  the shell's are the LED slots (4.5 mm bridges), the pin holes, the
+  strap tunnels, the keeper's pocket and the collar's recess, the four
+  screw-foot shoulders in the cavity and the USB gable at 45; the cover's
+  are two 0.2 mm ledges; the frame and the keeper have none; the button's
+  is the retainer's leg slot. The face's roof over the stow zone was not a
+  bridge: with the entry gap through the whole plate (ninth cut) and the
+  horizon above, both Y edges are free, and the lip slot cuts the 87 mm
+  X-span into flaps of 45 and 21 mm from one wall each, which the old
+  area gate accepted as "a 16 mm bridge". A slicer would have filled the
+  track with trees and scarred the roof and the floor. Taken: five
+  breakaway blades in the print file, 0.8 wide on a 0.42 x 0.4 neck,
+  standing on the track's relieved band off the lands, one at each edge
+  of the lip slot, one layer under the roof, so the roof bridges 10 to 16
+  mm; removed through the gap before the keeper. The floor relief itself
+  was found cut upward into the track's void (the lands were 0.01 mm;
+  the cover dragged on the whole floor) and is now 0.25 into the plate.
+  The left wall's horizon channel ended in a 0.01 mm skin at the rear
+  (27 mm^2 of ceiling at the top of the print); it now runs out in a 45
+  degree ramp at the joint's chamfer. The overhang gate is replaced by a
+  per-print list of named places (bridge, hole, pocket) where a face may
+  point down; anything outside fails with its position. Slicer supports
+  off on every part, written into the print plan with the reasons; tree
+  supports allowed by hand under the roof only. Not changed: geometry the
+  eye sees. 176 gates.
 
 Depth, re-added by a gate every build: 2.5 frame + 13.8 module + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
@@ -215,7 +242,7 @@ from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-168 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
+176 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
 front on the pocket floor, the face inset from the outline and over the
 pins, the plan corner's wall on the diagonal, the roof over the stow zone
 clear of the cover and its mark, the lip's slot, the keeper clear of the
@@ -234,9 +261,11 @@ class cell does), both parts one solid, an electronics dummy clear of both
 parts with only the pinch ribs inside the nominal heads (5.3 mm^3), every
 pocket, bore, shaft, foot, slot, opening and pilot probed open, every pillar
 inside the carrier's 7 mm fastener keep-out, the carrier's sweep from the rear
-clear up to the feet, the frame window over the whole active area, both prints
-support-free off the bed (each print's allowed bridges listed in its gate),
-all on the bed. `validate-stl.mjs`: 6 files, manifold, at their part counts.
+clear up to the feet, the frame window over the whole active area, every
+print's overhang inside its named bridges, holes and pockets (nothing
+down-facing anywhere else), the cover on two lands over a relieved floor,
+the roof's blades in the band with their air and their spans, all on the
+bed. `validate-stl.mjs`: 15 files, manifold, at their part counts.
 No independent scan yet; `promote.mjs` says so every run. Found by the gates
 while the face was written: a face hull 0.01 mm into the shell (100 mm^3), a
 straight frustum probe that bulged past the bore, a 6 mm band that put the
@@ -256,7 +285,10 @@ panel datum moving 1.5 mm with the face's edge (the mid-travel probe
 touched a detent) until `bandBottomInset` was re-based on the chamfer. In
 the ninth: the keeper's foot drawn with a flat underside (85 mm^2 hanging
 in a foot-up print) until it was sloped 47 degrees, and the keeper gate
-reading the foot as the stop face.
+reading the foot as the stop face. In the tenth, by binning the overhang
+by position instead of summing it: the roof over the stow zone as two
+cantilevers the area gate had passed as a bridge, the floor relief cut
+into the void, and the horizon channel's 0.01 mm end skin.
 
 ## Sources read for the eighth cut
 
@@ -307,7 +339,8 @@ unchanged.
 The P4's TF slot opening and the C6 service access, an interference gate
 against the carrier's own part model, the serial engraving and any line under
 4 mm of cap height ("made for bad ideas."), the coupon prints and their
-results, a `hand` parameter, the independent scan. Issue #252 carries the open
+results (the track coupon decides whether the roof's blades snap clean and
+the 16 mm bridges hold), a `hand` parameter, the independent scan. Issue #252 carries the open
 inputs: the soldered header's insulator height, the spacer height with the
 socket home, the head size and stack height on a seated node, the active
 area's position, the field of view.

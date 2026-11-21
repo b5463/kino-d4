@@ -175,10 +175,12 @@ export function buildFace() {
       cuts.push(coneZ(lx, F.lensY, F.zMid - 0.01, F.midR, F.outerR, F.floorZ - F.zMid + 0.02));
     }
   }
-  // Track floor relief: the cover rides on two lands.
+  // Track floor relief, cut into the plate below the floor: the cover rides
+  // on two lands. (The first cut went up into the track's own void, so the
+  // lands were 0.01 mm and the cover dragged on the whole floor.)
   {
-    const band = cube(p0x + P.sliderBevel + 0.5, p0y + 1.0, F.floorZ - 0.01, (p1x - p0x) - 2 * (P.sliderBevel + 0.5), (p1y - p0y) - 2.0, P.coverRailProud + 0.01);
-    const lands = fuse(F.railXs.map((rx) => cube(rx - P.coverRailW / 2, p0y - 2, F.floorZ - 0.02, P.coverRailW, (p1y - p0y) + 4, P.coverRailProud + 0.04)));
+    const band = cube(p0x + P.sliderBevel + 0.5, p0y + 0.3, F.floorZ - P.coverRailProud, (p1x - p0x) - 2 * (P.sliderBevel + 0.5), (p1y - p0y) - 1.3, P.coverRailProud + 0.01);
+    const lands = fuse(F.railXs.map((rx) => cube(rx - P.coverRailW / 2, p0y - 2, F.floorZ - P.coverRailProud - 0.02, P.coverRailW, (p1y - p0y) + 4, P.coverRailProud + 0.04)));
     cuts.push(band.subtract(lands));
   }
   // Dovetail lips on both X walls and two detent pairs, added AFTER the cuts.
@@ -194,6 +196,18 @@ export function buildFace() {
   }
   const faceCut = status("face: plate less cuts", status("face: plate", fuse(solids)).subtract(status("face: cuts", fuse(cuts))));
   const face = status("face", status("face: with lips", faceCut.add(status("face: lips and bumps", fuse(adds)))).simplify(1e-3));
+  // Breakaway blades under the roof over the stow zone, in the print file
+  // only (see roofPropXs in params). Each stands on the relieved band on a
+  // one-line neck, rises to one layer under the roof, and runs the roof's
+  // height less a margin at the gap and at the horizon.
+  const [propW, propGap, neckW, neckH] = P.roofProp;
+  const propY = [p0y + 0.5, F.horizon[0] - 0.3];
+  const propBase = F.floorZ - P.coverRailProud, propTop = F.trackTop - propGap;
+  const props = fuse(P.roofPropXs.flatMap((x) => [
+    cube(x - neckW / 2, propY[0], propBase - 0.01, neckW, propY[1] - propY[0], neckH + 0.02),
+    cube(x - propW / 2, propY[0], propBase + neckH, propW, propY[1] - propY[0], propTop - propBase - neckH),
+  ]));
+  const facePrint = status("face: print with blades", face.add(props));
 
   // ---- The cover, built closed ------------------------------------------------
   const sx0 = p0x + P.sliderClr, sx1 = p1x - P.sliderClr;
@@ -240,5 +254,5 @@ export function buildFace() {
   const cover = status("cover", fuse([plateC, lip, mark]).subtract(fuse(edgeCuts)).simplify(1e-3));
   // The mark's cream layers, for the previews: the top markProud of the raised mark.
   const markTop = mark.intersect(box(sx0, sy0, sFront, sx1, sy1, sFront + P.markProud + 1));
-  return { face, cover, keeper, markTop, lipProud, markBox: { x: markX, y: markY, w: mw, h: mh }, roofBridge: (p1x - p0x) * (F.lipSlotY0 - p0y) + ((p1x - p0x) - lw0) * (F.horizon[0] - F.lipSlotY0) };
+  return { face, facePrint, props, propY, propBase, propTop, cover, keeper, markTop, lipProud, markBox: { x: markX, y: markY, w: mw, h: mh }, roofBridge: (p1x - p0x) * (F.lipSlotY0 - p0y) + ((p1x - p0x) - lw0) * (F.horizon[0] - F.lipSlotY0) };
 }

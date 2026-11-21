@@ -1,6 +1,6 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-21T00:00:40.765Z",
+  "generated": "2026-11-21T02:02:30.168Z",
   "body": {
     "width": 128.4,
     "height": 80.8,
@@ -60,7 +60,15 @@
     ],
     "travel": 17,
     "lipSlotY0": 17.7,
-    "cellOuterD": 7.5
+    "cellOuterD": 7.5,
+    "roofBlades": [
+      23,
+      37,
+      50.7,
+      72.9,
+      83.3
+    ],
+    "roofBladeAir": 0.2
   },
   "shutter": {
     "stem": 4.7,
@@ -69,8 +77,8 @@
   },
   "files": {
     "KINO_CARRIER_SHELL.stl": {
-      "triangles": 15472,
-      "volumeCm3": 132.42,
+      "triangles": 15486,
+      "volumeCm3": 132.45,
       "size": [
         128.4,
         80.8,
@@ -87,8 +95,8 @@
       ]
     },
     "KINO_CARRIER_FACE.stl": {
-      "triangles": 8924,
-      "volumeCm3": 43.87,
+      "triangles": 9102,
+      "volumeCm3": 43.49,
       "size": [
         126.8,
         79.2,
@@ -168,8 +176,8 @@
       ]
     },
     "KINO_COUPON_TRACK_FACE.stl": {
-      "triangles": 1702,
-      "volumeCm3": 7.9,
+      "triangles": 1840,
+      "volumeCm3": 7.57,
       "size": [
         74,
         46.4,
@@ -213,8 +221,8 @@
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 33174,
-      "volumeCm3": 351.12,
+      "triangles": 33204,
+      "volumeCm3": 350.57,
       "size": [
         128.4,
         80.8,
@@ -222,8 +230,8 @@
       ]
     },
     "KINO_CARRIER_OPEN_PREVIEW.stl": {
-      "triangles": 33166,
-      "volumeCm3": 351.12,
+      "triangles": 33204,
+      "volumeCm3": 350.57,
       "size": [
         128.4,
         80.8,
@@ -232,7 +240,7 @@
     }
   },
   "gates": {
-    "total": 168,
+    "total": 176,
     "failed": 0
   },
   "checks": [
@@ -972,9 +980,49 @@
       "details": "3 mm of wall end between the slots; 1.6 mm beside the tunnel"
     },
     {
-      "name": "KINO_CARRIER_SHELL.stl prints support-free",
+      "name": "the cover rides on two lands in a relieved floor",
       "pass": true,
-      "details": "294.88 mm^2 facing down steeper than 45 degrees off the bed, allowed 366.95 for the LED slot bridges, the four screw-foot shoulders, the shutter collar's 1.6 mm recess, the six pin holes' ends, the strap tunnels' roofs, the keeper's foot pocket (a 1.6 mm bridge at the bed), and up to 20 mm^2 of exact 45 degree gable; the layer grooves are 49 degrees"
+      "details": "0 mm^3 of plate in the band's relief (0.25 below the floor); the land 100 % solid"
+    },
+    {
+      "name": "roof blade at X 23 stands in the band with air under the roof",
+      "pass": true,
+      "details": "1.15 mm off the nearest land; 0 mm^3 in the 0.2 mm of air under the roof; the blade 100 % there in the print, 0 mm^3 of it in the part"
+    },
+    {
+      "name": "roof blade at X 37 stands in the band with air under the roof",
+      "pass": true,
+      "details": "15.15 mm off the nearest land; 0 mm^3 in the 0.2 mm of air under the roof; the blade 100 % there in the print, 0 mm^3 of it in the part"
+    },
+    {
+      "name": "roof blade at X 50.7 stands in the band with air under the roof",
+      "pass": true,
+      "details": "27.85 mm off the nearest land; 0 mm^3 in the 0.2 mm of air under the roof; the blade 100 % there in the print, 0 mm^3 of it in the part"
+    },
+    {
+      "name": "roof blade at X 72.9 stands in the band with air under the roof",
+      "pass": true,
+      "details": "5.65 mm off the nearest land; 0 mm^3 in the 0.2 mm of air under the roof; the blade 100 % there in the print, 0 mm^3 of it in the part"
+    },
+    {
+      "name": "roof blade at X 83.3 stands in the band with air under the roof",
+      "pass": true,
+      "details": "1.45 mm off the nearest land; 0 mm^3 in the 0.2 mm of air under the roof; the blade 100 % there in the print, 0 mm^3 of it in the part"
+    },
+    {
+      "name": "the roof bridges onto the blades and never hangs past the lip slot",
+      "pass": true,
+      "details": "bridges of 16.3, 14, 13.7, 0.6, 0.6, 10.4, 10.4 mm between the walls, the blades and the slot's edges; a blade within 0.5 of each edge of the slot (X 51.3 to 72.3)"
+    },
+    {
+      "name": "a blade's witness on the roof leaves the mark its air",
+      "pass": true,
+      "details": "0.6 mm over the raised mark, less a 0.2 mm witness where the roof's first layer sat on a blade"
+    },
+    {
+      "name": "KINO_CARRIER_SHELL.stl overhangs only where a support's scar would hide",
+      "pass": true,
+      "details": "0.02 mm^2 facing down past 45 degrees outside the named places (allowed 5), 267.78 inside them: the cavity (the four screw-foot shoulders), the LED slots (4.5 mm bridges), the USB opening's 45 degree gable, the strap tunnels, the six pin holes, the keeper's foot pocket at the bed, the collar's 0.4 recess; the largest stray at (109, 2.8, 25.74)"
     },
     {
       "name": "KINO_CARRIER_SHELL.stl fits the bed",
@@ -982,9 +1030,9 @@
       "details": "128.4 x 80.8 x 54.2"
     },
     {
-      "name": "KINO_CARRIER_REAR_FRAME.stl prints support-free",
+      "name": "KINO_CARRIER_REAR_FRAME.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0 mm^2 facing down steeper than 45 degrees off the bed, allowed 2 for nothing: holes through, the chamfer and the pad face up"
+      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 0 inside them: nothing: holes through, the chamfer and the pad face up"
     },
     {
       "name": "KINO_CARRIER_REAR_FRAME.stl fits the bed",
@@ -992,9 +1040,9 @@
       "details": "128.4 x 80.8 x 4"
     },
     {
-      "name": "KINO_CARRIER_FACE.stl prints support-free",
+      "name": "KINO_CARRIER_FACE.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "1222.9 mm^2 facing down steeper than 45 degrees off the bed, allowed 2110.35 for the six blind pin holes' ends (1.8 mm bridges), the roof over the stow zone (a plate bridging about 16 mm across the track) and the signature engraved in the bed face"
+      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 5), 1251.82 inside them: the six pin holes, the track (the roof bridged onto its blades) and the signature's 0.4 mm ceilings at the bed"
     },
     {
       "name": "KINO_CARRIER_FACE.stl fits the bed",
@@ -1002,9 +1050,9 @@
       "details": "126.8 x 79.2 x 6.4"
     },
     {
-      "name": "KINO_CARRIER_LENS_COVER.stl prints support-free",
+      "name": "KINO_CARRIER_LENS_COVER.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "3.45 mm^2 facing down steeper than 45 degrees off the bed, allowed 8 for the 0.2 mm ledges at the edge relief"
+      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 3.45 inside them: the 0.2 mm ledges over the edge reliefs"
     },
     {
       "name": "KINO_CARRIER_LENS_COVER.stl fits the bed",
@@ -1012,9 +1060,9 @@
       "details": "86.8 x 16.5 x 6.4"
     },
     {
-      "name": "KINO_CARRIER_KEEPER.stl prints support-free",
+      "name": "KINO_CARRIER_KEEPER.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0 mm^2 facing down steeper than 45 degrees off the bed, allowed 1 for nothing: the foot faces up, the chamfer is 45"
+      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 1), 0 inside them: nothing: the foot faces up, its underside 47 degrees"
     },
     {
       "name": "KINO_CARRIER_KEEPER.stl fits the bed",
@@ -1022,9 +1070,9 @@
       "details": "86.8 x 7.2 x 7.5"
     },
     {
-      "name": "KINO_CARRIER_SHUTTER_BUTTON.stl prints support-free",
+      "name": "KINO_CARRIER_SHUTTER_BUTTON.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "44.52 mm^2 facing down steeper than 45 degrees off the bed, allowed 110 for the retainer's leg-slot bridge and wire notches"
+      "details": "0.5 mm^2 facing down past 45 degrees outside the named places (allowed 1), 44.02 inside them: the retainer's leg-slot bridge and wire notches, inside the pod; the largest stray at (6.19, 16.78, 0.29)"
     },
     {
       "name": "KINO_CARRIER_SHUTTER_BUTTON.stl fits the bed",

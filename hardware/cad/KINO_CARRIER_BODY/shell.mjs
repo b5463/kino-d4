@@ -104,8 +104,16 @@ export function buildShell() {
     // The horizon carried round the LEFT wall only, from the front to the rear
     // frame at the bar's height. On the right the band erased the ribs under
     // the two fingers that hold the camera: the line ends where the hand begins.
+    // At the rear it runs out in a 45 degree ramp that ends at the joint's
+    // chamfer (a 0.01 mm skin over its end was a 27 mm^2 ceiling at the top
+    // of the print; an open end would notch the joint under the frame).
     const [hy0, hy1] = [XY.lensY - P.sliderH / 2 - P.horizonPad, XY.lensY + P.sliderH / 2 + P.horizonPad];
-    shell = shell.subtract(box(ox0 - 1, hy0, Z.glass + 0.01, ox0 + P.horizonWallD, hy1, Z.plateFront + 1));
+    const hStop = Z.glass + P.bedChamfer + P.horizonWallD + 0.02;
+    shell = shell.subtract(box(ox0 - 1, hy0, hStop, ox0 + P.horizonWallD, hy1, Z.plateFront + 1));
+    shell = shell.subtract(Manifold.hull([
+      box(ox0 - 1, hy0, hStop - 0.01, ox0 + P.horizonWallD, hy1, hStop + 0.01),
+      box(ox0 - 1, hy0, Z.glass + P.bedChamfer - 0.01, ox0, hy1, Z.glass + P.bedChamfer + 0.01),
+    ]));
   }
 
   const pod = shutterPod();

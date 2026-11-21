@@ -56,6 +56,25 @@ export function overhangArea(m) {
   return area;
 }
 
+// The same area, split by whether each triangle's centroid lies in one of the
+// boxes [x0, y0, z0, x1, y1, z1] (the print's frame): inside is a named
+// bridge, hole or pocket; outside is a surface a support would scar.
+export function overhangOutside(m, zones) {
+  const mesh = m.getMesh(); const s = mesh.numProp; let inside = 0, outside = 0, worst = null, worstA = 0;
+  const v = (i) => [mesh.vertProperties[i * s], mesh.vertProperties[i * s + 1], mesh.vertProperties[i * s + 2]];
+  for (let t = 0; t < mesh.triVerts.length; t += 3) {
+    const [a, b, c] = [v(mesh.triVerts[t]), v(mesh.triVerts[t + 1]), v(mesh.triVerts[t + 2])];
+    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    const n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+    const len = Math.hypot(...n); if (len < 1e-9) continue;
+    if (!(n[2] / len < -Math.SQRT1_2 - 1e-6 && Math.max(a[2], b[2], c[2]) > 0.01)) continue;
+    const area = len / 2, p = [(a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3, (a[2] + b[2] + c[2]) / 3];
+    const hit = zones.some(([x0, y0, z0, x1, y1, z1]) => p[0] >= x0 && p[0] <= x1 && p[1] >= y0 && p[1] <= y1 && p[2] >= z0 && p[2] <= z1);
+    if (hit) inside += area; else { outside += area; if (area > worstA) { worstA = area; worst = p; } }
+  }
+  return { inside, outside, worst };
+}
+
 export function writeStl(outDir, name, solid) {
   const mesh = solid.getMesh(); const s = mesh.numProp;
   const v = (i) => [mesh.vertProperties[i * s], mesh.vertProperties[i * s + 1], mesh.vertProperties[i * s + 2]];

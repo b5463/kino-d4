@@ -322,13 +322,29 @@ front), its right end 3.5 deep as the grip; below the groove's floor, the
 cover's track, 3.4 mm deep (the cover 2.0, its raised mark 0.8 and 0.6
 under the roof), its panel from the entry gap at the bottom to 0.5 above
 the closed cover's top, with 1.25 mm of plate left under the relieved
-floor. The plate above the track outside the groove is the roof over the
-stow zone, a 1.5 mm plate the printer bridges across the 16 mm track (the
-technician's call: 1 mm sagged onto the mark in his experience; PETG sags
-0.2 to 0.3 over 16 mm at full fan, hence 0.6 after the generalist jury
-found the mark riding on the sag; the coupon decides). In the track:
-dovetail lips on both walls, two detent pairs past the cover's R3 corners,
-0.1 mm a side, the cover riding on two 2.5 mm lands. The four cells are
+floor (the relief is 0.25 mm cut into the plate between two 2.5 mm lands;
+the first nine cuts cut it upward into the track's own void, so the lands
+were 0.01 mm and the cover dragged on the whole floor; a gate now probes
+the relief and a land). The plate above the track outside the groove is
+the roof over the stow zone, 1.5 mm thick (the technician's call: 1 mm
+sagged onto the mark in his experience; 0.6 under it after the generalist
+jury found the mark riding on the sag; the coupon decides). In a back-down
+print that roof is a plate with both of its Y edges free, the entry gap
+below it and the horizon above, and the lip slot through it: two flaps
+hanging 45 and 21 mm from one wall each, not a bridge, and a slicer would
+fill the track with tree supports and scar the roof's underside and the
+floor the cover rides on. So the print file carries five breakaway
+blades, 0.8 mm wide, standing on the relieved band off the lands, one
+within 0.2 mm of each edge of the lip slot, rising to one layer (0.2 mm)
+under the roof: the roof's lines bridge 10 to 16 mm onto them (gated:
+every span, a blade at each slot edge, the witness leaving the mark 0.4).
+Each blade stands on a one-line neck and snaps out through the entry gap
+before the keeper goes in; the stubs sit 0.25 below the lands, where the
+cover never touches, and the witness is on a ceiling nothing rides on.
+They are in `KINO_CARRIER_FACE.stl` and the track coupon only; the
+previews show the part. In the track: dovetail lips on both walls, two
+detent pairs past the cover's R3 corners, 0.1 mm a side, the cover riding
+on the two lands. The four cells are
 plain 7.5 mm bores with a 0.8 mm 45 degree rim at the mouth, so they read
 as eyes and not as a microphone array: with the pupil 1.1 mm behind the
 lens face, the 82 degree field does not outgrow 7.5 mm inside this face,
@@ -342,11 +358,11 @@ stowed. Both are gates, as is the closed cover blanketing every cell (the
 firmware's cover-closed test needs all four dark). Its lip, 20 mm wide
 with a 0.4 mm root, from 45 to 65 mm off the bar's left end and 1.5 mm
 proud of the face (a thumb needs 16; at 30 the open slot read as a mouth;
-at 1.0 a glove could not lift it), rides in a 21 mm slot through the roof that runs the roof's full height, from
-the panel's bottom rim up into the groove, so every bridge line of the roof
-lands on a wall at both ends (a slot that stopped short left free-ended
-bridges); dropped, plain bar shows through the slot, never a letter (the
-wordmark ends at 36 mm; the seventh cut's centred slot showed the "s").
+at 1.0 a glove could not lift it), rides in a 21 mm slot through the roof that runs the roof's full height,
+from the panel's bottom rim up into the groove (the roof's bridge lines
+run across the slot's edges onto the blades beside them); dropped, plain
+bar shows through the slot, never a letter (the wordmark ends at 36 mm;
+the seventh cut's centred slot showed the "s").
 
 The keeper refills the cover's entry gap, which now runs through the
 whole plate below the track, and is the track's stop, cut from the face's
@@ -414,7 +430,7 @@ are each part in print orientation from `render-stl.py`.
 
 ## Gates
 
-`node generate-carrier-body.mjs` writes `.candidate/` and runs 168 gates,
+`node generate-carrier-body.mjs` writes `.candidate/` and runs 176 gates,
 throwing on the first failure (`KINO_SOFT_GATES=1` collects them): the depth
 chain re-added over the lens band, the lens front on the pocket floor, the
 module PCB with the plate to land on, the battery bay tall enough for the cell
@@ -434,12 +450,18 @@ sitting under the stowed cover as its stop, the wordmark inside the cover's
 band, the shutter bores open from the top face and from the cavity, the lead
 routes open, the pod above the carrier, the stem positive, the retainer
 passing its bore, the strap tunnels open under their skin, the signature
-inside the plate clear of the track and the pins, the deck bare, and every
-print support-free off the bed (each one's allowed bridges listed in its
-gate; a chamfer counts only past 45 degrees, so every chamfer here is
-exactly 45) and on a 250 x 210 bed, the battery bay with 10 % of swell,
-the keeper's stop face under the stowed cover with its foot behind the
-face, and every coupon one piece on the bed.
+inside the plate clear of the track and the pins, the deck bare, every
+print's overhang inside its named bridges, holes and pockets (each print
+lists the places a face may point down past 45 degrees, a bridge, a hole
+or a pocket where a support could not stand or its scar would never show;
+anything down-facing outside them fails, with its position; a chamfer
+counts only past 45 degrees, so every chamfer here is exactly 45) and on a
+250 x 210 bed, the cover on two lands over a relieved floor, each roof
+blade in the band off the lands with its layer of air, the roof's spans
+and the blades at the slot's edges, the witness clear of the mark, the
+battery bay with 10 % of swell, the keeper's stop face under the stowed
+cover with its foot behind the face, and every coupon one piece on the
+bed.
 
 `node promote.mjs` validates the candidates, copies the six parts into
 `print/`, the nine coupons into `coupons/` and the report into `reports/`,
@@ -453,6 +475,8 @@ frame and the face; 0.08 on the cover and the button.
 
 | | |
 |---|---|
+| supports | off, on every part. No part needs any: every down-facing surface is a bridge of 4.5 mm or less, a blind hole, a pocket at the bed, or the roof on its blades (the gate lists them per print, and anything else fails). Supports here do damage: trees in the track scar the roof and the floor the cover rides on, trees in the pin holes and the strap tunnels block them, trees in the keeper's pocket and the collar's recess fill a 0.9 and a 0.4 mm fit. If the slicer insists, set its overhang threshold so the 45 degree chamfers and the 49 degree groove flanks never trigger (faces steeper than 40 degrees from the bed unsupported) and keep bridge detection on; tree supports painted on by hand are allowed under the face's roof only, and the blades make them unnecessary |
+| the face's roof | five breakaway blades are in the STL, in the track under the roof; after the print, snap each out through the entry gap (pull toward the gap; the neck is one line), before the keeper goes in. Check the roof's underside is clean over the slot's edges and the floor's lands are untouched |
 | elephant foot compensation | 0.2 mm (the chamfers are a second defence, not the first) |
 | seam | scarf, painted onto the bottom wall; the grooves hide a seam only where it is straight |
 | bridges | fan 100 %, bridge speed 20 mm/s, thick bridges off: the roof over the track, the strap tunnels, the LED slots |
@@ -473,7 +497,7 @@ orientation as the parent. Pass criteria, in numbers:
 | `KINO_COUPON_SHRINK_BAR` | the printer's shrink | 100.0 mm bar measures 99.5 to 100.0; set the slicer's compensation, never scale the shell |
 | `KINO_COUPON_PILLAR` | the screw stack and a 1.9 pin hole | M2 drives into the spacer by hand; a 1.75 pin pushed 3 mm holds the coupon inverted and pulls with a finger |
 | `KINO_COUPON_POCKET` | the pinch ribs, the corner reliefs, the 7.5 bore | a seated head pushes in with a thumb, does not fall out inverted, the lens centred in the bore by eye |
-| `KINO_COUPON_TRACK_FACE` + `_COVER` + `_KEEPER` | the track, the roof, the lip slot, the detents, the keeper's foot | the cover drops at 45 degrees of tilt and stays shut at 90; the roof sags under 0.3 over the mark; the keeper's foot clicks into the pocket coupon of the plate (print `KINO_COUPON_PILLAR`'s plate face against it) |
+| `KINO_COUPON_TRACK_FACE` + `_COVER` + `_KEEPER` | the track, the roof on three of its blades, the lip slot, the detents, the keeper's foot | the three blades snap out through the gap without lifting a land; the roof's underside is flat to 0.3 between them (the mark clears it); the cover drops at 45 degrees of tilt and stays shut at 90; the keeper's foot clicks into the pocket coupon of the plate (print `KINO_COUPON_PILLAR`'s plate face against it) |
 | `KINO_COUPON_DECK` | the gabled bores, the 0.4 collar, the guide ribs | the plunger runs without tick and returns on the switch; the retainer passes the 17 bore |
 | `KINO_COUPON_STRAP_SHELL` + `_FRAME` | the tunnel and slots | 100 N on a 2.5 mm cord, no tear at the 0.6 skin |
 
@@ -524,6 +548,10 @@ that is not supplied is a scored fault.
 - A 1/4-20 boss on the bottom wall: the next carrier should leave a 12 x 7
   notch at X 50 for it.
 - Slicer profiles per part as files, and a per-part time and mass table.
+- A print of the face with the blades: whether five 0.8 mm blades on a
+  one-line neck snap clean in PETG or need a notch, and whether 16 mm
+  bridges between them sag under 0.3 at full fan. The track coupon decides;
+  the fallback is a blade every 10 mm.
 - The serial and revision engraving, the face grain.
 - The independent scan.
 

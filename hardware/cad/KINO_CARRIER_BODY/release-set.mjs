@@ -34,7 +34,7 @@ export const SWEEP_EXT = [".stl", ".pdf", ".svg", ".3mf"];
 export const RELEASE_PROCESS = {
   "KINO_CARRIER_SHELL.stl": "FDM, PETG, 0.20 mm, face down, no support",
   "KINO_CARRIER_REAR_FRAME.stl": "FDM, PETG, 0.20 mm, rear face down, no support",
-  "KINO_CARRIER_FACE.stl": "FDM, PETG, 0.20 mm, back down, no support",
+  "KINO_CARRIER_FACE.stl": "FDM, PETG, 0.20 mm, back down, slicer supports off: five breakaway blades under the roof are in the file; snap them out through the entry gap before the keeper goes in",
   "KINO_CARRIER_LENS_COVER.stl": "FDM, PETG, 0.20 mm, back down, no support",
   "KINO_CARRIER_KEEPER.stl": "FDM, PETG in the face's filament, 0.20 mm, front down (the foot up); captive in the shell's plate under the face, no glue",
   "KINO_COUPON_PILLAR.stl": "FDM, PETG, 0.20 mm, plate down: one pillar with its screw stack and a face pin hole",
@@ -42,7 +42,7 @@ export const RELEASE_PROCESS = {
   "KINO_COUPON_DECK.stl": "FDM, PETG, 0.20 mm, cut face down: the deck with the pod, the collar and the guide ribs",
   "KINO_COUPON_STRAP_SHELL.stl": "FDM, PETG, 0.20 mm, cut face down: a wall end with its tunnel and slots, pulled to 100 N on a 2.5 mm cord",
   "KINO_COUPON_STRAP_FRAME.stl": "FDM, PETG, 0.12 mm, rear face up: the frame corner with its two slots",
-  "KINO_COUPON_TRACK_FACE.stl": "FDM, PETG, 0.20 mm, back down: 74 mm of the face with the track, the roof, the lip slot and three cells",
+  "KINO_COUPON_TRACK_FACE.stl": "FDM, PETG, 0.20 mm, back down, slicer supports off: 74 mm of the face with the track, the roof on three of its blades, the lip slot and three cells",
   "KINO_COUPON_TRACK_COVER.stl": "FDM, PETG, 0.08 mm, back down: the cover's left 70 mm with its lip; the flush to cream at 2.00",
   "KINO_COUPON_TRACK_KEEPER.stl": "FDM, PETG, 0.20 mm, front down: the keeper's left 70 mm with its foot",
   "KINO_COUPON_SHRINK_BAR.stl": "FDM, PETG, 0.20 mm: a 100 x 10 x 3 bar; measure it, set the slicer's shrink compensation, never scale the shell",
