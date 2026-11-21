@@ -499,7 +499,7 @@ are reached through the carrier's window only with the shell off.
 Previews: `previews/KINO_CARRIER_NIGHT_*.png` (the print target) and
 `DAY_*.png` are the colour views from `render-parts.py` (each part's STL in its filament's colour,
 triangles split to 5 mm so the painter's order holds); the `*_PRINT.png` views
-are each part in print orientation from `render-stl.py`.
+are each part in print orientation from `render-stl.py`. `KINO_CARRIER_EXPLODED.png` and `_EXPLODED_SIDE.png` pull every part apart along the depth axis: rear frame, the electronics stack (green) with its glass, the shell with its button, the face, the cover; the pins, the foam strips and the switch are too small to show.
 
 ## Gates
 
