@@ -44,7 +44,7 @@ const S = SHELL;
 function buildDummy() {
   const [px0, py0, px1, py1] = XY.p4;
   const parts = [box(px0, py0, Z.glassFront, px1, py1, 0)];
-  for (const [hx, hy] of P.carrierHoles) parts.push(cylZ(hx, hy, 0, 1.75, Z.carrierBack, 24));
+  for (const [hx, hy] of P.carrierHoles) { parts.push(cylZ(hx, hy, 0, 1.75, Z.carrierBack, 24)); parts.push(cylZ(hx, hy, Z.carrierFront, P.carrierHead[0] / 2, P.carrierHead[1], 24)); }   // the standoffs, and the carrier's own screw heads on its front
   const [wx0, wy0, wx1, wy1] = P.usbWindow;
   parts.push(rbox(0, 0, Z.carrierBack, P.carrierW, P.carrierH, Z.carrierFront, P.carrierR)
     .subtract(box(wx0, wy0, Z.carrierBack - 1, wx1, wy1, Z.carrierFront + 1)));
@@ -154,10 +154,11 @@ for (const [lx, ly] of S.lensXY) {
     `cover ${P.sliderH} tall over a ${r2(2 * FACE.outerR)} mm cell; the firmware's cover-closed test needs all four dark`);
 }
 for (const [hx, hy] of P.carrierHoles) {
-  openProbe(`driver reaches the screw at (${hx}, ${hy})`, cylZ(hx, hy, S.shaftFloorZ + 0.05, P.accessShaftD / 2 - 0.1, Z.plateFront - S.shaftFloorZ + 0.5, 32), `${P.accessShaftD} mm shaft from the plate's front to the foot at Z=${r2(S.shaftFloorZ)}; the face comes off first`);
-  openProbe(`screw passes the foot at (${hx}, ${hy})`, cylZ(hx, hy, S.bossFootZ - 0.5, P.screwBore / 2 - 0.1, P.bossFoot + 0.4, 24), `${P.screwBore} mm bore through ${P.bossFoot} mm of foot`);
-  const foot = cylZ(hx, hy, S.bossFootZ, P.bossD / 2 - 0.1, 0.5, 24).subtract(cylZ(hx, hy, S.bossFootZ - 1, P.screwBore / 2 + 0.1, 3, 24));
-  check(`foot stands on the carrier at (${hx}, ${hy})`, vol(shell, foot) > foot.volume() * 0.9, `pillar ${P.bossD} mm, inside the ${P.fastenerKeepOutD} mm fastener keep-out`);
+  const pocketR = P.carrierHead[0] / 2 + P.carrierHeadClr;
+  openProbe(`the carrier's screw head sits in the foot at (${hx}, ${hy})`, cylZ(hx, hy, S.bossFootZ - 0.3, pocketR - 0.1, P.carrierHead[1] + P.carrierHeadClr + 0.2, 24), `an M2 pan head ${P.carrierHead[0]} x ${P.carrierHead[1]} with ${P.carrierHeadClr} of air; no screw from the body enters the carrier`);
+  const foot = cylZ(hx, hy, S.bossFootZ, P.bossD / 2 - 0.1, 0.5, 24).subtract(cylZ(hx, hy, S.bossFootZ - 1, pocketR + 0.1, 3, 24));
+  check(`foot stands on the carrier round the head at (${hx}, ${hy})`, vol(shell, foot) > foot.volume() * 0.9 && P.bossD <= P.fastenerKeepOutD && P.bossD / 2 - pocketR >= 1.0,
+    `pillar ${P.bossD} mm with a ${r2(2 * pocketR)} mm pocket, ${r2(P.bossD / 2 - pocketR)} of wall, inside the ${P.fastenerKeepOutD} mm fastener keep-out`);
 }
 // The six face pins: a hole in the wall end and a hole in the face's back at each station.
 for (const [px, py] of S.pinXY) {
@@ -172,10 +173,6 @@ check("the signature inside sits on the plate, clear of the track and the pins",
 check("the side pins sit above the horizon channel", P.facePinsSideY - P.facePinD / 2 - 1.0 >= XY.lensY + P.sliderH / 2 + P.horizonPad, `pins at Y ${P.facePinsSideY}; the channel runs to Y ${r2(XY.lensY + P.sliderH / 2 + P.horizonPad)}, ${P.horizonWallD} mm into a ${P.wall} mm wall`);
 check("the horizon channel leaves wall", P.wall - P.horizonWallD - P.grooveD >= 2.0, `${r2(P.wall - P.horizonWallD - P.grooveD)} mm of wall under the channel where a layer groove crosses it`);
 check("the horizon channel is the face's pry point", P.horizonWallD - P.faceInset >= 1.0, `${r2(P.horizonWallD - P.faceInset)} mm of the face's back edge exposed in the left wall's channel; a nail lifts the face there`);
-for (const [hx, hy] of P.carrierHoles) {
-  const mouth = coneZ(hx, hy, Z.plateFront - P.accessShaftChamfer + 0.15, P.accessShaftD / 2 - 0.05, P.accessShaftD / 2 + P.accessShaftChamfer - 0.3, P.accessShaftChamfer - 0.25, 32);
-  openProbe(`stack-screw port at (${hx}, ${hy}) chamfered at the plate's front`, mouth, `${P.accessShaftChamfer} mm at 45 degrees, the horizon's lip size; the lower two show in the stow zone`);
-}
 check("the lip stands proud of the face for the thumb", Math.abs(lipProud - ((FACE.front - (FACE.floorZ + P.sliderT)) + P.coverLipAboveFace)) < 1e-9 && P.coverLipAboveFace >= 0.4, `${r2(lipProud)} mm off the cover, ${P.coverLipAboveFace} above the face, closed and stowed; the thumb pushes it down and lifts it back`);
 openProbe("the carrier slides in from the rear up to the pillar feet",
   rbox(-0.05, -0.05, Z.glass + 0.1, P.carrierW + 0.05, P.carrierH + 0.05, S.bossFootZ - 0.05, P.carrierR), `${P.carrierClear} mm a side; the feet at Z=${r2(S.bossFootZ)} are the stop; the shutter pod ends at Z=${P.shutterPodBottomZ}`);
@@ -258,6 +255,10 @@ const GASK = (() => {
   const space = P.glassClear + gD, squeeze = (t) => 1 - (space + t) / gT;
   check("the gasket's squeeze covers the stack's tolerance", P.rearFrameT - gD >= 1.2 && squeeze(0) >= 0.3 && squeeze(0.3) >= 0.15 && squeeze(-0.3) <= 0.55,
     `${gT} mm foam in ${r2(space)} mm: ${Math.round(squeeze(0) * 100)} % squeezed; ${Math.round(squeeze(0.3) * 100)} to ${Math.round(squeeze(-0.3) * 100)} % over +-0.3 mm of stack`);
+  const ringArea = 2 * (gx1 - gx0 + gW) * gW + 2 * (gy1 - gy0 - gW) * gW;
+  const clampN = P.gasketKPa * ringArea / 1000, weightN = P.stackMassG * 9.81 / 1000;
+  check("the foam clamps the stack onto the pillar feet", clampN >= 5 * weightN,
+    `${r2(ringArea)} mm^2 of foam at ${P.gasketKPa} kPa (PROVISIONAL) is ${r2(clampN)} N on the glass, ${r2(clampN / weightN)} times the ${P.stackMassG} g stack; the only screws in the body go from the frame into the shell`);
 }
 
 // Print orientations: the shell face down; the frame rear face up; the

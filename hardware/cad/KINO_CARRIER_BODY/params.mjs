@@ -108,12 +108,17 @@ export const P = Object.freeze({
   facePinsTop: [30.0, 90.0],   // X on the top and bottom walls; the bottom pair dodges the LED slots and the USB opening
   facePinsBottom: [5.0, 96.7],  // under the window's bottom rim, between the LED slots, short of the corner
   facePinsSideY: 52.0,         // one on each side wall, above the horizon channel
-  bossD: 6.0,                // the stack-screw pillars, inside the 7 mm keep-out
+  bossD: 6.8,                // the pillars, inside the 7 mm keep-out round the carrier's holes; each ends in a foot with a pocket for the carrier's own screw head
   bossRib: 2.0,              // the rib tying each pillar to the wall
-  bossFoot: 3.8,             // pillar material the screw head bears on
-  screwBore: 2.4,            // M2 clearance
-  accessShaftD: 4.0,         // the driver's way in from the front; an M2 pan head is 3.8. The lower two open in the stow zone's floor and show when the cover is closed: they are the stack-screw ports, chamfered like the cells
-  accessShaftChamfer: 0.8,   // 45 degrees at each shaft's mouth in the plate's front, the horizon's own lip size: a bare 4 mm hole read as a defect, a chamfered one as drilled on purpose
+  bossFoot: 3.8,             // pillar material above the head pocket
+  // No screw from the body enters the carrier or the P4 (the owner's rule):
+  // the carrier's own M2 pan heads, on its front face at the four holes,
+  // sit in pockets in the pillar feet, and the rear frame's foam clamps the
+  // stack onto the feet.
+  carrierHead: [3.8, 1.3],   // the carrier's M2 pan head, D x H (DIN 7985)
+  carrierHeadClr: 0.3,       // a side and above it in the foot's pocket
+  gasketKPa: 25,             // PROVISIONAL: PORON or silicone foam at 35 % squeeze; PE takes a set in a year and the clamp with it
+  stackMassG: 130,           // PROVISIONAL: P4 module, standoffs, carrier, four nodes, the cell
   rearFrameT: 2.5,           // the thumb climbs this to the glass; the window's inner edge is chamfered for it
   // The P4 is held at the rear without a screw into it: its inserts carry
   // the carrier's standoffs. The frame's inner face stands off the glass

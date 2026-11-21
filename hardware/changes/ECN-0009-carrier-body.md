@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; thirteenth cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
+| Status | Design in progress; fourteenth cut generated and gated, nothing printed; the night colourway prints first, the coupons before it |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -291,6 +291,24 @@ owner's printer. Two parts:
   parts; the frame's slots prove nothing), a frame pilot added to the
   strap coupon. Stale parameters removed. Not taken: plugging the ports
   or moving the window (a part and a coupon). 161 gates. Body 61.2.
+- **No screw into either board** (fourteenth cut, 2026-11-21; the owner:
+  "the M2 cannot be attached to the case, only P4 to carrier; hold the P4
+  down with no screws that go into the P4 or the carrier"). The four stack
+  screws from the pillar feet into the standoffs are gone, with the four
+  4 mm driver shafts in the plate and the screw ports the thirteenth cut
+  had chamfered. The carrier is screwed to its standoffs with its own M2
+  pan heads, and each pillar foot now carries a 4.4 mm pocket 1.6 deep
+  round the head (`carrierHead`, `carrierHeadClr`; `bossD` 6.8 so 1.2 mm
+  of wall rings the pocket inside the keep-out). The stack is clamped:
+  the frame's four screws into the wall-end pilots squeeze the foam, the
+  foam the glass, the glass the module, the standoffs the carrier, the
+  carrier the feet. A gate puts the clamp at about 16 N on 644 mm^2 of
+  foam at 25 kPa against a 130 g stack, both numbers provisional; the
+  foam is now specified PORON or silicone, not PE, because PE takes a set
+  and the clamp with it. The dummy carries the screw heads, so the
+  clearance gate proves the pockets. The plate's front is solid and the
+  stow zone's floor plain. Battery change is frame off, stack out. 154
+  gates.
 
 Depth, re-added by a gate every build: 2.5 frame + 0.4 off the glass + 13.8 module + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
@@ -302,7 +320,7 @@ from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-161 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
+154 in `generate-carrier-body.mjs`, 0 failures: the depth chain, the lens
 front on the pocket floor, the face inset from the outline and over the
 pins, the plan corner's wall on the diagonal, the roof over the stow zone
 clear of the cover and its mark, the lip's slot, the keeper clear of the

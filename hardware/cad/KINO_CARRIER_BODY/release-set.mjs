@@ -31,7 +31,7 @@ export const RELEASE_PROCESS = {
   "KINO_CARRIER_REAR_FRAME.stl": "FDM, PETG, 0.10 mm, rear face UP (the gasket groove on the bed), no support",
   "KINO_CARRIER_FACE.stl": "FDM, PETG, 0.20 mm, back down, no support",
   "KINO_CARRIER_LENS_COVER.stl": "FDM, PETG, 0.08 mm, back down, no support; filament change to cream at Z 2.00, minimum layer time 10 s for the lip",
-  "KINO_COUPON_PILLAR.stl": "FDM, PETG, 0.20 mm, plate down: one pillar with its screw stack and a face pin hole",
+  "KINO_COUPON_PILLAR.stl": "FDM, PETG, 0.20 mm, plate down: one pillar with its head pocket and a face pin hole",
   "KINO_COUPON_POCKET.stl": "FDM, PETG, 0.20 mm, plate down: one camera pocket with its ribs, reliefs and bore",
   "KINO_COUPON_DECK.stl": "FDM, PETG, 0.20 mm, cut face down: the deck with the pod, the collar and the guide ribs",
   "KINO_COUPON_STRAP_SHELL.stl": "FDM, PETG, 0.20 mm, cut face down: a wall end with its tunnel, slots and the first frame pilot; pulled to 100 N on a 2.5 mm cord, the pilot driven ten times",

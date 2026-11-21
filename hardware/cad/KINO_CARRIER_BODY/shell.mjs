@@ -50,12 +50,11 @@ export const SHELL = (() => {
   const pocket = [cx0, cy0, cx1, cy1];        // the face's plan, the cavity's
   const bossTopZ = Z.plateInner + 0.3;
   const bossFootZ = Z.carrierFront;
-  const shaftFloorZ = bossFootZ + P.bossFoot;
   const usbOpenH = P.usbPlug[1] + 2 * P.usbPlugClear;
   const usbOpenW = P.usbPlug[0] + 2 * P.usbPlugClear;
   const usbOpenZ = [Z.carrierBack - P.usbShellH / 2 - usbOpenH / 2, Z.carrierBack - P.usbShellH / 2 + usbOpenH / 2];
   const windowHalf = [P.activeArea[0] / 2 + P.windowMargin, P.activeArea[1] / 2 + P.windowMargin];
-  return Object.freeze({ strapSlots, strapChannels, pinXY, rimFront, pocket, bossTopZ, bossFootZ, shaftFloorZ, usbOpenZ, usbOpenW, windowHalf,
+  return Object.freeze({ strapSlots, strapChannels, pinXY, rimFront, pocket, bossTopZ, bossFootZ, usbOpenZ, usbOpenW, windowHalf,
     lensXY: P.cameraXs.map((x) => [x, XY.lensY]), headPocket: P.camBody + P.camBodySlack });
 })();
 
@@ -130,12 +129,11 @@ export function buildShell() {
   // carries the button and nothing else; the name is inside, on the face.
 
   const cuts = [...pod.cuts];
+  // Each foot pocketed for the carrier's own screw head: the foot lands on
+  // the PCB round the head, and no screw from the shell enters the carrier.
+  // The plate's front stays solid (no driver shafts).
   for (const [hx, hy] of P.carrierHoles) {
-    cuts.push(cylZ(hx, hy, S.shaftFloorZ, P.accessShaftD / 2, Z.plateFront + 1 - S.shaftFloorZ, 48));
-    // The shaft's mouth chamfered in the plate's front (the bed face): the
-    // lower two show in the stow zone when the cover is closed.
-    cuts.push(coneZ(hx, hy, Z.plateFront - P.accessShaftChamfer, P.accessShaftD / 2, P.accessShaftD / 2 + P.accessShaftChamfer + 0.01, P.accessShaftChamfer + 0.01, 48));
-    cuts.push(cylZ(hx, hy, S.bossFootZ - 0.5, P.screwBore / 2, P.bossFoot + 1, 32));
+    cuts.push(cylZ(hx, hy, S.bossFootZ - 0.5, P.carrierHead[0] / 2 + P.carrierHeadClr, P.carrierHead[1] + P.carrierHeadClr + 0.5, 32));
   }
   for (const [lx, ly] of S.lensXY) {
     const h = S.headPocket / 2;
