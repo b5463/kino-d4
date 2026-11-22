@@ -212,8 +212,10 @@ for (const [px, py] of S.faceScrewXY) {
   const head = cylZ(px, py, Z.plateInner - 0.2, P.screwHeadD / 2 + 0.5, S.plateBoreDepth + 0.2, 24);
   check(`face screw head at ${at} is clear of the stack`, vol(dummy, head) < 1e-3 && P.screwHeadH <= S.plateBoreDepth, `the head ${P.screwHeadH} tall in a ${r2(S.plateBoreDepth)} counterbore, flush under the stack; ${vol(dummy, head).toFixed(4)} mm^3 of electronics in it`);
   openProbe(`face insert hole at ${at} open`, cylZ(px, py, FACE.back - 0.3, hole - 0.1, FACE.insertHoleDepth + 0.1, 24), `${P.insertHoleD} mm, ${r2(FACE.insertHoleDepth)} deep into the face's back for a ${P.insertLen} insert`, face);
-  const ahead = cylZ(px, py, FACE.back + FACE.insertHoleDepth + 0.05, hole + 0.5, P.faceBase - FACE.insertHoleDepth - 0.1, 24);
-  check(`face insert hole at ${at} is blind with face ahead`, vol(face, ahead) > ahead.volume() * 0.95 && P.faceBase - FACE.insertHoleDepth >= 0.7, `${r2(P.faceBase - FACE.insertHoleDepth)} mm of face ahead of the hole, full`);
+  const inBand = py > FACE.horizon[0] && py < FACE.horizon[1];
+  const faceThere = inBand ? FACE.trackTop - FACE.back : P.faceBase;   // in the horizon band the face is the groove's floor
+  const ahead = cylZ(px, py, FACE.back + FACE.insertHoleDepth + 0.05, hole + 0.5, faceThere - FACE.insertHoleDepth - 0.1, 24);
+  check(`face insert hole at ${at} is blind with face ahead`, vol(face, ahead) > ahead.volume() * 0.95 && faceThere - FACE.insertHoleDepth >= 0.7, `${r2(faceThere - FACE.insertHoleDepth)} mm of face ahead of the hole, full${inBand ? " (under the horizon's floor)" : ""}`);
   const ring = cylZ(px, py, FACE.back + 0.5, hole + 1.0, FACE.insertHoleDepth - 0.6, 32).subtract(cylZ(px, py, FACE.back, hole + 0.1, P.faceBase, 32));
   check(`face insert at ${at} has 1.0 mm of face all round`, vol(face, ring) > ring.volume() * 0.97, `${r2(100 * vol(face, ring) / ring.volume())} % of a 1.0 mm ring round the hole in material: clear of the window, the leaves, the signature and the edge`);
 }
@@ -257,10 +259,13 @@ check("the frame's insert holes keep wall under the first groove", P.frameScrewI
 {
   const closed = vol(face, cover), open = vol(face, coverOpen), mid = vol(face, coverMid);
   const pastClosed = vol(face, cover.translate([0, -1.0, 0])), pastOpen = vol(face, coverOpen.translate([0, 1.0, 0]));
-  check("cover closed: the upper bumps seat in its notches", closed < 0.05 && pastClosed > 0.1, `${closed.toFixed(4)} mm^3 shared at the stop (the bumps float in the ${P.sliderNotchD} notches), ${pastClosed.toFixed(3)} with the cover 1.0 below it (the bumps on the flanks, pressed ${P.sliderBumpReach})`);
-  check("cover open: the lower bumps seat in its notches", open < 0.05 && pastOpen > 0.1, `${open.toFixed(4)} mm^3 shared at the stop, ${pastOpen.toFixed(3)} with the cover 1.0 above it`);
-  const leaving = vol(face, cover.translate([0, -3.0, 0])), arriving = vol(face, coverOpen.translate([0, 3.0, 0]));
-  check("cover leaving a stop: that pair presses the flanks; mid-travel: free", leaving > 0.1 && arriving > 0.1 && mid < 0.05, `${leaving.toFixed(3)} mm^3 of bump in the flanks 3 below closed, ${arriving.toFixed(3)} 3 above open, ${mid.toFixed(4)} mid-travel: the cover starts sprung and centred, then runs in its ${P.sliderClr}`);
+  check("cover closed: the upper bumps seat in its notches", closed < 2.0 && pastClosed > closed + 0.08, `${closed.toFixed(3)} mm^3 shared at the stop (the ridges on the flanks; the bumps float in the ${P.sliderNotchD} notches), ${pastClosed.toFixed(3)} with the cover 1.0 below it (the bumps out on the flanks too, pressed ${P.sliderBumpReach})`);
+  check("cover open: the lower bumps seat in its notches", open < 2.0 && pastOpen > open + 0.08, `${open.toFixed(3)} mm^3 shared at the stop, ${pastOpen.toFixed(3)} with the cover 1.0 above it`);
+  const sweep = [];
+  for (let d = 0.5; d < FACE.travel; d += 0.5) sweep.push([d, vol(face, cover.translate([0, -d, 0]))]);
+  const least = sweep.reduce((a, b) => (b[1] < a[1] ? b : a)), most = sweep.reduce((a, b) => (b[1] > a[1] ? b : a));
+  check("cover sprung at every position of the travel", least[1] > 0.02 && most[1] < 8.0 && mid > 0.02,
+    `${sweep.length} positions 0.5 apart from closed to open: the least contact ${least[1].toFixed(3)} mm^3 at ${r2(least[0])} below closed, the most ${most[1].toFixed(3)} at ${r2(most[0])}; the ridges behind the bumps (the outer ${Math.round(100 * (1 - P.sliderRidgeFrom))} % of each leaf, from the clearance line to the bump's reach) keep one pair on the flanks the whole way, so a yaw is pushed back and nothing runs free in its ${P.sliderClr}`);
   // The flanks the bumps run on: the cover's vertical side faces between
   // its back chamfer and its bevels; both must be taller than the bump.
   const flanks = [P.sliderT - P.bedChamfer - P.sliderBevel[0], P.sliderT - P.bedChamfer - P.sliderBevel[1]];
@@ -295,8 +300,8 @@ check("the frame's insert holes keep wall under the first groove", P.frameScrewI
   check("cover travel is positive and the cover stows above the rim", FACE.travel > 10 && FACE.openY0 >= FACE.panel[1] + 0.4, `${r2(FACE.travel)} mm down from Y ${r2(FACE.closedY0)}; stowed bottom edge at Y ${r2(FACE.openY0)}, panel from Y ${r2(FACE.panel[1])}`);
   check("wordmark fits under the lip", markBox.y > FACE.closedY0 + 0.8 && markBox.y + markBox.h < FACE.closedY1 - P.coverLip[1] - 0.6 && markBox.w < (FACE.panel[2] - FACE.panel[0]) - 10,
     `${r2(markBox.w)} x ${r2(markBox.h)} mm engraved ${P.markDepth}; "odd jobs" at ${P.markW} mm has strokes about ${r2(1.3 * P.markW / 30)} mm, floor ${P.markMinStroke}`);
-  check("the cover goes in one way only", vol(face, coverTurned) > 0.5 && vol(face, cover) < 0.02,
-    `turned round in its plane the cover's 1.0 bevel meets the 1.5 lip: ${r2(vol(face, coverTurned))} mm^3 of lip inside it; the right way, ${vol(face, cover).toFixed(4)}`);
+  check("the cover goes in one way only", vol(face, coverTurned) > vol(face, cover) + 0.5,
+    `turned round in its plane the cover's 1.0 bevel meets the 1.5 lip: ${r2(vol(face, coverTurned))} mm^3 of lip inside it; the right way, ${vol(face, cover).toFixed(3)} (the ridges on the flanks)`);
   check("wordmark strokes clear one nozzle line with margin", 1.3 * P.markW / 30 >= P.markMinStroke, `about ${r2(1.3 * P.markW / 30)} mm, engraved ${P.markDepth}`);
   check("the grip is the horizon's right end, past the track", P.gripX0 > FACE.panel[2] + 3 && P.gripX0 < FACE.outline[2] - 12,
     `grip from X ${P.gripX0} to the face's edge, ${P.gripD} mm deep in a ${r2(FACE.horizonD)} mm groove; the track ends at X ${r2(FACE.panel[2])}`);
@@ -503,7 +508,7 @@ const gauge = (() => {
 })();
 const coupons = (() => {
   const cut = (m, b) => m.intersect(b);
-  const t03Box = box(ox0 - 1, oy0 - 1, Z.carrierBack - 2, ox0 + 26, oy0 + 26, Z.plateFront + 1);        // the lower-left corner: two walls, the ledge, the plate with the face's screw station at (4, 4)
+  const t03Box = box(ox0 - 1, oy0 - 1, Z.carrierBack - 2, ox0 + 26, P.faceScrewXY[0][1] + 5, Z.plateFront + 1);   // the lower-left corner: two walls, the ledge, the plate up past the face's screw station at (4, 36)
   const t04Box = box(ox0 - 1, oy0 - 1, Z.glass - 1, P.frameScrewsBottom[0] + 5, oy0 + 14, Z.glass + 14);  // the bottom wall's rear end: two strap slots over their tunnel, the frame's insert station at X 40 with its boss
   const t06Box = box(ox0 - 1, oy0 - 1, FACE.back - 1, ox0 + 21, P.faceScrewXY[0][1] + 5, FACE.front + 1);   // the face's lower-left corner: the insert station at (4, 13), the window's corner with its chamfers, the left lower leaf with its bump
   const t05Z0 = P.shutterPodBottomZ - 6;
@@ -534,8 +539,8 @@ check("every coupon is labelled", ["T01", "T02", "T03", "T04", "T05", "T06", "T0
   const [p0x, , p1x] = FACE.panel, lt = P.sliderLeafT;
   const leaves = FACE.leaves.flatMap((lf) => [box(p0x - lt + 0.2, lf.rootY + 0.5, FACE.back + 0.2, p0x - 0.2, lf.tipY - 0.3, FACE.leafTop - 0.2), box(p1x + 0.2, lf.rootY + 0.5, FACE.back + 0.2, p1x + lt - 0.2, lf.tipY - 0.3, FACE.leafTop - 0.2)]);
   const rims = [box(p0x + 10, FACE.panel[1] - 2.0, FACE.back + 0.2, p1x - 10, FACE.panel[1] - 0.2, FACE.front - 1.5), box(p0x + 10, FACE.panel[3] + 0.2, FACE.back + 0.2, p1x - 10, FACE.panel[3] + 1.5, FACE.trackTop - 0.2)];
-  check("the track coupon carries all four leaves, both rims and the cover's whole run", leaves.every((l) => vol(t07, l) > l.volume() * 0.97) && rims.every((r) => vol(t07, r) > r.volume() * 0.9) && vol(t07, cover) < 0.05 && vol(t07, coverOpen) < 0.05 && vol(t07, cover.translate([0, -3.0, 0])) > 0.1,
-    `the window band from X ${r2(p0x - 8)} to ${r2(p1x + 8)}, Y ${r2(FACE.outline[1])} to ${r2(FACE.panel[3] + 3)}; the real B01 closed, open and leaving closed meets it as it meets the face`);
+  check("the track coupon carries all four leaves, both rims and the cover's whole run", leaves.every((l) => vol(t07, l) > l.volume() * 0.97) && rims.every((r) => vol(t07, r) > r.volume() * 0.9) && vol(t07, cover) < 2.0 && vol(t07, coverOpen) < 2.0 && vol(t07, coverMid) > 0.02,
+    `the window band from X ${r2(p0x - 8)} to ${r2(p1x + 8)}, Y ${r2(FACE.outline[1])} to ${r2(FACE.panel[3] + 3)}; the real B01 closed, open and mid-travel meets it as it meets the face`);
 }
 {
   // T03 holds the face's station at (4, 4) and a piece of ledge; T04 holds
@@ -543,9 +548,9 @@ check("every coupon is labelled", ["T01", "T02", "T03", "T04", "T05", "T06", "T0
   // slots over their tunnel; T06 is the face's corner over T03.
   const [sx, sy] = S.faceScrewXY[0];
   const st03 = cylZ(sx, sy, Z.plateInner - 0.3, P.screwClearD / 2 - 0.1, P.plate + 0.6, 16);
-  check("the ledge coupon carries a face screw station and the ledge", sx + P.screwBoreD / 2 + 1 <= ox0 + 26 && sy + P.screwBoreD / 2 + 1 <= oy0 + 26 && vol(shell, st03) < 1e-3
+  check("the ledge coupon carries a face screw station and the ledge", sx + P.screwBoreD / 2 + 1 <= ox0 + 26 && sy + P.screwBoreD / 2 + 1 <= sy + 5 && vol(shell, st03) < 1e-3
     && vol(shell, box(cx0 + 0.1, cy0 + 2, S.ledgeZ + 0.1, cx0 + P.ledgeW - 0.1, cy0 + 20, S.ledgeZ + 1)) > 17 * (P.ledgeW - 0.2) * 0.9 * 0.9,
-    `station (${sx}, ${sy}) inside the coupon's ${r2(26 + 1)} mm; ${P.ledgeW} mm of ledge along 24 mm of two walls`);
+    `station (${sx}, ${sy}) inside the coupon (${r2(26 + 1)} wide, ${r2(sy + 5 - oy0 + 1)} tall); ${P.ledgeW} mm of ledge along 24 mm of the bottom wall and ${r2(sy + 5 - cy0)} of the left`);
   const [fx, fy] = S.frameScrewXY.find(([, , side]) => side === "bottom");
   const st04 = cylZ(fx, fy, Z.glass + 0.1, hole - 0.1, holeDeep - 0.3, 16);
   check("the strap coupon carries a frame insert station", vol(shell, st04) < 1e-3 && fx + hole + 1.5 <= P.frameScrewsBottom[0] + 5 && S.strapSlots.filter(([x0]) => x0 < fx).length >= 2,

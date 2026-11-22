@@ -205,9 +205,25 @@ export function buildFace() {
   }
   const bumpIn = P.sliderBumpR - (P.sliderClr + P.sliderBumpReach);   // the bump's centre this far outside the wall's face
   const bumpZ0 = F.floorZ + P.bedChamfer;                              // the cover's flank starts above its back chamfer
+  const reach = P.sliderClr + P.sliderBumpReach;                       // proud of the wall's face at the bump
+  // The ridge behind a bump: in plan a wedge from y0 (reach = the
+  // clearance, so it just meets the cover's edge line) to y1 at the bump
+  // (the bump's reach), standing from the flank's foot to the bump's
+  // height; its underside a 45 degree chamfer so it prints on the vertical
+  // leaf face without support.
+  const ridge = (xw, s, y1, y0) => {   // the wall's face at xw, +s toward the window
+    const quad = (r0, r1) => { const pts = [[xw - s * 0.3, y0], [xw + s * r0, y0], [xw + s * r1, y1], [xw - s * 0.3, y1]]; const cs = new CrossSection([pts], "Positive"); return cs.area() > 0 ? cs : new CrossSection([pts.slice().reverse()], "Positive"); };
+    return Manifold.hull([
+      quad(0.02, 0.02).extrude(0.02).translate([0, 0, bumpZ0 - 0.01]),
+      quad(P.sliderClr, reach).extrude(P.sliderBumpH - reach - 0.3).translate([0, 0, bumpZ0 + reach + 0.3]),
+    ]);
+  };
   for (const lf of F.leaves) {
     adds.push(cylZ(p0x - bumpIn, lf.bumpY, bumpZ0 - 0.01, P.sliderBumpR, P.sliderBumpH + 0.01, 32));
     adds.push(cylZ(p1x + bumpIn, lf.bumpY, bumpZ0 - 0.01, P.sliderBumpR, P.sliderBumpH + 0.01, 32));
+    const y1 = lf.bumpY - P.sliderBumpR * 0.3, y0 = lf.rootY + P.sliderRidgeFrom * P.sliderLeafL;   // from the leaf's outer part to just behind the bump's crest
+    adds.push(ridge(p0x, 1, y1, y0));
+    adds.push(ridge(p1x, -1, y1, y0));
   }
   const faceCut = status("face: plate less cuts", status("face: plate", fuse(solids)).subtract(status("face: cuts", fuse(cuts))));
   const face = status("face", status("face: with lips", faceCut.add(status("face: lips and bumps", fuse(adds)))).simplify(1e-3));

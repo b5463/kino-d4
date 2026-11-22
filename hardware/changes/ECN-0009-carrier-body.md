@@ -543,6 +543,23 @@ owner's printer. Two parts:
   (`coverLipLeft` 33.4, `markLeft` 3.0). The edge relief and crest are
   gone. Station (4, 4) moved to (4, 13), between the left wall's leaves.
   259 gates.
+- **The slide, after its second print** (twenty-seventh cut, 2026-11-22;
+  the owner: "way better now although 1 out of 2 times so extremely
+  consistently one side gets stuck in the middle and the other goes up
+  without the other thereby twisting it", then "the notch on the cover
+  snapped" under the shove). Found: between the two bump pairs (19 apart,
+  the flank 10.5 long) the cover ran free in its 0.1 for 8 mm with nothing
+  centring it, so a friction difference between the sides yawed it until
+  the corners wedged; the 1.5 thumb lip on a 0.4 root was the part that
+  broke. Now: behind each bump a ridge along the outer 60 % of the leaf
+  (`sliderRidgeFrom` 0.4), its reach rising from the clearance line to the
+  bump's (a ridge nearer the root pinches: a cantilever's stiffness grows
+  as the cube of the distance from the root, its deflection shape only as
+  the square); the leaves 14.5 long so the pairs' ranges overlap; a gate
+  sweeps the cover in 0.5 steps and finds no free position. The lip 2.5
+  thick on a 0.8 root (`coverLip`, `coverLipRoot`). Station (4, 13) moved
+  to (4, 36) above the upper leaf (0.8 of face ahead under the horizon's
+  floor, gated); T03 grows to 26 x 47 to carry it. 259 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator

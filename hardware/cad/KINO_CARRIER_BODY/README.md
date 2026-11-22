@@ -186,8 +186,9 @@ the surface and the joint seats flat. No filament pin anywhere: the twelve
 pins before this held by friction alone, on paper.
 
 - **The face, from inside.** Six stations in the plate's interior, where
-  the face is its full 4.2 and the plate's inner face is bare: (4, 4),
-  (4, 50), (18, 60), (95, 60), (114, 50), (105, 4), inside the ledge,
+  the plate's inner face is bare: (4, 36), (4, 50), (18, 60), (95, 60),
+  (114, 50), (105, 4), inside the ledge (the first sits in the horizon
+  band, where the face is 4.2: still 0.8 ahead of the insert, gated),
   clear of the camera module PCBs, the window, the horizon, the grip, the
   leaves and the signature (gates: a 1.0 mm ring of face round every hole,
   a full ring of plate under every head). The insert sits in the face's
@@ -387,26 +388,34 @@ nothing on that side could guide or hold it (the first printed track,
 flanks are 1.6 and 1.1 (a gate). The detents are the slide's mechanism,
 and they are springs seating in notches: in each side wall two leaves 2.0
 thick (from the window's wall outward), 2.5 tall from the face's back and
-12.5 long, cut free on their outer side, tip end, above and (where they
+14.5 long, cut free on their outer side, tip end, above and (where they
 run into the bottom band) inner side by 0.6 mm slits from the back
 (hidden against the shell's plate; 1.1 of skin stays under the horizon's
 floor, a gate), each rooted at its lower end. Each leaf carries one
 half-round bump (R0.6, 1.0 tall from the cover's back chamfer up, inside
-both flanks) on its window face, reaching 0.3 past the cover's edge line.
-The cover has one 30 degree V-notch 0.5 deep in each flank at mid-height
+both flanks) on its window face, reaching 0.3 past the cover's edge line,
+and behind the bump a ridge along the outer 60 % of the leaf whose reach
+rises from the clearance line (nothing to push) to the bump's (nearer the
+root a leaf's stiffness grows as the cube of the distance while its
+deflection shape shrinks only as the square, so a ridge there would pinch
+the cover; here the push stays near 2 N a side along the ridge). The
+cover has one 30 degree V-notch 0.5 deep in each flank at mid-height
 (8.25 above its bottom edge): the upper pair of bumps (Y 28.45) seats in
 it closed, the lower pair (Y 9.45) seats in it open, 19.0 apart, the
-travel (a gate). About 9 N/mm a leaf, 2.7 N a side on the flank, about 3
-N a side to leave a notch: a 6 N click under the thumb, and for the first
-5 mm off either stop the pair presses the flanks, so the cover starts
-sprung and centred; between the pairs it runs in its 0.1 (gates probe the
-cover at each stop, 1.0 and 3.0 past it, and mid-travel). The lips run
-between the leaves: Y 10.65 to 16.55 and 29.65 to 37.0; the top run holds
-the closed cover's top edge against the thumb's lift. The thumb lip is
-centred on the bar (it was 11.6 off-axis, and an off-axis push yaws a
-bar five times wider than it is tall). The rigid posts before all this
-were what the owner saw on the field body ("bumps are not a stop"); the
-corner-arc bumps after them held nothing. The window's bottom rim is the
+travel (a gate). About 6 N/mm a leaf, 1.7 N a side on the flank, about 2
+N a side to leave a notch: a 4 N click under the thumb. With the ridges,
+one pair presses both flanks at every position of the travel (a gate
+sweeps the cover in 0.5 steps and finds no free spot), so the cover runs
+sprung and centred the whole way and a yaw is pushed straight again: the
+second printed track (the 2.0 cover, without ridges) ran free for 8 mm
+between the pairs, and there one side stuck while the other went on. The
+lips run between the leaves: Y 10.65 to 14.55 and 29.65 to 37.0; the top
+run holds the closed cover's top edge against the thumb's lift. The thumb
+lip is centred on the bar (it was 11.6 off-axis, and an off-axis push
+yaws a bar five times wider than it is tall) and 2.5 thick on a 0.8 root
+(1.5 snapped under the shove a stuck cover needed). The rigid posts
+before all this were what the owner saw on the field body ("bumps are
+not a stop"); the corner-arc bumps after them held nothing. The window's bottom rim is the
 stowed cover's stop and its top rim the closed cover's. Its front edges
 are chamfered as the horizon's lips are, 0.8 on the bottom rim and 0.4 on
 the sides, so the open stow zone reads as the second line of a cut tray
@@ -419,7 +428,7 @@ edge (it grew 1.5 with the walls). 16.5 mm tall, it blankets the 7.5 mm cells by
 and its top edge clears the field cone when stowed. Both are gates, as is
 the closed cover blanketing every cell (the firmware's cover-closed test
 needs all four dark). Closed, its top sits 0.2 below the groove floor. Its
-lip, 20 mm wide with a 0.4 mm root, centred on the bar (33.4 to 53.4 off
+lip, 20 mm wide and 2.5 thick with a 0.8 mm root, centred on the bar (33.4 to 53.4 off
 its left end, the wordmark ending 0.4 before it) and 1.5 mm proud of the
 face (a thumb needs 16; at 1.0 a glove could not lift it), is what the
 thumb pushes down and lifts back. Dropped, the cover sits in the open
@@ -620,7 +629,7 @@ both stops and pressing its flanks 1.0 and 3.0 past them, free mid-travel,
 a flank on both sides taller than the bumps, each of the four leaves
 standing, rooted and cut free by open slits with its bump past the edge
 line, the leaves' strain and skin, the notch where the bumps are at both
-stops by arithmetic, the thumb lip on the cover's axis, the cover refused turned round, stowed above the window's rim, the
+stops by arithmetic, the cover sprung at every position of the travel (a 0.5 mm sweep), the thumb lip on the cover's axis, the cover refused turned round, stowed above the window's rim, the
 wordmark inside the cover's band, the shutter's slot open from its round end out through the deck's front with the step under it and the four ribs standing, the chamber open from its closed rear end out through the plate, the slot and the mouth both covered by the face, the switch's pocket open with its walls standing and the floor solid under it, the leg channels open to the front and ending inside the pocket, the actuator under the flange at rest by arithmetic, the cap against the face with its clearance, the order of operations swept (the switch's ride clear with 1.0 of headroom, the seated switch clear, the plunger's ride on the step clear of the shell and the seated switch, the plunger at rest clear and 2.0 proud, a plunger at rest blocking a switch still on the floor), the pod joined to the wall and clear of CAM 4, the carrier's connectors, CAM 4's pocket and the face's stations, the stem positive
 passing its bore, the strap tunnels open under their skin, the signature
 inside the plate clear of the track and the stations, the deck bare, every
@@ -684,9 +693,9 @@ reported. Pass criteria, in numbers:
 | Coupon | What it proves | You need | Pass | If not, the number |
 |---|---|---|---|---|
 | T01 + T02 on one plate (done) | the printer's shrink (0.2 %); which pocket width holds the head (8.1) | callipers; one camera module seated on its XIAO | the bar measures 99.8 to 100.0 with the compensation on (99.9); on the gauge, the head pushes into one of the 7.8, 8.1 and 8.4 pockets with a thumb and does not fall out inverted, the lens centred in the bore by eye (8.1, "fits perfectly") | `camBody` + `camBodySlack` = the pocket that held (7.9 + 0.2); `lensBoreD` (bore) |
-| T03 + T04, reprinted with the 6.0 walls | the ledge under the carrier's corner (done on the first piece: flat), the face's screw station in the plate, the strap tunnel and slots, the frame's insert station in a wall end | the carrier, two M2 inserts, an M2 x 6 and an M2 x 4, the iron, 0.3 m of 2.5 mm cord, 10 kg, 5 kg | the carrier's corner drops into T03 and sits flat on the ledge with no rock (done); an insert set in T04's wall end sits flush with no bulge on the outer wall or in the cavity, takes the M2 x 4 ten times, and holds 50 N pulled on the screw; 100 N on T04's cord, no tear at the 1.2 mm skin; T06 screwed onto T03 through the counterbore with the M2 x 6 seats flat and the head sits flush in the counterbore | `insertHoleD`, `insertPullN`, `strapSlot`, `strapTunnelSkin` (`ledgeW`, `carrierClear` confirmed) |
-| T06 (blue PLA), with T03 | the insert in the face's back at 4.2 thick, the window's corner, the left leaf and its bumps | one M2 insert, the iron at 200 C, the M2 x 6 | the insert set flush with no mark on the front and no bulge at the window's wall; the leaf flexes 0.3 under a fingernail and springs back; the two bumps stand 0.35 past the edge line | `insertHoleD`, `sliderLeafT`, `sliderBumpReach` |
-| T07 (blue PLA) with the real B01 (black PETG, 0.08), second piece | the slide: the whole window band with both walls, every lip run, the four leaves and their bumps, the two rims, the cells; the 3.0 cover with its notches | the printed cover; any flat plate held behind the coupon for the shell's plate | the cover goes in from the back, bevels under the lips, one way only (turned round it stops at the mouth); with a plate behind, it clicks closed and clicks open under a thumb, about 6 N, and sits at each stop with no play; pushed off a stop it starts straight, without going sideways; closed, it does not drop at 90 degrees of tilt or when shaken and does not lift past the lips; open, it stays open inverted; mid-travel nothing rubs; 200 cycles and the closed click still holds. The first piece (2026-11-22, the 2.0 cover): stuck, went sideways, popped out, fell when closed. If the click is weak, say whether the bumps reach the flanks at all or ride out of the notch too easily | `sliderBumpReach` (0.2 softer, 0.4 harder), `sliderNotchDeg` (45 harder to leave), `sliderLeafT` (1.5 softer, 2.5 stiffer), `sliderClr` if it binds |
+| T03 + T04, reprinted with the 6.0 walls (T03 now 26 x 47, up past the station at (4, 36)) | the ledge under the carrier's corner (done on the first piece: flat), the face's screw station in the plate, the strap tunnel and slots, the frame's insert station in a wall end | the carrier, two M2 inserts, an M2 x 6 and an M2 x 4, the iron, 0.3 m of 2.5 mm cord, 10 kg, 5 kg | the carrier's corner drops into T03 and sits flat on the ledge with no rock (done); an insert set in T04's wall end sits flush with no bulge on the outer wall or in the cavity, takes the M2 x 4 ten times, and holds 50 N pulled on the screw; 100 N on T04's cord, no tear at the 1.2 mm skin; T06 screwed onto T03 through the counterbore with the M2 x 6 seats flat and the head sits flush in the counterbore | `insertHoleD`, `insertPullN`, `strapSlot`, `strapTunnelSkin` (`ledgeW`, `carrierClear` confirmed) |
+| T06 (blue PLA), with T03 | the insert in the face's back under the horizon (4.2 there), the window's left wall with both left leaves, their bumps and ridges | one M2 insert, the iron at 200 C, the M2 x 6 | the insert set flush with no mark on the front and no bulge at the window's wall; each leaf flexes 0.3 under a fingernail and springs back; the bumps stand 0.3 past the edge line, the ridges run out to it | `insertHoleD`, `sliderLeafT`, `sliderBumpReach` |
+| T07 (blue PLA) with the real B01 (black PETG, 0.08), third piece | the slide: the whole window band with both walls, every lip run, the four leaves with their bumps and ridges, the two rims, the cells; the 3.0 cover with its notches and the 2.5 lip | the printed cover; any flat plate held behind the coupon for the shell's plate | the cover goes in from the back, bevels under the lips, one way only (turned round it stops at the mouth); with a plate behind, it clicks closed and clicks open under a thumb, about 4 N, and sits at each stop with no play; pushed off either stop it runs straight the whole way, never one side ahead of the other, with a light even drag from the ridges; closed, it does not drop at 90 degrees of tilt or when shaken and does not lift past the lips; open, it stays open inverted; 200 cycles and the closed click still holds. The first piece (2026-11-22, the 2.0 cover): stuck, went sideways, popped out, fell when closed. The second (the 3.0 cover, bumps only): "way better", but one side stuck mid-travel one time in two, and the shove to free it snapped the 1.5 lip. If a side still sticks, say where along the travel; if the click is weak, whether the bumps ride out of the notch too easily | `sliderBumpReach` (0.2 softer, 0.4 harder), `sliderNotchDeg` (45 harder to leave), `sliderLeafT` (1.5 softer, 2.5 stiffer), `sliderRidgeFrom` (0.5 lighter drag), `sliderClr` if it binds |
 | the real B02 (blue PLA) then T05, third piece (done, 2026-11-21: "the button mechanism now works perfectly") | the slot and its ribs, the step, the chamber, the pocket, the leg channels, the mouth | the printed plunger, the switch with its two leads; a thumb over the mouth and the slot's front for the face | the slicer preview shows the four 0.2 ribs; deck up, the switch goes in through the mouth, legs in the channels, slides back and drops into its pocket; deck down, the plunger goes in with its cap in the slot and slides back over the switch to the round end, and cannot leave through the deck; deck up, the cap stands 2.0 proud, clicks within 0.6 of travel, returns on the switch, and runs 200 times without tick; shaken with a thumb over the mouth, nothing moves. If the plunger will not pass over the switch, or the cap does not click, report the switch's measured height, base to actuator top | `shutterSwitchBody[2]` (the switch's whole height), `shutterSwitchFree`, `shutterSwitchPocket` if the switch does not drop in or climbs out, `shutterGuideRib` [0.4, 0.8] if the ribs vanish, `shutterFlangeBoreClear` 0.7 in reserve |
 | the real A02 (blue PLA) and B01 (black PETG), fourth | the window, its lips, the leaf detents, the slide's feel | six inserts, the iron; the shell's plate or any flat plate to close the track | the cover clicks closed and clicks open with a thumb, about 4 N; closed, it does not drop at 90 degrees of tilt or when shaken, and does not lift past the lips by hand; open, it stays open inverted; it refuses to enter turned round (the key); 200 cycles without the leaves taking a set (the closed click still holds). If they pass they are the parts | `sliderClr`, `sliderBumpReach` (0.25 softer, 0.45 harder), `sliderLeafT` |
 | A03 at 0.10, then A01, last | | | | |
@@ -853,7 +862,7 @@ Each one is a number in `params.mjs` and nothing else moves when it changes.
 - `camStackH` 15.0: a caliper on a seated node.
 - `camBody` 7.9 (done, 2026-11-21): the gauge's 8.1 pocket holds the head; the head's own calliper size is still unrecorded.
 - `insertHoleD` 3.0 and `insertPullN` 50: the kit's inserts in PLA (T06) and PETG (T04); flush, no bulge, 50 N on a pull.
-- `sliderBumpReach` 0.3, `sliderNotchDeg` 30 and `sliderLeafT` 2.0: the click under the thumb on T07 with the 3.0 cover; 0.2 softer, 0.4 harder; 45 degrees harder to leave.
+- `sliderBumpReach` 0.3, `sliderNotchDeg` 30, `sliderLeafT` 2.0 and `sliderRidgeFrom` 0.4: the click and the drag under the thumb on the third T07 with the 3.0 cover; 0.2 softer, 0.4 harder; 45 degrees harder to leave; 0.5 a shorter ridge and lighter drag.
 - `ledgeW` 2.0 with `carrierClear` 0.5 (done, 2026-11-21): the carrier's corner sits flat on T03's ledge.
 - `shutterSwitchBody[2]` 4.3 and `shutterSwitchFree` 0.3 (done, 2026-11-21): the third pod coupon with the real plunger and switch "works perfectly".
 - The customer review's two items the carrier fixes, not the body: the USB-C and the three status lights are on the bottom edge because the carrier puts them there, so the camera charges lying on its back; a later carrier can move them.

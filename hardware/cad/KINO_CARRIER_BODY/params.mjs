@@ -155,7 +155,7 @@ export const P = Object.freeze({
   // camera module PCBs, the signature's engraving, the window, the horizon
   // and the grip. Not a symmetric pattern, but the face goes on one way
   // anyway (the window and the shutter slot say so).
-  faceScrewXY: [[4.0, 13.0], [4.0, 50.0], [18.0, 60.0], [95.0, 60.0], [114.0, 50.0], [105.0, 4.0]],   // (4, 13) sits in the lip run between the left wall's two leaves
+  faceScrewXY: [[4.0, 36.0], [4.0, 50.0], [18.0, 60.0], [95.0, 60.0], [114.0, 50.0], [105.0, 4.0]],   // (4, 36) sits above the left wall's upper leaf, in the horizon band (the face is 4.2 there: 0.8 ahead of the insert, gated)
   // The frame's six stations in the walls' rear ends, the hole's axis
   // frameScrewIn from the body's outline (1.7 of wall outside it, 1.2 under a
   // groove, 1.3 inside it toward the cavity; gated as a ring).
@@ -252,25 +252,29 @@ export const P = Object.freeze({
   // under skin at the front), each with a half-round bump on its window
   // face that seats in a V-notch cut in the cover's flank at mid-height:
   // the upper pair holds the cover closed, the lower pair holds it open.
-  // Leaving a stop, that pair presses the flanks for the next 5 mm, so the
-  // cover starts sprung and centred, with no side play where it is pushed;
-  // between the pairs it runs free in its 0.1. Nothing rides on a corner
-  // arc. The first leaf cut (2026-11-21) put the bumps on the cover's R3
+  // Behind each bump a ridge runs back along the leaf, tapering from the
+  // bump's reach to nothing at its root end, so at every position of the
+  // travel one pair presses both flanks: the cover is sprung and centred
+  // the whole way and a yaw is pushed back (the second print, 2026-11-22:
+  // "one side gets stuck in the middle", the 8 mm where nothing touched
+  // it). A ridge is wider than the notch, so it never drops in. Nothing
+  // rides on a corner arc. The first leaf cut (2026-11-21) put the bumps on the cover's R3
   // corners; printed, the closed cover fell and the right side held nothing
   // (a 0.1 flank). The rigid posts before that bent.
   sliderBumpR: 0.6,          // the bump: a half-round on the leaf's face, this radius
   sliderBumpReach: 0.3,      // past the cover's edge line: the leaf's deflection on the flank between the stops, and what it drops into the notch
   sliderBumpH: 1.0,          // the bump's height off the floor, from the cover's back chamfer up: inside both flanks (1.6 left, 1.1 right, gated)
+  sliderRidgeFrom: 0.4,      // the ridge behind each bump starts this fraction of the leaf's length from its root and runs to the bump, its reach rising from the clearance line (nothing to push) to the bump's reach. Nearer the root a leaf is too stiff: its stiffness grows as the cube of the distance while its deflection shape shrinks only as the square, so a ridge there pinches the cover; here the push stays near 2 N a side along the whole ridge. With the bump, each pair covers 9.3 of the flank and the two pairs' ranges overlap by 0.2 (gated by a sweep)
   sliderNotchD: 0.5,         // the V-notch in each flank: deeper than the reach, so the bump seats on the notch's ramps
   sliderNotchDeg: 30,        // the notch's ramps off the edge line: with the leaf at 7 N/mm and 0.3 of reach, about 2.5 N a side to leave the notch, 5 N under the thumb
   sliderNotchH: 8.25,        // the notch's centre above the cover's bottom edge: mid-height, so the same notch meets the lower pair open and the upper pair closed
   sliderLeafT: 2.0,          // the leaf's thickness in X, from the window's wall outward
-  sliderLeafL: 12.5,         // root to tip, both pairs: the upper leaves root below their tips (toward the lens row), the lower leaves root in the face's bottom band
+  sliderLeafL: 14.5,         // root to tip, both pairs: the upper leaves root below their tips (toward the lens row), the lower leaves root in the face's bottom band, 0.05 inside its chamfer; long enough that the two pairs' ridges overlap along the travel
   sliderLeafSlit: 0.6,       // the slit round the leaf's outer side, tip end, top, and inner side where it runs past the window: 0.6 prints as a clean gap, 0.4 fuses
   sliderLeafH: 2.5,          // the leaf's height from the face's back: the 1.0 floor, the cover's 0.4 chamfer, the 1.0 bump and 0.1 over it; the slit above it leaves 1.1 of skin under the horizon's floor (gated)
-  coverLip: [20.0, 1.5],     // a thumb needs 16; at 30 the open slot under the eyes read as a mouth
+  coverLip: [20.0, 2.5],     // width x thickness: a thumb needs 16; at 30 the open slot under the eyes read as a mouth. 1.5 thick snapped under the shove a stuck cover needed (2026-11-22): at 0.08 layers the lip's layers are its weak axis
   coverLipLeft: 33.4,        // the lip centred on the bar (86.8 - 20) / 2: the thumb pushes on the cover's axis, so it cannot yaw it (at 45 the push was 11.6 off-axis and the 2.0 cover went sideways and stuck); the wordmark ends at 33
-  coverLipRoot: 0.4,         // 45 degree root on the lip's three free sides: the lip takes a face-down drop     // the thumb lip on the cover's TOP edge, width x height; the thumb pushes down on its top face (the coupon says whether 1.5 is enough)
+  coverLipRoot: 0.8,         // 45 degree root on the lip's three free sides: the lip takes a face-down drop and the thumb's shove (0.4 was part of the snap)
   coverLipAboveFace: 1.5,    // visible as a slide from across the room, as the XA's and the Minox's sills are; 0.5 was invisible, and a glove or a dry thumb could not lift the cover closed on 1.0    // the lip stands this far proud of the face, closed and stowed, so the thumb pad can push it down and lift it back; its height off the cover is derived
   // The brand on the bar: "odd jobs" engraved in the cover's top, as the
   // concept's nameplate, reading as shadow.
