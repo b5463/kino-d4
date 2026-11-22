@@ -256,33 +256,42 @@ check("the frame's insert holes keep wall under the first groove", P.frameScrewI
 // The cover in its window: the leaves, the bumps, the stops.
 {
   const closed = vol(face, cover), open = vol(face, coverOpen), mid = vol(face, coverMid);
-  const pastClosed = vol(face, cover.translate([0, -0.4, 0])), pastOpen = vol(face, coverOpen.translate([0, 0.4, 0]));
-  check("cover closed: the upper bumps touch its bottom corners and nothing else does", closed < 0.02 && pastClosed > 0.02, `${closed.toFixed(4)} mm^3 shared at the stop, ${pastClosed.toFixed(3)} after 0.4 of drop: the corners meet the bumps at once, no slop`);
-  check("cover open: the lower bumps touch its top corners and nothing else does", open < 0.02 && pastOpen > 0.02, `${open.toFixed(4)} mm^3 shared at the stop, ${pastOpen.toFixed(3)} after 0.4 of lift`);
-  check("cover mid-travel: free in the track", mid < 1e-3, `${mid.toFixed(4)} mm^3; the edge relief (${P.sliderEdgeRelief}) clears the bumps (reach ${P.sliderBumpReach}) between the crests`);
-  const passShift = FACE.closedY0 - (FACE.bumpOpenY - P.sliderCornerR - (P.sliderEdgeCrest - P.sliderCornerR - P.sliderEdgeRamp) / 2);   // the lower bumps on the straight part of the bottom crest
-  const crestPass = vol(face, cover.translate([0, -passShift, 0]));
-  check("a corner crest passing a bump pushes the leaf by the reach", crestPass > 0.1 && crestPass < 4.0 && P.sliderEdgeCrest - P.sliderCornerR - P.sliderEdgeRamp >= 0.8,
-    `${crestPass.toFixed(3)} mm^3 of bump inside the crest with the cover ${r2(passShift)} below closed; ${r2(P.sliderEdgeCrest - P.sliderCornerR - P.sliderEdgeRamp)} of straight crest past the corner; the leaf gives ${P.sliderBumpReach}`);
-  // The leaves: each cut free on three sides, rooted at one end, its slit
-  // above under skin; the strain at the root as a corner passes.
+  const pastClosed = vol(face, cover.translate([0, -1.0, 0])), pastOpen = vol(face, coverOpen.translate([0, 1.0, 0]));
+  check("cover closed: the upper bumps seat in its notches", closed < 0.05 && pastClosed > 0.1, `${closed.toFixed(4)} mm^3 shared at the stop (the bumps float in the ${P.sliderNotchD} notches), ${pastClosed.toFixed(3)} with the cover 1.0 below it (the bumps on the flanks, pressed ${P.sliderBumpReach})`);
+  check("cover open: the lower bumps seat in its notches", open < 0.05 && pastOpen > 0.1, `${open.toFixed(4)} mm^3 shared at the stop, ${pastOpen.toFixed(3)} with the cover 1.0 above it`);
+  const leaving = vol(face, cover.translate([0, -3.0, 0])), arriving = vol(face, coverOpen.translate([0, 3.0, 0]));
+  check("cover leaving a stop: that pair presses the flanks; mid-travel: free", leaving > 0.1 && arriving > 0.1 && mid < 0.05, `${leaving.toFixed(3)} mm^3 of bump in the flanks 3 below closed, ${arriving.toFixed(3)} 3 above open, ${mid.toFixed(4)} mid-travel: the cover starts sprung and centred, then runs in its ${P.sliderClr}`);
+  // The flanks the bumps run on: the cover's vertical side faces between
+  // its back chamfer and its bevels; both must be taller than the bump.
+  const flanks = [P.sliderT - P.bedChamfer - P.sliderBevel[0], P.sliderT - P.bedChamfer - P.sliderBevel[1]];
+  check("the cover has a flank on both sides for the bumps", Math.min(...flanks) >= P.sliderBumpH + 0.1, `flanks ${r2(flanks[0])} (left) and ${r2(flanks[1])} (right) tall for ${P.sliderBumpH} mm bumps: a ${P.sliderT} cover less its ${P.bedChamfer} back chamfer and its bevels (the 2.0 cover had 0.1 on the right)`);
+  // The leaves: each cut free on its sides, rooted at one end, its slit
+  // above under skin; the strain at the root as a bump is pressed home.
   const [p0x, , p1x] = FACE.panel, lt = P.sliderLeafT, sl = P.sliderLeafSlit;
   for (const [name, xi, xo] of [["left", p0x, p0x - lt], ["right", p1x, p1x + lt]]) {
     const s = xo > xi ? 1 : -1;
-    const leaf = box(Math.min(xi, xo) + 0.2, FACE.leafRootY + 0.5, FACE.back + 0.2, Math.max(xi, xo) - 0.2, FACE.leafTipY - 0.3, FACE.leafTop - 0.2);
-    check(`the ${name} leaf stands`, vol(face, leaf) > leaf.volume() * 0.97, `${lt} x ${r2(P.sliderLeafH)} x ${P.sliderLeafL} mm from Y ${r2(FACE.leafRootY)} to ${r2(FACE.leafTipY)}`);
-    openProbe(`the ${name} leaf's outer slit is open`, box(Math.min(xo, xo + s * sl) + 0.1, FACE.leafRootY + 0.1, FACE.back - 0.2, Math.max(xo, xo + s * sl) - 0.1, FACE.leafSlitEndY - 0.1, FACE.leafTop + sl - 0.1), `${sl} wide beside it, from the back`, face);
-    openProbe(`the ${name} leaf's slit above is open`, box(Math.min(xi, xo) + 0.1, FACE.leafRootY + 0.1, FACE.leafTop + 0.1, Math.max(xi, xo) - 0.1, FACE.leafSlitEndY - 0.1, FACE.leafTop + sl - 0.1), `${sl} tall over it, a ${r2(lt + sl)} mm bridge in print`, face);
-    const root = box(Math.min(xi, xo) + 0.2, FACE.leafRootY - 1.0, FACE.back + 0.2, Math.max(xi, xo) - 0.2, FACE.leafRootY - 0.1, FACE.leafTop - 0.2);
-    check(`the ${name} leaf is rooted`, vol(face, root) > root.volume() * 0.97, `solid below Y ${r2(FACE.leafRootY)}`);
+    for (const lf of FACE.leaves) {
+      const leaf = box(Math.min(xi, xo) + 0.2, lf.rootY + 0.5, FACE.back + 0.2, Math.max(xi, xo) - 0.2, lf.tipY - 0.3, FACE.leafTop - 0.2);
+      check(`the ${name} ${lf.name} leaf stands`, vol(face, leaf) > leaf.volume() * 0.97, `${lt} x ${r2(P.sliderLeafH)} x ${P.sliderLeafL} mm from Y ${r2(lf.rootY)} to ${r2(lf.tipY)}, its bump at ${r2(lf.bumpY)}`);
+      openProbe(`the ${name} ${lf.name} leaf's outer slit is open`, box(Math.min(xo, xo + s * sl) + 0.1, lf.rootY + 0.1, FACE.back - 0.2, Math.max(xo, xo + s * sl) - 0.1, lf.y1 - 0.1, FACE.leafTop + sl - 0.1), `${sl} wide beside it, from the back`, face);
+      openProbe(`the ${name} ${lf.name} leaf's slit above is open`, box(Math.min(xi, xo) + 0.1, lf.rootY + 0.1, FACE.leafTop + 0.1, Math.max(xi, xo) - 0.1, lf.y1 - 0.1, FACE.leafTop + sl - 0.1), `${sl} tall over it, a ${r2(lt + sl)} mm bridge in print`, face);
+      if (lf.rootY < FACE.panel[1]) openProbe(`the ${name} ${lf.name} leaf's inner slit is open below the window`, box(Math.min(xi, xi - s * sl) + 0.1, lf.rootY + 0.1, FACE.back - 0.2, Math.max(xi, xi - s * sl) - 0.1, FACE.panel[1] - 0.1, FACE.leafTop + sl - 0.1), `from Y ${r2(lf.rootY)} to the window's bottom rim at ${r2(FACE.panel[1])}`, face);
+      const root = box(Math.min(xi, xo) + 0.2, lf.rootY - 1.0, FACE.back + 0.2, Math.max(xi, xo) - 0.2, lf.rootY - 0.1, FACE.leafTop - 0.2);
+      check(`the ${name} ${lf.name} leaf is rooted`, vol(face, root) > root.volume() * 0.97, `solid below Y ${r2(lf.rootY)}`);
+      const bump = cylZ(name === "left" ? p0x + P.sliderClr + P.sliderBumpReach - 0.1 : p1x - P.sliderClr - P.sliderBumpReach + 0.1, lf.bumpY, FACE.floorZ + P.bedChamfer + 0.2, 0.08, P.sliderBumpH - 0.4, 12);
+      check(`the ${name} ${lf.name} bump reaches past the cover's edge`, vol(face, bump) > bump.volume() * 0.9, `${P.sliderBumpReach} past the edge line at Y ${r2(lf.bumpY)}, from the flank's foot up`);
+    }
   }
-  const skin = FACE.trackTop - (FACE.leafTop + sl);
+  const skinBand = FACE.trackTop - (FACE.leafTop + sl), skinFull = FACE.front - (FACE.leafTop + sl);
   const strain = 3 * lt * P.sliderBumpReach / (2 * P.sliderLeafL ** 2);
   const kN = 3 * 3500 * (P.sliderLeafH * lt ** 3 / 12) / P.sliderLeafL ** 3;
-  check("the leaves bend inside PLA's limit under skin", strain <= 0.01 && skin >= 0.8 - 1e-9 && FACE.leafTipY + sl <= FACE.panel[3] - 2 && FACE.leafRootY >= FACE.panel[1] + 2,
-    `${(100 * strain).toFixed(2)} % strain at the root for ${P.sliderBumpReach} of deflection (E 3.5 GPa: about ${r2(kN)} N/mm, ${r2(kN * P.sliderBumpReach)} N a side at the peak); ${r2(skin)} mm of skin between the slit and the horizon's floor`);
-  check("the bumps sit where the corners meet them at the stops", Math.abs((FACE.bumpClosedY - FACE.bumpOpenY) - ((FACE.closedY0 - FACE.openY1) + 2 * (P.sliderCornerR - FACE.bumpDy))) < 1e-9 && FACE.bumpOpenY + P.sliderBumpR < FACE.bumpClosedY - P.sliderBumpR,
-    `upper bump at Y ${r2(FACE.bumpClosedY)} for the closed cover's bottom at ${r2(FACE.closedY0)}, lower at ${r2(FACE.bumpOpenY)} for the open cover's top at ${r2(FACE.openY1)}; R${P.sliderCornerR} corners on R${P.sliderBumpR} bumps reaching ${P.sliderBumpReach}, contact ${r2(FACE.bumpDy)} off the corner's centre`);
+  const leave = kN * P.sliderBumpReach * Math.tan(((P.sliderNotchDeg + 17) * Math.PI) / 180);   // out of a notch: the ramp's angle plus friction (about 0.3)
+  check("the leaves bend inside PLA's limit under skin", strain <= 0.01 && skinBand >= 0.8 - 1e-9 && skinFull >= 1.5 && FACE.leaves.every((lf) => lf.y1 <= FACE.panel[3] - 2 && lf.rootY >= FACE.outline[1] + P.faceEdgeR + 0.5),
+    `${(100 * strain).toFixed(2)} % strain at the root for ${P.sliderBumpReach} of deflection (E 3.5 GPa: about ${r2(kN)} N/mm, ${r2(kN * P.sliderBumpReach)} N a side on the flank, about ${r2(leave)} N a side to leave a ${P.sliderNotchDeg} degree notch); ${r2(skinBand)} mm of skin under the horizon's floor, ${r2(skinFull)} under the full face`);
+  check("the notches sit where the bumps are at the stops", Math.abs((FACE.bumpClosedY - FACE.bumpOpenY) - FACE.travel) < 1e-9 && P.sliderNotchH > P.sliderCornerR + 1.0 && P.sliderNotchH < P.sliderH - P.sliderCornerR - 1.0 && P.sliderNotchD > P.sliderBumpReach,
+    `one notch ${P.sliderNotchH} above the cover's bottom edge, ${P.sliderNotchD} deep at ${P.sliderNotchDeg} degrees; the upper bumps at Y ${r2(FACE.bumpClosedY)} meet it closed, the lower at ${r2(FACE.bumpOpenY)} meet it open, ${r2(FACE.travel)} apart: the travel`);
+  check("the thumb lip is on the cover's axis", Math.abs(P.coverLipLeft + P.coverLip[0] / 2 - (FACE.panel[2] - FACE.panel[0] - 2 * P.sliderClr) / 2) < 0.5 && markBox.x + markBox.w <= FACE.panel[0] + P.sliderClr + P.coverLipLeft - 0.2,
+    `the lip's centre ${r2(P.coverLipLeft + P.coverLip[0] / 2)} from the bar's left end, the bar ${r2(FACE.panel[2] - FACE.panel[0] - 2 * P.sliderClr)} wide: the push cannot yaw it; the wordmark ends ${r2(FACE.panel[0] + P.sliderClr + P.coverLipLeft - markBox.x - markBox.w)} before the lip`);
   check("cover travel is positive and the cover stows above the rim", FACE.travel > 10 && FACE.openY0 >= FACE.panel[1] + 0.4, `${r2(FACE.travel)} mm down from Y ${r2(FACE.closedY0)}; stowed bottom edge at Y ${r2(FACE.openY0)}, panel from Y ${r2(FACE.panel[1])}`);
   check("wordmark fits under the lip", markBox.y > FACE.closedY0 + 0.8 && markBox.y + markBox.h < FACE.closedY1 - P.coverLip[1] - 0.6 && markBox.w < (FACE.panel[2] - FACE.panel[0]) - 10,
     `${r2(markBox.w)} x ${r2(markBox.h)} mm engraved ${P.markDepth}; "odd jobs" at ${P.markW} mm has strokes about ${r2(1.3 * P.markW / 30)} mm, floor ${P.markMinStroke}`);
@@ -436,7 +445,7 @@ const shellZones = [
 const idEdgeW = textWidth(IDS.face, P.idCapEdge);
 const faceZones = [
   ...S.faceScrewXY.map(([px, py]) => [px - 2.5, py - 2.5, FACE.back - 0.5, px + 2.5, py + 2.5, FACE.back + FACE.insertHoleDepth + 0.3]),   // the insert holes: the mouth countersinks at the bed, the 3 mm floors as small bridges
-  ...[[FACE.panel[0] - P.sliderLeafT - P.sliderLeafSlit - 0.6, FACE.panel[0] + 0.6], [FACE.panel[2] - 0.6, FACE.panel[2] + P.sliderLeafT + P.sliderLeafSlit + 0.6]].map(([x0, x1]) => [x0, FACE.leafRootY - 0.5, FACE.leafTop - 0.2, x1, FACE.leafSlitEndY + 0.5, FACE.leafTop + P.sliderLeafSlit + 0.3]),   // the slits above the leaves: bridges
+  ...[[FACE.panel[0] - P.sliderLeafT - P.sliderLeafSlit - 0.6, FACE.panel[0] + P.sliderLeafSlit + 0.6], [FACE.panel[2] - P.sliderLeafSlit - 0.6, FACE.panel[2] + P.sliderLeafT + P.sliderLeafSlit + 0.6]].flatMap(([x0, x1]) => FACE.leaves.map((lf) => [x0, lf.rootY - 0.5, FACE.leafTop - 0.2, x1, lf.y1 + 0.5, FACE.leafTop + P.sliderLeafSlit + 0.3])),   // the slits above the four leaves: bridges
   [P.innerMarkAt[0] - (P.modelW - P.innerMarkW) - 3, P.innerMarkAt[1] - MODEL_H - 5, FACE.back - 0.5, P.innerMarkAt[0] + P.innerMarkW + 3 + P.innerSymbolH * 1.25 + 3, P.innerMarkAt[1] + 10, FACE.back + P.innerMarkD + 0.5],
   [P.idFaceX - idEdgeW / 2 - 1, FACE.outline[1] - 1, FACE.back, P.idFaceX + idEdgeW / 2 + 1, FACE.outline[1] + P.idDepthWall + 0.2, FACE.back + P.idCapEdge + 1],   // the letters' 0.3 mm top edges in the edge wall
 ];
@@ -496,10 +505,10 @@ const coupons = (() => {
   const cut = (m, b) => m.intersect(b);
   const t03Box = box(ox0 - 1, oy0 - 1, Z.carrierBack - 2, ox0 + 26, oy0 + 26, Z.plateFront + 1);        // the lower-left corner: two walls, the ledge, the plate with the face's screw station at (4, 4)
   const t04Box = box(ox0 - 1, oy0 - 1, Z.glass - 1, P.frameScrewsBottom[0] + 5, oy0 + 14, Z.glass + 14);  // the bottom wall's rear end: two strap slots over their tunnel, the frame's insert station at X 40 with its boss
-  const t06Box = box(ox0 - 1, oy0 - 1, FACE.back - 1, ox0 + 21, FACE.leafSlitEndY + 3, FACE.front + 1);   // the face's lower-left corner: the insert station at (4, 4), the window's corner with its chamfers, the left leaf with its bumps
+  const t06Box = box(ox0 - 1, oy0 - 1, FACE.back - 1, ox0 + 21, P.faceScrewXY[0][1] + 5, FACE.front + 1);   // the face's lower-left corner: the insert station at (4, 13), the window's corner with its chamfers, the left lower leaf with its bump
   const t05Z0 = P.shutterPodBottomZ - 6;
   const t05Box = box(SHUTTER.podX0 - 1, SHUTTER.podInnerY - 2, t05Z0, ox1 + 1, oy1 + 1, Z.plateFront + 1);   // the whole pod with the deck over it, the wall corner it joins and the plate with the mouth
-  const t07Box = box(FACE.panel[0] - 8, oy0 - 1, FACE.back - 1, FACE.panel[2] + 8, FACE.panel[3] + 3, FACE.front + 1);   // the slide: the face's whole window band, both walls with their lips and leaves, the bottom rim; the real B01 runs in it
+  const t07Box = box(FACE.panel[0] - 8, oy0 - 1, FACE.back - 1, FACE.panel[2] + 8, FACE.panel[3] + 3, FACE.front + 1);   // the slide: the face's whole window band, both walls with their lips and four leaves, the bottom band the lower leaves root in; the real B01 runs in it
   let t03 = cut(shell, t03Box), t04 = cut(shell, t04Box), t05 = cut(shell, t05Box), t06 = cut(face, t06Box), t07 = cut(face, t07Box);
   t07 = engrave("T07-KINO_COUPON_TRACK.stl", t07, "T07", FACE.panel[0] + 14, FACE.outline[1] + P.faceEdgeR + 0.6, FACE.front, 1, 3.0);
   t03 = engrave("T03-KINO_COUPON_LEDGE_CORNER.stl", t03, "T03", 8.0, oy0 + 0.75, Z.carrierBack - 2, -1, 3.0);
@@ -523,10 +532,10 @@ check("every coupon is labelled", ["T01", "T02", "T03", "T04", "T05", "T06", "T0
   // rims, so the real cover runs in it as it runs in the face.
   const t07 = coupons["T07-KINO_COUPON_TRACK.stl"].translate([FACE.panel[0] - 8, FACE.outline[1], FACE.back]);
   const [p0x, , p1x] = FACE.panel, lt = P.sliderLeafT;
-  const leaves = [box(p0x - lt + 0.2, FACE.leafRootY + 0.5, FACE.back + 0.2, p0x - 0.2, FACE.leafTipY - 0.3, FACE.leafTop - 0.2), box(p1x + 0.2, FACE.leafRootY + 0.5, FACE.back + 0.2, p1x + lt - 0.2, FACE.leafTipY - 0.3, FACE.leafTop - 0.2)];
+  const leaves = FACE.leaves.flatMap((lf) => [box(p0x - lt + 0.2, lf.rootY + 0.5, FACE.back + 0.2, p0x - 0.2, lf.tipY - 0.3, FACE.leafTop - 0.2), box(p1x + 0.2, lf.rootY + 0.5, FACE.back + 0.2, p1x + lt - 0.2, lf.tipY - 0.3, FACE.leafTop - 0.2)]);
   const rims = [box(p0x + 10, FACE.panel[1] - 2.0, FACE.back + 0.2, p1x - 10, FACE.panel[1] - 0.2, FACE.front - 1.5), box(p0x + 10, FACE.panel[3] + 0.2, FACE.back + 0.2, p1x - 10, FACE.panel[3] + 1.5, FACE.trackTop - 0.2)];
-  check("the track coupon carries both leaves, both rims and the cover's whole run", leaves.every((l) => vol(t07, l) > l.volume() * 0.97) && rims.every((r) => vol(t07, r) > r.volume() * 0.9) && vol(t07, cover) < 0.02 && vol(t07, coverOpen) < 0.02 && vol(t07, cover.translate([0, -0.4, 0])) > 0.02,
-    `the window band from X ${r2(p0x - 8)} to ${r2(p1x + 8)}, Y ${r2(FACE.outline[1])} to ${r2(FACE.panel[3] + 3)}; the real B01 closed, open and 0.4 past closed meet it as they meet the face`);
+  check("the track coupon carries all four leaves, both rims and the cover's whole run", leaves.every((l) => vol(t07, l) > l.volume() * 0.97) && rims.every((r) => vol(t07, r) > r.volume() * 0.9) && vol(t07, cover) < 0.05 && vol(t07, coverOpen) < 0.05 && vol(t07, cover.translate([0, -3.0, 0])) > 0.1,
+    `the window band from X ${r2(p0x - 8)} to ${r2(p1x + 8)}, Y ${r2(FACE.outline[1])} to ${r2(FACE.panel[3] + 3)}; the real B01 closed, open and leaving closed meets it as it meets the face`);
 }
 {
   // T03 holds the face's station at (4, 4) and a piece of ledge; T04 holds
@@ -543,8 +552,9 @@ check("every coupon is labelled", ["T01", "T02", "T03", "T04", "T05", "T06", "T0
     `insert hole at X ${fx}, ${r2(holeDeep)} deep in the wall end; the insert set with the iron and pulled is the hold (insertPullN ${P.insertPullN} N, PROVISIONAL)`);
   const t06 = coupons["T06-KINO_COUPON_FACE_CORNER.stl"].translate([FACE.outline[0], FACE.outline[1], FACE.back]);   // back to the body frame: toBed put its corner at the origin
   const st06 = cylZ(sx, sy, FACE.back - 0.3, hole - 0.1, FACE.insertHoleDepth + 0.1, 16);
-  check("the face coupon carries the insert station and the left leaf", vol(t06, st06) < 1e-3 && FACE.leafSlitEndY + 3 <= oy0 + 26 + 10 && vol(t06, box(FACE.panel[0] + 0.2, FACE.leafRootY + 0.5, FACE.back + 0.2, FACE.panel[0] + P.sliderLeafT - 0.2, FACE.leafTipY - 0.3, FACE.leafTop - 0.2)) > 1.0,
-    `station (${sx}, ${sy}) and the leaf from Y ${r2(FACE.leafRootY)} to ${r2(FACE.leafTipY)} inside the coupon; it screws onto T03 with an M2 x ${P.faceScrewLen}`);
+  const lower = FACE.leaves.find((lf) => lf.name === "lower");
+  check("the face coupon carries the insert station and the left lower leaf", vol(t06, st06) < 1e-3 && vol(t06, box(FACE.panel[0] - P.sliderLeafT + 0.2, lower.rootY + 0.5, FACE.back + 0.2, FACE.panel[0] - 0.2, lower.tipY - 0.3, FACE.leafTop - 0.2)) > 1.0,
+    `station (${sx}, ${sy}) and the leaf from Y ${r2(lower.rootY)} to ${r2(lower.tipY)} inside the coupon; it screws onto T03 with an M2 x ${P.faceScrewLen}`);
 }
 // Bed plates: the coupons that print together, 10 mm apart, as one file each.
 const plates = (() => {

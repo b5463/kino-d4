@@ -51,25 +51,23 @@ export const FACE = (() => {
   const outerR = boreR;                               // plain bores through the floor, with a rim
   const bevel = P.sliderBevel, lipZ = bevel.map((b) => b + P.sliderLipOver);   // left, right
   const insertHoleDepth = P.insertLen + P.insertHoleExtra;
-  // The detent leaves and their bumps. A bump of radius rB whose face
-  // reaches `reach` past the cover's edge line touches an R corner when the
-  // corner's centre is dy above (or below) the bump's centre:
-  //   dy = sqrt((R + rB)^2 - (R + rB - reach... )
-  // exactly: the bump's centre is rB - reach outside the edge line, the
-  // corner's centre R inside it, so dx = R + rB - reach and dy =
-  // sqrt((R + rB)^2 - dx^2). The upper bump sits dy below the closed
-  // cover's bottom corner centre and the lower bump dy above the open
-  // cover's top corner centre: no slop at either stop.
-  const R = P.sliderCornerR, rB = P.sliderBumpR, reach = P.sliderBumpReach;
-  const dx = R + rB - reach, dy = Math.sqrt((R + rB) ** 2 - dx * dx);
-  const bumpClosedY = closedY0 + R - dy;
-  const bumpOpenY = openY1 - R + dy;
-  const leafTipY = bumpClosedY + rB;
-  const leafRootY = leafTipY - P.sliderLeafL;
+  // The detent leaves and their bumps. One V-notch in each of the cover's
+  // flanks, sliderNotchH above its bottom edge. The upper bumps sit where
+  // that notch is with the cover closed, the lower bumps where it is with
+  // the cover open; so a stop is a bump seated in a notch, not a corner
+  // arc. Each leaf's tip is its bump's far edge: the upper leaves root
+  // toward the lens row (below their tips), the lower leaves root in the
+  // face's bottom band (below their tips too).
+  const rB = P.sliderBumpR, L = P.sliderLeafL, sl = P.sliderLeafSlit;
+  const bumpClosedY = closedY0 + P.sliderNotchH;
+  const bumpOpenY = openY0 + P.sliderNotchH;
   const leafTop = back + P.sliderLeafH;              // the leaf's top; the slit above it to leafTop + slit
-  const leafSlitEndY = leafTipY + P.sliderLeafSlit;
+  const leaves = [
+    { name: "upper", bumpY: bumpClosedY, tipY: bumpClosedY + rB, rootY: bumpClosedY + rB - L, dir: 1 },
+    { name: "lower", bumpY: bumpOpenY, tipY: bumpOpenY + rB, rootY: bumpOpenY + rB - L, dir: 1 },
+  ].map((l) => Object.freeze({ ...l, y0: l.rootY, y1: l.tipY + sl }));   // y0..y1: the leaf and its tip slit
   return Object.freeze({ back, front, trackTop, floorZ, horizonD, panel, horizon, outline, outlineR, closedY0, closedY1, openY0, openY1, travel,
-    tanF, boreR, coneR, outerR, bevel, lipZ, lensY, insertHoleDepth, bumpClosedY, bumpOpenY, leafTipY, leafRootY, leafTop, leafSlitEndY, bumpDy: dy });
+    tanF, boreR, coneR, outerR, bevel, lipZ, lensY, insertHoleDepth, bumpClosedY, bumpOpenY, leafTop, leaves });
 })();
 
 const roundedRectZ = (x, y, z, w, d, h, r) => rbox(x, y, z, x + w, y + d, z + h, r);
@@ -159,33 +157,57 @@ export function buildFace() {
     cuts.push(cylZ(lx, F.lensY, F.back - 1, F.boreR, F.floorZ - F.back + 1.02));
     cuts.push(coneZ(lx, F.lensY, F.floorZ - P.cellSink, F.boreR, F.boreR + P.cellSink + 0.01, P.cellSink + 0.01, 64));
   }
-  // The detent leaves: in each side wall, a beam sliderLeafT thick from the
-  // window's wall outward, sliderLeafH tall from the back, rooted at
-  // leafRootY and free to its tip, cut free by three slits: its outer
-  // side, its tip end and the slit above it (a bridge in print, 0.8 of
-  // skin under the horizon's floor). The lips skip the leaf's span.
+  // The detent leaves: in each side wall, two beams sliderLeafT thick from
+  // the window's wall outward, sliderLeafH tall from the back, each rooted
+  // at its lower end and free to its tip, cut free by slits: its outer
+  // side, its tip end, the slit above it (a bridge in print, under skin),
+  // and its inner side where it runs past the window into the face's
+  // bottom band. The lips skip the leaves' spans.
   const lipTop = F.trackTop + 0.02;
   const [b0, b1] = F.bevel, [l0, l1] = F.lipZ;
   const sl = P.sliderLeafSlit, lt = P.sliderLeafT;
   const leafX = [[p0x, p0x - lt, p0x - lt - sl], [p1x, p1x + lt, p1x + lt + sl]];   // inner face (the window's wall), outer face, the slit's far side; left and right
   for (const [xi, xo, xs] of leafX) {
     const [xa, xb] = xo < xs ? [xo, xs] : [xs, xo];
-    cuts.push(box(xa, F.leafRootY, F.back - 1, xb, F.leafSlitEndY, F.leafTop + sl));                                   // the outer slit
-    cuts.push(box(Math.min(xi, xs) - 0.5, F.leafTipY, F.back - 1, Math.max(xi, xs) + 0.5, F.leafSlitEndY, F.leafTop + sl));   // the tip slit
-    cuts.push(box(Math.min(xi, xs) - 0.5, F.leafRootY, F.leafTop, Math.max(xi, xs) + 0.5, F.leafSlitEndY, F.leafTop + sl));  // the slit above
+    const xlo = Math.min(xi, xs) - 0.5, xhi = Math.max(xi, xs) + 0.5;
+    const s = xi < xo ? 1 : -1;   // +1: the window lies toward -X of this wall... the inner slit goes from the wall's face back toward the window
+    for (const lf of F.leaves) {
+      cuts.push(box(xa, lf.rootY, F.back - 1, xb, lf.y1, F.leafTop + sl));                 // the outer slit
+      cuts.push(box(xlo, lf.tipY, F.back - 1, xhi, lf.y1, F.leafTop + sl));                 // the tip slit
+      cuts.push(box(xlo, lf.rootY, F.leafTop, xhi, lf.y1, F.leafTop + sl));                 // the slit above
+      // The inner slit, where the leaf runs below the window's bottom rim
+      // (the lower leaves root in the bottom band): from the wall's face
+      // toward the window, so the leaf is free there too.
+      if (lf.rootY < p0y) cuts.push(box(Math.min(xi, xi - s * sl), lf.rootY, F.back - 1, Math.max(xi, xi - s * sl), p0y + 0.3, F.leafTop + sl));
+    }
   }
-  // Dovetail lips on both X walls (left 1.0, right 1.5: the key), in two
-  // runs each round the leaf, and the two bumps on each leaf's face, added
-  // AFTER the cuts.
+  // Dovetail lips on both X walls (left 1.0, right 1.5: the key), in runs
+  // between the leaves' spans, and one bump on each leaf's window face,
+  // added AFTER the cuts.
   const adds = [];
-  for (const [y0, y1] of [[p0y + 0.2, F.leafRootY - 0.01], [F.leafSlitEndY + 0.01, p1y - 0.2]]) {
-    adds.push(prismY(y0, y1 - y0, [p0x - 0.01, lipTop], [p0x + b0, lipTop], [p0x - 0.01, lipTop - l0]));
-    adds.push(prismY(y0, y1 - y0, [p1x + 0.01, lipTop], [p1x - b1, lipTop], [p1x + 0.01, lipTop - l1]));
+  {
+    const runs = [[p0y + 0.2, p1y - 0.2]];
+    for (const lf of F.leaves) {
+      const [a, b] = [lf.y0 - 0.01, lf.y1 + 0.01];
+      for (let i = runs.length - 1; i >= 0; i--) {
+        const [y0, y1] = runs[i];
+        if (b <= y0 || a >= y1) continue;
+        runs.splice(i, 1);
+        if (a > y0) runs.push([y0, a]);
+        if (b < y1) runs.push([b, y1]);
+      }
+    }
+    for (const [y0, y1] of runs) {
+      if (y1 - y0 < 1.0) continue;
+      adds.push(prismY(y0, y1 - y0, [p0x - 0.01, lipTop], [p0x + b0, lipTop], [p0x - 0.01, lipTop - l0]));
+      adds.push(prismY(y0, y1 - y0, [p1x + 0.01, lipTop], [p1x - b1, lipTop], [p1x + 0.01, lipTop - l1]));
+    }
   }
   const bumpIn = P.sliderBumpR - (P.sliderClr + P.sliderBumpReach);   // the bump's centre this far outside the wall's face
-  for (const holdY of [F.bumpClosedY, F.bumpOpenY]) {
-    adds.push(cylZ(p0x - bumpIn, holdY, F.floorZ - 0.01, P.sliderBumpR, P.sliderBumpH + 0.01, 32));
-    adds.push(cylZ(p1x + bumpIn, holdY, F.floorZ - 0.01, P.sliderBumpR, P.sliderBumpH + 0.01, 32));
+  const bumpZ0 = F.floorZ + P.bedChamfer;                              // the cover's flank starts above its back chamfer
+  for (const lf of F.leaves) {
+    adds.push(cylZ(p0x - bumpIn, lf.bumpY, bumpZ0 - 0.01, P.sliderBumpR, P.sliderBumpH + 0.01, 32));
+    adds.push(cylZ(p1x + bumpIn, lf.bumpY, bumpZ0 - 0.01, P.sliderBumpR, P.sliderBumpH + 0.01, 32));
   }
   const faceCut = status("face: plate less cuts", status("face: plate", fuse(solids)).subtract(status("face: cuts", fuse(cuts))));
   const face = status("face", status("face: with lips", faceCut.add(status("face: lips and bumps", fuse(adds)))).simplify(1e-3));
@@ -227,13 +249,16 @@ export function buildFace() {
     .extrude(P.markDepth + 1).translate([0, 0, sFront - P.markDepth]);
   // No ID on the cover: its back is the bed, its top carries the brand, and
   // it is the only black bar in the kit.
+  // One V-notch in each flank at sliderNotchH above the bottom edge, its
+  // ramps sliderNotchDeg off the edge line, through the flank from the
+  // back chamfer to just above the bumps' height: the detents seat here.
   const edgeCuts = [mark];
   {
-    const zc0 = sBack - 0.01, zc1 = sFront - Math.min(b0, b1) + 0.01;
-    const y0 = sy0 + P.sliderEdgeCrest, y1 = sy1 - P.sliderEdgeCrest, r = P.sliderEdgeRamp;
+    const zc0 = sBack - 0.01, zc1 = sBack + P.bedChamfer + P.sliderBumpH + 0.3;
+    const yN = sy0 + P.sliderNotchH, d = P.sliderNotchD, t = Math.tan((P.sliderNotchDeg * Math.PI) / 180);
     for (const [edge, dir] of [[sx0, 1], [sx1, -1]]) {
-      const out = edge - dir * 1.0, inn = edge + dir * P.sliderEdgeRelief;
-      const pts = [[out, y0 - r], [edge, y0 - r], [inn, y0], [inn, y1], [edge, y1 + r], [out, y1 + r]];
+      const out = edge - dir * 0.6, inn = edge + dir * d, hw = (d + 0.6) / t;   // the ramps continue 0.6 outside the edge line
+      const pts = [[out, yN - hw], [out, yN + hw], [inn, yN]];
       const c2 = new CrossSection([pts], "Positive");
       edgeCuts.push((c2.area() > 0 ? c2 : new CrossSection([pts.slice().reverse()], "Positive")).extrude(zc1 - zc0).translate([0, 0, zc0]));
     }

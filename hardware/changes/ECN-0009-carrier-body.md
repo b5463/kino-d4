@@ -522,18 +522,39 @@ owner's printer. Two parts:
   too": T07, the window's whole band (103 x 46 x 4.2, both walls, every
   lip run, both leaves, the rims, the cells) in blue PLA for the real
   cover, gated to meet the cover at both stops as the face does. 244 gates.
+- **The slide, after its first print** (twenty-sixth cut, 2026-11-22; the
+  owner: "it gets stuck goes a bit sideways and no longer slides its not
+  tight enough to call it a real slide it can popout when ever it wants
+  and feels cheap due to the thinness and when its up it just falls
+  down"). Found: the 2.0 cover with its 0.4 back chamfer and 1.5 right
+  bevel had a 0.1 mm flank on the right, so the right bumps held nothing
+  and the cover was guided and held on one side; the thumb lip was 11.6
+  off the bar's axis; 0.4 of play under the lips let it pitch. Now:
+  `sliderT` 3.0 (flanks 1.6 and 1.1, gated), `faceBase` 5.2 and
+  `panelDepth` 3.2 (0.2 of play), the body 52.1 deep; the detents seat in
+  a 30 degree V-notch 0.5 deep in each flank at mid-height
+  (`sliderNotchH` 8.25) instead of riding the R3 corners: two leaves a
+  side (2.0 x 2.5 x 12.5, `sliderLeafH` 2.5 so the bump stays inside the
+  leaf), one bump each reaching 0.3, the upper pair at Y 28.45 for closed,
+  the lower at 9.45 for open (19.0 apart, the travel, gated); about 3 N a
+  side to leave a notch, and for 5 mm off either stop the pair presses the
+  flanks so the cover starts centred; the lips run between the leaves,
+  the top run against the thumb's lift. The lip centred on the bar
+  (`coverLipLeft` 33.4, `markLeft` 3.0). The edge relief and crest are
+  gone. Station (4, 4) moved to (4, 13), between the left wall's leaves.
+  259 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
-(PROVISIONAL) + 15.0 XIAO back to lens front + 1.0 plate + 4.2 face
-= 51.1 mm, against the field body's 74.5 over its lens bar. The body is 7.6
+(PROVISIONAL) + 15.0 XIAO back to lens front + 1.0 plate + 5.2 face
+= 52.1 mm, against the field body's 74.5 over its lens bar. The body is 8.6
 of it; the XIAO connectors (11.0) are the one
 stack term the bench can shorten, with low-profile sockets and bare pins. The plate's inner face lands at Z 35.4
 from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-244 in `generate-carrier-body.mjs`, 0 failures (the list below is the
+259 in `generate-carrier-body.mjs`, 0 failures (the list below is the
 first cut's; the package README's "Gates" names the current set, which
 adds the ledge, the carrier heads' clearance, the stack and the frame
 refused turned round, the frame pins and their hold, the pry point open at

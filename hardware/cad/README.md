@@ -18,7 +18,7 @@ electronics themselves; the third is a shell around the dev carrier D1 stack.
   carrier, XIAOs in sockets). The carrier is the chassis: its edge lands on a
   ledge, the rear frame's foam clamps it, the front plate captures each
   camera head in a pinch pocket; the face and the frame are screwed on with
-  M2 heat-set inserts, no screw into a board. 131.4 × 83.8 × 51.1 mm, five
+  M2 heat-set inserts, no screw into a board. 131.4 × 83.8 × 52.1 mm, five
   printed parts, coupons printed and read through the button
   ([`ECN-0009`](../changes/ECN-0009-carrier-body.md), issue #252). No
   independent scan yet.

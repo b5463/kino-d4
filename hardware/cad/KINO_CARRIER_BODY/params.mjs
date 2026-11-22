@@ -155,7 +155,7 @@ export const P = Object.freeze({
   // camera module PCBs, the signature's engraving, the window, the horizon
   // and the grip. Not a symmetric pattern, but the face goes on one way
   // anyway (the window and the shutter slot say so).
-  faceScrewXY: [[4.0, 4.0], [4.0, 50.0], [18.0, 60.0], [95.0, 60.0], [114.0, 50.0], [105.0, 4.0]],
+  faceScrewXY: [[4.0, 13.0], [4.0, 50.0], [18.0, 60.0], [95.0, 60.0], [114.0, 50.0], [105.0, 4.0]],   // (4, 13) sits in the lip run between the left wall's two leaves
   // The frame's six stations in the walls' rear ends, the hole's axis
   // frameScrewIn from the body's outline (1.7 of wall outside it, 1.2 under a
   // groove, 1.3 inside it toward the cavity; gated as a ring).
@@ -192,7 +192,7 @@ export const P = Object.freeze({
   // quiet markings. The face covers the plate and the walls' front ends
   // (the concept's v18 front: the fascia fills the front, the dark is the
   // sides and the deck).
-  faceBase: 4.2,             // the face plate: its own floor 1.0 under the track, the lips 2.4, the horizon 0.8; the cover rides on the face, so face + cover is one subassembly, tested before it goes on
+  faceBase: 5.2,             // the face plate: its own floor 1.0 under the track, the lips 3.2 (a 3.0 cover and 0.2 of play), the horizon 1.0; 4.2 carried a 2.0 cover that the owner called cheap and that yawed and stuck (2026-11-22)
   faceFloor: 1.0,            // the track floor, the face's own (dark blue PLA): the open stow zone is a tray in the face's colour, and no two-material part is needed for it
   faceEdgeR: 1.2,            // its front edge, a 45 degree chamfer, the frame's own size (2.0 on a 3.2 plate ran over the pin holes' outer edges). A quarter round at 0.2 mm layers terraces; the chamfer steps one layer each, one texture with the grooves. Rounds in plan (R10), chamfers in Z
   faceInset: 0.3,            // the face steps in from the shell's outline: a black reveal line round the blue face; at 0.8 it was a shelf
@@ -237,43 +237,45 @@ export const P = Object.freeze({
   bandChamfer: 1.5,          // with bandRim: the window's inset from bandX (the sixth cut's band is gone; the window kept its place)
   bandRim: 2.0,              // flat rim between the chamfer and the panel
   bandBottomInset: 5.7,      // panel bottom = outline + chamfer 1.2 + this = the sixth cut's 6.9, so the track, the travel and the detents stay where the bench tuned them (re-based when the chamfer changes: at 4.9 the mid-travel probe touched a bump again)
-  panelDepth: 2.4,           // the lips' top above the face's floor: the cover 2.0 and 0.4 of play under the lip (12 whole 0.2 layers; 2.3 put the groove floor on a half layer); the mark rides 0.4 proud of the groove floor
+  panelDepth: 3.2,           // the lips' top above the face's floor: the cover 3.0 and 0.2 of play under the lip (16 whole 0.2 layers); 0.4 of play let the 2.0 cover pitch and dig in
   windowChamfer: [0.8, 0.4], // 45 degrees on the window's front edges: the bottom rim 0.8 like the horizon's upper lip, the side rims 0.4 like its lower, so the open stow zone is the second line of a cut tray and the bar sits between two lit edges
   cellSink: 0.8,             // 45 degrees at each cell's mouth in the track floor: a rim, so the four read as eyes and not as a microphone array; prints face-up         // plain cones: the stepped rings read as damage at this size
   // The cover: the field body's bench-tuned track, restated. Drops to open.
   sliderH: 16.5,             // blankets the 7.5 mm cells by 4.5 a side; the lens row sits low, so every mm of cover is a mm of travel (the travel is DERIVED: closed to the window's bottom rim)
-  sliderT: 2.0,
+  sliderT: 3.0,              // 2.0 "feels cheap due to the thinness" (the owner, 2026-11-22), and with the 0.4 back chamfer and the 1.5 right bevel it had a 0.1 mm flank on the right: nothing for a detent to hold. At 3.0 the flanks are 1.6 and 1.1 (gated)
   sliderClr: 0.1,            // per side, in X
   sliderBevel: [1.0, 1.5],   // 45-degree edge bevels, left and right, and the lips that trap them. NOT the same: the orientation key. Turned round, the cover's 1.0 bevel meets the 1.5 lip and stops at the window's mouth; a gate proves it
   sliderLipOver: 0.2,        // each lip is this much deeper than its bevel is wide, so its underside is steeper than 45 degrees in print
   sliderCornerR: 3.0,        // the bar is the thing the eye reads; square corners inside a pill band were the last box on the front
-  // The detents: a leaf spring in each of the window's side walls, cut free
-  // from the face's back by slits (hidden against the shell's plate, under
-  // 0.8 of skin at the front), carrying two bumps near its tip that the
-  // cover's R3 corners ride over: the lower bump holds the cover open, the
-  // upper holds it closed, each touching its corner exactly at the stop
-  // (derived from the corner radius and the bump's reach, so there is no
-  // slop at either end). Between the corners the cover's edge is relieved,
-  // so mid-travel the leaves rest. The rigid 0.4 mm bumps before this were
-  // posts that bent (the owner, on the field body: "bumps are not a stop").
+  // The detents: two leaf springs in each of the window's side walls, cut
+  // free from the face's back by slits (hidden against the shell's plate,
+  // under skin at the front), each with a half-round bump on its window
+  // face that seats in a V-notch cut in the cover's flank at mid-height:
+  // the upper pair holds the cover closed, the lower pair holds it open.
+  // Leaving a stop, that pair presses the flanks for the next 5 mm, so the
+  // cover starts sprung and centred, with no side play where it is pushed;
+  // between the pairs it runs free in its 0.1. Nothing rides on a corner
+  // arc. The first leaf cut (2026-11-21) put the bumps on the cover's R3
+  // corners; printed, the closed cover fell and the right side held nothing
+  // (a 0.1 flank). The rigid posts before that bent.
   sliderBumpR: 0.6,          // the bump: a half-round on the leaf's face, this radius
-  sliderBumpReach: 0.35,     // past the cover's edge line: the leaf's deflection as a corner passes (0.58 % strain in the leaf, gated); about 1.7 N a side at the peak
-  sliderBumpH: 0.9,          // the bump's height off the floor: inside the cover's vertical flank (1.0 on the left, 0.5 on the right; above the flank the bevel runs away from it)
+  sliderBumpReach: 0.3,      // past the cover's edge line: the leaf's deflection on the flank between the stops, and what it drops into the notch
+  sliderBumpH: 1.0,          // the bump's height off the floor, from the cover's back chamfer up: inside both flanks (1.6 left, 1.1 right, gated)
+  sliderNotchD: 0.5,         // the V-notch in each flank: deeper than the reach, so the bump seats on the notch's ramps
+  sliderNotchDeg: 30,        // the notch's ramps off the edge line: with the leaf at 7 N/mm and 0.3 of reach, about 2.5 N a side to leave the notch, 5 N under the thumb
+  sliderNotchH: 8.25,        // the notch's centre above the cover's bottom edge: mid-height, so the same notch meets the lower pair open and the upper pair closed
   sliderLeafT: 2.0,          // the leaf's thickness in X, from the window's wall outward
-  sliderLeafL: 13.5,         // root to tip; its tip is the upper bump's far edge
-  sliderLeafSlit: 0.6,       // the slit round the leaf's outer side, tip end and top: 0.6 prints as a clean gap, 0.4 fuses
-  sliderLeafH: 2.0,          // the leaf's height from the face's back: the bumps and 0.1 over them; the slit above it leaves 0.8 of skin under the horizon's floor (gated)
-  sliderEdgeCrest: 4.5,      // the cover's edge is full for this far from each end (the R3 corner, then 0.9 of straight crest before the 0.6 ramp), relieved between
-  sliderEdgeRamp: 0.6,
-  sliderEdgeRelief: 0.5,     // deeper than the bump's reach, so between the corners the leaves rest
+  sliderLeafL: 12.5,         // root to tip, both pairs: the upper leaves root below their tips (toward the lens row), the lower leaves root in the face's bottom band
+  sliderLeafSlit: 0.6,       // the slit round the leaf's outer side, tip end, top, and inner side where it runs past the window: 0.6 prints as a clean gap, 0.4 fuses
+  sliderLeafH: 2.5,          // the leaf's height from the face's back: the 1.0 floor, the cover's 0.4 chamfer, the 1.0 bump and 0.1 over it; the slit above it leaves 1.1 of skin under the horizon's floor (gated)
   coverLip: [20.0, 1.5],     // a thumb needs 16; at 30 the open slot under the eyes read as a mouth
-  coverLipLeft: 45.0,        // the lip's left end from the bar's left edge, past the wordmark's end at 36, so the thumb never covers a letter
+  coverLipLeft: 33.4,        // the lip centred on the bar (86.8 - 20) / 2: the thumb pushes on the cover's axis, so it cannot yaw it (at 45 the push was 11.6 off-axis and the 2.0 cover went sideways and stuck); the wordmark ends at 33
   coverLipRoot: 0.4,         // 45 degree root on the lip's three free sides: the lip takes a face-down drop     // the thumb lip on the cover's TOP edge, width x height; the thumb pushes down on its top face (the coupon says whether 1.5 is enough)
   coverLipAboveFace: 1.5,    // visible as a slide from across the room, as the XA's and the Minox's sills are; 0.5 was invisible, and a glove or a dry thumb could not lift the cover closed on 1.0    // the lip stands this far proud of the face, closed and stowed, so the thumb pad can push it down and lift it back; its height off the cover is derived
   // The brand on the bar: "odd jobs" engraved in the cover's top, as the
   // concept's nameplate, reading as shadow.
   markW: 30.0,               // the trace is 30 x 6.8; strokes about 1.3 mm
-  markLeft: 6.0,             // from the bar's left end: the brand left-aligns its plate
+  markLeft: 3.0,             // from the bar's left end: the brand left-aligns its plate; 3 so the centred lip clears the last letter
   // The signature inside: the symbol and the wordmark engraved on the BACK
   // of the face, where only the person who opens the camera finds them. The
   // work nobody sees, done as well as the work everyone sees.
