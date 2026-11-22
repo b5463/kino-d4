@@ -79,6 +79,7 @@ and shell print views; the index with the exact file names is
 - **28** (2026-11-21) `assets/making-of/carrier-body/28-3cbbe66-t07-the-slide-s-coupon/`: "Gimme the coupons for the slide too": T07, the face's whole window band, for the real cover.
 - **29** (2026-11-22) `assets/making-of/carrier-body/29-fa85166-the-slide-after-its-first-print/`: The slide printed: it stuck, went sideways, popped out and fell when closed. The 2.0 cover had a 0.1 mm flank on its right side, so nothing held it there. Now a 3.0 cover in a 5.2 face, detents that seat in a notch cut in each flank, two leaf springs a side, the thumb lip on the bar's axis.
 - **30** (2026-11-22) `assets/making-of/carrier-body/30-96e42d7-the-slide-sprung-the-whole-way-the-lip-t/`: "Way better", but one side stuck mid-travel one time in two, where the cover ran free between the two bump pairs, and the shove snapped the lip. A tapered ridge behind each bump keeps the cover sprung and centred at every position; the lip 2.5 thick.
+- **31** (2026-11-23) `assets/making-of/carrier-body/31-623b8c1-the-slide-on-a-rail/`: The ridges did not cure the yaw and made the slide tight and scraping. A bar 87 wide cannot be guided on its two short ends: a rail down the tray, in a groove in the cover's back, guides it over its whole height under the thumb. The one visible piece of mechanism on the front, and the cover's key.
 
 Later cuts append here as they are committed; the archive script
 (`../hardware/cad/KINO_CARRIER_BODY/archive-previews.py`) adds the folder,
