@@ -1,6 +1,6 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-22T22:07:12.143Z",
+  "generated": "2026-11-22T23:52:09.408Z",
   "body": {
     "width": 131.4,
     "height": 83.8,
@@ -97,7 +97,7 @@
       2.5,
       14.5
     ],
-    "reach": 0.3
+    "reach": 0.25
   },
   "files": {
     "A01-KINO_CARRIER_SHELL.stl": {
@@ -119,8 +119,8 @@
       ]
     },
     "A02-KINO_CARRIER_FACE.stl": {
-      "triangles": 10210,
-      "volumeCm3": 40.37,
+      "triangles": 10118,
+      "volumeCm3": 40.42,
       "size": [
         130.8,
         83.2,
@@ -128,10 +128,10 @@
       ]
     },
     "B01-KINO_CARRIER_LENS_COVER.stl": {
-      "triangles": 2776,
-      "volumeCm3": 4.37,
+      "triangles": 2796,
+      "volumeCm3": 4.33,
       "size": [
-        86.8,
+        86.4,
         16.5,
         5.7
       ]
@@ -182,7 +182,7 @@
       ]
     },
     "T06-KINO_COUPON_FACE_CORNER.stl": {
-      "triangles": 1704,
+      "triangles": 1650,
       "volumeCm3": 3.34,
       "size": [
         20.7,
@@ -191,8 +191,8 @@
       ]
     },
     "T07-KINO_COUPON_TRACK.stl": {
-      "triangles": 3810,
-      "volumeCm3": 10.53,
+      "triangles": 3718,
+      "volumeCm3": 10.58,
       "size": [
         103,
         46.4,
@@ -236,8 +236,8 @@
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 35250,
-      "volumeCm3": 295.76,
+      "triangles": 35126,
+      "volumeCm3": 295.77,
       "size": [
         131.4,
         83.8,
@@ -245,8 +245,8 @@
       ]
     },
     "KINO_CARRIER_OPEN_PREVIEW.stl": {
-      "triangles": 35268,
-      "volumeCm3": 295.76,
+      "triangles": 35142,
+      "volumeCm3": 295.77,
       "size": [
         131.4,
         83.8,
@@ -255,7 +255,7 @@
     }
   },
   "gates": {
-    "total": 259,
+    "total": 264,
     "failed": 0
   },
   "checks": [
@@ -972,22 +972,47 @@
     {
       "name": "cover closed: the upper bumps seat in its notches",
       "pass": true,
-      "details": "1.217 mm^3 shared at the stop (the ridges on the flanks; the bumps float in the 0.5 notches), 1.379 with the cover 1.0 below it (the bumps out on the flanks too, pressed 0.3)"
+      "details": "0.000 mm^3 shared at the stop (the ridges on the flanks; the bumps float in the 0.5 notches), 0.293 with the cover 1.0 below it (the bumps out on the flanks too, pressed 0.25)"
     },
     {
       "name": "cover open: the lower bumps seat in its notches",
       "pass": true,
-      "details": "1.217 mm^3 shared at the stop, 1.549 with the cover 1.0 above it"
+      "details": "-0.000 mm^3 shared at the stop, 0.293 with the cover 1.0 above it"
     },
     {
-      "name": "cover sprung at every position of the travel",
+      "name": "cover runs the travel on its rail, touching nothing but the bumps",
       "pass": true,
-      "details": "37 positions 0.5 apart from closed to open: the least contact 0.053 mm^3 at 12 below closed, the most 1.622 at 5; the ridges behind the bumps (the outer 60 % of each leaf, from the clearance line to the bump's reach) keep one pair on the flanks the whole way, so a yaw is pushed back and nothing runs free in its 0.1"
+      "details": "37 positions 0.5 apart from closed to open: the most contact 0.340 mm^3 at 16.5 below closed (a bump on a flank), 0.0000 mid-travel; the walls stand 0.3 off, the rail guides"
+    },
+    {
+      "name": "the rail stands on the floor the window's full height",
+      "pass": true,
+      "details": "1.6 x 1 at X 51.7, from Y 0.7 to 37.2, joined to both rims"
+    },
+    {
+      "name": "the groove is open through the cover's back, end to end",
+      "pass": true,
+      "details": "1.8 x 1.2 in the back, 1.5 right of the cover's centre"
+    },
+    {
+      "name": "the rail runs in the groove at both stops and between",
+      "pass": true,
+      "details": "0.1 a side, 0.2 over the rail; the groove on the rail; guided over its whole 16.5 under the thumb, so the push cannot yaw it"
+    },
+    {
+      "name": "the rail is the orientation key",
+      "pass": true,
+      "details": "turned round in its plane the cover's groove misses the rail by 1.3 and 26.14 mm^3 of rail stands in the cover: it sits 1 proud of the floor, above the lips"
+    },
+    {
+      "name": "the rail sits between cells 2 and 3",
+      "pass": true,
+      "details": "4.94 mm from the nearest cell's rim; the walls stand 0.3 off the cover, more than the rail's 0.1, so the rail is the guide"
     },
     {
       "name": "the cover has a flank on both sides for the bumps",
       "pass": true,
-      "details": "flanks 1.6 (left) and 1.1 (right) tall for 1 mm bumps: a 3 cover less its 0.4 back chamfer and its bevels (the 2.0 cover had 0.1 on the right)"
+      "details": "flanks 1.6 (left) and 1.6 (right) tall for 1 mm bumps: a 3 cover less its 0.4 back chamfer and its bevels (the 2.0 cover had 0.1 on the right)"
     },
     {
       "name": "the left upper leaf stands",
@@ -1012,7 +1037,7 @@
     {
       "name": "the left upper bump reaches past the cover's edge",
       "pass": true,
-      "details": "0.3 past the edge line at Y 28.45, from the flank's foot up"
+      "details": "0.25 past the edge line at Y 28.45, from the flank's foot up"
     },
     {
       "name": "the left lower leaf stands",
@@ -1042,7 +1067,7 @@
     {
       "name": "the left lower bump reaches past the cover's edge",
       "pass": true,
-      "details": "0.3 past the edge line at Y 9.45, from the flank's foot up"
+      "details": "0.25 past the edge line at Y 9.45, from the flank's foot up"
     },
     {
       "name": "the right upper leaf stands",
@@ -1067,7 +1092,7 @@
     {
       "name": "the right upper bump reaches past the cover's edge",
       "pass": true,
-      "details": "0.3 past the edge line at Y 28.45, from the flank's foot up"
+      "details": "0.25 past the edge line at Y 28.45, from the flank's foot up"
     },
     {
       "name": "the right lower leaf stands",
@@ -1097,12 +1122,12 @@
     {
       "name": "the right lower bump reaches past the cover's edge",
       "pass": true,
-      "details": "0.3 past the edge line at Y 9.45, from the flank's foot up"
+      "details": "0.25 past the edge line at Y 9.45, from the flank's foot up"
     },
     {
       "name": "the leaves bend inside PLA's limit under skin",
       "pass": true,
-      "details": "0.43 % strain at the root for 0.3 of deflection (E 3.5 GPa: about 5.74 N/mm, 1.72 N a side on the flank, about 1.85 N a side to leave a 30 degree notch); 1.1 mm of skin under the horizon's floor, 2.1 under the full face"
+      "details": "0.36 % strain at the root for 0.25 of deflection (E 3.5 GPa: about 5.74 N/mm, 1.44 N a side on the flank, about 1.54 N a side to leave a 30 degree notch); 1.1 mm of skin under the horizon's floor, 2.1 under the full face"
     },
     {
       "name": "the notches sit where the bumps are at the stops",
@@ -1112,7 +1137,7 @@
     {
       "name": "the thumb lip is on the cover's axis",
       "pass": true,
-      "details": "the lip's centre 43.4 from the bar's left end, the bar 86.8 wide: the push cannot yaw it; the wordmark ends 0.4 before the lip"
+      "details": "the lip's centre 43.4 from the bar's left end, the bar 86.4 wide: the push cannot yaw it; the wordmark ends 0.4 before the lip"
     },
     {
       "name": "cover travel is positive and the cover stows above the rim",
@@ -1127,7 +1152,7 @@
     {
       "name": "the cover goes in one way only",
       "pass": true,
-      "details": "turned round in its plane the cover's 1.0 bevel meets the 1.5 lip: 3.02 mm^3 of lip inside it; the right way, 1.217 (the ridges on the flanks)"
+      "details": "turned round in its plane the cover sits on the rail: 26.14 mm^3 of face inside it; the right way, 0.000"
     },
     {
       "name": "wordmark strokes clear one nozzle line with margin",
@@ -1407,7 +1432,7 @@
     {
       "name": "A02-KINO_CARRIER_FACE.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "1.82 mm^2 facing down past 45 degrees outside the named places (allowed 5), 402.06 inside them: the six insert holes' countersinks and the signature's 0.4 mm ceilings at the bed, the slits over the two leaves (2.6 mm bridges), the A02 letters' top edges in the bottom edge wall (0.3 mm bridges); the lips' undersides are steeper than 45; the largest stray at (99.89, 29.17, 1.39)"
+      "details": "2.01 mm^2 facing down past 45 degrees outside the named places (allowed 5), 402.22 inside them: the six insert holes' countersinks and the signature's 0.4 mm ceilings at the bed, the slits over the two leaves (2.6 mm bridges), the A02 letters' top edges in the bottom edge wall (0.3 mm bridges); the lips' undersides are steeper than 45; the largest stray at (99.8, 34.47, 1.39)"
     },
     {
       "name": "A02-KINO_CARRIER_FACE.stl fits the bed",
@@ -1417,12 +1442,12 @@
     {
       "name": "B01-KINO_CARRIER_LENS_COVER.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0.14 mm^2 facing down past 45 degrees outside the named places (allowed 2), 0.43 inside them: the 0.2 mm ledges over the edge reliefs; the largest stray at (86.49, 8.25, 1.7)"
+      "details": "0.87 mm^2 facing down past 45 degrees outside the named places (allowed 2), 29.7 inside them: the groove's ceiling in the back (a 1.8 mm bridge at the bed); the largest stray at (0.17, 8.25, 1.7)"
     },
     {
       "name": "B01-KINO_CARRIER_LENS_COVER.stl fits the bed",
       "pass": true,
-      "details": "86.8 x 16.5 x 5.7"
+      "details": "86.4 x 16.5 x 5.7"
     },
     {
       "name": "B02-KINO_CARRIER_SHUTTER_BUTTON.stl overhangs only where a support's scar would hide",
@@ -1492,7 +1517,7 @@
     {
       "name": "the track coupon carries all four leaves, both rims and the cover's whole run",
       "pass": true,
-      "details": "the window band from X -1.3 to 101.7, Y -6.2 to 40.2; the real B01 closed, open and mid-travel meets it as it meets the face"
+      "details": "the window band from X -1.3 to 101.7, Y -6.2 to 40.2, the rail down it; the real B01 runs in it as in the face"
     },
     {
       "name": "the ledge coupon carries a face screw station and the ledge",

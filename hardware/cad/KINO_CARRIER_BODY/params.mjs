@@ -243,8 +243,16 @@ export const P = Object.freeze({
   // The cover: the field body's bench-tuned track, restated. Drops to open.
   sliderH: 16.5,             // blankets the 7.5 mm cells by 4.5 a side; the lens row sits low, so every mm of cover is a mm of travel (the travel is DERIVED: closed to the window's bottom rim)
   sliderT: 3.0,              // 2.0 "feels cheap due to the thinness" (the owner, 2026-11-22), and with the 0.4 back chamfer and the 1.5 right bevel it had a 0.1 mm flank on the right: nothing for a detent to hold. At 3.0 the flanks are 1.6 and 1.1 (gated)
-  sliderClr: 0.1,            // per side, in X
-  sliderBevel: [1.0, 1.5],   // 45-degree edge bevels, left and right, and the lips that trap them. NOT the same: the orientation key. Turned round, the cover's 1.0 bevel meets the 1.5 lip and stops at the window's mouth; a gate proves it
+  sliderClr: 0.3,            // per side, in X: the walls no longer guide the cover, the rail does (0.1 did, and a bar five times wider than its 10.5 flank is long jams on its walls whenever the thumb lands off centre: three prints, 2026-11-22)
+  // The guide: a rail on the tray's floor at the cover's centre, the
+  // window's full height, in a groove in the cover's back. The cover is
+  // guided over its whole 16.5 on smooth vertical faces, under the thumb,
+  // so an off-centre push cannot yaw it; the lips only keep it in. Between
+  // cells 2 and 3, the one visible piece of mechanism on the front.
+  sliderRail: [1.6, 1.0],    // width x height off the floor
+  sliderGroove: [1.8, 1.2],  // in the cover's back, open at both ends: 0.1 a side on the rail, 0.2 over it
+  sliderRailOffset: 1.5,     // the rail (and the groove) this far right of the window's centre: the orientation key. Turned round in its plane the cover's groove misses the rail by 1.4 and the cover sits 1.0 proud on it, above the lips' underside (gated). The lips can then be alike
+  sliderBevel: [1.0, 1.0],   // 45-degree edge bevels, left and right, and the lips that trap them; alike now that the rail is the orientation key (1.0 and 1.5 left a 1.1 flank on the right, and with the walls 0.3 off the cover the key was 0.2 of overlap)
   sliderLipOver: 0.2,        // each lip is this much deeper than its bevel is wide, so its underside is steeper than 45 degrees in print
   sliderCornerR: 3.0,        // the bar is the thing the eye reads; square corners inside a pill band were the last box on the front
   // The detents: two leaf springs in each of the window's side walls, cut
@@ -252,24 +260,20 @@ export const P = Object.freeze({
   // under skin at the front), each with a half-round bump on its window
   // face that seats in a V-notch cut in the cover's flank at mid-height:
   // the upper pair holds the cover closed, the lower pair holds it open.
-  // Behind each bump a ridge runs back along the leaf, tapering from the
-  // bump's reach to nothing at its root end, so at every position of the
-  // travel one pair presses both flanks: the cover is sprung and centred
-  // the whole way and a yaw is pushed back (the second print, 2026-11-22:
-  // "one side gets stuck in the middle", the 8 mm where nothing touched
-  // it). A ridge is wider than the notch, so it never drops in. Nothing
-  // rides on a corner arc. The first leaf cut (2026-11-21) put the bumps on the cover's R3
+  // Between the stops the cover runs free on its rail. (Ridges behind the
+  // bumps that pressed the flanks the whole way were tried on the third
+  // print: the cover still yawed, and they made it "lock too tightly".)
+  // Nothing rides on a corner arc. The first leaf cut (2026-11-21) put the bumps on the cover's R3
   // corners; printed, the closed cover fell and the right side held nothing
   // (a 0.1 flank). The rigid posts before that bent.
   sliderBumpR: 0.6,          // the bump: a half-round on the leaf's face, this radius
-  sliderBumpReach: 0.3,      // past the cover's edge line: the leaf's deflection on the flank between the stops, and what it drops into the notch
+  sliderBumpReach: 0.25,     // past the cover's edge line: the leaf's deflection as a bump passes a flank, and what it drops into the notch (0.3 with ridges was "too tight")
   sliderBumpH: 1.0,          // the bump's height off the floor, from the cover's back chamfer up: inside both flanks (1.6 left, 1.1 right, gated)
-  sliderRidgeFrom: 0.4,      // the ridge behind each bump starts this fraction of the leaf's length from its root and runs to the bump, its reach rising from the clearance line (nothing to push) to the bump's reach. Nearer the root a leaf is too stiff: its stiffness grows as the cube of the distance while its deflection shape shrinks only as the square, so a ridge there pinches the cover; here the push stays near 2 N a side along the whole ridge. With the bump, each pair covers 9.3 of the flank and the two pairs' ranges overlap by 0.2 (gated by a sweep)
   sliderNotchD: 0.5,         // the V-notch in each flank: deeper than the reach, so the bump seats on the notch's ramps
   sliderNotchDeg: 30,        // the notch's ramps off the edge line: with the leaf at 7 N/mm and 0.3 of reach, about 2.5 N a side to leave the notch, 5 N under the thumb
   sliderNotchH: 8.25,        // the notch's centre above the cover's bottom edge: mid-height, so the same notch meets the lower pair open and the upper pair closed
   sliderLeafT: 2.0,          // the leaf's thickness in X, from the window's wall outward
-  sliderLeafL: 14.5,         // root to tip, both pairs: the upper leaves root below their tips (toward the lens row), the lower leaves root in the face's bottom band, 0.05 inside its chamfer; long enough that the two pairs' ridges overlap along the travel
+  sliderLeafL: 14.5,         // root to tip, both pairs: the upper leaves root below their tips (toward the lens row), the lower leaves root in the face's bottom band, 0.05 inside its chamfer
   sliderLeafSlit: 0.6,       // the slit round the leaf's outer side, tip end, top, and inner side where it runs past the window: 0.6 prints as a clean gap, 0.4 fuses
   sliderLeafH: 2.5,          // the leaf's height from the face's back: the 1.0 floor, the cover's 0.4 chamfer, the 1.0 bump and 0.1 over it; the slit above it leaves 1.1 of skin under the horizon's floor (gated)
   coverLip: [20.0, 2.5],     // width x thickness: a thumb needs 16; at 30 the open slot under the eyes read as a mouth. 1.5 thick snapped under the shove a stuck cover needed (2026-11-22): at 0.08 layers the lip's layers are its weak axis

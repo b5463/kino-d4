@@ -560,6 +560,25 @@ owner's printer. Two parts:
   thick on a 0.8 root (`coverLip`, `coverLipRoot`). Station (4, 13) moved
   to (4, 36) above the upper leaf (0.8 of face ahead under the horizon's
   floor, gated); T03 grows to 26 x 47 to carry it. 259 gates.
+- **The slide on a rail** (twenty-eighth cut, 2026-11-23; the owner, on
+  the third T07: "the axis issue is still present and it now lock too
+  tightly making the slide much less satisfying and tougher to slide",
+  then "the pla is scraping down on the petg slide sides"). The ridges
+  were the wrong answer: a bar 87 wide guided only on its two 10.5 mm
+  flanks yaw-jams on its walls whenever the thumb lands off centre, and
+  springs pressing the flanks only add drag and wear. Now a rail on the
+  tray's floor, 1.6 x 1.0, the window's full height, 1.5 right of the
+  window's centre (between cells 2 and 3), in a 1.8 x 1.2 groove in the
+  cover's back: the cover is guided over its whole 16.5 on smooth
+  vertical faces under the thumb; the walls stand 0.3 off (`sliderClr`),
+  the ridges are gone (`sliderRidgeFrom`), the bumps reach 0.25. The
+  rail is the orientation key (turned round the groove misses it by 1.3
+  and the cover sits 1.0 proud, gated), so both lips are 1.0 and both
+  flanks 1.6. Gates: the rail standing, the groove open, the rail in the
+  groove at both stops and between, the rail as the key, the rail between
+  the cells, the cover touching nothing but the bumps along a 0.5 mm
+  sweep. The rail is the one visible piece of mechanism on the front.
+  264 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
@@ -571,7 +590,7 @@ from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-259 in `generate-carrier-body.mjs`, 0 failures (the list below is the
+264 in `generate-carrier-body.mjs`, 0 failures (the list below is the
 first cut's; the package README's "Gates" names the current set, which
 adds the ledge, the carrier heads' clearance, the stack and the frame
 refused turned round, the frame pins and their hold, the pry point open at
