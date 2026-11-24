@@ -696,6 +696,28 @@ owner's printer. Two parts:
   over T05 with the real switch and plunger. Gates: the plunger clear of
   the face through the press, the fingertip, the door at the pocket's front
   wall, T10. 272 gates.
+- **The shutter self-contained in the shell** (twenty-ninth cut, the same
+  day; the owner: "think of a more technical solution", and the plunger
+  stays round). The pocket answered the clamp by cutting the face to suit
+  the mechanism; the face was still the slot's front wall. Now the face is
+  a cover. The guide is a closed round bore with six ribs; the axis moves
+  1.7 back to Z 30.8 (`shutterFlangeToFace` 0.3, replacing
+  `shutterCapToFace`) so the flange stops short of the face, with 1.8 of
+  deck between the bore and the face and the step holding the flange all
+  round. The closed bore forces the order: the plunger first, riding in
+  on the floor under the deck and lifting into the bore; the switch
+  second, flat on the floor under the hanging flange. A pocket would need
+  lift room the 0.3 under the flange does not leave, so the switch is held
+  by its rear legs: the leg channels narrow over their last 0.8 into PETG
+  crush ribs (`shutterLegCrush` 0.1) and end where the switch sits under
+  the cap. The chamber is set by the switch (6.2) and the plunger must
+  ride in it, so guide 2.3 + proud 2.1 (`shutterProud`, `shutterPlungerRide`
+  0.2); the owner kept the 4.3 switch over a 6 x 6 x 7 one, and the
+  fingertip gate leaves 0.53 (the collar the nearest; the face's top is now
+  9.1 from the axis). The face's pocket, `shutterFacePocket`,
+  `shutterSwitchPocket` and its clearance are gone; the pod's bottom to Z
+  19.3. T05 and B02 are new and need printing; T10 covers the mouth.
+  271 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator

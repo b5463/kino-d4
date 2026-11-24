@@ -351,36 +351,35 @@ export const P = Object.freeze({
   // plunger and the switch 0.2 mm each and neither went in. Every number
   // here is read off the bench's switch.
   shutterX: 105.5,
-  shutterCapToFace: 0.4,     // from the cap's front edge, against the slot's round end, to the face's back; the axis Z follows from it
+  shutterFlangeToFace: 0.3,  // the flange's front edge to the face's back: the axis Z follows from it. The face is a cover; nothing of the button touches it (the cap sat 0.4 off it, the face its slot's front wall, and the round flange ran 1.4 into it)
   shutterPodLeft: 11.5,      // the pod's left face this far left of the axis (X 94: 1.9 clear of CAM 4's XIAO at 92.1, 2.2 of pod beside the chamber); the pod runs into the right wall
-  shutterPodBottomZ: 21.0,   // 2.2 of pod behind the chamber's rear end; 8 above the carrier's front face
+  shutterPodBottomZ: 19.3,   // 2.2 of pod behind the chamber's rear end; 6.4 above the carrier's front face
   shutterSwitchBody: [6.0, 6.0, 4.3],   // X, Z and the whole height, base to actuator top at rest (3.5 body + 0.8 actuator); MEASURE the bench's switch
   shutterSwitchTravel: 0.25, // the actuator's stroke to the click
   shutterSwitchFree: 0.3,    // between the actuator and the flange at rest (the plunger hangs on the step): the first 0.3 of press is free, then the click. A printed chamber 0.2 short still leaves the actuator untouched
-  shutterSwitchPocket: 0.5,  // the pocket in the floor the switch drops into at the end of its ride: its walls hold it under the cap, and a switch NOT in its pocket is 0.5 too tall for the flange to pass over, which forces the order
-  shutterSwitchPocketClr: 0.3,  // a side round the switch's body in the pocket
+  shutterPlungerRide: 0.2,   // the cap's top under the step while the plunger rides in on the floor, before it lifts into the bore: the chamber is the switch's height plus the flange and the free travel, and the plunger must fit it
   shutterLegX: 3.25,         // the legs' X off the axis, each side (6.5 pitch)
   shutterLegZ: 2.25,         // the legs' Z off the axis, each side (4.5 pitch)
-  shutterLegClr: 0.5,        // past the rear legs to the channels' rear ends: the switch's stop
+  shutterLegClr: 0.4,        // the channels' rear ends this far behind the rear legs' centre line: the leg is 0.7 along the channel, so the rear legs stop with the switch 0.05 ahead of the axis
   shutterLegT: 0.3,          // a leg's thickness in X (a 0.3 x 0.7 strip, 3.5 long below the base)
   shutterLegSlot: [2.0, 5.5],   // a leg channel's width in X (the second figure is unused: the channels run to the front)
+  shutterLegCrush: 0.1,      // the channel narrows at its rear end to the leg's thickness less this: the rear legs are pressed into PETG crush ribs, the switch's only hold fore and aft (a pocket needs lift room, and the flange now leaves 0.3)
   shutterGuideLen: 2.3,      // the slot's depth, deck to the step the flange rests under; the cap's guided length
   shutterGuideRound: 1.0,    // the slot's round end is round for its last mm at the deck; below it the ceiling is flat
   shutterGuideCeil: 0.4,     // the flat ceiling above the round end's top: the print's bridge clears the cap
   shutterActuatorGuideD: 14.6,  // the slot's width and its round end
   shutterActuatorFlangeD: 17.6, // the flange: 1.5 over the step each side and at the rear (gated)
   shutterFlangeH: 1.6,
-  shutterFacePocket: 0.2,    // the chamber runs on into the face's back as a blind round pocket of the chamber's own radius, this far above the step: the round 17.6 flange ran 1.4 into the face's back (13.9 mm^3, from rest to the bottom of the press), so with the face on the plunger was clamped; the pocket's front wall still closes the mouth
   shutterSwitchForce: 2.6,   // PROVISIONAL: the click force of the bench's 6 x 6 switch, the top of the usual 1.6 to 2.6 N; MEASURE it
   fingerE: 0.1,              // a fingertip pad's effective modulus, MPa: the soft-contact model of the press (a flat round punch into an elastic half-space)
   shutterFlangeBoreClear: 0.5,  // per side in the chamber: the flange only rides in, it is guided by the cap in the slot; the flange's bed edge is chamfered too
-  shutterGuideRib: [0.2, 0.8],  // four ribs, proud x wide, along the slot (one each straight side, two on the round end 60 degrees off its apex): the cap runs on four lines 0.1 off, not in a 0.6 mm gap
+  shutterGuideRib: [0.2, 0.8],  // six ribs, proud x wide, round the closed bore (each side, and 60 degrees each side of its front and rear): the cap runs on six lines 0.1 off, not in a 0.6 mm gap
   shutterPressCapD: 14.0,
-  shutterProud: 2.6,         // the cap's rim above the top face: at the click (0.55 down) it stands 2.05 over the deck and 2.35 over the face's top 0.4 in front of it, so a fingertip pad clicks the switch before it bottoms on either (gated; at 2.0 the face's edge left 0.4 mm of pad)
+  shutterProud: 2.1,         // the cap's rim above the top face. The plunger slides in under the deck before it lifts into the closed bore, so flange + guide + proud + ride (6.2) can be no taller than the chamber the 4.3 switch sets: guide 2.3 + proud 2.1 (the owner kept the switch). The fingertip gate leaves 0.5; a 6x6x7 switch would leave room for more
   shutterCapEdge: 0.5,       // 45 degrees round the cap's top edge: six even rings at 0.08
   shutterCapDish: [11.0, 0.4],  // a spherical dish in the cap's top, diameter x depth (the owner: "a slight indent to give it a tactile feel"): the finger finds the centre; a 1.0 flat rim stays between it and the chamfer; five layers at 0.08, up in print
   shutterCollarD: 20.0,
-  shutterCollarDepth: 0.4,   // a two-layer shadow line round the cap, clipped by the deck's front edge
+  shutterCollarDepth: 0.4,   // a two-layer shadow line round the cap, clipped by the deck's front edge; the cap's guided length is the guide less this
   shutterFloor: 2.0,         // of pod under the switch's pocket: the press lands here; the leg channels cut through it
   // ---- Strap: cord channels at both lower corners, inside the outline. Two
   // slots through the rear frame's border over a channel in the bottom

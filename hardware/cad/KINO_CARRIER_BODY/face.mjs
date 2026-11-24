@@ -18,9 +18,8 @@
 // track; the cover presses in from the front, stowed. The face is screwed
 // to the shell from inside the cavity: six M2 inserts in its back.
 import fs from "node:fs";
-import { Manifold, CrossSection, cube, box, cylZ, cylY, coneZ, fuse, rbox, prismY, status, textSolid, textWidth } from "./lib.mjs";
+import { Manifold, CrossSection, cube, box, cylZ, coneZ, fuse, rbox, prismY, status, textSolid, textWidth } from "./lib.mjs";
 import { P, Z, XY, IDS } from "./params.mjs";
-import { SHUTTER } from "./shutter.mjs";
 
 const MAKER = JSON.parse(fs.readFileSync(new URL("./brand/odd-jobs-wordmark.json", import.meta.url), "utf8"));
 const SYMBOL = JSON.parse(fs.readFileSync(new URL("../../pcb/kino-d4-carrier-a0/brand/odd-jobs-symbol.json", import.meta.url), "utf8"));
@@ -116,14 +115,6 @@ export function buildFace({ armT = P.sliderArmT } = {}) {
   for (const [px, py] of P.faceScrewXY) {
     cuts.push(cylZ(px, py, F.back - 1, P.insertHoleD / 2, F.insertHoleDepth + 1, 32));
     cuts.push(coneZ(px, py, F.back - 0.01, P.insertHoleD / 2 + P.insertMouthSink + 0.01, P.insertHoleD / 2, P.insertMouthSink + 0.01, 32));
-  }
-  // The shutter's chamber runs on into the face's back: a blind round pocket
-  // of the chamber's radius from the floor to just above the step, so the
-  // plunger's round flange (which reaches 1.4 past the face's back) swings
-  // in it through the whole press. Its front wall closes the mouth.
-  {
-    const S = SHUTTER, top = S.guideBottom + P.shutterFacePocket;
-    cuts.push(cylY(S.X, S.floorTop, S.Zc, S.rF, top - S.floorTop, 96));
   }
   // The signature inside, engraved on the back (the bed face), mirrored so
   // it reads right when the face is turned over, and the part ID beside it.

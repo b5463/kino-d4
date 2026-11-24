@@ -1,32 +1,28 @@
 // The shutter: one printed part (the plunger B02), one 6 x 6 tactile
-// switch with two leads, no fastener, no retainer. The face is the door.
+// switch with two leads, no fastener, no retainer. The shell holds all of
+// it; the face is only a cover over the mouth.
 //
 // The pod is a block under the top wall from X podX0 into the right wall,
-// at the deck's FRONT edge. In it, from the deck down: the guide, a 14.6
-// slot in the deck open toward the plate's front (a U: round at the rear,
-// straight sides out to the mouth) with four 0.2 ribs the cap runs on; the
-// step, 2.0 of deck each side of the U that the flange rests under; the
-// chamber, 18.6 wide, open through the plate's top-right corner; and the
-// floor, with a 0.5 pocket the switch seats in and two leg channels through
-// it running out to the front.
+// at the deck's front. In it, from the deck down: the guide, a closed round
+// bore through the deck with six 0.2 ribs the cap runs on; the step, the
+// deck all round the bore that the flange rests under; the chamber, 18.6
+// wide, open through the plate's top-right corner (the mouth); and the
+// floor the switch sits on, with two leg channels through it running out
+// to the front, narrowed at their rear ends into crush ribs for the rear
+// legs.
 //
-// Why the front, and why the switch first. The first front-entry pod put
-// the plunger in before the switch and gave both 0.2 mm: the plunger (5.9
-// tall) under a 6.1 ceiling, the switch (4.3) under the seated flange.
-// Neither went in off the bed. With a closed guide the cap must pass under
-// the deck to reach it, and its headroom there is the switch's height less
-// the deck and the proud cap: 0.2 by arithmetic, whatever the chamber
-// does. With the guide open to the front the cap never passes under
-// anything: the switch goes in first along the floor (1.4 of headroom) and
-// drops into its pocket; the plunger follows, deck down, hanging on the
-// step with its cap already in the slot, and slides over the seated switch
-// (0.8 over its body, free over the actuator) to the slot's round end. A
-// switch on the floor, not in its pocket, is 0.5 too tall for the flange
-// to pass: the plunger cannot go in first, and the generator sweeps every
-// step. The face's back closes the slot and the mouth. The press goes into
-// the floor; nothing is loaded in tension. Every bore is round; the
-// chamber's rear end is a bridge inside the pod and the slot's round end
-// has its own flat ceiling.
+// Why the plunger first. The bore is closed, so the cap reaches it only
+// from below: the plunger rides in on the floor, deck down, its cap under
+// the step, and lifts into the bore at the axis until its flange hangs on
+// the step. The chamber is set by the switch (its height, the 0.3 free
+// travel and the flange), so the plunger must fit it: flange + guide +
+// proud + 0.2. Then the switch rides in flat on the floor under the hanging
+// flange, 0.3 under it, until its rear legs meet the channels' ends, where
+// the crush ribs take them. A switch already seated would block the
+// plunger's ride: the order is forced, and the generator sweeps each step.
+// The flange's front stops 0.3 short of the face's back (the round flange
+// ran 1.4 into it when the face was the slot's front wall); the press goes
+// into the floor; nothing is loaded in tension.
 import { Manifold, cube, box, cylZ, coneZ, cylY, fuse, status } from "./lib.mjs";
 import { P, Z, XY } from "./params.mjs";
 
@@ -35,26 +31,26 @@ export const SHUTTER = (() => {
   const [, , , oy1] = XY.outer;
   const X = P.shutterX;
   const rG = P.shutterActuatorGuideD / 2;
-  const Zc = Z.plateFront - P.shutterPressCapD / 2 - P.shutterCapToFace;   // the cap's front edge shutterCapToFace behind the face's back
+  const Zc = Z.plateFront - P.shutterActuatorFlangeD / 2 - P.shutterFlangeToFace;   // the flange's front shutterFlangeToFace behind the face's back
   const guideTop = oy1;                                   // the deck
   const guideBottom = oy1 - P.shutterGuideLen;            // the step the flange rests under
   const flangeBottomRest = guideBottom - P.shutterFlangeH;
   const switchTop = flangeBottomRest - P.shutterSwitchFree;   // the actuator at rest, a hair under the flange
-  const seatTop = switchTop - P.shutterSwitchBody[2];     // the pocket's floor: the switch's base
-  const floorTop = seatTop + P.shutterSwitchPocket;       // the floor the switch rides in on
+  const seatTop = switchTop - P.shutterSwitchBody[2];     // the switch's base: the floor itself, flat
+  const floorTop = seatTop;                               // the floor the plunger rides in on and the switch sits on
   const podInnerY = seatTop - P.shutterFloor;             // the pod's face toward the cavity
-  const chamberH = guideBottom - floorTop;                // the switch's headroom riding in
+  const plungerRideTop = floorTop + P.shutterFlangeH + P.shutterGuideLen + P.shutterProud;   // the cap's top riding in on the floor
+  const chamberH = guideBottom - floorTop;                // flange + free + switch
   const plungerH = P.shutterFlangeH + P.shutterProud + P.shutterGuideLen;   // flange bottom to cap top
   const podX0 = X - P.shutterPodLeft;
   const podX1 = cx1 + 0.5;                                // into the right wall: one block
   const rF = P.shutterActuatorFlangeD / 2 + P.shutterFlangeBoreClear;
   const chamberZ0 = Zc - rF;                              // the closed rear end
   const legStopZ = Zc + P.shutterLegZ + P.shutterLegClr;  // the front legs stop here: the switch centred under the cap
-  const pocket = [X - P.shutterSwitchBody[0] / 2 - P.shutterSwitchPocketClr, Zc - P.shutterSwitchBody[1] / 2 - P.shutterSwitchPocketClr,
-    X + P.shutterSwitchBody[0] / 2 + P.shutterSwitchPocketClr, Zc + P.shutterSwitchBody[1] / 2 + P.shutterSwitchPocketClr];   // x0, z0, x1, z1
+  const seat = [X - P.shutterSwitchBody[0] / 2, Zc - P.shutterSwitchBody[1] / 2, X + P.shutterSwitchBody[0] / 2, Zc + P.shutterSwitchBody[1] / 2];   // x0, z0, x1, z1: the switch's body seated
   const lip = rF - P.shutterFlangeBoreClear - rG;         // the flange over the step, each side
   const stem = P.shutterProud + P.shutterGuideLen;        // cap top above the flange's top
-  return Object.freeze({ X, Zc, rG, oy1, cy1, guideTop, guideBottom, flangeBottomRest, switchTop, seatTop, floorTop, podInnerY, chamberH, plungerH, podX0, podX1, rF, chamberZ0, legStopZ, pocket, lip, stem });
+  return Object.freeze({ X, Zc, rG, oy1, cy1, guideTop, guideBottom, flangeBottomRest, switchTop, seatTop, floorTop, podInnerY, chamberH, plungerH, podX0, podX1, rF, chamberZ0, legStopZ, seat, lip, stem, plungerRideTop, legEndZ: legStopZ - 2 * P.shutterLegZ - 2 * P.shutterLegClr });
 })();
 
 // A slot along Y open toward +Z: a round end at cz, straight sides from
@@ -73,36 +69,50 @@ export function shutterPod() {
   const S = SHUTTER, X = S.X, Zc = S.Zc, rF = S.rF, rG = S.rG;
   const adds = [cube(S.podX0, S.podInnerY, P.shutterPodBottomZ, S.podX1 - S.podX0, S.cy1 - S.podInnerY + 0.5, Z.plateInner + 0.3 - P.shutterPodBottomZ)];
   const cuts = [
-    // The guide: a U in the deck from the step up, open to the front; its
-    // round end flat-ceilinged below, round for its last mm at the deck.
-    slotY(X, S.guideBottom - 0.01, Zc, rG, P.shutterGuideLen - P.shutterGuideRound + 0.02, P.shutterGuideCeil, Z.plateFront + 1),
-    slotY(X, S.guideTop - P.shutterGuideRound - 0.01, Zc, rG, P.shutterGuideRound + 1.0, 0, Z.plateFront + 1),
+    // The guide: a closed round bore through the deck from the step up. In
+    // print (the front plate on the bed) its rear half is the overhang: a
+    // flat ceiling shutterGuideCeil behind it, round only for its last mm
+    // at the deck; its front half prints as a floor.
+    cylY(X, S.guideBottom - 0.01, Zc, rG, P.shutterGuideLen + 1.0),
+    box(X - rG, S.guideBottom - 0.01, Zc - rG - P.shutterGuideCeil, X + rG, S.guideTop - P.shutterGuideRound, Zc),
     // The collar recess round the cap, clipped by the deck's front edge.
     cylY(X, S.oy1 - P.shutterCollarDepth, Zc, P.shutterCollarD / 2, P.shutterCollarDepth + 0.2),
     // The chamber: from its closed rear end out through the plate's front.
     box(X - rF, S.floorTop, S.chamberZ0, X + rF, S.guideBottom + 0.01, Z.plateFront + 1),
-    // The switch's pocket in the floor, under the cap.
-    box(S.pocket[0], S.seatTop, S.pocket[1], S.pocket[2], S.floorTop + 0.01, S.pocket[3]),
   ];
-  // Two leg channels through the floor, from the stop under the cap out to
+  // Two leg channels through the floor, from the rear legs' stop out to
   // the front; the legs ride in them, the leads hang through them.
   for (const s of [-1, 1]) {
-    cuts.push(box(X + s * P.shutterLegX - P.shutterLegSlot[0] / 2, S.podInnerY - 1, S.legStopZ - (P.shutterLegZ * 2 + P.shutterLegClr * 2), X + s * P.shutterLegX + P.shutterLegSlot[0] / 2, S.floorTop + 0.5, Z.plateFront + 1));
+    cuts.push(box(X + s * P.shutterLegX - P.shutterLegSlot[0] / 2, S.podInnerY - 1, S.legEndZ, X + s * P.shutterLegX + P.shutterLegSlot[0] / 2, S.floorTop + 0.01, Z.plateFront + 1));
   }
-  // Four ribs along the slot, added back after the cuts: one on each
-  // straight side at the cap's rest and two on the round end 60 degrees
-  // each side of its apex (30 degrees of overhang in print, printable; the
-  // apex itself is the bridge). The cap runs on four lines, 0.1 off each,
-  // instead of ticking in a 0.6 gap; the face's back is the fifth wall.
+  // Six ribs round the bore, added back after the cuts: one on each side and
+  // two 60 degrees each side of its front and of its rear (the rear pair 30
+  // degrees of overhang in print, printable). The cap runs on six lines,
+  // 0.1 off each, instead of ticking in a 0.6 gap.
   const ribs = [];
   {
     const [rh, rw] = P.shutterGuideRib;
     const y0 = S.guideBottom + 0.1, len = P.shutterGuideLen - P.shutterCollarDepth - 0.15;
-    for (const phi of [-120, 120]) {   // 0 is +Z (toward the face); the round end is at -Z
+    for (const phi of [-120, -60, 60, 120]) {   // 0 is +Z (toward the face)
       ribs.push(cube(-rw / 2, y0, rG - rh, rw, len, rh + 0.3).rotate([0, phi, 0]).translate([X, 0, Zc]));
     }
     for (const s of [-1, 1]) {
       ribs.push(cube(X + (s < 0 ? -(rG + 0.3) : rG - rh), y0, Zc - rw / 2, rh + 0.3, len, rw));
+    }
+  }
+  // The crush ribs: each leg channel narrows, over its last 0.8, to the
+  // leg's thickness less shutterLegCrush; the rear legs are pressed in as
+  // the switch is pushed home, with a 45 degree lead-in.
+  for (const s of [-1, 1]) {
+    const cx = X + s * P.shutterLegX, half = (P.shutterLegT - P.shutterLegCrush) / 2, w = P.shutterLegSlot[0] / 2;
+    for (const side of [-1, 1]) {
+      const xin = cx + side * half, xwall = cx + side * (w + 0.05);
+      const [xa, xb] = xin < xwall ? [xin, xwall] : [xwall, xin];
+      const lead = w - half;
+      ribs.push(Manifold.hull([
+        box(xa, S.podInnerY - 0.01, S.legEndZ - 0.01, xb, S.floorTop - 0.05, S.legEndZ + 0.8),
+        box(side > 0 ? xb - 0.01 : xa, S.podInnerY - 0.01, S.legEndZ + 0.8, side > 0 ? xb : xa + 0.01, S.floorTop - 0.05, S.legEndZ + 0.8 + lead),
+      ]));
     }
   }
   return { adds, cuts, ribs };
