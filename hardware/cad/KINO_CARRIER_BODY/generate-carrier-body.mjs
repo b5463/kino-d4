@@ -357,10 +357,50 @@ check("the frame's insert holes keep wall under the first groove", P.frameScrewI
     return hit / n;
   };
   const lipClosed = lipCover(FACE.closedY0 + P.sliderCornerR, FACE.closedY1 - P.sliderCornerR), lipOpen = lipCover(FACE.openY0 + P.sliderCornerR, FACE.openY1 - P.sliderCornerR);
-  check("the lips hold the cover along its height at both stops", lipClosed >= 0.99 && lipOpen >= 0.75 && FACE.lipGap[0] <= FACE.bumpOpenY - P.sliderBumpR - 0.2 && FACE.lipGap[1] >= FACE.bumpOpenY + P.sliderBumpR + 0.2 && FACE.lipGap[1] < FACE.closedY0,
-    `${Math.round(100 * lipClosed)} % of the cover's straight flank under a lip closed, ${Math.round(100 * lipOpen)} % stowed (it was 3.9 of 10.5 mm a side stowed, and shaken the cover flew off); the gap Y ${r2(FACE.lipGap[0])} to ${r2(FACE.lipGap[1])}, round the stowed bump and below the closed cover`);
-  check("the cover presses in from the front, stowed", fold <= sw - 0.2 && peak <= fold && strain(fold) <= 0.025,
-    `stowed, each bump stands over its lip gap and goes in folding its arm ${r2(peak)}; the bevels fold the arms ${r2(fold)} under the lips (the slit ${sw}); the rigid top 2.5 snaps under the lips as the whole bar did before`);
+  // Held at each stop: the longest run of lip that still overlaps the
+  // cover's bevel by 0.3 (the corner arcs take some of the 0.7 away). The
+  // bar between the arms is rigid, so a lifted end pivots about that run:
+  // the far end can rise the lips' 0.2 of play times the cover's height
+  // over the run.
+  const R3s = P.sliderCornerR, overlap0 = P.sliderBevel[0] - P.sliderClr;
+  const arcRecess = (r) => (r < R3s ? R3s - Math.sqrt(R3s ** 2 - (R3s - r) ** 2) : r > P.sliderH - R3s ? R3s - Math.sqrt(R3s ** 2 - (r - (P.sliderH - R3s)) ** 2) : 0);
+  const heldRun = (y0) => {
+    let best = 0, run = 0;
+    for (let r = 0.125; r < P.sliderH; r += 0.25) {
+      const y = y0 + r, prs = [box(p0x + 0.3, y - 0.05, FACE.trackTop - 0.4, p0x + 0.5, y + 0.05, FACE.trackTop - 0.1), box(p1x - 0.5, y - 0.05, FACE.trackTop - 0.4, p1x - 0.3, y + 0.05, FACE.trackTop - 0.1)];
+      const lip = prs.every((q) => vol(face, q) > q.volume() * 0.9) && overlap0 - arcRecess(r) >= 0.3;
+      run = lip ? run + 0.25 : 0; best = Math.max(best, run);
+    }
+    return best;
+  };
+  const runClosed = heldRun(FACE.closedY0), runOpen = heldRun(FACE.openY0);
+  const lift = (run) => (P.panelDepth - P.sliderT) * P.sliderH / run;
+  check("the lips hold the cover at both stops", runClosed >= 5 && runOpen >= 5 && lift(runClosed) <= 0.5 && lift(runOpen) <= 0.5,
+    `the longest held run a side ${r2(runClosed)} mm closed and ${r2(runOpen)} stowed: pried at its free end the cover rises at most ${r2(lift(runClosed))} and ${r2(lift(runOpen))} mm, well inside the 1.0 of bevel under each lip (stowed it was 3.9 of 10.5 mm a side, and shaken the cover flew off); the lips over ${Math.round(100 * lipClosed)} % of the straight flank closed, ${Math.round(100 * lipOpen)} % stowed; the gap Y ${r2(FACE.lipGap[0])} to ${r2(FACE.lipGap[1])}`);
+  // Loading: at the loading position every height of the cover's flank
+  // that meets a lip must get under it by folding its arm within PETG's
+  // limit; the corner arcs give some of the 0.7 for free; above the slit
+  // nothing folds, so there must be no lip at all.
+  {
+    const slitEnd = P.sliderArmRoot - sw / 2, need = P.sliderBevel[0] - P.sliderClr, R3 = P.sliderCornerR;
+    const recess = (r) => (r < R3 ? R3 - Math.sqrt(R3 ** 2 - (R3 - r) ** 2) : r > P.sliderH - R3 ? R3 - Math.sqrt(R3 ** 2 - (r - (P.sliderH - R3)) ** 2) : 0);
+    let worst = 0, worstAt = 0, blocked = [];
+    for (let r = 0.25; r < P.sliderH; r += 0.25) {
+      const y = FACE.loadY0 + r;
+      const pr = box(p0x + 0.3, y - 0.05, FACE.trackTop - 0.4, p0x + 0.5, y + 0.05, FACE.trackTop - 0.1);
+      if (vol(face, pr) < pr.volume() * 0.5) continue;                  // no lip here
+      const bumpThere = Math.abs(r - P.sliderBumpY) < P.sliderBumpR ? P.sliderBumpOut - P.sliderClr + need : 0;
+      const fold = Math.max(0, Math.max(need, bumpThere) - recess(r));
+      if (fold === 0) continue;
+      if (r >= slitEnd) { blocked.push(r2(r)); continue; }
+      const e = strain(fold) * (L / (slitEnd - r)) ** 2;               // a cantilever's root strain for a fold at distance a: 3 t d / 2 a^2
+      if (e > worst) [worst, worstAt] = [e, r];
+    }
+    const bumpY = FACE.loadY0 + P.sliderBumpY;
+    const bumpFree = bumpY - P.sliderBumpR > FACE.teeth[1].base[1] && bumpY + P.sliderBumpR < FACE.teeth[0].base[0];
+    check("the cover presses in from the front at the loading position", blocked.length === 0 && worst <= 0.025 && bumpFree && FACE.loadY0 > FACE.openY0 && FACE.loadY0 < FACE.closedY0,
+      `its bottom edge at Y ${r2(FACE.loadY0)} (stowed ${r2(FACE.openY0)}, closed ${r2(FACE.closedY0)}): its top ${r2(P.sliderH - P.sliderLoadStiff)} and its bumps over the gap; the arms fold ${r2(need)} under the rest of the lips, ${(100 * worst).toFixed(2)} % strain at worst (${r2(worstAt)} up); ${blocked.length ? "a lip over the rigid top at " + blocked.join(", ") : "no lip over the rigid top"}; the bumps drop into the channel at Y ${r2(bumpY)}, clear of the teeth`);
+  }
   check("the thumb lip is on the cover's axis", Math.abs(P.coverLipLeft + P.coverLip[0] / 2 - (FACE.panel[2] - FACE.panel[0] - 2 * P.sliderClr) / 2) < 0.5 && markBox.x + markBox.w <= FACE.panel[0] + P.sliderClr + P.coverLipLeft - 0.2,
     `the lip's centre ${r2(P.coverLipLeft + P.coverLip[0] / 2)} from the bar's left end, the bar ${r2(FACE.panel[2] - FACE.panel[0] - 2 * P.sliderClr)} wide: the push cannot yaw it; the wordmark ends ${r2(FACE.panel[0] + P.sliderClr + P.coverLipLeft - markBox.x - markBox.w)} before the lip`);
   check("cover travel is positive and the cover stows on the rim", FACE.travel > 10 && Math.abs(FACE.openY0 - FACE.panel[1]) < 1e-9 && Math.abs(FACE.closedY1 - FACE.panel[3]) < 1e-9, `${r2(FACE.travel)} mm down from Y ${r2(FACE.closedY0)}; stowed bottom edge at Y ${r2(FACE.openY0)}, panel from Y ${r2(FACE.panel[1])}`);
@@ -595,7 +635,25 @@ const coupons = (() => {
     "T01-KINO_COUPON_SHRINK_BAR.stl": bar,
   };
 })();
-check("every coupon is labelled", ["T01", "T02", "T03", "T04", "T05", "T06", "T07"].every((id) => couponText.some(([, t]) => t === id)), couponText.map(([n, t]) => `${t} in ${n}`).join("; "));
+// T08 and T09: B01 with softer and stiffer arms, everything else the same,
+// the ID engraved on the top right of the lip. One print of the three
+// covers settles the click; the one that feels right is B01's sliderArmT.
+{
+  const sTop = FACE.floorZ + P.sliderT, idX = FACE.panel[0] + P.sliderClr + P.coverLipLeft + P.coverLip[0] + 8, idY = FACE.closedY0 + 4.0;
+  for (const [id, armT] of [["T08", P.sliderArmSoft], ["T09", P.sliderArmFirm]]) {
+    const name = `${id}-KINO_COUPON_COVER_${id === "T08" ? "SOFT" : "FIRM"}.stl`;
+    const v = buildFace({ armT }).cover;
+    const b = P.sliderT - P.bedChamfer - P.sliderBevel[0] / 2, Lv = P.sliderArmRoot - P.sliderArmSlit / 2 - P.sliderBumpY;
+    const kv = 3 * 2000 * (b * armT ** 3 / 12) / Lv ** 3, th = (P.sliderToothDeg * Math.PI) / 180;
+    const clickV = 2 * kv * (P.sliderBumpOut - P.sliderClr) * Math.tan(th + (17 * Math.PI) / 180);
+    const strainV = 3 * armT * (P.sliderBevel[0] - P.sliderClr) / (2 * Lv ** 2);
+    const same = [0, FACE.travel / 2, FACE.travel].map((d) => Math.abs(vol(face, v.translate([0, -d, 0])) - vol(face, cover.translate([0, -d, 0]))));
+    check(`${id}, B01 with ${armT} arms, runs as B01 and clicks inside PETG's limit`, Math.max(...same) < 1e-3 && strainV <= 0.025 && clickV >= 2 && clickV <= 8 && P.sliderBumpR * 2 - P.sliderBumpOut <= armT - 0.05,
+      `about ${r2(clickV)} N under the thumb (B01 ${r2(2 * 3 * 2000 * (b * P.sliderArmT ** 3 / 12) / Lv ** 3 * (P.sliderBumpOut - P.sliderClr) * Math.tan(th + (17 * Math.PI) / 180))}), ${(100 * strainV).toFixed(2)} % strain under a lip; its contact with the face closed, mid-travel and stowed the same as B01's to ${Math.max(...same).toExponential(1)} mm^3`);
+    coupons[name] = toBed(engrave(name, v, id, idX, idY, sTop, 1, 3.0));
+  }
+}
+check("every coupon is labelled", ["T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08", "T09"].every((id) => couponText.some(([, t]) => t === id)), couponText.map(([n, t]) => `${t} in ${n}`).join("; "));
 {
   // T07 is the whole track: all four teeth, both lips, the window's two
   // rims, so the real cover runs in it as it runs in the face.
@@ -632,10 +690,13 @@ const plates = (() => {
   return {
     "P1-COUPON_PLATE_T01_T02.stl": beside(coupons["T01-KINO_COUPON_SHRINK_BAR.stl"], coupons["T02-KINO_COUPON_POCKET_GAUGE.stl"]),
     "P2-COUPON_PLATE_T03_T04.stl": beside(coupons["T03-KINO_COUPON_LEDGE_CORNER.stl"], coupons["T04-KINO_COUPON_STRAP_SHELL.stl"]),
+    // the three covers, one above the other on one PETG bed at 0.08
+    "P3-COUPON_PLATE_B01_T08_T09.stl": [coupons["T08-KINO_COUPON_COVER_SOFT.stl"], toBed(cover), coupons["T09-KINO_COUPON_COVER_FIRM.stl"]].reduce((acc, m) => fuse([acc, m.translate([0, acc.boundingBox().max[1] + 6, 0])])),
   };
 })();
 for (const [name, m] of Object.entries(plates)) {
-  check(`${name} is two pieces on the bed`, m.decompose().length === 2 && m.boundingBox().max[0] <= 250, `${r2(m.boundingBox().max[0])} x ${r2(m.boundingBox().max[1])} mm, ${m.decompose().length} pieces`);
+  const pieces = name.startsWith("P3") ? 3 : 2;
+  check(`${name} is ${pieces === 3 ? "three" : "two"} pieces on the bed`, m.decompose().length === pieces && m.boundingBox().max[0] <= 250 && m.boundingBox().max[1] <= 250, `${r2(m.boundingBox().max[0])} x ${r2(m.boundingBox().max[1])} mm, ${m.decompose().length} pieces`);
 }
 for (const [name, m] of Object.entries(coupons)) {
   check(`${name} is one piece on the bed`, m.decompose().length === 1 && m.boundingBox().max[0] <= 250, `${r2(m.boundingBox().max[0])} x ${r2(m.boundingBox().max[1])} x ${r2(m.boundingBox().max[2])} mm, ${m.decompose().length} piece(s)`);

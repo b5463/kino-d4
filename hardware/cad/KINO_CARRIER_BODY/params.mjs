@@ -295,8 +295,22 @@ export const P = Object.freeze({
   sliderChannelTop: 2.0,     // above the floor at the wall's face, where the lip's underside starts; the ceiling falls 45 degrees into the wall (prints without support)
   sliderToothDeg: 35,        // each tooth's ramps off the travel: about 2.7 N a side over the crest with friction 0.3, 5.5 N under the thumb
   sliderToothLand: 1.0,      // the crest: the wall's own face
-  sliderRestPress: 0.2,      // the arm's deflection at rest on the far ramp: 0.5 N a side into the rim, about ten times the cover's weight at 1 g
+  sliderRestPress: 0.25,     // the arm's deflection at rest on the far ramp: 0.6 N a side into the rim. 0.25, not 0.2: the rail's 0.1 of play and a tenth of print error each way still leave both sides pressing
   sliderGrooveMouth: 0.3,    // 45 degree chamfer on the rail groove's two edges at the bed: an elephant foot there closed the 0.1 a side
+  // Loading. Above sliderLoadStiff from its bottom edge an arm cannot fold
+  // 0.7 under a lip (2.5 % strain), and above the slit nothing folds. The
+  // cover goes in at one place on its travel, the loading position, with
+  // that part over a gap in the lips: its stiff part just above where the
+  // stowed cover's top edge lies, so at both stops the stiff part of the
+  // cover is under a lip (the gap is above the stowed cover, and under the
+  // closed cover's flexible lower part). The bump's own way in is in the
+  // same gap.
+  sliderLoadStiff: 6.0,
+  // Two more covers to print beside B01, one softer and one stiffer in the
+  // arms, so one print settles the click (the stiffness of printed PETG is
+  // the number least known): T08 and T09, the ID engraved on the top.
+  sliderArmSoft: 1.25,       // T08: about 3.0 N under the thumb
+  sliderArmFirm: 1.55,       // T09: about 5.8 N
   coverLip: [20.0, 2.5],     // width x thickness: a thumb needs 16; at 30 the open slot under the eyes read as a mouth. 1.5 thick snapped under the shove a stuck cover needed (2026-11-22): at 0.08 layers the lip's layers are its weak axis
   coverLipLeft: 33.4,        // the lip centred on the bar (86.8 - 20) / 2: the thumb pushes on the cover's axis, so it cannot yaw it (at 45 the push was 11.6 off-axis and the 2.0 cover went sideways and stuck); the wordmark ends at 33
   coverLipRoot: 0.8,         // 45 degree root on the lip's three free sides: the lip takes a face-down drop and the thumb's shove (0.4 was part of the snap)

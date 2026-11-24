@@ -23,9 +23,12 @@ export const RELEASE_SET = [
   { file: "T05-KINO_COUPON_DECK.stl", dir: "coupons", parts: 1 },
   { file: "T06-KINO_COUPON_FACE_CORNER.stl", dir: "coupons", parts: 1 },
   { file: "T07-KINO_COUPON_TRACK.stl", dir: "coupons", parts: 1 },
+  { file: "T08-KINO_COUPON_COVER_SOFT.stl", dir: "coupons", parts: 1 },
+  { file: "T09-KINO_COUPON_COVER_FIRM.stl", dir: "coupons", parts: 1 },
   // Bed plates: the coupons that print together, in one file each.
   { file: "P1-COUPON_PLATE_T01_T02.stl", dir: "coupons", parts: 2 },
   { file: "P2-COUPON_PLATE_T03_T04.stl", dir: "coupons", parts: 2 },
+  { file: "P3-COUPON_PLATE_B01_T08_T09.stl", dir: "coupons", parts: 3 },
 ];
 export const RELEASE_DIRS = ["print", "coupons"];
 // Non-mesh outputs of a build and where they go.
@@ -49,7 +52,10 @@ export const RELEASE_PROCESS = {
   "T04-KINO_COUPON_STRAP_SHELL.stl": "FDM, black PETG, 0.20 mm, cut face down: the bottom wall's rear end with its tunnel, two strap slots and the frame's insert station at X 40 with its boss; pulled to 100 N on a 2.5 mm cord, an M2 insert set in the hole and pulled",
   "T06-KINO_COUPON_FACE_CORNER.stl": "FDM, dark blue PLA, 0.20 mm, back down like the face: the face's lower-left corner with the insert station at (4, 4), the window's corner and the left wall's detent channel with its lower tooth; the insert set with the iron, the corner screwed onto T03 with an M2 x 6",
   "T07-KINO_COUPON_TRACK.stl": "FDM, dark blue PLA, 0.20 mm, back down like the face: the face's whole window band, both side walls with their lips and detent teeth, the bottom and top rims (the stops), the four cells; the real B01 cover (black PETG, 0.08) presses in from the front, stowed, and clicks in it; a flat plate behind it for the shell's plate",
+  "T08-KINO_COUPON_COVER_SOFT.stl": "FDM, black PETG, 0.08 mm, back down, no support: B01 with 1.25 mm arms (about 3 N to click); T08 on its top. Print beside B01 and T09 (P3) and keep the one that clicks right",
+  "T09-KINO_COUPON_COVER_FIRM.stl": "FDM, black PETG, 0.08 mm, back down, no support: B01 with 1.55 mm arms (about 5.8 N to click); T09 on its top",
   "T05-KINO_COUPON_DECK.stl": "FDM, black PETG, 0.20 mm, plate down like the shell: the whole pod with the deck over it, the wall corner it joins and the plate with the mouth; the slot open to the front and its four ribs, the step, the chamber, the switch's pocket and the leg channels. The switch goes in first, then the B02 plunger; a thumb over the mouth stands in for the face",
   "P1-COUPON_PLATE_T01_T02.stl": "FDM, black PETG, 0.20 mm: T01 and T02 on one bed; set the slicer's shrink compensation from T01 (0.2 % measured), find the pocket width on T02",
   "P2-COUPON_PLATE_T03_T04.stl": "FDM, black PETG, 0.20 mm: T03 and T04 on one bed; the ledge under the carrier's corner, a face pin hole, the strap tunnel and a frame pin hole",
+  "P3-COUPON_PLATE_B01_T08_T09.stl": "FDM, black PETG, 0.08 mm, back down, no support; minimum layer time 10 s for the lips: B01 (no mark), T08 (softer) and T09 (stiffer) on one bed; try each in T07",
 };

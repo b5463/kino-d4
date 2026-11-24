@@ -622,6 +622,23 @@ owner's printer. Two parts:
   none is needed: the thumb lip at the cover's top edge and the wordmark
   show which way up it goes. The key's gates are gone, one gate puts the
   rail on the cells' middle. 255 gates.
+- **Loading, the hold's tolerance and the click, settled in one print**
+  (twenty-ninth cut, the same day; the owner: "run all the fixes so to
+  make sure this is the last version"). Loading: the cover's top and the
+  stiff upper part of each arm cannot fold under a lip, so the lip gap
+  moved from round the stowed bump to a loading position between the
+  stops (the cover's bottom edge at Y 11.4, `sliderLoadStiff` 6.0, the
+  gap Y 14.1 to 28.2): there the stiff part and the bumps stand over the
+  gap and the arms' lower ends fold 0.7 under the lips at 1.1 % strain.
+  At both stops the stiff part is under a lip (held runs 7 mm closed,
+  11.75 stowed; a pried free end rises at most 0.47 and 0.28). The rest
+  press 0.25 (`sliderRestPress`, was 0.2), so the rail's play and a tenth
+  of print error each way still leave both sides pressing: 1.2 N into the
+  rim. The click: T08 (1.25 mm arms, about 3 N) and T09 (1.55, about
+  5.8 N), B01 with only the arms changed and the ID on the top, print
+  with B01 on P3; the one that clicks right sets `sliderArmT`. Gates for
+  the loading position, the hold at both stops, T08 and T09 running as
+  B01 and clicking inside PETG's limit. 262 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator

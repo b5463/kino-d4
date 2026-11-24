@@ -76,14 +76,15 @@ export const FACE = (() => {
     { name: "lower", land: [lowerBot, lowerBot + P.sliderToothLand] },
   ].map((t) => Object.freeze({ ...t, base: [t.land[0] - ramp, t.land[1] + ramp] }));
   const channel = [bumpOpenY - rB - 0.4, bumpClosedY + rB + 0.4];
-  const lipGap = [bumpOpenY - rB - 0.3, bumpOpenY + rB + 0.3];   // the stowed bump's way in from the front
+  const loadY0 = openY1 + 0.2 - P.sliderLoadStiff;                // the loading position: the cover's bottom edge
+  const lipGap = [loadY0 + P.sliderBumpY - rB - 0.3, loadY0 + P.sliderH + 0.3];   // its bump's way in and its stiff part, one gap
   return Object.freeze({ back, front, trackTop, floorZ, horizonD, panel, horizon, outline, outlineR, closedY0, closedY1, openY0, openY1, travel,
-    tanF, boreR, coneR, outerR, bevel, lipZ, lensY, insertHoleDepth, railX, railOff, bumpClosedY, bumpOpenY, restOff, ramp, teeth, channel, lipGap });
+    tanF, boreR, coneR, outerR, bevel, lipZ, lensY, insertHoleDepth, railX, railOff, bumpClosedY, bumpOpenY, restOff, ramp, teeth, channel, loadY0, lipGap });
 })();
 
 const roundedRectZ = (x, y, z, w, d, h, r) => rbox(x, y, z, x + w, y + d, z + h, r);
 
-export function buildFace() {
+export function buildFace({ armT = P.sliderArmT } = {}) {
   const F = FACE;
   const [fx0, fy0, fx1, fy1] = F.outline;
   const solids = [], cuts = [];
@@ -193,7 +194,7 @@ export function buildFace() {
     cuts.push(channel);
   }
   // Dovetail lips on both X walls, the window's whole height but for one
-  // gap a side where the stowed cover's bump comes in from the front,
+  // gap a side at the loading position (FACE.lipGap),
   // added AFTER the cuts.
   const adds = [];
   for (const [y0, y1] of [[p0y + 0.2, F.lipGap[0]], [F.lipGap[1], p1y - 0.2]]) {
@@ -255,7 +256,7 @@ export function buildFace() {
   // The spring arms: at each end of the bar, sliderArmT wide, cut free by a
   // slit from the bottom edge up to sliderArmRoot, its top end round. They
   // flex in X, in the print plane: PETG along its layers.
-  const at = P.sliderArmT, sw = P.sliderArmSlit, ar = P.sliderArmRoot;
+  const at = armT, sw = P.sliderArmSlit, ar = P.sliderArmRoot;
   for (const [edge, dir] of [[sx0, 1], [sx1, -1]]) {
     const xa = edge + dir * at, xb = edge + dir * (at + sw), xm = (xa + xb) / 2;
     edgeCuts.push(box(Math.min(xa, xb), sy0 - 1, sBack - 1, Math.max(xa, xb), sy0 + ar - sw / 2, sFront + 1));
