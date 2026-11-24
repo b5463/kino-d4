@@ -9,16 +9,14 @@
 // the horizon; dropped, it sits in the open stow zone, a cut tray in the
 // face's own floor, and the four cells show in the line.
 //
-// The track is the field body's, restated: dovetail lips on both X walls,
-// 0.1 mm a side, drops to open; the detents are a leaf spring in each side
-// wall with two bumps the cover's corners ride over (one holds it closed,
-// one open, each touching exactly at the stop). The two lips are not the
-// same: the left bevel is 1.0 and the right 1.5, so the cover goes in one
-// way only (turned round, its 1.0 bevel meets the 1.5 lip and stops). The
-// window's bottom rim is the stowed cover's stop and its top rim the
-// closed cover's. The cover loads from the face's back before the face
-// goes on; the face's own floor closes the track. The face is screwed to
-// the shell from inside the cavity: six M2 inserts in its back.
+// The track: dovetail lips on both X walls the window's whole height (but
+// for a loading gap a side), 0.3 off the cover, which runs on a rail in a
+// groove in its back. The window's rims are the stops. The detents are
+// PETG spring arms at the cover's ends whose bumps click over fixed teeth
+// in a channel in each side wall and rest pressed on the far ramp, so the
+// ramp holds the cover into its rim. The face's own floor closes the
+// track; the cover presses in from the front, stowed. The face is screwed
+// to the shell from inside the cavity: six M2 inserts in its back.
 import fs from "node:fs";
 import { Manifold, CrossSection, cube, box, cylZ, coneZ, fuse, rbox, prismY, status, textSolid, textWidth } from "./lib.mjs";
 import { P, Z, XY, IDS } from "./params.mjs";
@@ -39,11 +37,13 @@ export const FACE = (() => {
   const lensY = XY.lensY;
   const closedY0 = lensY - P.sliderH / 2, closedY1 = closedY0 + P.sliderH;
   const panelY0 = outline[1] + P.faceEdgeR + P.bandBottomInset;
-  const openY0 = panelY0 + 0.5;
+  // The rims are the stops: stowed, the cover's bottom edge lies on the
+  // bottom rim; closed, its top edge lies on the top rim.
+  const openY0 = panelY0;
   const travel = closedY0 - openY0;
   const openY1 = openY0 + P.sliderH;
   const inset = P.bandChamfer + P.bandRim;
-  const panel = [P.bandX[0] + inset, panelY0, P.bandX[1] - inset, closedY1 + 0.5];
+  const panel = [P.bandX[0] + inset, panelY0, P.bandX[1] - inset, closedY1];
   const horizon = [closedY0 - P.horizonPad, closedY1 + P.horizonPad];
   const tanF = Math.tan(((P.camFovDeg / 2 + P.fovMarginDeg) * Math.PI) / 180);
   const boreR = P.lensBoreD / 2;
@@ -51,23 +51,31 @@ export const FACE = (() => {
   const outerR = boreR;                               // plain bores through the floor, with a rim
   const bevel = P.sliderBevel, lipZ = bevel.map((b) => b + P.sliderLipOver);   // left, right
   const insertHoleDepth = P.insertLen + P.insertHoleExtra;
-  // The detent leaves and their bumps. One V-notch in each of the cover's
-  // flanks, sliderNotchH above its bottom edge. The upper bumps sit where
-  // that notch is with the cover closed, the lower bumps where it is with
-  // the cover open; so a stop is a bump seated in a notch, not a corner
-  // arc. Each leaf's tip is its bump's far edge: the upper leaves root
-  // toward the lens row (below their tips), the lower leaves root in the
-  // face's bottom band (below their tips too).
-  const rB = P.sliderBumpR, L = P.sliderLeafL, sl = P.sliderLeafSlit;
-  const bumpClosedY = closedY0 + P.sliderNotchH;
-  const bumpOpenY = openY0 + P.sliderNotchH;
-  const leafTop = back + P.sliderLeafH;              // the leaf's top; the slit above it to leafTop + slit
-  const leaves = [
-    { name: "upper", bumpY: bumpClosedY, tipY: bumpClosedY + rB, rootY: bumpClosedY + rB - L, dir: 1 },
-    { name: "lower", bumpY: bumpOpenY, tipY: bumpOpenY + rB, rootY: bumpOpenY + rB - L, dir: 1 },
-  ].map((l) => Object.freeze({ ...l, y0: l.rootY, y1: l.tipY + sl }));   // y0..y1: the leaf and its tip slit
+  // The detents. A bump on each of the cover's two spring arms, sliderBumpY
+  // above its bottom edge, runs in a channel in the side wall. Two teeth
+  // per wall interrupt the channel; a tooth's crest is the wall's own face.
+  // u is measured outward from the cover's edge line: the wall's face at
+  // u = sliderClr, the bump's tip at u = sliderBumpOut, its centre at
+  // u = sliderBumpOut - R. At each stop the bump rests on the tooth's far
+  // ramp, pressed sliderRestPress, so the ramp pushes the cover into the
+  // rim: closed, the bump sits above the upper tooth; stowed, below the
+  // lower one. restOff is the bump centre's distance past the tooth's land
+  // there (the circle tangent to the ramp, the arm deflected restPress).
+  const rB = P.sliderBumpR, th = (P.sliderToothDeg * Math.PI) / 180;
+  const uc = P.sliderClr, ub = P.sliderBumpOut - rB;
+  const restOff = (rB + (ub - uc - P.sliderRestPress) * Math.cos(th)) / Math.sin(th);   // the centre's distance from the ramp's line is R - press x cos
+  const ramp = P.sliderChannelD / Math.tan(th);       // a ramp's length along the travel, the channel's depth deep
+  const bumpClosedY = closedY0 + P.sliderBumpY;
+  const bumpOpenY = openY0 + P.sliderBumpY;
+  const upperTop = bumpClosedY - restOff, lowerBot = bumpOpenY + restOff;
+  const teeth = [
+    { name: "upper", land: [upperTop - P.sliderToothLand, upperTop] },
+    { name: "lower", land: [lowerBot, lowerBot + P.sliderToothLand] },
+  ].map((t) => Object.freeze({ ...t, base: [t.land[0] - ramp, t.land[1] + ramp] }));
+  const channel = [bumpOpenY - rB - 0.4, bumpClosedY + rB + 0.4];
+  const lipGap = [bumpOpenY - rB - 0.3, bumpOpenY + rB + 0.3];   // the stowed bump's way in from the front
   return Object.freeze({ back, front, trackTop, floorZ, horizonD, panel, horizon, outline, outlineR, closedY0, closedY1, openY0, openY1, travel,
-    tanF, boreR, coneR, outerR, bevel, lipZ, lensY, insertHoleDepth, bumpClosedY, bumpOpenY, leafTop, leaves });
+    tanF, boreR, coneR, outerR, bevel, lipZ, lensY, insertHoleDepth, bumpClosedY, bumpOpenY, restOff, ramp, teeth, channel, lipGap });
 })();
 
 const roundedRectZ = (x, y, z, w, d, h, r) => rbox(x, y, z, x + w, y + d, z + h, r);
@@ -157,57 +165,37 @@ export function buildFace() {
     cuts.push(cylZ(lx, F.lensY, F.back - 1, F.boreR, F.floorZ - F.back + 1.02));
     cuts.push(coneZ(lx, F.lensY, F.floorZ - P.cellSink, F.boreR, F.boreR + P.cellSink + 0.01, P.cellSink + 0.01, 64));
   }
-  // The detent leaves: in each side wall, two beams sliderLeafT thick from
-  // the window's wall outward, sliderLeafH tall from the back, each rooted
-  // at its lower end and free to its tip, cut free by slits: its outer
-  // side, its tip end, the slit above it (a bridge in print, under skin),
-  // and its inner side where it runs past the window into the face's
-  // bottom band. The lips skip the leaves' spans.
+  // The detent channels: in each side wall, from the floor to the lip's
+  // underside, sliderChannelD deep past the wall's face, its ceiling falling
+  // 45 degrees into the wall so it prints without support. The two teeth
+  // are where the channel is not cut: a land at the wall's face and a ramp
+  // at sliderToothDeg off the travel at each end, down to past the
+  // channel's back. The face is rigid now; nothing in it is a spring.
   const lipTop = F.trackTop + 0.02;
   const [b0, b1] = F.bevel, [l0, l1] = F.lipZ;
-  const sl = P.sliderLeafSlit, lt = P.sliderLeafT;
-  const leafX = [[p0x, p0x - lt, p0x - lt - sl], [p1x, p1x + lt, p1x + lt + sl]];   // inner face (the window's wall), outer face, the slit's far side; left and right
-  for (const [xi, xo, xs] of leafX) {
-    const [xa, xb] = xo < xs ? [xo, xs] : [xs, xo];
-    const xlo = Math.min(xi, xs) - 0.5, xhi = Math.max(xi, xs) + 0.5;
-    const s = xi < xo ? 1 : -1;   // +1: the window lies toward -X of this wall... the inner slit goes from the wall's face back toward the window
-    for (const lf of F.leaves) {
-      cuts.push(box(xa, lf.rootY, F.back - 1, xb, lf.y1, F.leafTop + sl));                 // the outer slit
-      cuts.push(box(xlo, lf.tipY, F.back - 1, xhi, lf.y1, F.leafTop + sl));                 // the tip slit
-      cuts.push(box(xlo, lf.rootY, F.leafTop, xhi, lf.y1, F.leafTop + sl));                 // the slit above
-      // The inner slit, where the leaf runs below the window's bottom rim
-      // (the lower leaves root in the bottom band): from the wall's face
-      // toward the window, so the leaf is free there too.
-      if (lf.rootY < p0y) cuts.push(box(Math.min(xi, xi - s * sl), lf.rootY, F.back - 1, Math.max(xi, xi - s * sl), p0y + 0.3, F.leafTop + sl));
-    }
+  const cd = P.sliderChannelD, ct = P.sliderChannelTop;
+  const plan = (pts) => { const c = new CrossSection([pts], "Positive"); return c.area() > 0 ? c : new CrossSection([pts.slice().reverse()], "Positive"); };
+  for (const [wx, s] of [[p0x, -1], [p1x, 1]]) {                       // the wall's face; s points into the wall
+    const X = (u) => wx + s * u;                                        // u: depth past the wall's face
+    const [c0, c1] = F.channel;
+    const cz = F.floorZ + P.sliderChannelFloor;
+    // No vertex on the wall's own plane: the window's cut owns it, and two
+    // near-equal copies of it left slivers. The ceiling's line runs on 0.1
+    // into the window instead.
+    let channel = prismY(c0, c1 - c0, [X(-0.1), cz], [X(cd), cz], [X(cd), F.floorZ + ct - cd], [X(-0.1), F.floorZ + ct + 0.1]);
+    const g = F.ramp / cd;                                              // the ramp's run along Y per unit of depth
+    const teeth = F.teeth.map(({ land: [y0, y1] }) => plan([[X(-0.2), y0 + 0.2 * g], [X(-0.2), y1 - 0.2 * g], [X(cd + 0.2), y1 + (cd + 0.2) * g], [X(cd + 0.2), y0 - (cd + 0.2) * g]])
+      .extrude(ct + 2).translate([0, 0, F.floorZ - 1]));
+    channel = channel.subtract(fuse(teeth));
+    cuts.push(channel);
   }
-  // Dovetail lips on both X walls (left 1.0, right 1.5: the key), in runs
-  // between the leaves' spans, and one bump on each leaf's window face,
+  // Dovetail lips on both X walls, the window's whole height but for one
+  // gap a side where the stowed cover's bump comes in from the front,
   // added AFTER the cuts.
   const adds = [];
-  {
-    const runs = [[p0y + 0.2, p1y - 0.2]];
-    for (const lf of F.leaves) {
-      const [a, b] = [lf.y0 - 0.01, lf.y1 + 0.01];
-      for (let i = runs.length - 1; i >= 0; i--) {
-        const [y0, y1] = runs[i];
-        if (b <= y0 || a >= y1) continue;
-        runs.splice(i, 1);
-        if (a > y0) runs.push([y0, a]);
-        if (b < y1) runs.push([b, y1]);
-      }
-    }
-    for (const [y0, y1] of runs) {
-      if (y1 - y0 < 1.0) continue;
-      adds.push(prismY(y0, y1 - y0, [p0x - 0.01, lipTop], [p0x + b0, lipTop], [p0x - 0.01, lipTop - l0]));
-      adds.push(prismY(y0, y1 - y0, [p1x + 0.01, lipTop], [p1x - b1, lipTop], [p1x + 0.01, lipTop - l1]));
-    }
-  }
-  const bumpIn = P.sliderBumpR - (P.sliderClr + P.sliderBumpReach);   // the bump's centre this far outside the wall's face
-  const bumpZ0 = F.floorZ + P.bedChamfer;                              // the cover's flank starts above its back chamfer
-  for (const lf of F.leaves) {
-    adds.push(cylZ(p0x - bumpIn, lf.bumpY, bumpZ0 - 0.01, P.sliderBumpR, P.sliderBumpH + 0.01, 32));
-    adds.push(cylZ(p1x + bumpIn, lf.bumpY, bumpZ0 - 0.01, P.sliderBumpR, P.sliderBumpH + 0.01, 32));
+  for (const [y0, y1] of [[p0y + 0.2, F.lipGap[0]], [F.lipGap[1], p1y - 0.2]]) {
+    adds.push(prismY(y0, y1 - y0, [p0x - 0.01, lipTop], [p0x + b0, lipTop], [p0x - 0.01, lipTop - l0]));
+    adds.push(prismY(y0, y1 - y0, [p1x + 0.01, lipTop], [p1x - b1, lipTop], [p1x + 0.01, lipTop - l1]));
   }
   // The rail: on the floor at the window's centre, the window's full
   // height, joined to both rims. Up in print.
@@ -253,26 +241,36 @@ export function buildFace() {
     .extrude(P.markDepth + 1).translate([0, 0, sFront - P.markDepth]);
   // No ID on the cover: its back is the bed, its top carries the brand, and
   // it is the only black bar in the kit.
-  // One V-notch in each flank at sliderNotchH above the bottom edge, its
-  // ramps sliderNotchDeg off the edge line, through the flank from the
-  // back chamfer to just above the bumps' height: the detents seat here.
   const edgeCuts = [mark];
-  // The groove for the rail, in the back (the bed face), open at both ends.
+  // The groove for the rail, in the back (the bed face), open at both ends,
+  // its two edges at the bed chamfered so an elephant foot cannot close it.
   {
-    const gx = (sx0 + sx1) / 2 + P.sliderRailOffset, [gw, gd] = P.sliderGroove;
+    const gx = (sx0 + sx1) / 2 + P.sliderRailOffset, [gw, gd] = P.sliderGroove, m = P.sliderGrooveMouth;
     edgeCuts.push(box(gx - gw / 2, sy0 - 1, sBack - 1, gx + gw / 2, sy1 + 1, sBack + gd));
+    edgeCuts.push(prismY(sy0 - 1, sy1 - sy0 + 2, [gx - gw / 2 - m - 0.01, sBack - 0.01], [gx + gw / 2 + m + 0.01, sBack - 0.01], [gx + gw / 2, sBack + m], [gx - gw / 2, sBack + m]));
   }
-  {
-    const zc0 = sBack - 0.01, zc1 = sBack + P.bedChamfer + P.sliderBumpH + 0.3;
-    const yN = sy0 + P.sliderNotchH, d = P.sliderNotchD, t = Math.tan((P.sliderNotchDeg * Math.PI) / 180);
-    for (const [edge, dir] of [[sx0, 1], [sx1, -1]]) {
-      const out = edge - dir * 0.6, inn = edge + dir * d, hw = (d + 0.6) / t;   // the ramps continue 0.6 outside the edge line
-      const pts = [[out, yN - hw], [out, yN + hw], [inn, yN]];
-      const c2 = new CrossSection([pts], "Positive");
-      edgeCuts.push((c2.area() > 0 ? c2 : new CrossSection([pts.slice().reverse()], "Positive")).extrude(zc1 - zc0).translate([0, 0, zc0]));
-    }
+  // The spring arms: at each end of the bar, sliderArmT wide, cut free by a
+  // slit from the bottom edge up to sliderArmRoot, its top end round. They
+  // flex in X, in the print plane: PETG along its layers.
+  const at = P.sliderArmT, sw = P.sliderArmSlit, ar = P.sliderArmRoot;
+  for (const [edge, dir] of [[sx0, 1], [sx1, -1]]) {
+    const xa = edge + dir * at, xb = edge + dir * (at + sw), xm = (xa + xb) / 2;
+    edgeCuts.push(box(Math.min(xa, xb), sy0 - 1, sBack - 1, Math.max(xa, xb), sy0 + ar - sw / 2, sFront + 1));
+    edgeCuts.push(cylZ(xm, sy0 + ar - sw / 2, sBack - 1, sw / 2, sFront - sBack + 2, 32));
   }
-  const cover = status("cover", fuse([plateC, lip]).subtract(fuse(edgeCuts)).simplify(1e-3));
+  // One bump on each arm's flank, sliderBumpOut past the edge line: a round
+  // in plan, its bed edge chamfered 45 degrees, its top 0.5
+  // chamfered 45 degrees in under the channel's ceiling.
+  const rB = P.sliderBumpR, bt = P.sliderBumpTop, bc0 = P.sliderBumpOut - P.sliderClr + 0.05 + P.sliderChannelFloor;   // the foot: inside the wall's face up to the channel's floor
+  const bumps = [[sx0, 1], [sx1, -1]].map(([edge, dir]) => {
+    const bx = edge + dir * (rB - P.sliderBumpOut), by = sy0 + P.sliderBumpY;
+    return Manifold.hull([
+      cylZ(bx, by, sBack, rB - bc0, 0.01, 48),
+      cylZ(bx, by, sBack + bc0, rB, bt - 0.5 - bc0, 48),
+      cylZ(bx, by, sBack + bt - 0.01, rB - 0.5, 0.01, 48),
+    ]);
+  });
+  const cover = status("cover", fuse([plateC, lip, ...bumps]).subtract(fuse(edgeCuts)).simplify(1e-3));
   // The cover turned round in its own plane: the orientation key's probe.
   const [cx, cy] = [(p0x + p1x) / 2, (sy0 + sy1) / 2];
   const coverTurned = cover.rotate([0, 0, 180]).translate([2 * cx, 2 * cy, 0]);

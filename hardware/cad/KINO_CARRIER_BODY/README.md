@@ -16,7 +16,7 @@ picture does not shake on its ribbon. The face shell carries the form.
 Issue #252; twenty-fifth cut (2026-11-21): the button proved on the bench
 ("works perfectly"), the filament pins retired for M2 inserts and screws
 (the owner's kit), the walls 6.0 for the inserts, and the cover's detents
-made leaf springs; two materials, black PETG and dark blue PLA, one per
+PETG spring arms in the cover clicking over fixed teeth, the rims the stops; two materials, black PETG and dark blue PLA, one per
 part; the coupons in `coupons/` print before the body. Every
 part has an ID (A01 to B02, C01 to C03 for what is not printed, T01 to
 T07 for the coupons, P1 and P2 for the plates) in its file name and in the
@@ -190,7 +190,7 @@ pins before this held by friction alone, on paper.
   (114, 50), (105, 4), inside the ledge (the first sits in the horizon
   band, where the face is 4.2: still 0.8 ahead of the insert, gated),
   clear of the camera module PCBs, the window, the horizon, the grip, the
-  leaves and the signature (gates: a 1.0 mm ring of face round every hole,
+  detent channels and the signature (gates: a 1.0 mm ring of face round every hole,
   a full ring of plate under every head). The insert sits in the face's
   back, 3.4 deep, 0.8 of face ahead of it (gated; the iron stops when the
   insert is flush). The screw, M2 x 6, comes from the cavity through a 2.4
@@ -253,8 +253,8 @@ not the bed.
 |---|---|---|---|
 | A01, `print/A01-KINO_CARRIER_SHELL.stl` | front plate with the four pockets (0.5 mm corner reliefs) and 7.5 mm bores, all four walls to the display plane with R10 plan corners, 0.5 mm V-grooves at 2.4 mm pitch round the whole body, the deck included whole (one 1.5 mm smooth ring round the collar); nothing engraved outside; the horizon carried round the left wall only, open at both ends; the 2.0 mm ledge round the cavity at the carrier's front face (no pillar, nothing at the carrier's holes), the shutter pod from X 94 into the right wall at the deck's front edge (a 14.6 slot in the deck open toward the face with four 0.2 ribs, the step, a chamber open through the plate's corner, a floor with the switch's 0.5 pocket and two leg channels; the collar a 0.4 mm shadow line clipped by the front edge), the plain USB-C opening, six countersunk pin holes in the walls' front ends for the face and six plain ones in their rear ends for the frame, four strap tunnels inside the top and bottom walls' ends under 1.2 mm of wall; the bores, the front edge and the rear edge chamfered 0.4; A01 engraved 5 mm in the plate's inner face, up in print | black PETG | front plate on the bed (`previews/A01-KINO_CARRIER_SHELL_PRINT.png`; the ledge and the rear pin holes in `_SHELL_LEDGE.png`), 0.20 mm, no support (gated) |
 | A03, `print/A03-KINO_CARRIER_REAR_FRAME.stl` | the 2.0 mm frame around the display, a 0.8 mm gasket groove in its inner face round the window (the P4 is held by 2 mm foam in it), its outer edge chamfered 1.2 toward the rear and 0.4 toward the shell (the joint is a drawn V on the groove rhythm), 95.6 x 58.2 window with a 1.0 mm chamfer toward the rear, a thumb pad with 1.0 x 0.6 grooves over the whole right border (X 109.5 to 121), the ODD JOBS symbol engraved 1 mm deep with a stepped edge on the left, six 1.8 mm pin holes through it countersunk at the inner face (the pins end 0.2 under the rear face: six dots where the brand's concept shows its rear screws), eight 3.0 x 2.8 strap slots, two at each corner; A03 engraved 3 mm in the rear face under the thumb pad | black PETG | rear face UP (`previews/A03-KINO_CARRIER_REAR_FRAME_PRINT.png`; the gasket groove on the bed), 0.10 mm |
-| A02, `print/A02-KINO_CARRIER_FACE.stl` | the face: a 5.2 mm plate inset 0.3 mm from the shell's outline (a black reveal line round it), its front edge a 1.2 mm 45 degree chamfer, its back edge chamfered 0.4; the horizon, a 1.0 mm groove edge to edge at the bar's height with its lips chamfered 0.8 above and 0.4 below, its right end ramping at 45 degrees to 2.2 mm deep as the grip; the cover's window, 87 x 36.5 with R3.1 corners, cut down to the face's own 1.0 mm floor, its front edges chamfered 0.8 (bottom rim) and 0.4 (sides), a 1.6 x 1.0 rail down the tray 1.5 right of centre (the cover's guide and its key), dovetail lips 1.0 on its two side walls in runs between four leaf-spring detents (two a side, one R0.6 bump each); four 7.5 mm cells through the floor with a 0.8 mm rim; six 3.0 mm insert holes in the back; the signature engraved 0.4 mm inside, mirrored; A02 engraved 2.2 mm in the bottom edge wall, inside the reveal | dark blue PLA | back down (`previews/A02-KINO_CARRIER_FACE_PRINT.png`, the back in `_FACE_BACK.png`, the edge in `_FACE_EDGE.png`), 0.20 mm, no support |
-| B01, `print/B01-KINO_CARRIER_LENS_COVER.stl` | the sliding cover, 86.4 x 16.5 x 3 with R3 corners, its back edge chamfered 0.4, its two long edges bevelled 45 degrees 1.0, a 1.8 x 1.2 groove in its back 1.5 right of centre for the rail (the key: turned round it sits on the rail), a 30 degree V-notch 0.5 deep in each flank at mid-height for the detents; "odd jobs" engraved 0.4 in its top; a 20 x 1.5 lip with a 0.4 mm root on its top edge, centred on the bar, 1.5 proud of the face; no mark | black PETG | back down (`previews/B01-KINO_CARRIER_LENS_COVER_PRINT.png`), 0.08 mm layers |
+| A02, `print/A02-KINO_CARRIER_FACE.stl` | the face: a 5.2 mm plate inset 0.3 mm from the shell's outline (a black reveal line round it), its front edge a 1.2 mm 45 degree chamfer, its back edge chamfered 0.4; the horizon, a 1.0 mm groove edge to edge at the bar's height with its lips chamfered 0.8 above and 0.4 below, its right end ramping at 45 degrees to 2.2 mm deep as the grip; the cover's window, 87 x 36.5 with R3.1 corners, cut down to the face's own 1.0 mm floor, its front edges chamfered 0.8 (bottom rim) and 0.4 (sides), a 1.6 x 1.0 rail down the tray 1.5 right of centre (the cover's guide and its key), dovetail lips 1.0 on its two side walls the window's whole height but for a 2.6 mm loading gap a side; in each side wall a detent channel 0.75 deep with two teeth (a 1.0 land, 35 degree ramps); the window's rims are the cover's stops; four 7.5 mm cells through the floor with a 0.8 mm rim; six 3.0 mm insert holes in the back; the signature engraved 0.4 mm inside, mirrored; A02 engraved 2.2 mm in the bottom edge wall, inside the reveal | dark blue PLA | back down (`previews/A02-KINO_CARRIER_FACE_PRINT.png`, the back in `_FACE_BACK.png`, the edge in `_FACE_EDGE.png`), 0.20 mm, no support |
+| B01, `print/B01-KINO_CARRIER_LENS_COVER.stl` | the sliding cover, 86.4 x 16.5 x 3 with R3 corners, its back edge chamfered 0.4, its two long edges bevelled 45 degrees 1.0, a 1.8 x 1.2 groove in its back 1.5 right of centre for the rail, its edges chamfered 0.3 at the bed (the key: turned round it sits on the rail), a spring arm 1.4 wide at each end cut free by a 1.0 slit 14 up from the bottom edge, one R1.0 bump 0.8 proud on each arm's flank 4.0 up; "odd jobs" engraved 0.4 in its top; a 20 x 2.5 lip with a 0.8 mm root on its top edge, centred on the bar, 1.5 proud of the face; no mark | black PETG | back down (`previews/B01-KINO_CARRIER_LENS_COVER_PRINT.png`), 0.08 mm layers |
 | B02, `print/B02-KINO_CARRIER_SHUTTER_BUTTON.stl` | the plunger: 14 mm cap with a 0.5 mm 45 degree edge and an 11 mm spherical dish 0.4 deep in its top inside a 1.0 flat rim (the finger finds the centre), 2 mm proud of the deck at the rim, running on four 0.2 mm ribs in the slot; the 17.6 mm flange chamfered at the bed, 0.5 a side in the chamber, 1.5 over the step all round; 5.9 tall; no mark. The shutter's one printed part: the switch sits in the pod's pocket and the face keeps both in | dark blue PLA | flange down (`previews/B02-KINO_CARRIER_SHUTTER_BUTTON_PRINT.png`), 0.08 mm layers |
 | C01, twelve inserts | M2 brass heat-set inserts, OD 3.2, 3 mm long (the owner's kit). Six in the face's back, six in the walls' rear ends, in 3.0 mm holes 3.4 deep countersunk 0.3 at the mouth, set with an iron until flush | brass | not printed |
 | C03, twelve screws | M2 pan head: six M2 x 6 for the face (from inside the cavity, heads flush in the plate's counterbores), six M2 x 4 for the frame (from the back, heads 0.7 proud in 4.0 counterbores) | steel | not printed |
@@ -377,52 +377,69 @@ floor, so the tray is a pocket in the face's colour (closed, a black bar
 on a blue field, as the brand draws it) and the face with its cover is one
 subassembly, slid and tested before it goes near the shell. The window's
 two side walls (the short ones, along the travel) carry the dovetail lips,
-the left 1.0 wide and 1.2 deep, the right 1.5 wide and 1.7 deep (each
-deeper than it is wide, so its underside is steeper than 45 degrees in
-print; the cover's bevels match side for side, so turned round it meets
-the wrong lip and stops at the mouth, a gate), with 0.2 of play; 0.3 mm a
-side, because the walls no longer guide the cover. The guide is a rail:
+1.0 wide and 1.2 deep (deeper than wide, so the underside is steeper
+than 45 degrees in print), the window's whole height but for one 2.6 mm
+gap a side, with 0.2 of play; 0.3 mm a side, because the walls do not
+guide the cover. The guide is a rail:
 1.6 wide and 1.0 tall on the tray's floor, the window's full height,
 1.5 mm right of the window's centre between cells 2 and 3, running in a
-1.8 x 1.2 groove in the cover's back (0.1 a side, 0.2 over it; the groove
-is a channel in the bed face and prints as a bridge). The cover is then
+1.8 x 1.2 groove in the cover's back (0.1 a side, 0.2 over it, its two
+edges chamfered 0.3 at the bed so an elephant foot cannot close it; the
+groove is a channel in the bed face and prints as a bridge). The cover is
 guided over its whole 16.5 on smooth vertical faces right under the
 thumb, so a push off centre cannot yaw it; a bar 87 wide guided only on
 its two 10.5 mm flanks jammed on its walls one time in two whenever the
-thumb landed a few millimetres off centre, with the side springs pressing
-or not (three prints, 2026-11-22 and 23; the springs that pressed the
-flanks the whole way only scraped PLA onto the PETG and "locked too
-tightly"). The rail is the one visible piece of mechanism on the front,
+thumb landed a few millimetres off centre (three prints, 2026-11-22 and
+23). The rail is the one visible piece of mechanism on the front,
 and it is also the orientation key: turned round in its plane the cover's
 groove misses the rail by 1.3 and the cover sits 1.0 proud on it, above
-the lips (a gate), so the two lips are alike at 1.0 and both flanks are
-1.6. The cover is 3.0 thick: 2.0 "feels cheap", and with its 0.4 back
-chamfer and the 1.5 right bevel it had a 0.1 mm flank on the right, so
-nothing on that side could guide or hold it (the first printed track,
-2026-11-22: "goes a bit sideways and no longer slides"). At 3.0 with 1.0
-bevels the flanks are 1.6 (a gate). The detents are springs seating in
-notches: in each side wall two leaves 2.0
-thick (from the window's wall outward), 2.5 tall from the face's back and
-14.5 long, cut free on their outer side, tip end, above and (where they
-run into the bottom band) inner side by 0.6 mm slits from the back
-(hidden against the shell's plate; 1.1 of skin stays under the horizon's
-floor, a gate), each rooted at its lower end. Each leaf carries one
-half-round bump (R0.6, 1.0 tall from the cover's back chamfer up, inside
-both flanks) on its window face, reaching 0.25 past the cover's edge
-line. The cover has one 30 degree V-notch 0.5 deep in each flank at
-mid-height (8.25 above its bottom edge): the upper pair of bumps (Y
-28.45) seats in it closed, the lower pair (Y 9.45) seats in it open,
-19.0 apart, the travel (a gate). About 6 N/mm a leaf, 1.4 N a side on
-the flank, about 1.5 N a side to leave a notch: a 3 N click under the
-thumb. Between the stops the cover runs free on its rail, touching
-nothing (a gate sweeps it in 0.5 steps). The
-lips run between the leaves: Y 10.65 to 14.55 and 29.65 to 37.0; the top
-run holds the closed cover's top edge against the thumb's lift. The thumb
-lip is centred on the bar (it was 11.6 off-axis, and an off-axis push
-yaws a bar five times wider than it is tall) and 2.5 thick on a 0.8 root
-(1.5 snapped under the shove a stuck cover needed). The rigid posts
-before all this were what the owner saw on the field body ("bumps are
-not a stop"); the corner-arc bumps after them held nothing. The window's bottom rim is the
+the lips (a gate). The cover is 3.0 thick: 2.0 "feels cheap", and with
+its 0.4 back chamfer and a 1.5 right bevel it had a 0.1 mm flank on the
+right (the first printed track, 2026-11-22: "goes a bit sideways and no
+longer slides"); at 3.0 with 1.0 bevels the flanks are 1.6.
+
+The stops and the detents (twenty-ninth cut, 2026-11-24). The stops are
+the window's rims, and the cover reaches them: closed, its top edge lies
+on the top rim; stowed, its bottom edge lies on the bottom rim (gates
+move it 0.05 past each and find it in the rim). The springs are in the
+cover, in PETG: an arm 1.4 wide at each end of the bar, cut free by a 1.0
+slit from the bottom edge up 14.0 with a round end, flexing in X in the
+print plane. Each arm carries one bump, R1.0 in plan, 0.8 past the edge
+line, 4.0 above the bottom edge on the straight flank, 1.6 tall with its
+foot and its top chamfered 45 degrees. The bump runs in a channel in the
+side wall, 0.75 deep past the wall's face, from 0.2 over the tray's floor
+up to the lip's underside, its ceiling falling 45 degrees into the wall
+(no support). Two teeth per wall interrupt the channel: a 1.0 land at the
+wall's own face and a 35 degree ramp at each end. The bump presses 0.5
+over a land, and at each stop it rests on its tooth's far ramp still
+pressed 0.2, so the ramp pushes the cover into the rim: closed, above
+the upper tooth; stowed, below the lower one. About 3.4 N/mm at the bump,
+1.2 % strain over a crest, a 4.3 N click under the thumb, and 0.9 N into
+the rim at rest, about 18 g on a 5.4 g cover (gates). Between the clicks
+the cover touches nothing: a gate sweeps it in 0.25 steps and finds a
+tooth under each bump only in the first and last 3 mm of the travel,
+and nothing mid-travel with the cover 0.09 either way on the rail. Wear
+on a tooth takes press, not position: the rim still stops the cover.
+`previews/A02-KINO_CARRIER_FACE_DETENT.png` is the left wall and the
+cover's end in plan, closed and stowed, and in section through the bump.
+
+What this replaced, and why: the twenty-eighth cut's springs were PLA
+leaves in the face's walls whose bumps (R0.6, 0.25 of reach) rubbed the
+cover's flanks over 16 of every 19 mm and seated centred in a V-notch.
+The owner, after a day with the railed T07: the PLA wears, the slide
+gets "looser and looser", rattles, "at the top it never fully closes"
+even before the wear, and shaken hard at the bottom "the cover flies
+off". Both rims stood 0.5 off the cover, so only the detent placed it,
+and a detent centred in a notch has no force at its centre: the cover
+hung anywhere in its play, low under gravity, and every 0.1 of wear on
+the PLA bumps was 0.1 more of it. Stowed, the lips (broken for the
+leaves) held 3.9 of the cover's 10.5 mm flank a side. The rigid posts
+before the leaves were what the owner saw on the field body ("bumps are
+not a stop"); the corner-arc bumps after them held nothing.
+
+The thumb lip is centred on the bar (it was 11.6 off-axis, and an
+off-axis push yaws a bar five times wider than it is tall) and 2.5 thick
+on a 0.8 root (1.5 snapped under the shove a stuck cover needed). The window's bottom rim is the
 stowed cover's stop and its top rim the closed cover's. Its front edges
 are chamfered as the horizon's lips are, 0.8 on the bottom rim and 0.4 on
 the sides, so the open stow zone reads as the second line of a cut tray
@@ -430,20 +447,25 @@ and the bar sits between two lit edges. The tray's floor is plain plate
 in the face's colour. The four cells are 7.5 mm bores through the floor with a 0.8 mm rim,
 over the shell's own bores.
 
-The cover drops 19.0 mm to shoot; the travel is derived from the face's
-edge (it grew 1.5 with the walls). 16.5 mm tall, it blankets the 7.5 mm cells by 4.5 a side when closed
+The cover drops 19.5 mm to shoot; the travel is derived: the window's
+top rim to its bottom rim, less the cover. 16.5 mm tall, it blankets the 7.5 mm cells by 4.5 a side when closed
 and its top edge clears the field cone when stowed. Both are gates, as is
 the closed cover blanketing every cell (the firmware's cover-closed test
-needs all four dark). Closed, its top sits 0.2 below the groove floor. Its
+needs all four dark). Closed, its front sits 0.2 below the groove floor. Its
 lip, 20 mm wide and 2.5 thick with a 0.8 mm root, centred on the bar (33.4 to 53.4 off
 its left end, the wordmark ending 0.4 before it) and 1.5 mm proud of the
 face (a thumb needs 16; at 1.0 a glove could not lift it), is what the
 thumb pushes down and lifts back. Dropped, the cover sits in the open
 stow zone in plain view, the bar's top 0.2 below the face.
 
-Loading: the cover goes into the window from the face's back, bevels
-under the lips, before the face goes onto the shell; the shell's plate
-then closes the track. To service it: the frame off, the stack out, the
+Loading: the face's own floor closes the track, so the cover goes in
+from the front, stowed (its bottom edge on the bottom rim, wordmark up,
+the groove on the rail). Each bump then stands over its lip gap: press
+one end in until its arm folds and the bump drops into the channel, then
+the other; the bevels fold the arms 0.7 under the rest of the lip, and
+the rigid top 2.5 of each end snaps under its lip as the whole bar did
+before (gated geometry only: try it on T07 first). Out the same way,
+stowed, an arm at a time. To service it: the frame off, the stack out, the
 six screws out from inside, face off, cover out. The face is held by six
 M2 x 6 screws from inside the cavity into inserts in its back (the joints
 section); there is no glue anywhere in the body. T06 (the face's corner
@@ -599,15 +621,15 @@ the pocket, the channels, the mouth). `KINO_CARRIER_EXPLODED.png` (labelled by I
 pull every part apart along the depth axis: A03, the electronics stack
 (green) with its glass, A01 with B02, A02, B01; the inserts, the screws,
 the foam strips and the switch are too small to show.
-`A02-KINO_CARRIER_FACE_LEAF.png` looks down the window's left wall at a
-leaf and its bumps; `T06-KINO_COUPON_FACE_CORNER.png` and `_BACK.png` are
+`A02-KINO_CARRIER_FACE_DETENT.png` is the left wall's teeth and channel
+with the cover's arm and bump, in plan closed and stowed and in section; `T06-KINO_COUPON_FACE_CORNER.png` and `_BACK.png` are
 the face's corner coupon with its insert hole. Every cut's renders are kept under
 `docs/assets/making-of/carrier-body/` by `archive-previews.py`, for the
 making-of page (`docs/MAKING_OF.md`).
 
 ## Gates
 
-`node generate-carrier-body.mjs` writes `.candidate/` and runs 264 gates,
+`node generate-carrier-body.mjs` writes `.candidate/` and runs 256 gates,
 throwing on the first failure (`KINO_SOFT_GATES=1` collects them): the depth
 chain re-added over the lens band, the lens front on the pocket floor, the
 module PCB with the plate to land on, the battery bay tall enough for the cell
@@ -631,12 +653,14 @@ the face's screw reaching its insert, the stations off the mouth and the
 pod, the carrier's sweep
 from the rear clear up to the ledge with the pod above it, the USB plug and
 the frame window over the whole
-active area with 3 mm of border, the cover's bumps seated in its notches at
-both stops and pressing its flanks 1.0 and 3.0 past them, free mid-travel,
-a flank on both sides taller than the bumps, each of the four leaves
-standing, rooted and cut free by open slits with its bump past the edge
-line, the leaves' strain and skin, the notch where the bumps are at both
-stops by arithmetic, the cover touching nothing but the bumps along the travel (a 0.5 mm sweep), the rail standing the window's full height, the groove open end to end, the rail in the groove at both stops and between and the rail as the key, the rail between cells 2 and 3, the thumb lip on the cover's axis, the cover refused turned round, stowed above the window's rim, the
+active area with 3 mm of border, the cover on the top rim closed and on
+the bottom rim stowed, its bumps resting pressed on the teeth's far ramps
+at both stops, touching nothing between the clicks (a 0.25 mm sweep) nor
+mid-travel with 0.09 of play either way, the bumps under the bevels and
+the channels' ceilings, all four teeth standing and the channels open
+between them, the arms' stiffness, strain, click and hold, the slits open
+and clear of the wordmark, the lips along the cover at both stops and the
+loading gap round the stowed bump, the rail standing the window's full height, the groove open end to end, the rail in the groove at both stops and between and the rail as the key, the rail between cells 2 and 3, the thumb lip on the cover's axis, the cover refused turned round, stowed on the window's rim, the
 wordmark inside the cover's band, the shutter's slot open from its round end out through the deck's front with the step under it and the four ribs standing, the chamber open from its closed rear end out through the plate, the slot and the mouth both covered by the face, the switch's pocket open with its walls standing and the floor solid under it, the leg channels open to the front and ending inside the pocket, the actuator under the flange at rest by arithmetic, the cap against the face with its clearance, the order of operations swept (the switch's ride clear with 1.0 of headroom, the seated switch clear, the plunger's ride on the step clear of the shell and the seated switch, the plunger at rest clear and 2.0 proud, a plunger at rest blocking a switch still on the floor), the pod joined to the wall and clear of CAM 4, the carrier's connectors, CAM 4's pocket and the face's stations, the stem positive
 passing its bore, the strap tunnels open under their skin, the signature
 inside the plate clear of the track and the stations, the deck bare, every
@@ -649,7 +673,7 @@ counts only past 45 degrees, so every chamfer here is exactly 45) and on a
 grip, the battery bay with 10 % of swell, the foam's clamp on the stack and
 six inserts' hold against it, the horizon channel as both pry points and open
 to the joint, the first groove leaving wall outside the insert holes, the corner coupon
-carrying a face screw station and the ledge, the strap coupon a frame insert station, the face coupon its station and the left leaf, the track coupon both leaves, both rims and the cover's whole run,
+carrying a face screw station and the ledge, the strap coupon a frame insert station, the face coupon its station and the left wall's lower tooth, the track coupon all four teeth, both rims and the cover's whole run,
 every coupon labelled with its ID in material, the frame off the glass, the gasket
 groove on the glass's margin, open, and its squeeze over the stack's
 tolerance, and every coupon one piece on the bed.
@@ -701,17 +725,17 @@ reported. Pass criteria, in numbers:
 |---|---|---|---|---|
 | T01 + T02 on one plate (done) | the printer's shrink (0.2 %); which pocket width holds the head (8.1) | callipers; one camera module seated on its XIAO | the bar measures 99.8 to 100.0 with the compensation on (99.9); on the gauge, the head pushes into one of the 7.8, 8.1 and 8.4 pockets with a thumb and does not fall out inverted, the lens centred in the bore by eye (8.1, "fits perfectly") | `camBody` + `camBodySlack` = the pocket that held (7.9 + 0.2); `lensBoreD` (bore) |
 | T03 + T04, reprinted with the 6.0 walls (T03 now 26 x 47, up past the station at (4, 36)) | the ledge under the carrier's corner (done on the first piece: flat), the face's screw station in the plate, the strap tunnel and slots, the frame's insert station in a wall end | the carrier, two M2 inserts, an M2 x 6 and an M2 x 4, the iron, 0.3 m of 2.5 mm cord, 10 kg, 5 kg | the carrier's corner drops into T03 and sits flat on the ledge with no rock (done); an insert set in T04's wall end sits flush with no bulge on the outer wall or in the cavity, takes the M2 x 4 ten times, and holds 50 N pulled on the screw; 100 N on T04's cord, no tear at the 1.2 mm skin; T06 screwed onto T03 through the counterbore with the M2 x 6 seats flat and the head sits flush in the counterbore | `insertHoleD`, `insertPullN`, `strapSlot`, `strapTunnelSkin` (`ledgeW`, `carrierClear` confirmed) |
-| T06 (blue PLA), with T03 | the insert in the face's back under the horizon (4.2 there), the window's left wall with both left leaves, their bumps and ridges | one M2 insert, the iron at 200 C, the M2 x 6 | the insert set flush with no mark on the front and no bulge at the window's wall; each leaf flexes 0.3 under a fingernail and springs back; the bumps stand 0.3 past the edge line, the ridges run out to it | `insertHoleD`, `sliderLeafT`, `sliderBumpReach` |
-| T07 (blue PLA) with the real B01 (black PETG, 0.08), fourth piece | the slide: the whole window band with the rail down it, both walls, every lip run, the four leaves and their bumps, the two rims, the cells; the 3.0 cover with its groove, its notches and the 2.5 lip | the printed cover; any flat plate held behind the coupon for the shell's plate | the cover goes in from the back, groove on the rail, bevels under the lips, one way only (turned round it sits on the rail and will not go under the lips); with a plate behind, it clicks closed and clicks open under a thumb, about 3 N, and sits at each stop with no play; pushed off either stop, anywhere on the lip, it runs straight the whole way, never one side ahead of the other, and runs free between the stops; closed, it does not drop at 90 degrees of tilt or when shaken and does not lift past the lips; open, it stays open inverted; 200 cycles and the closed click still holds, no PLA scraped onto the cover's flanks. The first piece (2026-11-22, the 2.0 cover): stuck, went sideways, popped out, fell when closed. The second (the 3.0 cover, bumps only): "way better", but one side stuck mid-travel one time in two, and the shove to free it snapped the 1.5 lip. The third (ridges pressing the flanks the whole way): less often, still, and "locks too tightly", PLA scraping onto the flanks. If it still yaws, say whether the rail is tight in its groove or loose | `sliderGroove` (1.9 looser, 1.7 tighter on the rail), `sliderBumpReach` (0.2 softer, 0.3 harder), `sliderNotchDeg` (45 harder to leave), `sliderLeafT` (1.5 softer, 2.5 stiffer) |
+| T06 (blue PLA), with T03 | the insert in the face's back under the horizon (4.2 there), the window's left wall with its channel and lower tooth | one M2 insert, the iron at 200 C, the M2 x 6 | the insert set flush with no mark on the front and no bulge at the window's wall; the channel prints clean under its 45 degree ceiling, the tooth's land is flush with the wall and its ramps are crisp | `insertHoleD`, `sliderChannelD` |
+| T07 (blue PLA) with the real B01 (black PETG, 0.08), fifth piece | the slide: the whole window band with the rail down it, both walls with their channels and teeth, the lips with their loading gaps, the two rims, the cells; the 3.0 cover with its groove, its two spring arms and bumps, and the 2.5 lip | the printed cover; any flat plate held behind the coupon for the shell's plate | stowed, the cover presses in from the front one end at a time, groove on the rail, and will not go in turned round; it clicks closed and clicks open under a thumb, about 4 N, and runs free and straight between the clicks; closed, the top edge is hard on the top rim with no light between and no rattle when shaken; stowed, the bottom edge is hard on the bottom rim, and shaken hard it stays in; 200 cycles and both stops still have no play, no PLA dust on the bumps. The fourth piece (the rail, PLA leaves in the face, 2026-11-23 and 24): ran straight, but the PLA wore, it got "looser and looser", rattled, never fully closed even new, and shaken hard stowed the cover flew off. If it is too stiff or too soft, or rattles at a stop, say which and where | `sliderArmT` (1.3 softer, 1.5 stiffer), `sliderRestPress` (0.3 holds harder into the rims), `sliderToothDeg` (30 softer click, 40 harder), `sliderGroove` (1.9 looser, 1.7 tighter on the rail) |
 | the real B02 (blue PLA) then T05, third piece (done, 2026-11-21: "the button mechanism now works perfectly") | the slot and its ribs, the step, the chamber, the pocket, the leg channels, the mouth | the printed plunger, the switch with its two leads; a thumb over the mouth and the slot's front for the face | the slicer preview shows the four 0.2 ribs; deck up, the switch goes in through the mouth, legs in the channels, slides back and drops into its pocket; deck down, the plunger goes in with its cap in the slot and slides back over the switch to the round end, and cannot leave through the deck; deck up, the cap stands 2.0 proud, clicks within 0.6 of travel, returns on the switch, and runs 200 times without tick; shaken with a thumb over the mouth, nothing moves. If the plunger will not pass over the switch, or the cap does not click, report the switch's measured height, base to actuator top | `shutterSwitchBody[2]` (the switch's whole height), `shutterSwitchFree`, `shutterSwitchPocket` if the switch does not drop in or climbs out, `shutterGuideRib` [0.4, 0.8] if the ribs vanish, `shutterFlangeBoreClear` 0.7 in reserve |
-| the real A02 (blue PLA) and B01 (black PETG), fourth | the window, its lips, the leaf detents, the slide's feel | six inserts, the iron; the shell's plate or any flat plate to close the track | the cover clicks closed and clicks open with a thumb, about 4 N; closed, it does not drop at 90 degrees of tilt or when shaken, and does not lift past the lips by hand; open, it stays open inverted; it refuses to enter turned round (the key); 200 cycles without the leaves taking a set (the closed click still holds). If they pass they are the parts | `sliderClr`, `sliderBumpReach` (0.25 softer, 0.45 harder), `sliderLeafT` |
+| the real A02 (blue PLA) and B01 (black PETG), fourth | the window, its lips, the teeth and the cover's arms, the slide's feel | six inserts, the iron; the shell's plate or any flat plate to close the track | the cover clicks closed and clicks open with a thumb, about 4 N; closed, it does not drop at 90 degrees of tilt or when shaken, and does not lift past the lips by hand; open, it stays open inverted; it refuses to enter turned round (the key); 200 cycles without the arms taking a set (both stops still have no play). If they pass they are the parts | `sliderClr`, `sliderArmT`, `sliderRestPress` |
 | A03 at 0.10, then A01, last | | | | |
 
 T07 is the track coupon the owner asked for (2026-11-21): the window's
 whole band, 103 x 46 x 4.2 (about 11 g), not a one-sided cut (a cut piece
 of the window ran the drop test cocked on one lip), and it takes the real
 cover, which is its own part. T06 is the face's corner for the insert and
-one leaf, not the track. The field body's `KINO_SLIDER_TRACK_COUPON` set
+one tooth, not the track. The field body's `KINO_SLIDER_TRACK_COUPON` set
 the clearances this track reuses. Before any detent number moves, the hang test on the whole body:
 the cover held closed through 1,000 jogs on the top cord.
 
@@ -759,9 +783,9 @@ printed materials, one fastener type, nothing glued.
 | ID | Part | Function | Material, colour | Qty | Print orientation | Supports | Joined by | Fit that matters | Step |
 |---|---|---|---|---:|---|---|---|---|---:|
 | A01 | shell | front plate with the four camera pockets, four walls, the ledge, shutter pod, six counterbored screw holes through the plate, six insert holes in the rear wall ends, strap tunnels | black PETG | 1 | front plate on the bed | none | C03 screws into C01 inserts hold A02 and A03 on it | pockets (T02 gauge); the ledge under the carrier's edge (T03); cavity 0.5 a side; insert holes 3.0 (T04) | 1 |
-| A02 | face | the blue front: horizon, grip, the cover's window with its floor, lips and leaf detents, the four cells, six inserts in its back | dark blue PLA | 1 | back down | none | six M2 x 6 from inside A01 into its inserts | insert holes 3.0 (T06); track 0.1 a side; the leaves' reach 0.35 | 3, 4 |
+| A02 | face | the blue front: horizon, grip, the cover's window with its floor, lips, detent channels and teeth, the four cells, six inserts in its back | dark blue PLA | 1 | back down | none | six M2 x 6 from inside A01 into its inserts | insert holes 3.0 (T06); rail 0.1 a side in the cover's groove; the bumps' press 0.5 over a land, 0.2 at rest | 3, 4 |
 | A03 | rear frame | the ring round the display with the gasket groove, thumb pad, strap slots, six counterbored screw holes | black PETG | 1 | rear face up | none | six M2 x 4 from the back into A01's inserts | insert holes 3.0 in the wall ends (T04); 2.4 through the frame | 5 |
-| B01 | lens cover | the sliding bar: closed over the cells, dropped into the tray; guided and keyed by the rail in its groove; notched flanks for the detents | black PETG | 1 | back down | none | captive in A02's lips, on A02's rail | groove 0.1 a side on the rail, 0.3 a side to the walls, 0.2 play under the lips | 3 |
+| B01 | lens cover | the sliding bar: closed over the cells, dropped into the tray; guided and keyed by the rail in its groove; a PETG spring arm with a bump at each end for the detents | black PETG | 1 | back down | none | captive in A02's lips, on A02's rail | groove 0.1 a side on the rail, 0.3 a side to the walls, 0.2 play under the lips | 3 |
 | B02 | shutter plunger | the blue cap at the deck's front edge, 0.1 off four ribs in the slot | dark blue PLA | 1 | flange down | none | captive under A01's step by its flange, A02 closes the slot and the mouth | slot 14.6, step 1.5 over the flange (T05) | 1 |
 | C01 | inserts | M2 brass heat-set, OD 3.2 x 3: six in A02's back, six in A01's rear wall ends | brass | 12 | | | heat-set | 3.0 holes 3.4 deep, countersunk 0.3 | 4 |
 | C03 | screws | M2 pan head: six x 6 (face, from inside), six x 4 (frame, from the back) | steel | 12 | | | into C01 | 2.4 clearance holes, counterbores 4.4 x 1.4 (plate) and 4.0 x 0.6 (frame) | 4, 5 |
@@ -869,7 +893,7 @@ Each one is a number in `params.mjs` and nothing else moves when it changes.
 - `camStackH` 15.0: a caliper on a seated node.
 - `camBody` 7.9 (done, 2026-11-21): the gauge's 8.1 pocket holds the head; the head's own calliper size is still unrecorded.
 - `insertHoleD` 3.0 and `insertPullN` 50: the kit's inserts in PLA (T06) and PETG (T04); flush, no bulge, 50 N on a pull.
-- `sliderGroove` [1.8, 1.2] on the 1.6 x 1.0 rail, `sliderBumpReach` 0.25, `sliderNotchDeg` 30 and `sliderLeafT` 2.0: the run and the click under the thumb on the fourth T07; 0.2 softer, 0.3 harder; 45 degrees harder to leave.
+- `sliderGroove` [1.8, 1.2] on the 1.6 x 1.0 rail, `sliderArmT` 1.4, `sliderToothDeg` 35 and `sliderRestPress` 0.2: the run, the click under the thumb and the hold at the stops on the fifth T07; arms 1.3 softer, 1.5 stiffer; 30 degrees a softer click, 40 harder; 0.3 of rest press holds harder into the rims.
 - `ledgeW` 2.0 with `carrierClear` 0.5 (done, 2026-11-21): the carrier's corner sits flat on T03's ledge.
 - `shutterSwitchBody[2]` 4.3 and `shutterSwitchFree` 0.3 (done, 2026-11-21): the third pod coupon with the real plunger and switch "works perfectly".
 - The customer review's two items the carrier fixes, not the body: the USB-C and the three status lights are on the bottom edge because the carrier puts them there, so the camera charges lying on its back; a later carrier can move them.

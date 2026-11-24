@@ -579,6 +579,41 @@ owner's printer. Two parts:
   the cells, the cover touching nothing but the bumps along a 0.5 mm
   sweep. The rail is the one visible piece of mechanism on the front.
   264 gates.
+- **The slide's stops, springs and lips** (twenty-ninth cut, 2026-11-24;
+  the owner, after a day with the fourth T07: "over time the pla wears
+  down and makes the slide looser and looser", it rattles, "at the top it
+  never fully closes", "the closing issue was present even before the
+  wear", and shaken violently at the bottom "the cover flies off").
+  Found: neither rim was a stop (both stood 0.5 off the cover), so only
+  the detent placed it, and a bump centred in a V-notch has no force at
+  the centre: the cover hung anywhere in its play, low under gravity, and
+  each 0.1 worn off the PLA bumps added 0.1 to it. The PLA leaves rubbed
+  the PETG flanks over 16 of 19 mm a stroke and held a standing load
+  (PLA creeps). Stowed, the lips, broken for the leaves, held 3.9 of
+  10.5 mm of flank a side, and the cover pivoted out. Now: the rims are
+  the stops (`panel` top = the closed cover's top, `openY0` = the bottom
+  rim; the travel 19.5). The springs are PETG arms in the cover, one at
+  each end, 1.4 wide, cut free by a 1.0 slit up 14 from the bottom edge,
+  flexing in the print plane (`sliderArmT`, `sliderArmSlit`,
+  `sliderArmRoot`), each with an R1.0 bump 0.8 past the edge line
+  (`sliderBump*`). The face is rigid: a 0.75 channel in each side wall
+  under a 45 degree ceiling (`sliderChannel*`), two fixed teeth in it
+  (1.0 land, 35 degree ramps, `sliderTooth*`). At each stop the bump rests
+  on its tooth's far ramp still pressed 0.2 (`sliderRestPress`), so the
+  ramp holds the cover into its rim: wear takes press, not position. The
+  bumps touch a tooth only in the first and last 3 mm of the travel. The
+  lips run the window's whole height but for a 2.6 mm gap a side round the
+  stowed bump (`lipGap`), so the cover still presses in from the front.
+  The rail's groove has its bed edges chamfered 0.3 (`sliderGrooveMouth`).
+  About 4.3 N to click, 0.9 N into the rim at rest (about 18 g on a 5.4 g
+  cover). The leaf, notch and leaf-slit parameters are gone. Gates: the
+  cover on each rim and 0.05 past it in the rim, the bumps resting pressed
+  on the far ramps, nothing touched between the clicks (0.25 sweep) or
+  mid-travel with 0.09 of play, the bumps under the bevels and ceilings,
+  four teeth standing and the channels open, the arms' stiffness, strain,
+  click and hold, the slits open and clear of the wordmark, the lips along
+  the cover at both stops, loading from the front; T06 and T07 carry the
+  teeth. Untested in print. 256 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
@@ -590,7 +625,7 @@ from the P4's PCB back, 3.9 mm above the Sense board's top.
 
 ## Gates
 
-264 in `generate-carrier-body.mjs`, 0 failures (the list below is the
+256 in `generate-carrier-body.mjs`, 0 failures (the list below is the
 first cut's; the package README's "Gates" names the current set, which
 adds the ledge, the carrier heads' clearance, the stack and the frame
 refused turned round, the frame pins and their hold, the pry point open at

@@ -155,7 +155,7 @@ export const P = Object.freeze({
   // camera module PCBs, the signature's engraving, the window, the horizon
   // and the grip. Not a symmetric pattern, but the face goes on one way
   // anyway (the window and the shutter slot say so).
-  faceScrewXY: [[4.0, 36.0], [4.0, 50.0], [18.0, 60.0], [95.0, 60.0], [114.0, 50.0], [105.0, 4.0]],   // (4, 36) sits above the left wall's upper leaf, in the horizon band (the face is 4.2 there: 0.8 ahead of the insert, gated)
+  faceScrewXY: [[4.0, 36.0], [4.0, 50.0], [18.0, 60.0], [95.0, 60.0], [114.0, 50.0], [105.0, 4.0]],   // (4, 36) sits above the left wall's detent channel, in the horizon band (the face is 4.2 there: 0.8 ahead of the insert, gated)
   // The frame's six stations in the walls' rear ends, the hole's axis
   // frameScrewIn from the body's outline (1.7 of wall outside it, 1.2 under a
   // groove, 1.3 inside it toward the cavity; gated as a ring).
@@ -241,7 +241,7 @@ export const P = Object.freeze({
   windowChamfer: [0.8, 0.4], // 45 degrees on the window's front edges: the bottom rim 0.8 like the horizon's upper lip, the side rims 0.4 like its lower, so the open stow zone is the second line of a cut tray and the bar sits between two lit edges
   cellSink: 0.8,             // 45 degrees at each cell's mouth in the track floor: a rim, so the four read as eyes and not as a microphone array; prints face-up         // plain cones: the stepped rings read as damage at this size
   // The cover: the field body's bench-tuned track, restated. Drops to open.
-  sliderH: 16.5,             // blankets the 7.5 mm cells by 4.5 a side; the lens row sits low, so every mm of cover is a mm of travel (the travel is DERIVED: closed to the window's bottom rim)
+  sliderH: 16.5,             // blankets the 7.5 mm cells by 4.5 a side; the lens row sits low, so every mm of cover is a mm of travel (the travel is DERIVED: the window's top rim to its bottom rim, less the cover)
   sliderT: 3.0,              // 2.0 "feels cheap due to the thinness" (the owner, 2026-11-22), and with the 0.4 back chamfer and the 1.5 right bevel it had a 0.1 mm flank on the right: nothing for a detent to hold. At 3.0 the flanks are 1.6 and 1.1 (gated)
   sliderClr: 0.3,            // per side, in X: the walls no longer guide the cover, the rail does (0.1 did, and a bar five times wider than its 10.5 flank is long jams on its walls whenever the thumb lands off centre: three prints, 2026-11-22)
   // The guide: a rail on the tray's floor at the cover's centre, the
@@ -255,27 +255,45 @@ export const P = Object.freeze({
   sliderBevel: [1.0, 1.0],   // 45-degree edge bevels, left and right, and the lips that trap them; alike now that the rail is the orientation key (1.0 and 1.5 left a 1.1 flank on the right, and with the walls 0.3 off the cover the key was 0.2 of overlap)
   sliderLipOver: 0.2,        // each lip is this much deeper than its bevel is wide, so its underside is steeper than 45 degrees in print
   sliderCornerR: 3.0,        // the bar is the thing the eye reads; square corners inside a pill band were the last box on the front
-  // The detents: two leaf springs in each of the window's side walls, cut
-  // free from the face's back by slits (hidden against the shell's plate,
-  // under skin at the front), each with a half-round bump on its window
-  // face that seats in a V-notch cut in the cover's flank at mid-height:
-  // the upper pair holds the cover closed, the lower pair holds it open.
-  // Between the stops the cover runs free on its rail. (Ridges behind the
-  // bumps that pressed the flanks the whole way were tried on the third
-  // print: the cover still yawed, and they made it "lock too tightly".)
-  // Nothing rides on a corner arc. The first leaf cut (2026-11-21) put the bumps on the cover's R3
-  // corners; printed, the closed cover fell and the right side held nothing
-  // (a 0.1 flank). The rigid posts before that bent.
-  sliderBumpR: 0.6,          // the bump: a half-round on the leaf's face, this radius
-  sliderBumpReach: 0.25,     // past the cover's edge line: the leaf's deflection as a bump passes a flank, and what it drops into the notch (0.3 with ridges was "too tight")
-  sliderBumpH: 1.0,          // the bump's height off the floor, from the cover's back chamfer up: inside both flanks (1.6 left, 1.1 right, gated)
-  sliderNotchD: 0.5,         // the V-notch in each flank: deeper than the reach, so the bump seats on the notch's ramps
-  sliderNotchDeg: 30,        // the notch's ramps off the edge line: with the leaf at 7 N/mm and 0.3 of reach, about 2.5 N a side to leave the notch, 5 N under the thumb
-  sliderNotchH: 8.25,        // the notch's centre above the cover's bottom edge: mid-height, so the same notch meets the lower pair open and the upper pair closed
-  sliderLeafT: 2.0,          // the leaf's thickness in X, from the window's wall outward
-  sliderLeafL: 14.5,         // root to tip, both pairs: the upper leaves root below their tips (toward the lens row), the lower leaves root in the face's bottom band, 0.05 inside its chamfer
-  sliderLeafSlit: 0.6,       // the slit round the leaf's outer side, tip end, top, and inner side where it runs past the window: 0.6 prints as a clean gap, 0.4 fuses
-  sliderLeafH: 2.5,          // the leaf's height from the face's back: the 1.0 floor, the cover's 0.4 chamfer, the 1.0 bump and 0.1 over it; the slit above it leaves 1.1 of skin under the horizon's floor (gated)
+  // The stops and the detents (twenty-ninth cut, 2026-11-24; the owner after
+  // a day with the railed T07: the PLA wears, the slide gets "looser and
+  // looser", rattles, "at the top it never fully closes" even before the
+  // wear, and shaken hard at the bottom "the cover flies off").
+  // - The stops are the window's rims, really: closed, the cover's top edge
+  //   lies on the top rim; stowed, its bottom edge lies on the bottom rim.
+  //   (Both rims stood 0.5 off the cover, so only the detent placed it, and
+  //   a detent centred in a notch has no force at its centre: the cover hung
+  //   anywhere in its play, and gravity hung it low.)
+  // - The springs are PETG and in the cover: an arm at each end of the bar,
+  //   cut free by a slit from the bottom edge, flexing in the print plane.
+  //   PLA under a standing load creeps and wears; the leaves in the face
+  //   were PLA, and their bumps rubbed the cover's flanks over 16 of 19 mm
+  //   of every stroke.
+  // - The face carries fixed teeth in a channel in each side wall. A bump on
+  //   each arm rides free in the channel, clicks over one tooth at each end
+  //   of the travel and comes to rest on the tooth's far ramp, still pressed
+  //   sliderRestPress: the ramp pushes the cover INTO its rim. Wear eats the
+  //   press, not the position, and the bump touches a tooth for about 2 mm
+  //   of each stroke.
+  // - The lips run the window's whole height on both sides; they broke for
+  //   the leaves before, and stowed the cover was held by 3.9 mm of lip a
+  //   side. One short gap a side, where the stowed cover's bump sits, lets
+  //   the bump past the lip when the cover is pressed in from the front;
+  //   the bevels snap under the rest of the lip as they did before.
+  sliderArmT: 1.4,           // the arm's width in X, from the cover's edge in: about 3.4 N/mm at the bump in PETG (E 2.0 GPa), a 4.3 N click under the thumb (1.5 was 5.3; the ridges that pressed the flanks were "too tight")
+  sliderArmSlit: 1.0,        // the slit inside the arm: room for the 0.5 press with margin, and the 0.7 fold under a lip when the cover is pressed in; 0.6 prints as a gap, the fold needs more
+  sliderArmRoot: 14.0,       // the slit's top above the cover's bottom edge: the arm runs from the bottom edge to here, the top 2.5 is rigid
+  sliderBumpY: 4.0,          // the bump's centre above the cover's bottom edge, on the straight flank above the R3 corner
+  sliderBumpR: 1.0,          // in plan, a round on the arm's flank
+  sliderBumpOut: 0.8,        // past the cover's edge line: 0.5 past the wall's face, the press at a tooth's crest
+  sliderBumpTop: 1.6,        // above the cover's back; its top 0.5 chamfered 45 degrees in, its foot chamfered 45 degrees to stand inside the wall's face up to the channel's floor
+  sliderChannelD: 0.75,      // into the side wall past its face: 0.25 clear of the bump's tip
+  sliderChannelFloor: 0.2,   // the channel's floor one layer above the tray's: on the tray's own plane the cuts left non-manifold edges
+  sliderChannelTop: 2.0,     // above the floor at the wall's face, where the lip's underside starts; the ceiling falls 45 degrees into the wall (prints without support)
+  sliderToothDeg: 35,        // each tooth's ramps off the travel: about 2.7 N a side over the crest with friction 0.3, 5.5 N under the thumb
+  sliderToothLand: 1.0,      // the crest: the wall's own face
+  sliderRestPress: 0.2,      // the arm's deflection at rest on the far ramp: 0.5 N a side into the rim, about ten times the cover's weight at 1 g
+  sliderGrooveMouth: 0.3,    // 45 degree chamfer on the rail groove's two edges at the bed: an elephant foot there closed the 0.1 a side
   coverLip: [20.0, 2.5],     // width x thickness: a thumb needs 16; at 30 the open slot under the eyes read as a mouth. 1.5 thick snapped under the shove a stuck cover needed (2026-11-22): at 0.08 layers the lip's layers are its weak axis
   coverLipLeft: 33.4,        // the lip centred on the bar (86.8 - 20) / 2: the thumb pushes on the cover's axis, so it cannot yaw it (at 45 the push was 11.6 off-axis and the 2.0 cover went sideways and stuck); the wordmark ends at 33
   coverLipRoot: 0.8,         // 45 degree root on the lip's three free sides: the lip takes a face-down drop and the thumb's shove (0.4 was part of the snap)
