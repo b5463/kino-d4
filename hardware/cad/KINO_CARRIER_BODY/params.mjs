@@ -285,17 +285,26 @@ export const P = Object.freeze({
   //   the bevels snap under the rest of the lip as they did before.
   sliderArmT: 1.4,           // the arm's width in X, from the cover's edge in: about 3.4 N/mm at the bump in PETG (E 2.0 GPa), a 4.3 N click under the thumb (1.5 was 5.3; the ridges that pressed the flanks were "too tight")
   sliderArmSlit: 1.0,        // the slit inside the arm: room for the 0.5 press with margin, and the 0.7 fold under a lip when the cover is pressed in; 0.6 prints as a gap, the fold needs more
-  sliderArmRoot: 14.0,       // the slit's top above the cover's bottom edge: the arm runs from the bottom edge to here, the top 2.5 is rigid
+  sliderArmRoot: 14.3,       // the keyhole's top above the cover's bottom edge: the arm runs from the bottom edge to the keyhole's tangent, 13.5 up; the top 2.2 is rigid
   sliderBumpY: 4.0,          // the bump's centre above the cover's bottom edge, on the straight flank above the R3 corner
   sliderBumpR: 1.0,          // in plan, a round on the arm's flank
   sliderBumpOut: 0.8,        // past the cover's edge line: 0.5 past the wall's face, the press at a tooth's crest
   sliderBumpTop: 1.6,        // above the cover's back; its top 0.5 chamfered 45 degrees in, its foot chamfered 45 degrees to stand inside the wall's face up to the channel's floor
-  sliderChannelD: 0.75,      // into the side wall past its face: 0.25 clear of the bump's tip
+  sliderChannelD: 0.9,       // into the side wall past its face: 0.4 clear of the bump's tip, room for lint and grit to sit out of the bump's way (0.75 left 0.25)
   sliderChannelFloor: 0.2,   // the channel's floor one layer above the tray's: on the tray's own plane the cuts left non-manifold edges
   sliderChannelTop: 2.0,     // above the floor at the wall's face, where the lip's underside starts; the ceiling falls 45 degrees into the wall (prints without support)
-  sliderToothDeg: 35,        // each tooth's ramps off the travel: about 2.7 N a side over the crest with friction 0.3, 5.5 N under the thumb
+  sliderToothDeg: 35,        // the teeth's ramps off the travel, but for the closed stop's far ramp: about 2.7 N a side over a crest with friction 0.3
   sliderToothLand: 1.0,      // the crest: the wall's own face
   sliderRestPress: 0.25,     // the arm's deflection at rest on the far ramp: 0.6 N a side into the rim. 0.25, not 0.2: the rail's 0.1 of play and a tenth of print error each way still leave both sides pressing
+  // The closed stop holds harder than the stowed one: a pocket's lining
+  // drags the thumb lip toward open as the camera comes out. The upper
+  // tooth's far ramp, the one the closed cover rests on and climbs to
+  // leave, is steeper; the ramp it climbs to close stays at sliderToothDeg.
+  sliderClosedLeaveDeg: 40,  // about 20 % more to open than to close (tan 57 / tan 52)
+  sliderClosedRestPress: 0.2, // on the 40 degree ramp 0.25 would rest on the land's corner; 0.2 keeps the contact on the ramp
+  sliderArmKeyR: 0.8,        // the slit ends in a keyhole tangent to the arm's inner edge: a 0.8 round at the arm's root, not the slit's 0.5, against fatigue at the one place every click bends
+  coverLipChamfer: 0.8,      // 45 degrees off the thumb lip's top edge: a pocket's lining rides over it instead of hooking it; 0.7 of square face stays above the face for the thumb
+  lipLeadIn: 0.6,            // 45 degree lead-in under each lip's end at the loading gap, so a cover riding its 0.2 of play slides under it and does not catch
   sliderGrooveMouth: 0.3,    // 45 degree chamfer on the rail groove's two edges at the bed: an elephant foot there closed the 0.1 a side
   // Loading. Above sliderLoadStiff from its bottom edge an arm cannot fold
   // 0.7 under a lip (2.5 % strain), and above the slit nothing folds. The

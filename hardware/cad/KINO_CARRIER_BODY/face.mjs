@@ -64,22 +64,32 @@ export const FACE = (() => {
   // rim: closed, the bump sits above the upper tooth; stowed, below the
   // lower one. restOff is the bump centre's distance past the tooth's land
   // there (the circle tangent to the ramp, the arm deflected restPress).
-  const rB = P.sliderBumpR, th = (P.sliderToothDeg * Math.PI) / 180;
+  const rB = P.sliderBumpR, deg = (x) => (x * Math.PI) / 180;
   const uc = P.sliderClr, ub = P.sliderBumpOut - rB;
-  const restOff = (rB + (ub - uc - P.sliderRestPress) * Math.cos(th)) / Math.sin(th);   // the centre's distance from the ramp's line is R - press x cos
-  const ramp = P.sliderChannelD / Math.tan(th);       // a ramp's length along the travel, the channel's depth deep
+  // the bump centre's distance past the land at rest on a ramp of angle a
+  // with press d: the centre's distance from the ramp's line is R - d cos a
+  const restOffFor = (a, d) => (rB + (ub - uc - d) * Math.cos(deg(a))) / Math.sin(deg(a));
+  const rampFor = (a) => P.sliderChannelD / Math.tan(deg(a));   // a ramp's run along the travel, the channel's depth deep
   const bumpClosedY = closedY0 + P.sliderBumpY;
   const bumpOpenY = openY0 + P.sliderBumpY;
-  const upperTop = bumpClosedY - restOff, lowerBot = bumpOpenY + restOff;
+  // Each tooth: its lower ramp (degLo) and upper ramp (degHi); the ramp the
+  // stopped cover rests on and climbs to leave (restDeg), with its press.
+  const mk = (t) => Object.freeze({ ...t, rampLo: rampFor(t.degLo), rampHi: rampFor(t.degHi), base: [t.land[0] - rampFor(t.degLo), t.land[1] + rampFor(t.degHi)] });
+  const upRest = restOffFor(P.sliderClosedLeaveDeg, P.sliderClosedRestPress), loRest = restOffFor(P.sliderToothDeg, P.sliderRestPress);
+  const upperTop = bumpClosedY - upRest, lowerBot = bumpOpenY + loRest;
   const teeth = [
-    { name: "upper", land: [upperTop - P.sliderToothLand, upperTop] },
-    { name: "lower", land: [lowerBot, lowerBot + P.sliderToothLand] },
-  ].map((t) => Object.freeze({ ...t, base: [t.land[0] - ramp, t.land[1] + ramp] }));
-  const channel = [bumpOpenY - rB - 0.4, bumpClosedY + rB + 0.4];
+    mk({ name: "upper", land: [upperTop - P.sliderToothLand, upperTop], degLo: P.sliderToothDeg, degHi: P.sliderClosedLeaveDeg, restDeg: P.sliderClosedLeaveDeg, press: P.sliderClosedRestPress, restOff: upRest }),
+    mk({ name: "lower", land: [lowerBot, lowerBot + P.sliderToothLand], degLo: P.sliderToothDeg, degHi: P.sliderToothDeg, restDeg: P.sliderToothDeg, press: P.sliderRestPress, restOff: loRest }),
+  ];
+  // Down to the bottom rim, where grit the bump pushes leaves into the tray's
+  // corner, and 4 mm past the closed bump's reach at the top: a pocket for
+  // grit out of the bump's way (to the top rim it cut the ring round the
+  // face's insert at (4, 36)).
+  const channel = [panel[1] + 0.3, bumpClosedY + rB + 4.0];
   const loadY0 = openY1 + 0.2 - P.sliderLoadStiff;                // the loading position: the cover's bottom edge
   const lipGap = [loadY0 + P.sliderBumpY - rB - 0.3, loadY0 + P.sliderH + 0.3];   // its bump's way in and its stiff part, one gap
   return Object.freeze({ back, front, trackTop, floorZ, horizonD, panel, horizon, outline, outlineR, closedY0, closedY1, openY0, openY1, travel,
-    tanF, boreR, coneR, outerR, bevel, lipZ, lensY, insertHoleDepth, railX, railOff, bumpClosedY, bumpOpenY, restOff, ramp, teeth, channel, loadY0, lipGap });
+    tanF, boreR, coneR, outerR, bevel, lipZ, lensY, insertHoleDepth, railX, railOff, bumpClosedY, bumpOpenY, teeth, channel, loadY0, lipGap });
 })();
 
 const roundedRectZ = (x, y, z, w, d, h, r) => rbox(x, y, z, x + w, y + d, z + h, r);
@@ -187,9 +197,11 @@ export function buildFace({ armT = P.sliderArmT } = {}) {
     // near-equal copies of it left slivers. The ceiling's line runs on 0.1
     // into the window instead.
     let channel = prismY(c0, c1 - c0, [X(-0.1), cz], [X(cd), cz], [X(cd), F.floorZ + ct - cd], [X(-0.1), F.floorZ + ct + 0.1]);
-    const g = F.ramp / cd;                                              // the ramp's run along Y per unit of depth
-    const teeth = F.teeth.map(({ land: [y0, y1] }) => plan([[X(-0.2), y0 + 0.2 * g], [X(-0.2), y1 - 0.2 * g], [X(cd + 0.2), y1 + (cd + 0.2) * g], [X(cd + 0.2), y0 - (cd + 0.2) * g]])
-      .extrude(ct + 2).translate([0, 0, F.floorZ - 1]));
+    const teeth = F.teeth.map(({ land: [y0, y1], rampLo, rampHi }) => {
+      const gl = rampLo / cd, gh = rampHi / cd;                          // each ramp's run along Y per unit of depth
+      return plan([[X(-0.2), y0 + 0.2 * gl], [X(-0.2), y1 - 0.2 * gh], [X(cd + 0.2), y1 + (cd + 0.2) * gh], [X(cd + 0.2), y0 - (cd + 0.2) * gl]])
+      .extrude(ct + 2).translate([0, 0, F.floorZ - 1]);
+    });
     channel = channel.subtract(fuse(teeth));
     cuts.push(channel);
   }
@@ -197,9 +209,16 @@ export function buildFace({ armT = P.sliderArmT } = {}) {
   // gap a side at the loading position (FACE.lipGap),
   // added AFTER the cuts.
   const adds = [];
+  // Each run's end at the gap has a 45 degree lead-in under it, so a cover
+  // riding its play slides under the lip and does not catch its end.
+  const li = P.lipLeadIn, zU = lipTop - Math.max(l0, l1);
+  const prismXw = (x0, x1, ...ptsYZ) => Manifold.hull(ptsYZ.map(([y, z]) => cube(x0, y - 0.01, z - 0.01, x1 - x0, 0.02, 0.02)));
+  const leadIn = (yEnd, dir) => prismXw(p0x - 1, p1x + 1, [yEnd + 0.02 * dir, zU - 0.05], [yEnd - (li + 0.05) * dir, zU - 0.05], [yEnd + 0.02 * dir, zU + li + 0.05]);
   for (const [y0, y1] of [[p0y + 0.2, F.lipGap[0]], [F.lipGap[1], p1y - 0.2]]) {
-    adds.push(prismY(y0, y1 - y0, [p0x - 0.01, lipTop], [p0x + b0, lipTop], [p0x - 0.01, lipTop - l0]));
-    adds.push(prismY(y0, y1 - y0, [p1x + 0.01, lipTop], [p1x - b1, lipTop], [p1x + 0.01, lipTop - l1]));
+    const run = fuse([prismY(y0, y1 - y0, [p0x - 0.01, lipTop], [p0x + b0, lipTop], [p0x - 0.01, lipTop - l0]),
+      prismY(y0, y1 - y0, [p1x + 0.01, lipTop], [p1x - b1, lipTop], [p1x + 0.01, lipTop - l1])]);
+    const end = y1 === F.lipGap[0] ? leadIn(y1, 1) : leadIn(y0, -1);
+    adds.push(run.subtract(end));
   }
   // The rail: on the floor at the window's centre, the window's full
   // height, joined to both rims. Up in print.
@@ -232,7 +251,8 @@ export function buildFace({ armT = P.sliderArmT } = {}) {
   const lr = P.coverLipRoot, lipX = sx0 + P.coverLipLeft, lipY = sy1 - lh;
   const lip = Manifold.hull([
     roundedRectZ(lipX - lr, lipY - lr, sFront - 0.4, lw + 2 * lr, lh + lr, 0.41, 0.6 + lr),
-    roundedRectZ(lipX, lipY, sFront + lr, lw, lh, lipProud - lr, 0.6),
+    roundedRectZ(lipX, lipY, sFront + lr, lw, lh, lipProud - lr - P.coverLipChamfer, 0.6),
+    roundedRectZ(lipX, lipY, sFront + lipProud - 0.01, lw, lh - P.coverLipChamfer, 0.01, 0.6),   // the top edge toward the cover's top chamfered: a lining rides over it
   ]);
   // The brand's wordmark, engraved in the bar's top (one material per part:
   // a raised mark in a second colour would be PLA on PETG, which does not
@@ -254,13 +274,14 @@ export function buildFace({ armT = P.sliderArmT } = {}) {
     edgeCuts.push(prismY(sy0 - 1, sy1 - sy0 + 2, [gx - gw / 2 - m - 0.01, sBack - 0.01], [gx + gw / 2 + m + 0.01, sBack - 0.01], [gx + gw / 2, sBack + m], [gx - gw / 2, sBack + m]));
   }
   // The spring arms: at each end of the bar, sliderArmT wide, cut free by a
-  // slit from the bottom edge up to sliderArmRoot, its top end round. They
+  // slit from the bottom edge, ending in a keyhole at sliderArmRoot. They
   // flex in X, in the print plane: PETG along its layers.
   const at = armT, sw = P.sliderArmSlit, ar = P.sliderArmRoot;
   for (const [edge, dir] of [[sx0, 1], [sx1, -1]]) {
     const xa = edge + dir * at, xb = edge + dir * (at + sw), xm = (xa + xb) / 2;
-    edgeCuts.push(box(Math.min(xa, xb), sy0 - 1, sBack - 1, Math.max(xa, xb), sy0 + ar - sw / 2, sFront + 1));
-    edgeCuts.push(cylZ(xm, sy0 + ar - sw / 2, sBack - 1, sw / 2, sFront - sBack + 2, 32));
+    const rk = P.sliderArmKeyR;                                         // the keyhole: tangent to the arm's inner edge, its top at sliderArmRoot
+    edgeCuts.push(box(Math.min(xa, xb), sy0 - 1, sBack - 1, Math.max(xa, xb), sy0 + ar - rk, sFront + 1));
+    edgeCuts.push(cylZ(xa + dir * rk, sy0 + ar - rk, sBack - 1, rk, sFront - sBack + 2, 48));
   }
   // One bump on each arm's flank, sliderBumpOut past the edge line: a round
   // in plan, its bed edge chamfered 45 degrees, its top 0.5

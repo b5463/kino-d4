@@ -639,6 +639,25 @@ owner's printer. Two parts:
   with B01 on P3; the one that clicks right sets `sliderArmT`. Gates for
   the loading position, the hold at both stops, T08 and T09 running as
   B01 and clicking inside PETG's limit. 262 gates.
+- **The real-world cases, in the design** (twenty-ninth cut, the same
+  day; the owner: the face stays PLA for now, the shell ASA and the blue
+  parts PETG later, "make sure it works by going through the edgecase and
+  not just resolve it all using shortcuts like changing the filament
+  type"). A pocket: the thumb lip's top edge chamfered 0.8
+  (`coverLipChamfer`), and the closed stop the firmer: the ramp the
+  closed cover rests on and climbs to leave 40 degrees
+  (`sliderClosedLeaveDeg`, pressed 0.2, `sliderClosedRestPress`), about
+  5.1 N to open against 4.3 to close. Grit: the channels 0.9 deep
+  (`sliderChannelD`, 0.4 behind the bump), open to the tray's corner at
+  the bottom and running 4 mm past the bump at the top; the lip runs'
+  ends at the loading gap with a 0.6 lead-in (`lipLeadIn`). Fatigue: the
+  slit ends in an R0.8 keyhole tangent to the arm (`sliderArmKeyR`,
+  `sliderArmRoot` 14.3). Gates: the press under 0.1 of print error and
+  the rail's play; heat and wear failing safe (the rest press lost and
+  0.1 off each crest, it still clicks, stops and holds; about 24 MPa of
+  standing contact on the PLA); the face in PETG (friction 0.5: about
+  7.8 N and 6.2, nothing self-locks); the lip's chamfer. Not designed out:
+  PLA softens past about 60 C as a material. 266 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator

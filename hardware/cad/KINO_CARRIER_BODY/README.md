@@ -404,29 +404,69 @@ the window's rims, and the cover reaches them: closed, its top edge lies
 on the top rim; stowed, its bottom edge lies on the bottom rim (gates
 move it 0.05 past each and find it in the rim). The springs are in the
 cover, in PETG: an arm 1.4 wide at each end of the bar, cut free by a 1.0
-slit from the bottom edge up 14.0 with a round end, flexing in X in the
-print plane. Each arm carries one bump, R1.0 in plan, 0.8 past the edge
-line, 4.0 above the bottom edge on the straight flank, 1.6 tall with its
-foot and its top chamfered 45 degrees. The bump runs in a channel in the
-side wall, 0.75 deep past the wall's face, from 0.2 over the tray's floor
+slit from the bottom edge that ends in an R0.8 keyhole tangent to the
+arm (the arm's root, 13.5 up, is a round and not a slit's end: every
+click bends it there), flexing in X in the print plane. Each arm carries
+one bump, R1.0 in plan, 0.8 past the edge line, 4.0 above the bottom edge
+on the straight flank, 1.6 tall with its foot and its top chamfered 45
+degrees. The bump runs in a channel in the side wall, 0.9 deep past the
+wall's face (0.4 clear of the bump's tip), from 0.2 over the tray's floor
 up to the lip's underside, its ceiling falling 45 degrees into the wall
-(no support). Two teeth per wall interrupt the channel: a 1.0 land at the
-wall's own face and a 35 degree ramp at each end. The bump presses 0.5
-over a land, and at each stop it rests on its tooth's far ramp still
-pressed 0.25 (0.2 left a side with no press for a tenth of print error
-and the rail's play), so the ramp pushes the cover into the rim: closed, above
-the upper tooth; stowed, below the lower one. About 3.4 N/mm at the bump,
-1.2 % strain over a crest, a 4.3 N click under the thumb, and 1.2 N into
-the rim at rest, about 22 g on a 5.4 g cover (gates). The click rests on
+(no support), from the bottom rim, where grit the bump pushes leaves into
+the tray's corner, to 4 mm past the closed bump's reach, a pocket for grit
+out of its way. Two teeth per wall interrupt the channel: a 1.0 land at
+the wall's own face and a ramp at each end. The bump presses 0.5 over a
+land, and at each stop it rests on its tooth's far ramp still pressed, so
+the ramp pushes the cover into the rim: closed, above the upper tooth;
+stowed, below the lower one. The closed stop is the firmer, because a
+pocket's lining drags the thumb lip toward open as the camera comes out:
+the ramp the closed cover rests on and climbs to leave is 40 degrees
+(pressed 0.2 at rest), every other ramp 35 (pressed 0.25 at the stowed
+stop). About 3.4 N/mm at the bump, 1.2 % strain over a crest, about 5.1 N
+under the thumb to open from closed and 4.3 N to close, 1.1 to 1.2 N into
+each rim at rest, about 21 g on a 5.4 g cover (gates). The click rests on
 the stiffness of printed PETG, the number least known, so T08 (1.25 mm
-arms, about 3 N) and T09 (1.55, about 5.8 N) print beside B01 on P3 and
-the one that feels right sets `sliderArmT`. Between the clicks
-the cover touches nothing: a gate sweeps it in 0.25 steps and finds a
-tooth under each bump only in the first and last 3 mm of the travel,
-and nothing mid-travel with the cover 0.09 either way on the rail. Wear
-on a tooth takes press, not position: the rim still stops the cover.
+arms) and T09 (1.55) print beside B01 on P3 and the one that feels right
+sets `sliderArmT`. Between the clicks the cover touches nothing: a gate
+sweeps it in 0.25 steps and finds a tooth under each bump only in the
+first and last 3 mm of the travel, and nothing mid-travel with the cover
+0.09 either way on the rail. Wear on a tooth takes press, not position:
+the rim still stops the cover.
 `previews/A02-KINO_CARRIER_FACE_DETENT.png` is the left wall and the
 cover's end in plan, closed and stowed, and in section through the bump.
+
+The thumb lip's top edge is chamfered 0.8 at 45 degrees, so a lining
+dragged across the face rides over it instead of hooking it; 0.7 of
+square face stays above the face's front for the thumb. Each lip run's
+end at the loading gap has a 0.6 lead-in under it, so a cover riding its
+0.2 of play slides under the lip and does not catch the end.
+
+Real-world cases, each gated (the materials stay as they are: the face
+and the button PLA now; later the shell ASA and the blue parts PETG):
+
+- A pocket: the lip rides a lining, and the closed stop takes about 20 %
+  more to leave than to enter.
+- Print error and the rail's play: 0.1 of each a side moves a stop's
+  press 0.2 on one side; the pair keeps at least 0.2 between them, the
+  press over a crest stays inside the slit at 1.6 % strain, and the flank
+  stays 0.1 off the wall.
+- Heat on the PLA face, and wear: the teeth carry about 24 MPa of
+  standing contact at rest, the only standing load on the face. If a hot
+  day or wear takes the rest press and 0.1 off each crest, the cover
+  still clicks (about 4.1 N to open, 3.4 to close), the rims still stop
+  it and the lips still hold it: it fails to a slightly looser hold, not
+  to a cover that falls.
+- Grit and lint: 0.4 behind the bump in the channel, the channel open to
+  the tray's corner at the bottom and a pocket past the bump at the top;
+  the rail's groove open at both ends.
+- Fatigue: the arm's root is an R0.8 keyhole, 1.2 % strain a click.
+- The face in PETG later: PETG on PETG grips harder (friction about
+  0.5); the clicks rise to about 7.8 N to open and 6.2 to close with
+  B01's arms and nothing self-locks (the steepest ramp plus friction 67
+  degrees). Reprint P3 against the PETG face and choose the arms again.
+- Not designed out: a hot car softens PLA as a material; the face may
+  warp past 60 C whatever the geometry, and the track with it. The
+  manual says not to leave it in the sun until the face is PETG.
 
 What this replaced, and why: the twenty-eighth cut's springs were PLA
 leaves in the face's walls whose bumps (R0.6, 0.25 of reach) rubbed the
@@ -640,7 +680,7 @@ making-of page (`docs/MAKING_OF.md`).
 
 ## Gates
 
-`node generate-carrier-body.mjs` writes `.candidate/` and runs 262 gates,
+`node generate-carrier-body.mjs` writes `.candidate/` and runs 266 gates,
 throwing on the first failure (`KINO_SOFT_GATES=1` collects them): the depth
 chain re-added over the lens band, the lens front on the pocket floor, the
 module PCB with the plate to land on, the battery bay tall enough for the cell
@@ -738,7 +778,7 @@ reported. Pass criteria, in numbers:
 | T01 + T02 on one plate (done) | the printer's shrink (0.2 %); which pocket width holds the head (8.1) | callipers; one camera module seated on its XIAO | the bar measures 99.8 to 100.0 with the compensation on (99.9); on the gauge, the head pushes into one of the 7.8, 8.1 and 8.4 pockets with a thumb and does not fall out inverted, the lens centred in the bore by eye (8.1, "fits perfectly") | `camBody` + `camBodySlack` = the pocket that held (7.9 + 0.2); `lensBoreD` (bore) |
 | T03 + T04, reprinted with the 6.0 walls (T03 now 26 x 47, up past the station at (4, 36)) | the ledge under the carrier's corner (done on the first piece: flat), the face's screw station in the plate, the strap tunnel and slots, the frame's insert station in a wall end | the carrier, two M2 inserts, an M2 x 6 and an M2 x 4, the iron, 0.3 m of 2.5 mm cord, 10 kg, 5 kg | the carrier's corner drops into T03 and sits flat on the ledge with no rock (done); an insert set in T04's wall end sits flush with no bulge on the outer wall or in the cavity, takes the M2 x 4 ten times, and holds 50 N pulled on the screw; 100 N on T04's cord, no tear at the 1.2 mm skin; T06 screwed onto T03 through the counterbore with the M2 x 6 seats flat and the head sits flush in the counterbore | `insertHoleD`, `insertPullN`, `strapSlot`, `strapTunnelSkin` (`ledgeW`, `carrierClear` confirmed) |
 | T06 (blue PLA), with T03 | the insert in the face's back under the horizon (4.2 there), the window's left wall with its channel and lower tooth | one M2 insert, the iron at 200 C, the M2 x 6 | the insert set flush with no mark on the front and no bulge at the window's wall; the channel prints clean under its 45 degree ceiling, the tooth's land is flush with the wall and its ramps are crisp | `insertHoleD`, `sliderChannelD` |
-| T07 (blue PLA) with B01, T08 and T09 (black PETG, 0.08, on P3), fifth piece | the slide: the whole window band with the rail down it, both walls with their channels and teeth, the lips with their loading gaps, the two rims, the cells; the 3.0 cover with its groove, its two spring arms and bumps, and the 2.5 lip | the printed cover; any flat plate held behind the coupon for the shell's plate | at the loading position (its top edge level with the top of the lip gap) the cover presses in from the front, groove on the rail, without force and without a crack; then each of B01, T08 and T09 in turn: it clicks closed and clicks open under a thumb, about 4 N, and runs free and straight between the clicks; closed, the top edge is hard on the top rim with no light between and no rattle when shaken; stowed, the bottom edge is hard on the bottom rim, and shaken hard it stays in; 200 cycles and both stops still have no play, no PLA dust on the bumps. The fourth piece (the rail, PLA leaves in the face, 2026-11-23 and 24): ran straight, but the PLA wore, it got "looser and looser", rattled, never fully closed even new, and shaken hard stowed the cover flew off. Say which of the three clicks right; if a stop rattles, which stop and which side | `sliderArmT` (1.3 softer, 1.5 stiffer), `sliderRestPress` (0.3 holds harder into the rims), `sliderToothDeg` (30 softer click, 40 harder), `sliderGroove` (1.9 looser, 1.7 tighter on the rail) |
+| T07 (blue PLA) with B01, T08 and T09 (black PETG, 0.08, on P3), fifth piece | the slide: the whole window band with the rail down it, both walls with their channels and teeth, the lips with their loading gaps, the two rims, the cells; the 3.0 cover with its groove, its two spring arms and bumps, and the 2.5 lip | the printed cover; any flat plate held behind the coupon for the shell's plate | at the loading position (its top edge level with the top of the lip gap) the cover presses in from the front, groove on the rail, without force and without a crack; then each of B01, T08 and T09 in turn: it clicks closed and clicks open under a thumb, about 4 N, and runs free and straight between the clicks; closed, the top edge is hard on the top rim with no light between and no rattle when shaken; stowed, the bottom edge is hard on the bottom rim, and shaken hard it stays in; 200 cycles and both stops still have no play, no PLA dust on the bumps; in a jeans pocket, in and out ten times, the closed cover does not open. The fourth piece (the rail, PLA leaves in the face, 2026-11-23 and 24): ran straight, but the PLA wore, it got "looser and looser", rattled, never fully closed even new, and shaken hard stowed the cover flew off. Say which of the three clicks right; if a stop rattles, which stop and which side | `sliderArmT` (1.3 softer, 1.5 stiffer), `sliderRestPress` (0.3 holds harder into the rims), `sliderToothDeg` (30 softer click, 40 harder), `sliderGroove` (1.9 looser, 1.7 tighter on the rail) |
 | the real B02 (blue PLA) then T05, third piece (done, 2026-11-21: "the button mechanism now works perfectly") | the slot and its ribs, the step, the chamber, the pocket, the leg channels, the mouth | the printed plunger, the switch with its two leads; a thumb over the mouth and the slot's front for the face | the slicer preview shows the four 0.2 ribs; deck up, the switch goes in through the mouth, legs in the channels, slides back and drops into its pocket; deck down, the plunger goes in with its cap in the slot and slides back over the switch to the round end, and cannot leave through the deck; deck up, the cap stands 2.0 proud, clicks within 0.6 of travel, returns on the switch, and runs 200 times without tick; shaken with a thumb over the mouth, nothing moves. If the plunger will not pass over the switch, or the cap does not click, report the switch's measured height, base to actuator top | `shutterSwitchBody[2]` (the switch's whole height), `shutterSwitchFree`, `shutterSwitchPocket` if the switch does not drop in or climbs out, `shutterGuideRib` [0.4, 0.8] if the ribs vanish, `shutterFlangeBoreClear` 0.7 in reserve |
 | the real A02 (blue PLA) and B01 (black PETG), fourth | the window, its lips, the teeth and the cover's arms, the slide's feel | six inserts, the iron; the shell's plate or any flat plate to close the track | the cover clicks closed and clicks open with a thumb, about 4 N; closed, it does not drop at 90 degrees of tilt or when shaken, and does not lift past the lips by hand; open, it stays open inverted; 200 cycles without the arms taking a set (both stops still have no play). If they pass they are the parts | `sliderClr`, `sliderArmT`, `sliderRestPress` |
 | A03 at 0.10, then A01, last | | | | |
@@ -906,7 +946,7 @@ Each one is a number in `params.mjs` and nothing else moves when it changes.
 - `camBody` 7.9 (done, 2026-11-21): the gauge's 8.1 pocket holds the head; the head's own calliper size is still unrecorded.
 - `insertHoleD` 3.0 and `insertPullN` 50: the kit's inserts in PLA (T06) and PETG (T04); flush, no bulge, 50 N on a pull.
 - `sliderArmT` 1.4: the click, set by whichever of B01 (1.4), T08 (1.25) and T09 (1.55) feels right on the fifth T07.
-- `sliderGroove` [1.8, 1.2] on the 1.6 x 1.0 rail, `sliderToothDeg` 35 and `sliderRestPress` 0.25: the run and the hold at the stops on the fifth T07; 1.9 looser on the rail; 30 degrees a softer click, 40 harder; 0.3 of rest press holds harder into the rims.
+- `sliderGroove` [1.8, 1.2] on the 1.6 x 1.0 rail, `sliderToothDeg` 35, `sliderClosedLeaveDeg` 40 and the rest presses 0.25 and 0.2: the run and the hold at the stops on the fifth T07; 1.9 looser on the rail; the closed stop's 40 to 45 if it still opens in a pocket.
 - `ledgeW` 2.0 with `carrierClear` 0.5 (done, 2026-11-21): the carrier's corner sits flat on T03's ledge.
 - `shutterSwitchBody[2]` 4.3 and `shutterSwitchFree` 0.3 (done, 2026-11-21): the third pod coupon with the real plunger and switch "works perfectly".
 - The customer review's two items the carrier fixes, not the body: the USB-C and the three status lights are on the bottom edge because the carrier puts them there, so the camera charges lying on its back; a later carrier can move them.
