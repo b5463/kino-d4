@@ -65,21 +65,23 @@ export const FACE = (() => {
   // lower one. restOff is the bump centre's distance past the tooth's land
   // there (the circle tangent to the ramp, the arm deflected restPress).
   const rB = P.sliderBumpR, deg = (x) => (x * Math.PI) / 180;
-  const uc = P.sliderClr, ub = P.sliderBumpOut - rB;
+  const uc = P.sliderClr, rLo = P.sliderBumpRLo;
   // the bump centre's distance past the land at rest on a ramp of angle a
-  // with press d: the centre's distance from the ramp's line is R - d cos a
-  const restOffFor = (a, d) => (rB + (ub - uc - d) * Math.cos(deg(a))) / Math.sin(deg(a));
+  // with press d, for the side of radius r that rests there: the centre's
+  // distance from the ramp's line is r - d cos a
+  const restOffFor = (a, d, r = rB) => (r + (P.sliderBumpOut - r - uc - d) * Math.cos(deg(a))) / Math.sin(deg(a));
   const rampFor = (a) => P.sliderChannelD / Math.tan(deg(a));   // a ramp's run along the travel, the channel's depth deep
   const bumpClosedY = closedY0 + P.sliderBumpY;
   const bumpOpenY = openY0 + P.sliderBumpY;
   // Each tooth: its lower ramp (degLo) and upper ramp (degHi); the ramp the
   // stopped cover rests on and climbs to leave (restDeg), with its press.
   const mk = (t) => Object.freeze({ ...t, rampLo: rampFor(t.degLo), rampHi: rampFor(t.degHi), base: [t.land[0] - rampFor(t.degLo), t.land[1] + rampFor(t.degHi)] });
-  const upRest = restOffFor(P.sliderClosedLeaveDeg, P.sliderClosedRestPress), loRest = restOffFor(P.sliderToothDeg, P.sliderRestPress);
+  // closed, the bump's lower (tight) side rests on the upper tooth; stowed, its upper side on the lower tooth
+  const upRest = restOffFor(P.sliderClosedLeaveDeg, P.sliderClosedRestPress, rLo), loRest = restOffFor(P.sliderToothDeg, P.sliderRestPress, rB);
   const upperTop = bumpClosedY - upRest, lowerBot = bumpOpenY + loRest;
   const teeth = [
-    mk({ name: "upper", land: [upperTop - P.sliderToothLand, upperTop], degLo: P.sliderToothDeg, degHi: P.sliderClosedLeaveDeg, restDeg: P.sliderClosedLeaveDeg, press: P.sliderClosedRestPress, restOff: upRest }),
-    mk({ name: "lower", land: [lowerBot, lowerBot + P.sliderToothLand], degLo: P.sliderToothDeg, degHi: P.sliderToothDeg, restDeg: P.sliderToothDeg, press: P.sliderRestPress, restOff: loRest }),
+    mk({ name: "upper", land: [upperTop - P.sliderToothLand, upperTop], degLo: P.sliderToothDeg, degHi: P.sliderClosedLeaveDeg, restDeg: P.sliderClosedLeaveDeg, press: P.sliderClosedRestPress, restOff: upRest, restR: rLo }),
+    mk({ name: "lower", land: [lowerBot, lowerBot + P.sliderToothLand], degLo: P.sliderToothDeg, degHi: P.sliderToothDeg, restDeg: P.sliderToothDeg, press: P.sliderRestPress, restOff: loRest, restR: rB }),
   ];
   // Down to the bottom rim, where grit the bump pushes leaves into the tray's
   // corner, and 4 mm past the closed bump's reach at the top: a pocket for
@@ -283,17 +285,27 @@ export function buildFace({ armT = P.sliderArmT } = {}) {
     edgeCuts.push(box(Math.min(xa, xb), sy0 - 1, sBack - 1, Math.max(xa, xb), sy0 + ar - rk, sFront + 1));
     edgeCuts.push(cylZ(xa + dir * rk, sy0 + ar - rk, sBack - 1, rk, sFront - sBack + 2, 48));
   }
-  // One bump on each arm's flank, sliderBumpOut past the edge line: a round
-  // in plan, its bed edge chamfered 45 degrees, its top 0.5
-  // chamfered 45 degrees in under the channel's ceiling.
-  const rB = P.sliderBumpR, bt = P.sliderBumpTop, bc0 = P.sliderBumpOut - P.sliderClr + 0.05 + P.sliderChannelFloor;   // the foot: inside the wall's face up to the channel's floor
+  // One bump on each arm's flank, sliderBumpOut past the edge line. In plan
+  // its lower half is a round of sliderBumpRLo and its upper half a round of
+  // sliderBumpR, both reaching the same tip: the tight side climbs out of
+  // the closed stop, the gentle side climbs into it. Its foot and its top
+  // are chamfered 45 degrees by moving the round inward with height, so the
+  // foot stands inside the wall's face up to the channel's floor. Cut to its
+  // arm, so it never bridges the slit.
+  const rUp = P.sliderBumpR, rLo = P.sliderBumpRLo, bt = P.sliderBumpTop, bc0 = P.sliderBumpOut - P.sliderClr + 0.05 + P.sliderChannelFloor;
   const bumps = [[sx0, 1], [sx1, -1]].map(([edge, dir]) => {
-    const bx = edge + dir * (rB - P.sliderBumpOut), by = sy0 + P.sliderBumpY;
-    return Manifold.hull([
-      cylZ(bx, by, sBack, rB - bc0, 0.01, 48),
-      cylZ(bx, by, sBack + bc0, rB, bt - 0.5 - bc0, 48),
-      cylZ(bx, by, sBack + bt - 0.01, rB - 0.5, 0.01, 48),
-    ]);
+    const by = sy0 + P.sliderBumpY;
+    const half = (r, up) => {
+      const cx = (inset) => edge + dir * (r - P.sliderBumpOut + inset);
+      const disc = Manifold.hull([
+        cylZ(cx(bc0), by, sBack, r, 0.01, 48),
+        cylZ(cx(0), by, sBack + bc0, r, bt - 0.5 - bc0, 48),
+        cylZ(cx(0.5), by, sBack + bt - 0.01, r, 0.01, 48),
+      ]);
+      return disc.intersect(up ? box(edge - 5, by, sBack - 1, edge + 5, by + r + 1, sBack + bt + 1) : box(edge - 5, by - r - 1, sBack - 1, edge + 5, by, sBack + bt + 1));
+    };
+    const armBand = dir > 0 ? box(edge - 2, sy0, sBack - 1, edge + armT - 0.01, sy0 + P.sliderH, sFront) : box(edge - armT + 0.01, sy0, sBack - 1, edge + 2, sy0 + P.sliderH, sFront);
+    return fuse([half(rLo, false), half(rUp, true)]).intersect(armBand);
   });
   const cover = status("cover", fuse([plateC, lip, ...bumps]).subtract(fuse(edgeCuts)).simplify(1e-3));
   return { face, cover, lipProud, markBox: { x: markX, y: markY, w: mw, h: mh } };

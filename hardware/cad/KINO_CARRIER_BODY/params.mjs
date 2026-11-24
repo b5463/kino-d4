@@ -283,11 +283,12 @@ export const P = Object.freeze({
   //   side. One short gap a side, where the stowed cover's bump sits, lets
   //   the bump past the lip when the cover is pressed in from the front;
   //   the bevels snap under the rest of the lip as they did before.
-  sliderArmT: 1.4,           // the arm's width in X, from the cover's edge in: about 3.4 N/mm at the bump in PETG (E 2.0 GPa), a 4.3 N click under the thumb (1.5 was 5.3; the ridges that pressed the flanks were "too tight")
+  sliderArmT: 1.55,         // the arm's width in X, from the cover's edge in: about 4.6 N/mm at the bump in PETG (E 2.0 GPa); about 4.5 N to open from closed and 3 N to close by the tooth-shape model (1.4 gave 3.4 and 2.3; the old formula said 5.1 for 1.4)
   sliderArmSlit: 1.0,        // the slit inside the arm: room for the 0.5 press with margin, and the 0.7 fold under a lip when the cover is pressed in; 0.6 prints as a gap, the fold needs more
   sliderArmRoot: 14.3,       // the keyhole's top above the cover's bottom edge: the arm runs from the bottom edge to the keyhole's tangent, 13.5 up; the top 2.2 is rigid
   sliderBumpY: 4.0,          // the bump's centre above the cover's bottom edge, on the straight flank above the R3 corner
-  sliderBumpR: 1.0,          // in plan, a round on the arm's flank
+  sliderBumpR: 1.3,          // the bump's upper side in plan, and its envelope: the side that climbs into the closed stop and out of the stowed one, gentle
+  sliderBumpRLo: 0.7,        // its lower side: the side that climbs out of the closed stop, tight. With one round bump a steeper ramp only moved the force's peak to a lower press, and opening and closing came out alike (the tooth-shape model, 2026-11-24)
   sliderBumpOut: 0.8,        // past the cover's edge line: 0.5 past the wall's face, the press at a tooth's crest
   sliderBumpTop: 1.6,        // above the cover's back; its top 0.5 chamfered 45 degrees in, its foot chamfered 45 degrees to stand inside the wall's face up to the channel's floor
   sliderChannelD: 0.9,       // into the side wall past its face: 0.4 clear of the bump's tip, room for lint and grit to sit out of the bump's way (0.75 left 0.25)
@@ -295,7 +296,7 @@ export const P = Object.freeze({
   sliderChannelTop: 2.0,     // above the floor at the wall's face, where the lip's underside starts; the ceiling falls 45 degrees into the wall (prints without support)
   sliderToothDeg: 35,        // the teeth's ramps off the travel, but for the closed stop's far ramp: about 2.7 N a side over a crest with friction 0.3
   sliderToothLand: 1.0,      // the crest: the wall's own face
-  sliderRestPress: 0.25,     // the arm's deflection at rest on the far ramp: 0.6 N a side into the rim. 0.25, not 0.2: the rail's 0.1 of play and a tenth of print error each way still leave both sides pressing
+  sliderRestPress: 0.2,      // the arm's deflection at rest at the stowed stop, on the bump's 1.3 side: 0.25 would rest on the land's corner
   // The closed stop holds harder than the stowed one: a pocket's lining
   // drags the thumb lip toward open as the camera comes out. The upper
   // tooth's far ramp, the one the closed cover rests on and climbs to
@@ -306,6 +307,7 @@ export const P = Object.freeze({
   coverLipChamfer: 0.8,      // 45 degrees off the thumb lip's top edge: a pocket's lining rides over it instead of hooking it; 0.7 of square face stays above the face for the thumb
   lipLeadIn: 0.6,            // 45 degree lead-in under each lip's end at the loading gap, so a cover riding its 0.2 of play slides under it and does not catch
   sliderGrooveMouth: 0.3,    // 45 degree chamfer on the rail groove's two edges at the bed: an elephant foot there closed the 0.1 a side
+  nozzleLine: 0.45,          // the extrusion width of the 0.4 mm nozzle every part is printed with: the printability gate measures the slide's small features in lines of it
   // Loading. Above sliderLoadStiff from its bottom edge an arm cannot fold
   // 0.7 under a lip (2.5 % strain), and above the slit nothing folds. The
   // cover goes in at one place on its travel, the loading position, with
@@ -318,16 +320,16 @@ export const P = Object.freeze({
   // Two more covers to print beside B01, one softer and one stiffer in the
   // arms, so one print settles the click (the stiffness of printed PETG is
   // the number least known): T08 and T09, the ID engraved on the top.
-  sliderArmSoft: 1.25,       // T08: about 3.0 N under the thumb
-  sliderArmFirm: 1.55,       // T09: about 5.8 N
+  sliderArmSoft: 1.4,        // T08: about 3.4 N to open, a quarter softer than B01
+  sliderArmFirm: 1.7,        // T09: about 5.9 N to open, a quarter firmer
   coverLip: [20.0, 2.5],     // width x thickness: a thumb needs 16; at 30 the open slot under the eyes read as a mouth. 1.5 thick snapped under the shove a stuck cover needed (2026-11-22): at 0.08 layers the lip's layers are its weak axis
   coverLipLeft: 33.4,        // the lip centred on the bar (86.8 - 20) / 2: the thumb pushes on the cover's axis, so it cannot yaw it (at 45 the push was 11.6 off-axis and the 2.0 cover went sideways and stuck); the wordmark ends at 33
   coverLipRoot: 0.8,         // 45 degree root on the lip's three free sides: the lip takes a face-down drop and the thumb's shove (0.4 was part of the snap)
   coverLipAboveFace: 1.5,    // visible as a slide from across the room, as the XA's and the Minox's sills are; 0.5 was invisible, and a glove or a dry thumb could not lift the cover closed on 1.0    // the lip stands this far proud of the face, closed and stowed, so the thumb pad can push it down and lift it back; its height off the cover is derived
   // The brand on the bar: "odd jobs" engraved in the cover's top, as the
   // concept's nameplate, reading as shadow.
-  markW: 30.0,               // the trace is 30 x 6.8; strokes about 1.3 mm
-  markLeft: 3.0,             // from the bar's left end: the brand left-aligns its plate; 3 so the centred lip clears the last letter
+  markW: 29.4,               // the trace is 30 x 6.8 at 30; strokes about 1.27 mm at 29.4
+  markLeft: 3.3,             // from the bar's left end: the brand left-aligns its plate; 3.3 so the firmest test cover's slit (1.7 + 1.0) leaves 0.6 of wall to the first letter, one line of a 0.4 nozzle, and the centred lip still clears the last letter
   // The signature inside: the symbol and the wordmark engraved on the BACK
   // of the face, where only the person who opens the camera finds them. The
   // work nobody sees, done as well as the work everyone sees.

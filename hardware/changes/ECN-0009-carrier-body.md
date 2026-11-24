@@ -658,6 +658,28 @@ owner's printer. Two parts:
   standing contact on the PLA); the face in PETG (friction 0.5: about
   7.8 N and 6.2, nothing self-locks); the lip's chamfer. Not designed out:
   PLA softens past about 60 C as a material. 266 gates.
+- **The clicks re-based on the tooth's shape, and a 0.4 mm nozzle**
+  (twenty-ninth cut, the same day). An animation of the slide, drawn from
+  slices of the CAD, rolled the bump's outline past the wall's real
+  profile and found the click about half what the gates said: they
+  multiplied the full 0.5 press by the full ramp slope, which never happen
+  together (the bump reaches full press at the crest, where the slope has
+  gone). The generator now carries that model (`SLIDE`): the wall's
+  profile sliced from the face at the bumps' height, the bump's outline,
+  the press along the travel, and the thumb's force from the press, its
+  slope and friction 0.3. With it the closed stop's steeper ramp did
+  nothing (2.7 N to open, 2.7 to close): a steeper ramp with a round bump
+  only moves the peak to a lower press. So the bump is asymmetric: its
+  lower side R0.7 (`sliderBumpRLo`), the side that climbs out of the
+  closed stop, and its upper side R1.3 (`sliderBumpR`), the side that
+  climbs in; built by moving the rounds inward with height for its foot
+  and top, and cut to its arm. Both stops pressed 0.2 (the 1.3 side rests
+  on the corner at 0.25). Arms from the model: B01 1.55, about 4.6 N to
+  open and 3.1 to close; T08 1.4 (3.4 and 2.3); T09 1.7 (6.0 and 4.1).
+  The wordmark 0.3 right and 29.4 wide (`markLeft`, `markW`) so T09's
+  slit leaves it a line of wall. A gate measures the slide's small
+  features in lines of a 0.4 mm nozzle (`nozzleLine` 0.45): every one
+  passes; the rail's 0.1 a side is the fit to watch. 267 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator

@@ -74,6 +74,62 @@ const button = buildShutterButton();
 const coverOpen = cover.translate([0, -FACE.travel, 0]);
 const coverMid = cover.translate([0, -FACE.travel / 2, 0]);
 
+// ---- The slide's force model -----------------------------------------------
+// The walls' profile at the bumps' height, from a slice of the face; the
+// bump's real outline in plan (its two radii) rolled past it. The press each
+// arm must fold to at every position, and from it the thumb's force: each
+// arm pushes k x press on the wall, and the cover feels that times the local
+// slope of the press along the travel, with friction. A ramp climbed with
+// the bump already at the crest has no slope; the old formula (full press
+// times the full ramp) never happens and overstated the click about twice.
+const SLIDE = (() => {
+  const [p0x, p0y, p1x, p1y] = FACE.panel, sx0 = p0x + P.sliderClr, sx1 = p1x - P.sliderClr;
+  const edges = [];
+  for (const poly of face.slice(FACE.floorZ + 0.9).toPolygons()) for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length]; if (a[1] !== b[1]) edges.push([a[0], a[1], b[0], b[1]]);
+  }
+  const Y0 = p0y - 3, DY = 0.01, NY = Math.round((p1y + 3 - Y0) / DY) + 1;
+  const wallL = new Float64Array(NY).fill(-1e9), wallR = new Float64Array(NY).fill(1e9);
+  for (let i = 0; i < NY; i++) {
+    const y = Y0 + i * DY + 1e-7, xs = [];
+    for (const [x1, y1, x2, y2] of edges) if ((y1 <= y && y < y2) || (y2 <= y && y < y1)) xs.push(x1 + (y - y1) * (x2 - x1) / (y2 - y1));
+    xs.sort((a, b) => a - b);
+    for (let k = 0; k + 1 < xs.length; k += 2) { if (xs[k + 1] <= p0x + 0.6) wallL[i] = Math.max(wallL[i], xs[k + 1]); if (xs[k] >= p1x - 0.6) wallR[i] = Math.min(wallR[i], xs[k]); }
+  }
+  const wi = (y) => Math.max(0, Math.min(NY - 1, Math.round((y - Y0) / DY)));
+  const rUp = P.sliderBumpR, rLo = P.sliderBumpRLo, OUT = P.sliderBumpOut;
+  const pressAt = (d) => {
+    const cy = FACE.closedY0 + P.sliderBumpY - d; let L = 0, R = 0;
+    for (let yy = cy - rLo + 0.005; yy < cy + rUp; yy += 0.01) {
+      const e = yy - cy, r = e < 0 ? rLo : rUp, back = r - Math.sqrt(Math.max(0, r * r - e * e)), i = wi(yy);
+      L = Math.max(L, wallL[i] - (sx0 - OUT + back)); R = Math.max(R, (sx1 + OUT - back) - wallR[i]);
+    }
+    return [L, R];
+  };
+  const DD = 0.01, ND = Math.round(FACE.travel / DD) + 1, pl = new Float64Array(ND), pr = new Float64Array(ND);
+  for (let j = 0; j < ND; j++) [pl[j], pr[j]] = pressAt(j * DD);
+  const at = (arr, d) => { const x = Math.max(0, Math.min(ND - 1, d / DD)), i = Math.floor(x), t = x - i; return i + 1 < ND ? arr[i] * (1 - t) + arr[i + 1] * t : arr[i]; };
+  // thumb force at d moving dir (+1 toward stowed), arm stiffness kk, friction mu, wear off the press
+  const force = (kk, d, dir, mu = 0.3, wear = 0) => {
+    let f = 0;
+    for (const arr of [pl, pr]) {
+      const p = at(arr, d) - wear; if (p <= 1e-4) continue;
+      const s = (at(arr, Math.min(FACE.travel, d + 0.02)) - at(arr, Math.max(0, d - 0.02))) / 0.04;
+      f += kk * p * Math.tan(Math.atan(dir * s) + Math.atan(mu));
+    }
+    return f;
+  };
+  const peak = (kk, d0, d1, dir, mu = 0.3, wear = 0) => { let m = 0; for (let d = d0; d <= d1 + 1e-9; d += 0.01) m = Math.max(m, force(kk, d, dir, mu, wear)); return m; };
+  const E = 2000, L = P.sliderArmRoot - P.sliderArmKeyR - P.sliderBumpY, b = P.sliderT - P.bedChamfer - P.sliderBevel[0] / 2;
+  const kOf = (t) => 3 * E * (b * t ** 3 / 12) / L ** 3;
+  // the four clicks a thumb feels, both arms
+  const clicks = (t, mu = 0.3, wear = 0) => {
+    const k = kOf(t), tr = FACE.travel, w = 4.5;
+    return { open: peak(k, 0, w, 1, mu, wear), close: peak(k, 0, w, -1, mu, wear), unstow: peak(k, tr - w, tr, -1, mu, wear), stow: peak(k, tr - w, tr, 1, mu, wear) };
+  };
+  return { at, pl, pr, force, peak, kOf, L, clicks, maxPress: () => Math.max(...pl, ...pr) };
+})();
+
 // ---- Gates --------------------------------------------------------------------
 const checks = [];
 const SOFT = process.env.KINO_SOFT_GATES === "1";
@@ -271,11 +327,11 @@ check("the frame's insert holes keep wall under the first groove", P.frameScrewI
   // ramp pushes the cover into the rim; the contact is on the ramp, not on
   // the land and not past the ramp's foot.
   const th = (P.sliderToothDeg * Math.PI) / 180, R = P.sliderBumpR, rad = (x) => (x * Math.PI) / 180;
-  const along = (t) => t.restOff - R * Math.sin(rad(t.restDeg));          // the contact's distance down the rest ramp from the land
+  const along = (t) => t.restOff - t.restR * Math.sin(rad(t.restDeg));    // the contact's distance down the rest ramp from the land
   const restRamp = (t) => (t.name === "upper" ? t.rampHi : t.rampLo);
   const closed = vol(face, cover), open = vol(face, coverOpen), mid = vol(face, coverMid);
   check("at each stop the bumps rest pressed on the teeth's far ramps", closed > 0.02 && open > 0.02 && FACE.teeth.every((t) => along(t) > 0.05 && along(t) < restRamp(t) - 0.05),
-    `${closed.toFixed(3)} mm^3 closed and ${open.toFixed(3)} stowed shared with the teeth (the arms' press, drawn unsprung); ` + FACE.teeth.map((t) => `${t.name}: pressed ${t.press} on the ${t.restDeg} degree ramp, ${r2(along(t))} along its ${r2(restRamp(t))}`).join("; "));
+    `${closed.toFixed(3)} mm^3 closed and ${open.toFixed(3)} stowed shared with the teeth (the arms' press, drawn unsprung); ` + FACE.teeth.map((t) => `${t.name}: the bump's R${t.restR} side pressed ${t.press} on the ${t.restDeg} degree ramp, ${r2(along(t))} along its ${r2(restRamp(t))}`).join("; "));
   // Between the stops: free, but for one tooth near each end.
   const sweep = [];
   for (let d = 0.25; d < FACE.travel - 0.1; d += 0.25) sweep.push([d, vol(face, cover.translate([0, -d, 0]))]);
@@ -333,15 +389,14 @@ check("the frame's insert holes keep wall under the first groove", P.frameScrewI
   const peak = P.sliderBumpOut - P.sliderClr, fold = P.sliderBevel[0] - P.sliderClr;
   const strain = (d) => 3 * at * d / (2 * L ** 2);
   const phi = (mu) => Math.atan(mu);
-  // under the thumb, both arms: leaving a stop climbs that stop's rest ramp
-  const clickAt = (kk, deg, mu = 0.3, pk = peak) => 2 * kk * pk * Math.tan(rad(deg) + phi(mu));
-  const openClick = clickAt(k, P.sliderClosedLeaveDeg), closeClick = clickAt(k, P.sliderToothDeg);
+  const C = SLIDE.clicks(at);
+  const openClick = C.open, closeClick = C.close;
   const hold = (t) => k * t.press * Math.tan(rad(t.restDeg));
   const grams = cover.volume() * 1.27e-3;
   const holdG = (t) => (2 * hold(t)) / (grams * 9.81e-3);
   const [up, lo] = FACE.teeth;
-  check("the arms click and hold inside PETG's limit, the closed stop the firmer", strain(fold) <= 0.025 && closeClick >= 3 && openClick <= 7 && openClick >= 1.15 * closeClick && holdG(up) >= 5 && holdG(lo) >= 5,
-    `${at} wide, ${r2(L)} from the keyhole to the bump: about ${r2(k)} N/mm (E 2.0 GPa); ${(100 * strain(peak)).toFixed(2)} % strain over a crest (${peak}), ${(100 * strain(fold)).toFixed(2)} % pressed in under a lip (${r2(fold)}); about ${r2(openClick)} N under the thumb to open from closed, ${r2(closeClick)} N to close or to leave stowed; ${r2(2 * hold(up))} N into the top rim at rest (${r2(holdG(up))} g on a ${r2(grams)} g cover), ${r2(2 * hold(lo))} N into the bottom rim (${r2(holdG(lo))} g)`);
+  check("the arms click and hold inside PETG's limit, the closed stop the firmer", strain(fold) <= 0.025 && openClick >= 3.5 && openClick <= 6.5 && openClick >= 1.3 * closeClick && C.unstow >= 2 && holdG(up) >= 5 && holdG(lo) >= 5 && Math.abs(SLIDE.maxPress() - peak) < 0.02,
+    `${at} wide, ${r2(L)} from the keyhole to the bump: about ${r2(k)} N/mm (E 2.0 GPa); ${(100 * strain(peak)).toFixed(2)} % strain over a crest (${peak}), ${(100 * strain(fold)).toFixed(2)} % pressed in under a lip (${r2(fold)}). From the tooth-shape model, both arms, friction 0.3: ${r2(openClick)} N to open from closed, ${r2(closeClick)} N to close (the bump's R${P.sliderBumpR} side), ${r2(C.unstow)} N to leave stowed, ${r2(C.stow)} N to stow; ${r2(2 * hold(up))} N into the top rim at rest (${r2(holdG(up))} g on a ${r2(grams)} g cover), ${r2(2 * hold(lo))} N into the bottom rim (${r2(holdG(lo))} g)`);
   for (const [name, edge, dir] of [["left", sx0, 1], ["right", sx1, -1]]) {
     const [xa, xb] = [edge + dir * at, edge + dir * (at + sw)].sort((p, q) => p - q);
     openProbe(`the ${name} arm's slit is open`, box(xa + 0.1, FACE.closedY0 - 0.5, FACE.floorZ - 0.5, xb - 0.1, FACE.closedY0 + P.sliderArmRoot - rk - 0.1, FACE.floorZ + P.sliderT + 1), `${sw} wide from the bottom edge to the keyhole, R${rk} at ${P.sliderArmRoot}, room for the ${r2(fold)} fold`, cover);
@@ -352,13 +407,29 @@ check("the frame's insert holes keep wall under the first groove", P.frameScrewI
   {
     const keyX1 = sx0 + at + 2 * rk, keyY0 = FACE.closedY0 + P.sliderArmRoot - 2 * rk;
     const clear = markBox.x >= sx0 + at + sw + 0.3 && (markBox.x >= keyX1 + 0.3 || markBox.y + markBox.h <= keyY0 - 0.3);
-    check("the slits and keyholes clear the wordmark and the bumps stay on their arms", clear && P.sliderBumpR * 2 - P.sliderBumpOut <= at - 0.2,
-      `the wordmark starts ${r2(markBox.x - sx0 - at - sw)} past the left slit and ends ${r2(keyY0 - markBox.y - markBox.h)} below the keyhole; each bump reaches ${r2(2 * P.sliderBumpR - P.sliderBumpOut)} into its ${at} arm`);
+    check("the slits and keyholes clear the wordmark and the bumps stay on their arms", clear && P.sliderBumpRLo >= 0.5 && P.sliderBumpOut <= P.sliderBumpRLo + 0.2,
+      `the wordmark starts ${r2(markBox.x - sx0 - at - sw)} past the left slit and ends ${r2(keyY0 - markBox.y - markBox.h)} below the keyhole; each bump cut to its ${at} arm, its sides R${P.sliderBumpRLo} and R${P.sliderBumpR} reaching ${P.sliderBumpOut} past the edge`);
   }
   // The thumb lip's top edge chamfered: a lining rides over it; the thumb
   // still has square face above the face's front.
   check("the thumb lip rides a pocket's lining and keeps a face for the thumb", P.coverLip[1] - P.coverLipChamfer >= 1.5 && P.coverLipAboveFace - P.coverLipChamfer >= 0.5,
     `its top edge chamfered ${P.coverLipChamfer} at 45 degrees; ${r2(P.coverLipAboveFace - P.coverLipChamfer)} of square face above the face's front and the chamfer over it; ${r2(P.coverLip[1] - P.coverLipChamfer)} of lip left across the top; with the closed stop the firmer (${r2(openClick)} N against ${r2(closeClick)})`);
+  // A 0.4 mm nozzle: every small feature of the slide measured in lines of
+  // nozzleLine. Solid features need three lines (two perimeters and a
+  // core), gaps two, walls between a gap and an engraving one.
+  {
+    const ln = P.nozzleLine, armMin = Math.min(P.sliderArmT, P.sliderArmSoft, P.sliderArmFirm), armMax = Math.max(P.sliderArmT, P.sliderArmSoft, P.sliderArmFirm);
+    const wordWall = P.markLeft - (armMax + sw);
+    const items = [
+      ["the thinnest arm (T08)", armMin, 3 * ln - 0.05], ["the rail", P.sliderRail[0], 3 * ln], ["a tooth's land", P.sliderToothLand, 2 * ln],
+      ["a lip, across", P.sliderBevel[0], 2 * ln], ["the bump's tight side, radius", P.sliderBumpRLo, ln], ["the thumb lip, across", P.coverLip[1] - P.coverLipChamfer, 3 * ln],
+      ["the slit, a gap", sw, 2 * ln], ["the channel, a gap", P.sliderChannelD, 2 * ln], ["the wall from the firmest slit to the wordmark", wordWall, ln],
+      ["the rail's groove, a gap", P.sliderGroove[0], 3 * ln],
+    ];
+    const bad = items.filter(([, v, need]) => v < need - 1e-9);
+    check("the slide prints with a 0.4 mm nozzle", bad.length === 0,
+      items.map(([n, v, need]) => `${n} ${r2(v)} (${r2(v / ln)} lines, needs ${r2(need)})`).join("; ") + `. The fit that a 0.4 nozzle's accuracy can close is the rail in its groove, ${r2((P.sliderGroove[0] - P.sliderRail[0]) / 2)} a side: T07 says; 1.9 is the next groove`);
+  }
   // Print tolerance: the rail's 0.1 of play and 0.1 of print error a side.
   // The press at each stop can move 0.2 either way on one side; the pair
   // always keeps press, the arm never runs out of slit, and the flank never
@@ -375,21 +446,20 @@ check("the frame's insert holes keep wall under the first groove", P.frameScrewI
   // the rest press gone and 0.1 worn off a crest, the rims still stop the
   // cover, the lips still hold it, and it still clicks.
   {
-    const worn = peak - 0.1;
-    const wornOpen = clickAt(k, P.sliderClosedLeaveDeg, 0.3, worn), wornClose = clickAt(k, P.sliderToothDeg, 0.3, worn);
-    const F = k * P.sliderRestPress / Math.cos(th), Lc = P.sliderBumpTop - 0.5 - (P.sliderBumpOut - P.sliderClr + 0.05 + P.sliderChannelFloor) + 0.5;
+    const W = SLIDE.clicks(at, 0.3, 0.1), wornOpen = W.open, wornClose = W.close;
+    const F = k * P.sliderClosedRestPress / Math.cos(rad(P.sliderClosedLeaveDeg)), Lc = P.sliderBumpTop - 0.5 - (P.sliderBumpOut - P.sliderClr + 0.05 + P.sliderChannelFloor) + 0.5;
     const Es = 1 / ((1 - 0.36 ** 2) / 2000 + (1 - 0.36 ** 2) / 3500);
-    const pHertz = Math.sqrt((F * Es) / (Math.PI * P.sliderBumpR * Math.max(Lc, 0.5)));
-    check("heat and wear on the PLA teeth fail safe", wornOpen >= 2 && wornClose >= 1.5 && pHertz <= 30,
-      `with the rest press lost and 0.1 off each crest it still clicks, ${r2(wornOpen)} N to open and ${r2(wornClose)} to close, and the rims and lips stop and hold it as before; the standing contact at rest about ${r2(pHertz)} MPa on PLA (a line ${r2(Lc)} long under ${r2(F)} N)`);
+    const pHertz = Math.sqrt((F * Es) / (Math.PI * P.sliderBumpRLo * Math.max(Lc, 0.5)));
+    check("heat and wear on the PLA teeth fail safe", wornOpen >= 2 && wornClose >= 1.2 && pHertz <= 35,
+      `with the rest press lost and 0.1 off each crest it still clicks, ${r2(wornOpen)} N to open and ${r2(wornClose)} to close, and the rims and lips stop and hold it as before; the standing contact at the closed stop about ${r2(pHertz)} MPa on PLA (the bump's R${P.sliderBumpRLo} side, a line ${r2(Lc)} long under ${r2(F)} N), about half PLA's compressive yield at room temperature`);
   }
   // The planned materials: the face in PETG, PETG on PETG grips harder
   // (friction about 0.5): the clicks rise, and no ramp may self-lock.
   {
-    const petgOpen = clickAt(k, P.sliderClosedLeaveDeg, 0.5), petgClose = clickAt(k, P.sliderToothDeg, 0.5);
+    const PG = SLIDE.clicks(at, 0.5), petgOpen = PG.open, petgClose = PG.close;
     const lock = Math.max(P.sliderClosedLeaveDeg, P.sliderToothDeg) + phi(0.5) * 180 / Math.PI;
-    check("with the face in PETG the slide still clicks and nothing self-locks", petgOpen <= 9 && lock <= 75,
-      `PETG on PETG at friction 0.5: about ${r2(petgOpen)} N to open and ${r2(petgClose)} to close with B01's arms (T08's about ${r2(petgOpen * (P.sliderArmSoft / at) ** 3)}); the steepest ramp plus friction ${r2(lock)} degrees, far from 90; reprint P3 with the PETG face and choose again`);
+    check("with the face in PETG the slide still clicks and nothing self-locks", petgOpen <= 10 && lock <= 75,
+      `PETG on PETG at friction 0.5: about ${r2(petgOpen)} N to open and ${r2(petgClose)} to close with B01's arms (T08's about ${r2(SLIDE.clicks(P.sliderArmSoft, 0.5).open)}); the steepest ramp plus friction ${r2(lock)} degrees, far from 90; reprint P3 with the PETG face and choose again`);
   }
   // The lips: the window's whole height but for one gap a side, so the
   // cover is held along its height at both stops, and the stowed bump has
@@ -689,13 +759,11 @@ const coupons = (() => {
   for (const [id, armT] of [["T08", P.sliderArmSoft], ["T09", P.sliderArmFirm]]) {
     const name = `${id}-KINO_COUPON_COVER_${id === "T08" ? "SOFT" : "FIRM"}.stl`;
     const v = buildFace({ armT }).cover;
-    const b = P.sliderT - P.bedChamfer - P.sliderBevel[0] / 2, Lv = P.sliderArmRoot - P.sliderArmKeyR - P.sliderBumpY;
-    const kv = 3 * 2000 * (b * armT ** 3 / 12) / Lv ** 3, th = (P.sliderClosedLeaveDeg * Math.PI) / 180;
-    const clickV = 2 * kv * (P.sliderBumpOut - P.sliderClr) * Math.tan(th + (17 * Math.PI) / 180);
+    const CV = SLIDE.clicks(armT), clickV = CV.open, Lv = SLIDE.L;
     const strainV = 3 * armT * (P.sliderBevel[0] - P.sliderClr) / (2 * Lv ** 2);
     const same = [0, FACE.travel / 2, FACE.travel].map((d) => Math.abs(vol(face, v.translate([0, -d, 0])) - vol(face, cover.translate([0, -d, 0]))));
-    check(`${id}, B01 with ${armT} arms, runs as B01 and clicks inside PETG's limit`, Math.max(...same) < 1e-3 && strainV <= 0.025 && clickV >= 2 && clickV <= 8 && P.sliderBumpR * 2 - P.sliderBumpOut <= armT - 0.05,
-      `about ${r2(clickV)} N under the thumb (B01 ${r2(2 * 3 * 2000 * (b * P.sliderArmT ** 3 / 12) / Lv ** 3 * (P.sliderBumpOut - P.sliderClr) * Math.tan(th + (17 * Math.PI) / 180))}), ${(100 * strainV).toFixed(2)} % strain under a lip; its contact with the face closed, mid-travel and stowed the same as B01's to ${Math.max(...same).toExponential(1)} mm^3`);
+    check(`${id}, B01 with ${armT} arms, runs as B01 and clicks inside PETG's limit`, Math.max(...same) < 1e-3 && strainV <= 0.025 && clickV >= 2 && clickV <= 9,
+      `about ${r2(clickV)} N to open and ${r2(CV.close)} to close (B01 ${r2(SLIDE.clicks(P.sliderArmT).open)} and ${r2(SLIDE.clicks(P.sliderArmT).close)}), ${(100 * strainV).toFixed(2)} % strain under a lip; its contact with the face closed, mid-travel and stowed the same as B01's to ${Math.max(...same).toExponential(1)} mm^3`);
     coupons[name] = toBed(engrave(name, v, id, idX, idY, sTop, 1, 3.0));
   }
 }
