@@ -680,6 +680,22 @@ owner's printer. Two parts:
   slit leaves it a line of wall. A gate measures the slide's small
   features in lines of a 0.4 mm nozzle (`nozzleLine` 0.45): every one
   passes; the rail's 0.1 a side is the fit to watch. 267 gates.
+- **The button against the face** (twenty-ninth cut, 2026-11-24; the
+  owner: the face "will make it impossible to click the button due to the
+  edge"). Found: the plunger's round 17.6 flange reached 1.4 past the
+  face's back, 13.9 mm^3 inside the face from rest to the bottom of the
+  press; with the face on the button was clamped. T05 was pressed without
+  a face, and no gate set the plunger against it. The plunger stays round
+  (the owner); the shell's chamber runs on into the face's back as a blind
+  pocket of its own radius, R9.3, 1.9 deep, 0.2 above the step
+  (`shutterFacePocket`), its front wall the door. The finger: a soft-pad
+  model (a flat punch into an elastic half-space, `fingerE` 0.1 MPa, the
+  switch at 2.6 N, `shutterSwitchForce`, PROVISIONAL) put the pad 0.36 from
+  bottoming on the face's top at 2.0 proud; the cap now 2.6 proud
+  (`shutterProud`), 1.1 to spare. T10, the face's shutter corner, held
+  over T05 with the real switch and plunger. Gates: the plunger clear of
+  the face through the press, the fingertip, the door at the pocket's front
+  wall, T10. 272 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator

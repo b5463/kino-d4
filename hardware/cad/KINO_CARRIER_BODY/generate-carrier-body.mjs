@@ -551,10 +551,11 @@ check("the frame's insert holes keep wall under the first groove", P.frameScrewI
       `${P.shutterSwitchPocket} mm of wall ahead of and behind the body between the leg channels; to leave, the switch must rise ${P.shutterSwitchPocket} against the flange ${P.shutterSwitchFree} above its actuator`);
     const rear = box(X - rF + 0.5, T.floorTop + 0.5, T.chamberZ0 - 1.0, X + rF - 0.5, T.guideBottom - 0.5, T.chamberZ0 - 0.1);
     check("the chamber is closed at the rear", vol(shell, rear) > rear.volume() * 0.98 && T.chamberZ0 >= P.shutterPodBottomZ + 2.0, `${r2(T.chamberZ0 - P.shutterPodBottomZ)} mm of pod behind the flange's rear edge`);
-    const door = fuse([box(X - rF + 0.2, T.floorTop + 0.2, Z.plateFront + 0.05, X + rF - 0.2, T.guideBottom - 0.2, Z.plateFront + 0.8),
-      box(X - rG + 0.2, T.guideBottom + 0.2, Z.plateFront + 0.05, X + rG - 0.2, oy1 - P.faceInset - P.bedChamfer - 0.2, Z.plateFront + 0.8)]);
+    // the mouth is closed by the face's pocket's front wall, the slot's front by the face's back above the pocket
+    const door = fuse([box(X - rF + 0.2, T.floorTop + 0.2, Zc + rF + 0.05, X + rF - 0.2, T.guideBottom - 0.2, Zc + rF + 0.8),
+      box(X - rG + 0.2, T.guideBottom + P.shutterFacePocket + 0.1, Z.plateFront + 0.05, X + rG - 0.2, oy1 - P.faceInset - P.bedChamfer - 0.2, Z.plateFront + 0.8)]);
     check("the face closes the slot and the mouth", vol(face, door) > door.volume() * 0.98 && P.shutterCapToFace >= 0.3,
-      `the face's back covers the ${r2(2 * rF)} x ${r2(T.chamberH)} mouth and the slot's front up to ${r2(P.faceInset + P.bedChamfer)} under the deck (the reveal); the cap's front ${P.shutterCapToFace} off it; face off, the button comes out the front`);
+      `the face closes the ${r2(2 * rF)} x ${r2(T.chamberH)} mouth with its pocket's front wall, ${r2(Zc + rF - Z.plateFront)} into it, and the slot's front with its back up to ${r2(P.faceInset + P.bedChamfer)} under the deck (the reveal); the cap's front ${P.shutterCapToFace} off it; face off, the button comes out the front`);
   }
   for (const s of [-1, 1]) {
     openProbe(`leg channel ${s < 0 ? "-X" : "+X"} open through the floor from its stop to the front`,
@@ -606,6 +607,39 @@ check("the frame's insert holes keep wall under the first groove", P.frameScrewI
     `seat at Y ${r2(T.seatTop)} + switch ${hS} + ${P.shutterSwitchFree} free = flange bottom ${r2(T.flangeBottomRest)}; the first ${P.shutterSwitchFree} of press is free, the next ${P.shutterSwitchTravel} is the click`);
   check("the cap sits against the face's back with its clearance", Math.abs(Zc + P.shutterPressCapD / 2 + P.shutterCapToFace - Z.plateFront) < 1e-9 && Zc + rG <= Z.plateFront,
     `axis at Z ${r2(Zc)}; the cap's front edge ${P.shutterCapToFace} behind the face's back at ${r2(Z.plateFront)}, its rear ${r2(rG - P.shutterPressCapD / 2 - P.shutterGuideRib[0])} off the ribs on the round end`);
+  // The plunger against the face, through the whole press: the round
+  // flange ran 1.4 into the face's back (13.9 mm^3 from rest to the bottom),
+  // so with the face on the plunger was clamped. The face now has a pocket
+  // for it, the chamber's own radius.
+  {
+    const pl = plungerAtRest(), stroke = P.shutterSwitchFree + P.shutterSwitchTravel + 0.3;
+    const worst = Math.max(...[0, stroke / 3, (2 * stroke) / 3, stroke].map((dy) => vol(face, pl.translate([0, -dy, 0]))));
+    const near = vol(face, pl.translate([0, 0, 0.3]));
+    const front = pl.boundingBox().max[2];
+    check("the plunger runs its whole press clear of the face", worst < 1e-4 && near < 1e-4 && T.rF - P.shutterActuatorFlangeD / 2 >= 0.3,
+      `the round flange reaches Z ${r2(front)}, ${r2(front - Z.plateFront)} into the face, inside the face's pocket (R${r2(T.rF)}, ${r2(T.rF - P.shutterActuatorFlangeD / 2)} round the flange); nothing of the plunger in the face from rest to ${r2(stroke)} down, nor 0.3 further forward`);
+  }
+  // A fingertip on the cap: the pad is soft, so as it presses it wraps
+  // round the cap's edge and may bottom on what is around the cap before the
+  // switch clicks. A flat round punch (the cap, radius a) into an elastic
+  // half-space (the pad, modulus fingerE): at the click force the pad is
+  // indented F / (2 a E). Outside the punch its surface sags by
+  // (2 d / pi) asin(a / r), so it reaches a surface h below the cap at
+  // distance r only once d = h pi / (2 asin(a / r)). Around the cap: the
+  // face's top just in front, the collar's recess, the deck.
+  {
+    const a = P.shutterPressCapD / 2, rimClick = T.oy1 + P.shutterProud - (P.shutterSwitchFree + P.shutterSwitchTravel);
+    const dAct = P.shutterSwitchForce / (2 * a * P.fingerE);
+    const faceTopY = face.boundingBox().max[1];
+    const around = [
+      ["the face's top", a + P.shutterCapToFace, rimClick - faceTopY],
+      ["the collar's recess", rG, rimClick - (T.oy1 - P.shutterCollarDepth)],
+      ["the deck", P.shutterCollarD / 2, rimClick - T.oy1],
+    ].map(([n, r, h]) => [n, r, h, (h * Math.PI) / (2 * Math.asin(Math.min(1, a / r)))]);
+    const tightest = around.reduce((m, x) => (x[3] < m[3] ? x : m));
+    check("a fingertip clicks the switch before it bottoms on the face", tightest[3] >= dAct + 1.0,
+      `the pad indented ${r2(dAct)} mm at the click (${P.shutterSwitchForce} N on the ${P.shutterPressCapD} cap, pad modulus ${P.fingerE} MPa); it would reach ` + around.map(([n, r, h, dc]) => `${n} (${r2(r)} from the axis, ${r2(h)} below the rim at the click) at ${r2(dc)}`).join(", ") + `: ${r2(tightest[3] - dAct)} mm to spare, enough for a finger landing a little forward (at 2.0 proud the face's top left ${r2(((2.0 - (P.shutterSwitchFree + P.shutterSwitchTravel) + (T.oy1 - faceTopY)) * Math.PI) / (2 * Math.asin(a / (a + P.shutterCapToFace))) - dAct)})`);
+  }
   check("the pod joins the right wall and clears CAM 4", T.podX1 > cx1 && T.podX0 >= P.cameraXs[3] + P.xiaoBoardW / 2 + 1.5, `pod from X ${r2(T.podX0)} into the wall at ${r2(cx1)}; CAM 4's XIAO ends at ${r2(P.cameraXs[3] + P.xiaoBoardW / 2)}`);
   check("shutter pod stays above the carrier and its connectors", P.shutterPodBottomZ >= Z.carrierFront + 1.0 && Math.min(...P.frontParts.map(([, , , y1]) => T.podInnerY - y1)) >= 4.0, `pod bottom Z=${P.shutterPodBottomZ}, carrier front Z=${r2(Z.carrierFront)}; the pod's inner face at Y ${r2(T.podInnerY)}, J1001's top at ${P.frontParts[0][3]}`);
   check("the chamber stays inside the pod's width", X - rF >= T.podX0 + 1.5 && X + rF <= cx1 - 1.5, `chamber from X ${r2(X - rF)} to ${r2(X + rF)}; the pod's face at ${r2(T.podX0)}, the wall at ${r2(cx1)}`);
@@ -669,6 +703,7 @@ const shellZones = [
 ];
 const idEdgeW = textWidth(IDS.face, P.idCapEdge);
 const faceZones = [
+  [SHUTTER.X - SHUTTER.rF - 0.5, SHUTTER.floorTop - 0.5, FACE.back - 0.5, SHUTTER.X + SHUTTER.rF + 0.5, SHUTTER.guideBottom + P.shutterFacePocket + 0.5, SHUTTER.Zc + SHUTTER.rF + 0.5],   // the shutter pocket's round roof in the back: a 11 mm bridge, hidden against the plate
   ...S.faceScrewXY.map(([px, py]) => [px - 2.5, py - 2.5, FACE.back - 0.5, px + 2.5, py + 2.5, FACE.back + FACE.insertHoleDepth + 0.3]),   // the insert holes: the mouth countersinks at the bed, the 3 mm floors as small bridges
   // the detent channels' ceilings fall at 45 degrees into the walls: no zone
   [P.innerMarkAt[0] - (P.modelW - P.innerMarkW) - 3, P.innerMarkAt[1] - MODEL_H - 5, FACE.back - 0.5, P.innerMarkAt[0] + P.innerMarkW + 3 + P.innerSymbolH * 1.25 + 3, P.innerMarkAt[1] + 10, FACE.back + P.innerMarkD + 0.5],
@@ -734,11 +769,13 @@ const coupons = (() => {
   const t05Z0 = P.shutterPodBottomZ - 6;
   const t05Box = box(SHUTTER.podX0 - 1, SHUTTER.podInnerY - 2, t05Z0, ox1 + 1, oy1 + 1, Z.plateFront + 1);   // the whole pod with the deck over it, the wall corner it joins and the plate with the mouth
   const t07Box = box(FACE.panel[0] - 8, oy0 - 1, FACE.back - 1, FACE.panel[2] + 8, FACE.panel[3] + 3, FACE.front + 1);   // the slide: the face's whole window band, both walls with their lips, channels and four teeth, both rims; the real B01 runs in it
-  let t03 = cut(shell, t03Box), t04 = cut(shell, t04Box), t05 = cut(shell, t05Box), t06 = cut(face, t06Box), t07 = cut(face, t07Box);
+  const t10Box = box(SHUTTER.podX0 - 1, SHUTTER.podInnerY - 4, FACE.back - 1, ox1 + 1, oy1 + 1, FACE.front + 1);   // the face's top-right corner over T05: the shutter's pocket in its back, the slot's door, the face's top in front of the cap
+  let t03 = cut(shell, t03Box), t04 = cut(shell, t04Box), t05 = cut(shell, t05Box), t06 = cut(face, t06Box), t07 = cut(face, t07Box), t10 = cut(face, t10Box);
   t07 = engrave("T07-KINO_COUPON_TRACK.stl", t07, "T07", FACE.panel[0] + 14, FACE.outline[1] + P.faceEdgeR + 0.6, FACE.front, 1, 3.0);
   t03 = engrave("T03-KINO_COUPON_LEDGE_CORNER.stl", t03, "T03", 8.0, oy0 + 0.75, Z.carrierBack - 2, -1, 3.0);
   t04 = engrave("T04-KINO_COUPON_STRAP_SHELL.stl", t04, "T04", 14.0, oy0 + 0.75, Z.glass, -1, 3.0);
   t05 = engrave("T05-KINO_COUPON_DECK.stl", t05, "T05", SHUTTER.podX0 + 1.0, cy1 + 0.75, t05Z0, -1, 3.0);
+  t10 = engrave("T10-KINO_COUPON_FACE_SHUTTER.stl", t10, "T10", SHUTTER.podX0 + 1.5, SHUTTER.podInnerY - 3.4, FACE.front, 1, 3.0);   // in the front, below the pod (the face prints back down: the front is up)
   t06 = engrave("T06-KINO_COUPON_FACE_CORNER.stl", t06, "T06", 5.0, FACE.outline[1] + P.faceEdgeR + 0.6, FACE.front, 1, 3.0);   // in the front, below the window's rim (the face prints back down: the front is up)
   const bar = engrave("T01-KINO_COUPON_SHRINK_BAR.stl", box(0, 0, 0, 100, 10, 3), "T01", 3.0, 3.5, 3, 1, 3.0);
   return {
@@ -747,6 +784,7 @@ const coupons = (() => {
     "T05-KINO_COUPON_DECK.stl": toBed(t05.rotate([180, 0, 0])),
     "T04-KINO_COUPON_STRAP_SHELL.stl": toBed(t04.rotate([180, 0, 0])),
     "T06-KINO_COUPON_FACE_CORNER.stl": toBed(t06),
+    "T10-KINO_COUPON_FACE_SHUTTER.stl": toBed(t10),
     "T07-KINO_COUPON_TRACK.stl": toBed(t07),
     "T01-KINO_COUPON_SHRINK_BAR.stl": bar,
   };
@@ -767,7 +805,7 @@ const coupons = (() => {
     coupons[name] = toBed(engrave(name, v, id, idX, idY, sTop, 1, 3.0));
   }
 }
-check("every coupon is labelled", ["T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08", "T09"].every((id) => couponText.some(([, t]) => t === id)), couponText.map(([n, t]) => `${t} in ${n}`).join("; "));
+check("every coupon is labelled", ["T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10"].every((id) => couponText.some(([, t]) => t === id)), couponText.map(([n, t]) => `${t} in ${n}`).join("; "));
 {
   // T07 is the whole track: all four teeth, both lips, the window's two
   // rims, so the real cover runs in it as it runs in the face.
@@ -797,6 +835,16 @@ check("every coupon is labelled", ["T01", "T02", "T03", "T04", "T05", "T06", "T0
   const lowerTooth = box(FACE.panel[0] - P.sliderChannelD + 0.05, lower.land[0] + 0.05, FACE.floorZ + 0.1, FACE.panel[0] - 0.05, lower.land[1] - 0.05, FACE.floorZ + P.sliderChannelTop - P.sliderChannelD - 0.1);
   check("the face coupon carries the insert station and the left lower tooth", vol(t06, st06) < 1e-3 && vol(t06, lowerTooth) > lowerTooth.volume() * 0.97,
     `station (${sx}, ${sy}) and the tooth's land from Y ${r2(lower.land[0])} to ${r2(lower.land[1])} inside the coupon; it screws onto T03 with an M2 x ${P.faceScrewLen}`);
+}
+{
+  // T10 is the face's corner the button lives against: the pocket the
+  // flange swings in and the door it closes, so the real B02 in T05 with T10
+  // held over it is the button as it will be in the body.
+  const t10 = coupons["T10-KINO_COUPON_FACE_SHUTTER.stl"].translate([SHUTTER.podX0 - 1, SHUTTER.podInnerY - 4, FACE.back]);
+  const pl = plungerAtRest(), stroke = P.shutterSwitchFree + P.shutterSwitchTravel + 0.3;
+  const wall = box(SHUTTER.X - SHUTTER.rF + 0.3, SHUTTER.floorTop + 0.3, SHUTTER.Zc + SHUTTER.rF + 0.1, SHUTTER.X + SHUTTER.rF - 0.3, SHUTTER.guideBottom - 0.3, SHUTTER.Zc + SHUTTER.rF + 0.8);
+  check("the face's shutter coupon carries the pocket and the door, and the plunger runs clear of it", vol(t10, wall) > wall.volume() * 0.97 && [0, stroke].every((dy) => vol(t10, pl.translate([0, -dy, 0])) < 1e-4),
+    `the face's top-right corner from X ${r2(SHUTTER.podX0 - 1)}; held over T05 with the real B02 in it, it is the button as in the body`);
 }
 // Bed plates: the coupons that print together, 10 mm apart, as one file each.
 const plates = (() => {

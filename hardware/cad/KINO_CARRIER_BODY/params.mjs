@@ -370,10 +370,13 @@ export const P = Object.freeze({
   shutterActuatorGuideD: 14.6,  // the slot's width and its round end
   shutterActuatorFlangeD: 17.6, // the flange: 1.5 over the step each side and at the rear (gated)
   shutterFlangeH: 1.6,
+  shutterFacePocket: 0.2,    // the chamber runs on into the face's back as a blind round pocket of the chamber's own radius, this far above the step: the round 17.6 flange ran 1.4 into the face's back (13.9 mm^3, from rest to the bottom of the press), so with the face on the plunger was clamped; the pocket's front wall still closes the mouth
+  shutterSwitchForce: 2.6,   // PROVISIONAL: the click force of the bench's 6 x 6 switch, the top of the usual 1.6 to 2.6 N; MEASURE it
+  fingerE: 0.1,              // a fingertip pad's effective modulus, MPa: the soft-contact model of the press (a flat round punch into an elastic half-space)
   shutterFlangeBoreClear: 0.5,  // per side in the chamber: the flange only rides in, it is guided by the cap in the slot; the flange's bed edge is chamfered too
   shutterGuideRib: [0.2, 0.8],  // four ribs, proud x wide, along the slot (one each straight side, two on the round end 60 degrees off its apex): the cap runs on four lines 0.1 off, not in a 0.6 mm gap
   shutterPressCapD: 14.0,
-  shutterProud: 2.0,         // the cap's rim above the top face
+  shutterProud: 2.6,         // the cap's rim above the top face: at the click (0.55 down) it stands 2.05 over the deck and 2.35 over the face's top 0.4 in front of it, so a fingertip pad clicks the switch before it bottoms on either (gated; at 2.0 the face's edge left 0.4 mm of pad)
   shutterCapEdge: 0.5,       // 45 degrees round the cap's top edge: six even rings at 0.08
   shutterCapDish: [11.0, 0.4],  // a spherical dish in the cap's top, diameter x depth (the owner: "a slight indent to give it a tactile feel"): the finger finds the centre; a 1.0 flat rim stays between it and the chamfer; five layers at 0.08, up in print
   shutterCollarD: 20.0,

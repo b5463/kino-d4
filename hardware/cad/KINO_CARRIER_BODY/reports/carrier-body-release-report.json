@@ -1,6 +1,6 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-24T15:59:57.564Z",
+  "generated": "2026-11-24T23:03:22.091Z",
   "body": {
     "width": 131.4,
     "height": 83.8,
@@ -66,7 +66,7 @@
   "shutter": {
     "x": 105.5,
     "zc": 32.5,
-    "stem": 4.3,
+    "stem": 4.9,
     "podInnerY": 66.8,
     "capD": 14,
     "flangeD": 17.6,
@@ -140,8 +140,8 @@
       ]
     },
     "A02-KINO_CARRIER_FACE.stl": {
-      "triangles": 9698,
-      "volumeCm3": 40.74,
+      "triangles": 9782,
+      "volumeCm3": 40.66,
       "size": [
         130.8,
         83.2,
@@ -159,11 +159,11 @@
     },
     "B02-KINO_CARRIER_SHUTTER_BUTTON.stl": {
       "triangles": 1086,
-      "volumeCm3": 1.03,
+      "volumeCm3": 1.12,
       "size": [
         17.6,
         17.6,
-        5.9
+        6.5
       ]
     },
     "T03-KINO_COUPON_LEDGE_CORNER.stl": {
@@ -208,6 +208,15 @@
       "size": [
         20.7,
         47.2,
+        5.2
+      ]
+    },
+    "T10-KINO_COUPON_FACE_SHUTTER.stl": {
+      "triangles": 586,
+      "volumeCm3": 2.1,
+      "size": [
+        31.6,
+        14.2,
         5.2
       ]
     },
@@ -284,8 +293,8 @@
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 35564,
-      "volumeCm3": 296,
+      "triangles": 35648,
+      "volumeCm3": 295.92,
       "size": [
         131.4,
         83.8,
@@ -293,8 +302,8 @@
       ]
     },
     "KINO_CARRIER_OPEN_PREVIEW.stl": {
-      "triangles": 35512,
-      "volumeCm3": 296,
+      "triangles": 35596,
+      "volumeCm3": 295.92,
       "size": [
         131.4,
         83.8,
@@ -303,7 +312,7 @@
     }
   },
   "gates": {
-    "total": 267,
+    "total": 272,
     "failed": 0
   },
   "checks": [
@@ -1230,7 +1239,7 @@
     {
       "name": "the face closes the slot and the mouth",
       "pass": true,
-      "details": "the face's back covers the 18.6 x 5.7 mouth and the slot's front up to 0.7 under the deck (the reveal); the cap's front 0.4 off it; face off, the button comes out the front"
+      "details": "the face closes the 18.6 x 5.7 mouth with its pocket's front wall, 1.9 into it, and the slot's front with its back up to 0.7 under the deck (the reveal); the cap's front 0.4 off it; face off, the button comes out the front"
     },
     {
       "name": "leg channel -X open through the floor from its stop to the front",
@@ -1270,7 +1279,7 @@
     {
       "name": "2. the plunger rests on the step, cap proud, dished",
       "pass": true,
-      "details": "at rest 0.0000 mm^3 of shell inside it; its rim at Y 79.3, 2 proud of the deck; the 11 dish 0.4 deep inside a 1 flat rim"
+      "details": "at rest 0.0000 mm^3 of shell inside it; its rim at Y 79.9, 2.6 proud of the deck; the 11 dish 0.4 deep inside a 1 flat rim"
     },
     {
       "name": "the plunger must go in second: at rest it blocks a switch on the floor",
@@ -1286,6 +1295,16 @@
       "name": "the cap sits against the face's back with its clearance",
       "pass": true,
       "details": "axis at Z 32.5; the cap's front edge 0.4 behind the face's back at 39.9, its rear 0.1 off the ribs on the round end"
+    },
+    {
+      "name": "the plunger runs its whole press clear of the face",
+      "pass": true,
+      "details": "the round flange reaches Z 41.3, 1.4 into the face, inside the face's pocket (R9.3, 0.5 round the flange); nothing of the plunger in the face from rest to 0.85 down, nor 0.3 further forward"
+    },
+    {
+      "name": "a fingertip clicks the switch before it bottoms on the face",
+      "pass": true,
+      "details": "the pad indented 1.86 mm at the click (2.6 N on the 14 cap, pad modulus 0.1 MPa); it would reach the face's top (7.4 from the axis, 2.35 below the rim at the click) at 2.98, the collar's recess (7.3 from the axis, 2.45 below the rim at the click) at 3, the deck (10 from the axis, 2.05 below the rim at the click) at 4.15: 1.12 mm to spare, enough for a finger landing a little forward (at 2.0 proud the face's top left 0.36)"
     },
     {
       "name": "the pod joins the right wall and clears CAM 4",
@@ -1310,7 +1329,7 @@
     {
       "name": "shutter plunger stem is positive",
       "pass": true,
-      "details": "4.3 mm nose above the flange; cap 2 mm proud of the deck at rest"
+      "details": "4.9 mm nose above the flange; cap 2.6 mm proud of the deck at rest"
     },
     {
       "name": "the deck carries the button and nothing else, grooved whole",
@@ -1460,7 +1479,7 @@
     {
       "name": "A02-KINO_CARRIER_FACE.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0.67 mm^2 facing down past 45 degrees outside the named places (allowed 5), 206.61 inside them: the six insert holes' countersinks and the signature's 0.4 mm ceilings at the bed, the A02 letters' top edges in the bottom edge wall (0.3 mm bridges); the lips' undersides are steeper than 45; the largest stray at (12.97, 8.01, 3.09)"
+      "details": "0.67 mm^2 facing down past 45 degrees outside the named places (allowed 5), 277.98 inside them: the six insert holes' countersinks and the signature's 0.4 mm ceilings at the bed, the A02 letters' top edges in the bottom edge wall (0.3 mm bridges); the lips' undersides are steeper than 45; the largest stray at (12.97, 8.01, 3.09)"
     },
     {
       "name": "A02-KINO_CARRIER_FACE.stl fits the bed",
@@ -1485,7 +1504,7 @@
     {
       "name": "B02-KINO_CARRIER_SHUTTER_BUTTON.stl fits the bed",
       "pass": true,
-      "details": "17.6 x 17.6 x 5.9"
+      "details": "17.6 x 17.6 x 6.5"
     },
     {
       "name": "T02-KINO_COUPON_POCKET_GAUGE.stl carries \"7.8\" in material",
@@ -1528,6 +1547,11 @@
       "details": "3 mm letters at (95, 72.05) in the face at Z 15, 0.4 deep; 100 % of the engraving in material"
     },
     {
+      "name": "T10-KINO_COUPON_FACE_SHUTTER.stl carries \"T10\" in material",
+      "pass": true,
+      "details": "3 mm letters at (95.5, 63.40000000000001) in the face at Z 45.1, 0.4 deep; 100 % of the engraving in material"
+    },
+    {
       "name": "T06-KINO_COUPON_FACE_CORNER.stl carries \"T06\" in material",
       "pass": true,
       "details": "3 mm letters at (5, -4.4) in the face at Z 45.1, 0.4 deep; 100 % of the engraving in material"
@@ -1560,7 +1584,7 @@
     {
       "name": "every coupon is labelled",
       "pass": true,
-      "details": "7.8 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.1 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.4 in T02-KINO_COUPON_POCKET_GAUGE.stl; T02 in T02-KINO_COUPON_POCKET_GAUGE.stl; T07 in T07-KINO_COUPON_TRACK.stl; T03 in T03-KINO_COUPON_LEDGE_CORNER.stl; T04 in T04-KINO_COUPON_STRAP_SHELL.stl; T05 in T05-KINO_COUPON_DECK.stl; T06 in T06-KINO_COUPON_FACE_CORNER.stl; T01 in T01-KINO_COUPON_SHRINK_BAR.stl; T08 in T08-KINO_COUPON_COVER_SOFT.stl; T09 in T09-KINO_COUPON_COVER_FIRM.stl"
+      "details": "7.8 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.1 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.4 in T02-KINO_COUPON_POCKET_GAUGE.stl; T02 in T02-KINO_COUPON_POCKET_GAUGE.stl; T07 in T07-KINO_COUPON_TRACK.stl; T03 in T03-KINO_COUPON_LEDGE_CORNER.stl; T04 in T04-KINO_COUPON_STRAP_SHELL.stl; T05 in T05-KINO_COUPON_DECK.stl; T10 in T10-KINO_COUPON_FACE_SHUTTER.stl; T06 in T06-KINO_COUPON_FACE_CORNER.stl; T01 in T01-KINO_COUPON_SHRINK_BAR.stl; T08 in T08-KINO_COUPON_COVER_SOFT.stl; T09 in T09-KINO_COUPON_COVER_FIRM.stl"
     },
     {
       "name": "the track coupon carries all four teeth, both rims and the cover's whole run",
@@ -1581,6 +1605,11 @@
       "name": "the face coupon carries the insert station and the left lower tooth",
       "pass": true,
       "details": "station (4, 36) and the tooth's land from Y 5.54 to 6.54 inside the coupon; it screws onto T03 with an M2 x 6"
+    },
+    {
+      "name": "the face's shutter coupon carries the pocket and the door, and the plunger runs clear of it",
+      "pass": true,
+      "details": "the face's top-right corner from X 93; held over T05 with the real B02 in it, it is the button as in the body"
     },
     {
       "name": "P1-COUPON_PLATE_T01_T02.stl is two pieces on the bed",
@@ -1621,6 +1650,11 @@
       "name": "T06-KINO_COUPON_FACE_CORNER.stl is one piece on the bed",
       "pass": true,
       "details": "20.7 x 47.2 x 5.2 mm, 1 piece(s)"
+    },
+    {
+      "name": "T10-KINO_COUPON_FACE_SHUTTER.stl is one piece on the bed",
+      "pass": true,
+      "details": "31.6 x 14.2 x 5.2 mm, 1 piece(s)"
     },
     {
       "name": "T07-KINO_COUPON_TRACK.stl is one piece on the bed",

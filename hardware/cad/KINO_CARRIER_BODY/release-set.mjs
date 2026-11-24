@@ -25,6 +25,7 @@ export const RELEASE_SET = [
   { file: "T07-KINO_COUPON_TRACK.stl", dir: "coupons", parts: 1 },
   { file: "T08-KINO_COUPON_COVER_SOFT.stl", dir: "coupons", parts: 1 },
   { file: "T09-KINO_COUPON_COVER_FIRM.stl", dir: "coupons", parts: 1 },
+  { file: "T10-KINO_COUPON_FACE_SHUTTER.stl", dir: "coupons", parts: 1 },
   // Bed plates: the coupons that print together, in one file each.
   { file: "P1-COUPON_PLATE_T01_T02.stl", dir: "coupons", parts: 2 },
   { file: "P2-COUPON_PLATE_T03_T04.stl", dir: "coupons", parts: 2 },
@@ -54,6 +55,7 @@ export const RELEASE_PROCESS = {
   "T07-KINO_COUPON_TRACK.stl": "FDM, dark blue PLA, 0.20 mm, back down like the face: the face's whole window band, both side walls with their lips and detent teeth, the bottom and top rims (the stops), the four cells; the real B01 cover (black PETG, 0.08) presses in from the front, stowed, and clicks in it; a flat plate behind it for the shell's plate",
   "T08-KINO_COUPON_COVER_SOFT.stl": "FDM, black PETG, 0.08 mm, back down, no support: B01 with 1.4 mm arms (about 3.4 N to open, 2.3 to close); T08 on its top. Print beside B01 and T09 (P3) and keep the one that clicks right",
   "T09-KINO_COUPON_COVER_FIRM.stl": "FDM, black PETG, 0.08 mm, back down, no support: B01 with 1.7 mm arms (about 6.0 N to open, 4.1 to close); T09 on its top",
+  "T10-KINO_COUPON_FACE_SHUTTER.stl": "FDM, dark blue PLA, 0.20 mm, back down like the face: the face's top-right corner with the shutter's pocket in its back and the door over the slot; hold or tape it over T05's front with the real switch and B02 in T05, and press the button as in the body",
   "T05-KINO_COUPON_DECK.stl": "FDM, black PETG, 0.20 mm, plate down like the shell: the whole pod with the deck over it, the wall corner it joins and the plate with the mouth; the slot open to the front and its four ribs, the step, the chamber, the switch's pocket and the leg channels. The switch goes in first, then the B02 plunger; a thumb over the mouth stands in for the face",
   "P1-COUPON_PLATE_T01_T02.stl": "FDM, black PETG, 0.20 mm: T01 and T02 on one bed; set the slicer's shrink compensation from T01 (0.2 % measured), find the pocket width on T02",
   "P2-COUPON_PLATE_T03_T04.stl": "FDM, black PETG, 0.20 mm: T03 and T04 on one bed; the ledge under the carrier's corner, a face pin hole, the strap tunnel and a frame pin hole",

@@ -590,7 +590,7 @@ legs reach the channels' ends over the pocket, and drops 0.5 into it
 (gates); 2. deck down, the plunger goes in through the same mouth with
 its cap already in the slot and its flange hanging on the step, and
 slides over the seated switch (1.1 over its body, 0.3 over its actuator,
-a gate) to the slot's round end (at rest clear of the shell, 2.0 proud,
+a gate) to the slot's round end (at rest clear of the shell, 2.6 proud,
 gates); 3. the face. A switch still on the floor, not in its pocket, is
 0.5 taller than the flange can pass, so a plunger already at rest blocks
 it (a gate): switch first, plunger second, face third. After the face is
@@ -601,9 +601,45 @@ rise 0.5 against a flange 0.3 above its actuator.
 
 The cap's top is dished: an 11 mm sphere cap 0.4 deep (`shutterCapDish`)
 inside a 1.0 flat rim before the chamfer, so the finger finds the centre
-without looking (the owner's ask, 2026-11-21). The rim stays 2.0 proud;
-the dish prints as five 0.08 layers, up in print. A gate probes the rim
-in material and the dish's centre empty.
+without looking (the owner's ask, 2026-11-21). The dish prints as five
+0.08 layers, up in print. A gate probes the rim in material and the
+dish's centre empty.
+
+The button against the face (twenty-ninth cut, 2026-11-24; the owner:
+the face "will make it impossible to click the button"). Two things were
+wrong, and only one was the finger:
+
+- The face clamped the plunger. The flange is 17.6 round and the cap 14,
+  so the flange's front reached 1.4 past the face's back: 13.9 mm^3 of
+  plunger inside the face from rest to the bottom of the press. With the
+  face screwed on, either it could not seat or it pinched the flange and
+  the button bound. T05 passed because it was pressed without a face; no
+  gate set the plunger against the face. The plunger stays round: the
+  chamber runs on into the face's back as a blind round pocket of the
+  chamber's own radius (R9.3, 1.9 deep, from the floor to 0.2 above the
+  step), so the flange swings in it with 0.5 all round. The pocket's front
+  wall closes the mouth; 1.8 of face stays over it and 3.3 in front. Its
+  round roof is an 11 mm bridge in print, against the plate. A gate runs
+  the plunger from rest to 0.85 down, and 0.3 forward, clear of the face.
+- The finger. A pad is soft: pressing the cap it wraps round the cap's
+  edge and can bottom on what is around before the switch clicks. The
+  nearest thing is the face's top, 0.4 in front of the cap and only 0.3
+  below the deck. A gate models the press as a flat round punch (the cap)
+  into an elastic half-space (the pad, 0.1 MPa): at 2.6 N, the top of the
+  usual tactile switch, the pad sinks 1.86; it reaches the face's top at
+  2.98, the collar at 3.0, the deck at 4.15. At 2.0 proud the face's top
+  left 0.36 to spare, too little for a finger landing a little forward;
+  the cap now stands 2.6 proud of the deck (2.05 at the click), 1.1 to
+  spare. The face's top in front of the cap is flat and 0.3 below the
+  deck, so a finger sliding forward meets no edge.
+
+The feel: 0.3 of free travel, then the click within the next 0.25, then
+the switch's own stop, pressing into the floor. The dish finds the
+centre; the 2.6 proud cap is found by touch. `previews/KINO_CARRIER_SHUTTER_SECTION.png`
+is the section through the axis: the flange in the face's pocket, the
+cap at rest and at the click. T10, the face's top-right corner with the
+pocket, held over T05 with the real switch and B02 in it, is the button
+as it will be in the body.
 
 ### Assembly
 
@@ -689,6 +725,7 @@ the pocket, the channels, the mouth). `KINO_CARRIER_EXPLODED.png` (labelled by I
 pull every part apart along the depth axis: A03, the electronics stack
 (green) with its glass, A01 with B02, A02, B01; the inserts, the screws,
 the foam strips and the switch are too small to show.
+`KINO_CARRIER_SHUTTER_SECTION.png` is the section through the shutter's axis with the face's pocket; `T10-KINO_COUPON_FACE_SHUTTER.png` and `_BACK.png` the face's shutter corner;
 `P3-COUPON_PLATE_B01_T08_T09.png` is the three covers on their bed;
 `A02-KINO_CARRIER_FACE_DETENT.png` is the left wall's teeth and channel
 with the cover's arm and bump, in plan closed and stowed and in section; `T06-KINO_COUPON_FACE_CORNER.png` and `_BACK.png` are
@@ -698,7 +735,7 @@ making-of page (`docs/MAKING_OF.md`).
 
 ## Gates
 
-`node generate-carrier-body.mjs` writes `.candidate/` and runs 267 gates,
+`node generate-carrier-body.mjs` writes `.candidate/` and runs 272 gates,
 throwing on the first failure (`KINO_SOFT_GATES=1` collects them): the depth
 chain re-added over the lens band, the lens front on the pocket floor, the
 module PCB with the plate to land on, the battery bay tall enough for the cell
@@ -798,6 +835,7 @@ reported. Pass criteria, in numbers:
 | T06 (blue PLA), with T03 | the insert in the face's back under the horizon (4.2 there), the window's left wall with its channel and lower tooth | one M2 insert, the iron at 200 C, the M2 x 6 | the insert set flush with no mark on the front and no bulge at the window's wall; the channel prints clean under its 45 degree ceiling, the tooth's land is flush with the wall and its ramps are crisp | `insertHoleD`, `sliderChannelD` |
 | T07 (blue PLA) with B01, T08 and T09 (black PETG, 0.08, on P3), fifth piece | the slide: the whole window band with the rail down it, both walls with their channels and teeth, the lips with their loading gaps, the two rims, the cells; the 3.0 cover with its groove, its two spring arms and bumps, and the 2.5 lip | the printed cover; any flat plate held behind the coupon for the shell's plate | at the loading position (its top edge level with the top of the lip gap) the cover presses in from the front, groove on the rail, without force and without a crack; then each of B01, T08 and T09 in turn: it clicks closed and clicks open under a thumb, about 4 N, and runs free and straight between the clicks; closed, the top edge is hard on the top rim with no light between and no rattle when shaken; stowed, the bottom edge is hard on the bottom rim, and shaken hard it stays in; 200 cycles and both stops still have no play, no PLA dust on the bumps; in a jeans pocket, in and out ten times, the closed cover does not open. The fourth piece (the rail, PLA leaves in the face, 2026-11-23 and 24): ran straight, but the PLA wore, it got "looser and looser", rattled, never fully closed even new, and shaken hard stowed the cover flew off. Say which of the three clicks right; if a stop rattles, which stop and which side | `sliderArmT` (1.3 softer, 1.5 stiffer), `sliderRestPress` (0.3 holds harder into the rims), `sliderToothDeg` (30 softer click, 40 harder), `sliderGroove` (1.9 looser, 1.7 tighter on the rail) |
 | the real B02 (blue PLA) then T05, third piece (done, 2026-11-21: "the button mechanism now works perfectly") | the slot and its ribs, the step, the chamber, the pocket, the leg channels, the mouth | the printed plunger, the switch with its two leads; a thumb over the mouth and the slot's front for the face | the slicer preview shows the four 0.2 ribs; deck up, the switch goes in through the mouth, legs in the channels, slides back and drops into its pocket; deck down, the plunger goes in with its cap in the slot and slides back over the switch to the round end, and cannot leave through the deck; deck up, the cap stands 2.0 proud, clicks within 0.6 of travel, returns on the switch, and runs 200 times without tick; shaken with a thumb over the mouth, nothing moves. If the plunger will not pass over the switch, or the cap does not click, report the switch's measured height, base to actuator top | `shutterSwitchBody[2]` (the switch's whole height), `shutterSwitchFree`, `shutterSwitchPocket` if the switch does not drop in or climbs out, `shutterGuideRib` [0.4, 0.8] if the ribs vanish, `shutterFlangeBoreClear` 0.7 in reserve |
+| T10 (blue PLA) over T05, with the switch and the new B02 (2.6 proud) in T05 | the button with the face on: the face's pocket round the flange, the door, the face's top in front of the cap | the switch, B02, tape or a clamp to hold T10 on T05's front | T10 sits flat on T05's front with the plunger in (no gap: the flange is in the pocket); the cap clicks under a fingertip pressing straight down, and pressing with the finger landing toward the face, without the pad stopping on the face first; 200 presses, no rub on T10's back | `shutterProud` (higher if the pad still stops on the face), `shutterFacePocket` |
 | the real A02 (blue PLA) and B01 (black PETG), fourth | the window, its lips, the teeth and the cover's arms, the slide's feel | six inserts, the iron; the shell's plate or any flat plate to close the track | the cover clicks closed and clicks open with a thumb, about 4 N; closed, it does not drop at 90 degrees of tilt or when shaken, and does not lift past the lips by hand; open, it stays open inverted; 200 cycles without the arms taking a set (both stops still have no play). If they pass they are the parts | `sliderClr`, `sliderArmT`, `sliderRestPress` |
 | A03 at 0.10, then A01, last | | | | |
 
@@ -860,7 +898,7 @@ printed materials, one fastener type, nothing glued.
 | C01 | inserts | M2 brass heat-set, OD 3.2 x 3: six in A02's back, six in A01's rear wall ends | brass | 12 | | | heat-set | 3.0 holes 3.4 deep, countersunk 0.3 | 4 |
 | C03 | screws | M2 pan head: six x 6 (face, from inside), six x 4 (frame, from the back) | steel | 12 | | | into C01 | 2.4 clearance holes, counterbores 4.4 x 1.4 (plate) and 4.0 x 0.6 (frame) | 4, 5 |
 | C02 | foam strips | the clamp on the stack: 2 mm PORON, 2 wide, 101 + 101 + 60 + 60 | foam | 4 | | | adhesive to A03 | 40 % squeeze | 5 |
-| T01 to T09 | coupons | shrink bar, pocket gauge, ledge corner, strap wall end, deck, the soft and the firm cover (PETG); face corner, track (PLA) | as the parent | 1 each | as the parent | none | | each row of the coupon table | 0 |
+| T01 to T10 | coupons | shrink bar, pocket gauge, ledge corner, strap wall end, deck, the soft and the firm cover (PETG); face corner, track, face's shutter corner (PLA) | as the parent | 1 each | as the parent | none | | each row of the coupon table | 0 |
 
 Not in the body: the carrier's own four standoffs and four M2 x 4 (the
 carrier's BOM), the switch and its 80 mm XH lead, the cell and its lead,
@@ -887,7 +925,7 @@ Inspection points, in the order they happen:
 | every print, off the bed | the ID reads (A parts and coupons; the B parts have none); no support scars (there are no supports); the bed chamfer present on every fitted edge; no elephant foot proud of it | by eye and thumbnail |
 | A01 | the four pockets take a seated head with a thumb and hold it inverted; the twelve pin holes take a pin pushed 3 mm; the carrier drops to the ledge and sits flat | T02, T03, T04 criteria |
 | A02 + B01 (the face subassembly) | the cover drops at 45 degrees of tilt, stays shut at 90, cannot lift past the lips; the wordmark reads; the four cells clear | before the face goes on |
-| the switch and B02 in A01 | the switch down in its pocket, legs in the channels, leads hanging free into the cavity; the plunger at the slot's round end, the cap 2.0 proud, clicks within 0.6 of travel, runs 200 times without tick, returns on the switch | before the stack goes in; the face on before the deck turns down |
+| the switch and B02 in A01 | the switch down in its pocket, legs in the channels, leads hanging free into the cavity; the plunger at the slot's round end, the cap 2.6 proud, clicks within 0.6 of travel, runs 200 times without tick, returns on the switch | before the stack goes in; the face on before the deck turns down |
 | A02 on A01 | flush all round, the 0.3 reveal even; hangs face-down from the cord for an hour, takes a 10 N pull | pins hold |
 | the stack in | the carrier flat on the ledge all round, its heads clear of everything; the shutter lead on J103; the USB plug passes | no rock |
 | A03 on | the foam in its groove, butted; six screws down, the heads 0.7 proud and even; the V joint closed all round; the window centred on the active area by eye; the glass does not touch the frame (a 0.1 feeler at the window's edge) | |
