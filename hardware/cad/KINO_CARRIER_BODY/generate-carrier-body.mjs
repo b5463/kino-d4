@@ -69,7 +69,7 @@ function buildDummy() {
 const { bare, shell } = buildShell();
 const frame = buildFrame();
 const dummy = buildDummy();
-const { face, cover, coverTurned, lipProud, markBox } = buildFace();
+const { face, cover, lipProud, markBox } = buildFace();
 const button = buildShutterButton();
 const coverOpen = cover.translate([0, -FACE.travel, 0]);
 const coverMid = cover.translate([0, -FACE.travel / 2, 0]);
@@ -289,18 +289,19 @@ check("the frame's insert holes keep wall under the first groove", P.frameScrewI
   // height, the groove open through the cover's back, the rail inside the
   // groove at both stops and between, between cells 2 and 3.
   {
-    const railX = (FACE.panel[0] + FACE.panel[2]) / 2 + P.sliderRailOffset, [rw, rh] = P.sliderRail, [gw, gd] = P.sliderGroove;
+    const railX = (FACE.panel[0] + FACE.panel[2]) / 2 + FACE.railOff, [rw, rh] = P.sliderRail, [gw, gd] = P.sliderGroove;
     const rail = box(railX - rw / 2 + 0.1, FACE.panel[1] + 0.5, FACE.floorZ + 0.05, railX + rw / 2 - 0.1, FACE.panel[3] - 0.5, FACE.floorZ + rh - 0.05);
     check("the rail stands on the floor the window's full height", vol(face, rail) > rail.volume() * 0.98, `${rw} x ${rh} at X ${r2(railX)}, from Y ${r2(FACE.panel[1])} to ${r2(FACE.panel[3])}, joined to both rims`);
     const cb = cover.boundingBox();
-    const gx = (cb.min[0] + cb.max[0]) / 2 + P.sliderRailOffset;
-    openProbe("the groove is open through the cover's back, end to end", box(gx - gw / 2 + 0.1, cb.min[1] - 0.2, cb.min[2] - 0.2, gx + gw / 2 - 0.1, cb.max[1] + 0.2, cb.min[2] + gd - 0.1), `${gw} x ${gd} in the back, ${P.sliderRailOffset} right of the cover's centre`, cover);
+    const gx = (cb.min[0] + cb.max[0]) / 2 + FACE.railOff;
+    openProbe("the groove is open through the cover's back, end to end", box(gx - gw / 2 + 0.1, cb.min[1] - 0.2, cb.min[2] - 0.2, gx + gw / 2 - 0.1, cb.max[1] + 0.2, cb.min[2] + gd - 0.1), `${gw} x ${gd} in the back, ${FACE.railOff} right of the cover's centre`, cover);
     const railFull = box(railX - rw / 2, FACE.panel[1], FACE.floorZ, railX + rw / 2, FACE.panel[3], FACE.floorZ + rh);
     check("the rail runs in the groove at both stops and between", vol(railFull, cover) < 1e-3 && vol(railFull, coverOpen) < 1e-3 && vol(railFull, coverMid) < 1e-3 && Math.abs(gx - railX) < 1e-3 && (gw - rw) / 2 >= 0.1 - 1e-9 && gd - rh >= 0.2 - 1e-9,
       `${r2((gw - rw) / 2)} a side, ${r2(gd - rh)} over the rail; the groove on the rail; guided over its whole ${P.sliderH} under the thumb, so the push cannot yaw it`);
-    check("the rail is the orientation key", vol(railFull, coverTurned) > 1.0 && 2 * P.sliderRailOffset - gw / 2 - rw / 2 >= 1.0,
-      `turned round in its plane the cover's groove misses the rail by ${r2(2 * P.sliderRailOffset - gw / 2 - rw / 2)} and ${r2(vol(railFull, coverTurned))} mm^3 of rail stands in the cover: it sits ${rh} proud of the floor, above the lips`);
     const nearest = Math.min(...P.cameraXs.map((x) => Math.abs(x - railX) - FACE.boreR - P.cellSink));
+    const cellMid = P.cameraXs.reduce((a, b) => a + b, 0) / P.cameraXs.length;
+    check("the rail runs down the middle of the four cells", Math.abs(railX - cellMid) < 1e-9 && Math.abs(gx - cellMid) < 1e-6 && Math.abs(FACE.railOff) < 0.05,
+      `the rail and the groove at X ${r2(railX)}, the cells' middle ${r2(cellMid)}; ${Math.abs(FACE.railOff).toFixed(3)} from the window's centre (it stood 1.5 right of it as an orientation key; the thumb lip and the wordmark show which way up)`);
     check("the rail sits between cells 2 and 3", nearest >= 1.0 && P.sliderClr >= (gw - rw) / 2 + 0.1, `${r2(nearest)} mm from the nearest cell's rim; the walls stand ${P.sliderClr} off the cover, more than the rail's ${r2((gw - rw) / 2)}, so the rail is the guide`);
   }
   // The bumps sit under the cover's bevels, and under the channels'
@@ -365,8 +366,6 @@ check("the frame's insert holes keep wall under the first groove", P.frameScrewI
   check("cover travel is positive and the cover stows on the rim", FACE.travel > 10 && Math.abs(FACE.openY0 - FACE.panel[1]) < 1e-9 && Math.abs(FACE.closedY1 - FACE.panel[3]) < 1e-9, `${r2(FACE.travel)} mm down from Y ${r2(FACE.closedY0)}; stowed bottom edge at Y ${r2(FACE.openY0)}, panel from Y ${r2(FACE.panel[1])}`);
   check("wordmark fits under the lip", markBox.y > FACE.closedY0 + 0.8 && markBox.y + markBox.h < FACE.closedY1 - P.coverLip[1] - 0.6 && markBox.w < (FACE.panel[2] - FACE.panel[0]) - 10,
     `${r2(markBox.w)} x ${r2(markBox.h)} mm engraved ${P.markDepth}; "odd jobs" at ${P.markW} mm has strokes about ${r2(1.3 * P.markW / 30)} mm, floor ${P.markMinStroke}`);
-  check("the cover goes in one way only", vol(face, coverTurned) > vol(face, cover) + 1.0,
-    `turned round in its plane the cover sits on the rail: ${r2(vol(face, coverTurned))} mm^3 of face inside it; the right way, ${vol(face, cover).toFixed(3)}`);
   check("wordmark strokes clear one nozzle line with margin", 1.3 * P.markW / 30 >= P.markMinStroke, `about ${r2(1.3 * P.markW / 30)} mm, engraved ${P.markDepth}`);
   check("the grip is the horizon's right end, past the track", P.gripX0 > FACE.panel[2] + 3 && P.gripX0 < FACE.outline[2] - 12,
     `grip from X ${P.gripX0} to the face's edge, ${P.gripD} mm deep in a ${r2(FACE.horizonD)} mm groove; the track ends at X ${r2(FACE.panel[2])}`);
@@ -523,7 +522,7 @@ const printSpec = {
   "A01-KINO_CARRIER_SHELL.stl": [shell, [180, 0, 0], shellZones, 5, "the cavity, the USB opening (a 13.4 mm bridge inside the wall), the strap tunnels, the slot's flat ceiling, the switch pocket's rear wall and the chamber's closed rear end (an 18.6 mm bridge inside the pod, under the face); the ledge, the counterbores and the rear insert holes face up"],
   "A03-KINO_CARRIER_REAR_FRAME.stl": [frame, [180, 0, 0], [[GASK.x0 - GASK.gW - 1, GASK.y0 - GASK.gW - 1, Z.glass - GASK.gD - 0.5, GASK.x1 + GASK.gW + 1, GASK.y1 + GASK.gW + 1, Z.glass + 0.5]], 2, "the gasket groove's ceiling (a 2 mm bridge at the bed); the chamfer, the counterbores, the pad and the A03 engraving face up"],
   "A02-KINO_CARRIER_FACE.stl": [face, [0, 0, 0], faceZones, 5, "the six insert holes' countersinks and the signature's 0.4 mm ceilings at the bed, the A02 letters' top edges in the bottom edge wall (0.3 mm bridges); the lips' undersides are steeper than 45"],
-  "B01-KINO_CARRIER_LENS_COVER.stl": [cover, [0, 0, 0], [[(FACE.panel[0] + FACE.panel[2]) / 2 + P.sliderRailOffset - P.sliderGroove[0] / 2 - 0.5, -1e3, FACE.floorZ - 1, (FACE.panel[0] + FACE.panel[2]) / 2 + P.sliderRailOffset + P.sliderGroove[0] / 2 + 0.5, 1e3, FACE.floorZ + P.sliderGroove[1] + 0.3]], 2, "the groove's ceiling in the back (a 1.8 mm bridge at the bed)"],
+  "B01-KINO_CARRIER_LENS_COVER.stl": [cover, [0, 0, 0], [[(FACE.panel[0] + FACE.panel[2]) / 2 + FACE.railOff - P.sliderGroove[0] / 2 - 0.5, -1e3, FACE.floorZ - 1, (FACE.panel[0] + FACE.panel[2]) / 2 + FACE.railOff + P.sliderGroove[0] / 2 + 0.5, 1e3, FACE.floorZ + P.sliderGroove[1] + 0.3]], 2, "the groove's ceiling in the back (a 1.8 mm bridge at the bed)"],
   "B02-KINO_CARRIER_SHUTTER_BUTTON.stl": [button, [0, 0, 0], [], 1, "nothing: the flange lies on the bed"],
 };
 const placed = (part, rot, zones) => {
@@ -604,7 +603,7 @@ check("every coupon is labelled", ["T01", "T02", "T03", "T04", "T05", "T06", "T0
   const [p0x, , p1x] = FACE.panel, cd = P.sliderChannelD, zT = FACE.floorZ + P.sliderChannelTop - cd - 0.1;
   const teeth = FACE.teeth.flatMap((t) => [box(p0x - cd + 0.05, t.land[0] + 0.05, FACE.floorZ + 0.1, p0x - 0.05, t.land[1] - 0.05, zT), box(p1x + 0.05, t.land[0] + 0.05, FACE.floorZ + 0.1, p1x + cd - 0.05, t.land[1] - 0.05, zT)]);
   const rims = [box(p0x + 10, FACE.panel[1] - 2.0, FACE.back + 0.2, p1x - 10, FACE.panel[1] - 0.2, FACE.front - 1.5), box(p0x + 10, FACE.panel[3] + 0.2, FACE.back + 0.2, p1x - 10, FACE.panel[3] + 1.5, FACE.trackTop - 0.2)];
-  check("the track coupon carries all four teeth, both rims and the cover's whole run", teeth.every((l) => vol(t07, l) > l.volume() * 0.97) && rims.every((r) => vol(t07, r) > r.volume() * 0.9) && [cover, coverOpen, coverMid].every((c) => Math.abs(vol(t07, c) - vol(face, c)) < 1e-3) && vol(t07, box((p0x + p1x) / 2 + P.sliderRailOffset - 0.5, FACE.panel[1] + 2, FACE.floorZ + 0.1, (p0x + p1x) / 2 + P.sliderRailOffset + 0.5, FACE.panel[3] - 2, FACE.floorZ + P.sliderRail[1] - 0.1)) > 0.5,
+  check("the track coupon carries all four teeth, both rims and the cover's whole run", teeth.every((l) => vol(t07, l) > l.volume() * 0.97) && rims.every((r) => vol(t07, r) > r.volume() * 0.9) && [cover, coverOpen, coverMid].every((c) => Math.abs(vol(t07, c) - vol(face, c)) < 1e-3) && vol(t07, box((p0x + p1x) / 2 + FACE.railOff - 0.5, FACE.panel[1] + 2, FACE.floorZ + 0.1, (p0x + p1x) / 2 + FACE.railOff + 0.5, FACE.panel[3] - 2, FACE.floorZ + P.sliderRail[1] - 0.1)) > 0.5,
     `the window band from X ${r2(p0x - 8)} to ${r2(p1x + 8)}, Y ${r2(FACE.outline[1])} to ${r2(FACE.panel[3] + 3)}, the rail down it, the teeth in both walls; the real B01 runs and clicks in it as in the face`);
 }
 {

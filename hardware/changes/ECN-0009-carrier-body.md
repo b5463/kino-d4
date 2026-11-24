@@ -614,6 +614,14 @@ owner's printer. Two parts:
   click and hold, the slits open and clear of the wordmark, the lips along
   the cover at both stops, loading from the front; T06 and T07 carry the
   teeth. Untested in print. 256 gates.
+- **The rail down the middle of the cells** (twenty-ninth cut, the same
+  day; the owner: the rail "a bit to the right" bothered him). The rail
+  and the groove at the middle of the four cells (X 50.195, `FACE.railX`,
+  0.005 left of the window's centre); `sliderRailOffset` is gone. It was
+  the orientation key; there is none now, and the owner's reading is that
+  none is needed: the thumb lip at the cover's top edge and the wordmark
+  show which way up it goes. The key's gates are gone, one gate puts the
+  rail on the cells' middle. 255 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator

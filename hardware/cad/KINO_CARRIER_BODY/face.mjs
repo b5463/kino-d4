@@ -44,6 +44,9 @@ export const FACE = (() => {
   const openY1 = openY0 + P.sliderH;
   const inset = P.bandChamfer + P.bandRim;
   const panel = [P.bandX[0] + inset, panelY0, P.bandX[1] - inset, closedY1];
+  // The rail at the middle of the four cells, and the groove on it.
+  const railX = P.cameraXs.reduce((a, b) => a + b, 0) / P.cameraXs.length;
+  const railOff = railX - (panel[0] + panel[2]) / 2;   // from the window's centre, and so from the cover's
   const horizon = [closedY0 - P.horizonPad, closedY1 + P.horizonPad];
   const tanF = Math.tan(((P.camFovDeg / 2 + P.fovMarginDeg) * Math.PI) / 180);
   const boreR = P.lensBoreD / 2;
@@ -75,7 +78,7 @@ export const FACE = (() => {
   const channel = [bumpOpenY - rB - 0.4, bumpClosedY + rB + 0.4];
   const lipGap = [bumpOpenY - rB - 0.3, bumpOpenY + rB + 0.3];   // the stowed bump's way in from the front
   return Object.freeze({ back, front, trackTop, floorZ, horizonD, panel, horizon, outline, outlineR, closedY0, closedY1, openY0, openY1, travel,
-    tanF, boreR, coneR, outerR, bevel, lipZ, lensY, insertHoleDepth, bumpClosedY, bumpOpenY, restOff, ramp, teeth, channel, lipGap });
+    tanF, boreR, coneR, outerR, bevel, lipZ, lensY, insertHoleDepth, railX, railOff, bumpClosedY, bumpOpenY, restOff, ramp, teeth, channel, lipGap });
 })();
 
 const roundedRectZ = (x, y, z, w, d, h, r) => rbox(x, y, z, x + w, y + d, z + h, r);
@@ -199,7 +202,7 @@ export function buildFace() {
   }
   // The rail: on the floor at the window's centre, the window's full
   // height, joined to both rims. Up in print.
-  const railX = (p0x + p1x) / 2 + P.sliderRailOffset;
+  const railX = F.railX;
   adds.push(box(railX - P.sliderRail[0] / 2, p0y - 0.5, F.floorZ - 0.01, railX + P.sliderRail[0] / 2, p1y + 0.5, F.floorZ + P.sliderRail[1]));
   const faceCut = status("face: plate less cuts", status("face: plate", fuse(solids)).subtract(status("face: cuts", fuse(cuts))));
   const face = status("face", status("face: with lips", faceCut.add(status("face: lips and bumps", fuse(adds)))).simplify(1e-3));
@@ -211,7 +214,7 @@ export function buildFace() {
   const cr = P.sliderCornerR;
   // The plate, its back edge chamfered bedChamfer against the elephant foot
   // (the back is the first layer), then the two X edges bevelled 45 degrees,
-  // 1.0 on the left and 1.5 on the right, by two prisms: the key.
+  // sliderBevel, by two prisms.
   const bc = P.bedChamfer;
   let plateC = Manifold.hull([
     roundedRectZ(sx0 + bc, sy0 + bc, sBack, sx1 - sx0 - 2 * bc, sy1 - sy0 - 2 * bc, 0.01, Math.max(0.3, cr - bc)),
@@ -245,7 +248,7 @@ export function buildFace() {
   // The groove for the rail, in the back (the bed face), open at both ends,
   // its two edges at the bed chamfered so an elephant foot cannot close it.
   {
-    const gx = (sx0 + sx1) / 2 + P.sliderRailOffset, [gw, gd] = P.sliderGroove, m = P.sliderGrooveMouth;
+    const gx = (sx0 + sx1) / 2 + F.railOff, [gw, gd] = P.sliderGroove, m = P.sliderGrooveMouth;
     edgeCuts.push(box(gx - gw / 2, sy0 - 1, sBack - 1, gx + gw / 2, sy1 + 1, sBack + gd));
     edgeCuts.push(prismY(sy0 - 1, sy1 - sy0 + 2, [gx - gw / 2 - m - 0.01, sBack - 0.01], [gx + gw / 2 + m + 0.01, sBack - 0.01], [gx + gw / 2, sBack + m], [gx - gw / 2, sBack + m]));
   }
@@ -271,8 +274,5 @@ export function buildFace() {
     ]);
   });
   const cover = status("cover", fuse([plateC, lip, ...bumps]).subtract(fuse(edgeCuts)).simplify(1e-3));
-  // The cover turned round in its own plane: the orientation key's probe.
-  const [cx, cy] = [(p0x + p1x) / 2, (sy0 + sy1) / 2];
-  const coverTurned = cover.rotate([0, 0, 180]).translate([2 * cx, 2 * cy, 0]);
-  return { face, cover, coverTurned, lipProud, markBox: { x: markX, y: markY, w: mw, h: mh } };
+  return { face, cover, lipProud, markBox: { x: markX, y: markY, w: mw, h: mh } };
 }

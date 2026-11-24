@@ -1,6 +1,6 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-24T15:10:14.680Z",
+  "generated": "2026-11-24T15:26:41.998Z",
   "body": {
     "width": 131.4,
     "height": 83.8,
@@ -276,7 +276,7 @@
     }
   },
   "gates": {
-    "total": 256,
+    "total": 255,
     "failed": 0
   },
   "checks": [
@@ -1018,12 +1018,12 @@
     {
       "name": "the rail stands on the floor the window's full height",
       "pass": true,
-      "details": "1.6 x 1 at X 51.7, from Y 0.7 to 36.7, joined to both rims"
+      "details": "1.6 x 1 at X 50.2, from Y 0.7 to 36.7, joined to both rims"
     },
     {
       "name": "the groove is open through the cover's back, end to end",
       "pass": true,
-      "details": "1.8 x 1.2 in the back, 1.5 right of the cover's centre"
+      "details": "1.8 x 1.2 in the back, -0.005000000000002558 right of the cover's centre"
     },
     {
       "name": "the rail runs in the groove at both stops and between",
@@ -1031,14 +1031,14 @@
       "details": "0.1 a side, 0.2 over the rail; the groove on the rail; guided over its whole 16.5 under the thumb, so the push cannot yaw it"
     },
     {
-      "name": "the rail is the orientation key",
+      "name": "the rail runs down the middle of the four cells",
       "pass": true,
-      "details": "turned round in its plane the cover's groove misses the rail by 1.3 and 26.14 mm^3 of rail stands in the cover: it sits 1 proud of the floor, above the lips"
+      "details": "the rail and the groove at X 50.2, the cells' middle 50.2; 0.005 from the window's centre (it stood 1.5 right of it as an orientation key; the thumb lip and the wordmark show which way up)"
     },
     {
       "name": "the rail sits between cells 2 and 3",
       "pass": true,
-      "details": "4.94 mm from the nearest cell's rim; the walls stand 0.3 off the cover, more than the rail's 0.1, so the rail is the guide"
+      "details": "6.45 mm from the nearest cell's rim; the walls stand 0.3 off the cover, more than the rail's 0.1, so the rail is the guide"
     },
     {
       "name": "the bumps run under the bevels and the channels' ceilings",
@@ -1129,11 +1129,6 @@
       "name": "wordmark fits under the lip",
       "pass": true,
       "details": "30 x 6.79 mm engraved 0.4; \"odd jobs\" at 30 mm has strokes about 1.3 mm, floor 0.8"
-    },
-    {
-      "name": "the cover goes in one way only",
-      "pass": true,
-      "details": "turned round in its plane the cover sits on the rail: 27.02 mm^3 of face inside it; the right way, 0.108"
     },
     {
       "name": "wordmark strokes clear one nozzle line with margin",
@@ -1423,7 +1418,7 @@
     {
       "name": "B01-KINO_CARRIER_LENS_COVER.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 44.06 inside them: the groove's ceiling in the back (a 1.8 mm bridge at the bed)"
+      "details": "0 mm^2 facing down past 45 degrees outside the named places (allowed 2), 37.04 inside them: the groove's ceiling in the back (a 1.8 mm bridge at the bed)"
     },
     {
       "name": "B01-KINO_CARRIER_LENS_COVER.stl fits the bed",

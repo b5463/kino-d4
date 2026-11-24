@@ -251,8 +251,11 @@ export const P = Object.freeze({
   // cells 2 and 3, the one visible piece of mechanism on the front.
   sliderRail: [1.6, 1.0],    // width x height off the floor
   sliderGroove: [1.8, 1.2],  // in the cover's back, open at both ends: 0.1 a side on the rail, 0.2 over it
-  sliderRailOffset: 1.5,     // the rail (and the groove) this far right of the window's centre: the orientation key. Turned round in its plane the cover's groove misses the rail by 1.4 and the cover sits 1.0 proud on it, above the lips' underside (gated). The lips can then be alike
-  sliderBevel: [1.0, 1.0],   // 45-degree edge bevels, left and right, and the lips that trap them; alike now that the rail is the orientation key (1.0 and 1.5 left a 1.1 flank on the right, and with the walls 0.3 off the cover the key was 0.2 of overlap)
+  // The rail sits at the middle of the four cells (DERIVED in face.mjs, FACE.railX:
+  // 0.005 left of the window's centre). It stood 1.5 right of it as the
+  // orientation key, and read as off-centre on the front (the owner,
+  // 2026-11-24). No key: the thumb lip and the wordmark show which way up.
+  sliderBevel: [1.0, 1.0],   // 45-degree edge bevels, left and right, and the lips that trap them, alike (1.0 and 1.5 left a 1.1 flank on the right)
   sliderLipOver: 0.2,        // each lip is this much deeper than its bevel is wide, so its underside is steeper than 45 degrees in print
   sliderCornerR: 3.0,        // the bar is the thing the eye reads; square corners inside a pill band were the last box on the front
   // The stops and the detents (twenty-ninth cut, 2026-11-24; the owner after
