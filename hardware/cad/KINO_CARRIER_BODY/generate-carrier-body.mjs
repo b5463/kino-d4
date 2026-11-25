@@ -34,6 +34,7 @@ import { P, Z, XY, IDS } from "./params.mjs";
 import { SHELL, buildShell, buildFrame, cameraPocket } from "./shell.mjs";
 import { FACE, buildFace } from "./face.mjs";
 import { SHUTTER, buildShutterButton, capPreview, plungerAtRest } from "./shutter.mjs";
+import { DOOR, buildDoor } from "./door.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const outDir = path.join(here, ".candidate");
@@ -71,6 +72,7 @@ const frame = buildFrame();
 const dummy = buildDummy();
 const { face, cover, lipProud, markBox } = buildFace();
 const button = buildShutterButton();
+const door = buildDoor();
 const coverOpen = cover.translate([0, -FACE.travel, 0]);
 const coverMid = cover.translate([0, -FACE.travel / 2, 0]);
 
@@ -648,7 +650,41 @@ check("the frame's insert holes keep wall under the first groove", P.frameScrewI
   check("the mouth in the plate clears CAM 4's pocket and the face's stations", X - rF >= P.cameraXs[3] + S.headPocket / 2 + 3.0 && S.faceScrewXY.every(([px, py]) => px + P.screwBoreD / 2 + 1.5 <= X - rF || px - P.screwBoreD / 2 - 1.5 >= X + rF || py + P.screwBoreD / 2 + 1.0 <= T.floorTop),
     `mouth from X ${r2(X - rF)}, CAM 4's pocket ends at ${r2(P.cameraXs[3] + S.headPocket / 2)}; the stations near it at ${S.faceScrewXY.filter(([px]) => px > 90).map(([x, y]) => `(${x}, ${y})`).join(" ")}`);
   check("shutter plunger stem is positive", T.stem > 2.0, `${r2(T.stem)} mm nose above the flange; cap ${P.shutterProud} mm proud of the deck at rest`);
-  check("the deck carries the button and nothing else, grooved whole", P.deckRing >= 1.0 && P.deckRing <= 3.0, `grooves over the whole deck; a ${P.deckRing} mm ring round the ${P.shutterCollarD} collar; the name is inside, on the face`);
+  check("the deck carries the button and the card door, grooved whole", P.deckRing >= 1.0 && P.deckRing <= 3.0, `grooves over the whole deck; a ${P.deckRing} mm ring round the ${P.shutterCollarD} collar; the name is inside, on the face`);
+}
+// The card door: the opening over the P4's microSD slot, the card's way out
+// clear, the wall round it whole, and B03 in its recess, flush, snapped.
+{
+  const D = DOOR;
+  const [sx0, sx1] = P.tfSlotX, [cz0, cz1] = P.tfCardZ;
+  check("the card door's opening stands over the slot, a fingertip wide", D.open[0] <= sx0 - 2 && D.open[2] >= sx1 + 2 && D.open[1] <= cz0 - 1 && D.open[3] >= cz1 + 1 && D.open[2] - D.open[0] >= 16 && D.open[3] - D.open[1] >= 7,
+    `the opening ${r2(D.open[2] - D.open[0])} x ${r2(D.open[3] - D.open[1])} at X ${r2(D.open[0])} to ${r2(D.open[2])}, Z ${r2(D.open[1])} to ${r2(D.open[3])}; the slot's mouth X ${sx0} to ${sx1} (from Guition's structure drawing, OFFICIAL_CAD), the card's plane Z ${cz0} to ${cz1} (PROVISIONAL)`);
+  const path = box(sx0 - 0.2, P.tfSlotMouthY, cz0 - 0.2, sx1 + 0.2, D.oy1 + 1, cz1 + 0.2);
+  check("the card comes out through the top wall, nothing in its way", vol(shell, path) < 1e-3,
+    `a ${r2(sx1 - sx0 + 0.4)} x ${r2(cz1 - cz0 + 0.4)} sweep from the slot's mouth at Y ${P.tfSlotMouthY} up through the deck: ${vol(shell, path).toFixed(4)} mm^3 of shell in it`);
+  const ejected = box(sx0, P.tfSlotMouthY, cz0, sx1, D.cardOut + 0.5, cz1);
+  check("the door closes over the card, clear of it even sprung out", vol(door, ejected) < 1e-6 && D.recY - D.cardOut >= 1.0,
+    `the card's end ${r2(D.cardEnd)} seated and ${r2(D.cardOut)} sprung out (PROVISIONAL: ${P.tfCardProud} past the mouth, ${P.tfCardEject} of eject), the door's underside at ${r2(D.recY)}, ${r2(D.recY - D.cardOut)} over it`);
+  const topScrews = S.frameScrewXY.filter(([, y]) => y > 50).map(([x]) => x);
+  const nearScrew = Math.min(...topScrews.map((x) => Math.max(D.x0 - x, x - D.x1)));
+  const nearStrap = Math.min(...S.strapChannels.filter(([, y0]) => y0 > 50).map(([x0, , x1]) => Math.max(D.x0 - x1, x0 - D.x1)));
+  check("the card door's recess leaves the wall's rear end, the frame's screws, the straps and the shutter whole", D.z0 - Z.glass >= 1.5 && nearScrew - P.insertHoleD / 2 >= 3.0 && nearStrap >= 3.0 && SHUTTER.podX0 - D.x1 >= 3.0,
+    `${r2(D.z0 - Z.glass)} of wall behind the recess to the frame's seat; the nearest frame screw ${r2(nearScrew)} from it (X ${topScrews.join(", ")}), the nearest strap tunnel ${r2(nearStrap)}, the shutter's pod ${r2(SHUTTER.podX0 - D.x1)}`);
+  const seatProbe = door.translate([0, -0.05, 0]);
+  const top = door.boundingBox().max[1];
+  check("B03 sits in its recess, flush, on the ledge, clear of the walls", vol(shell, door) < 1e-3 && vol(shell, seatProbe) > 1.0 && Math.abs(top - D.oy1) < 0.02,
+    `${vol(shell, door).toFixed(4)} mm^3 of shell in the closed door; 0.05 lower it is on the ledge (${r2(vol(shell, seatProbe))} mm^3); its top at Y ${r2(top)}, the deck at ${r2(D.oy1)}, the deck's grooves carried across it`);
+  {
+    const defl = P.tfDoorBumpOut - P.tfDoorClr, strainD = (3 * P.tfDoorArmT * defl) / (2 * D.armL ** 2);
+    const kD = (3 * 2000 * (P.tfDoorT * P.tfDoorArmT ** 3 / 12)) / D.armL ** 3, lift = 2 * kD * (P.tfDoorBumpOut - P.tfDoorClr) * Math.tan((45 + 17) * Math.PI / 180);
+    const grooveIn = vol(shell, door.translate([0, 0.6, 0])) > vol(shell, door) + 0.05;
+    check("B03's arms snap it in and hold it, inside PETG's limit", strainD <= 0.025 && lift >= 3 && lift <= 15 && P.tfDoorArmSlit >= defl + 0.3 && grooveIn,
+      `two ${P.tfDoorArmT} arms ${r2(D.armL)} from root to bump: ${(100 * strainD).toFixed(2)} % strain as the bumps pass the walls (${r2(defl)}), about ${r2(kD)} N/mm each; about ${r2(lift)} N on a nail to lift it out; the ${P.tfDoorArmSlit} slits leave room; lifted 0.6 the bumps are in the groove's upper flank`);
+  }
+  {
+    const ln = P.nozzleLine, bad = [["the door's arms", P.tfDoorArmT, 2 * ln], ["their slits, a gap", P.tfDoorArmSlit, 2 * ln], ["the ledge", P.tfDoorLedge, 3 * ln]].filter(([, v, n]) => v < n - 1e-9);
+    check("B03 and its recess print with a 0.4 mm nozzle", bad.length === 0, `arms ${P.tfDoorArmT} (${r2(P.tfDoorArmT / ln)} lines), slits ${P.tfDoorArmSlit} (${r2(P.tfDoorArmSlit / ln)}), ledge ${P.tfDoorLedge} (${r2(P.tfDoorLedge / ln)})`);
+  }
 }
 for (const [i, [x0, y0, x1, y1]] of S.strapSlots.entries()) {
   openProbe(`strap slot ${i} open through the frame`, box(x0 + 0.1, y0 + 0.1, Z.frameRear - 0.3, x1 - 0.1, y1 - 0.1, Z.glass + 0.3), `${P.strapSlot[0]} x ${P.strapSlot[1]} mm through the frame's border`, frame);
@@ -698,6 +734,7 @@ const GASK = (() => {
 // would never show. Everything else must be clean, so the slicer's supports
 // stay off and nothing it would grow could mark a visible surface.
 const shellZones = [
+  [DOOR.x0 - 0.5, DOOR.cy1 - 1, DOOR.z0 - 0.5, DOOR.x1 + 0.5, DOOR.oy1 + 1, DOOR.z0 + P.tfDoorLedge + P.tfDoorR + 0.5],   // the card door's recess and opening: their rear edges are 24 and 21 mm bridges in print
   [cx0, cy0, Z.glass - 1, cx1, cy1, Z.plateInner + 0.5],
   [P.usbCX - S.usbOpenW / 2 - 1, oy0 - 1, S.usbOpenZ[0] - 1, P.usbCX + S.usbOpenW / 2 + 1, cy0 + 1, S.usbOpenZ[1] + 1],
   ...S.strapChannels.map(([x0, y0, x1, y1]) => [x0 - 0.5, y0 - 0.5, Z.glass - 1, x1 + 0.5, y1 + 0.5, Z.glass + P.strapTunnelSkin + P.strapChannelD + 1]),
@@ -716,6 +753,7 @@ const printSpec = {
   "A02-KINO_CARRIER_FACE.stl": [face, [0, 0, 0], faceZones, 5, "the six insert holes' countersinks and the signature's 0.4 mm ceilings at the bed, the A02 letters' top edges in the bottom edge wall (0.3 mm bridges); the lips' undersides are steeper than 45"],
   "B01-KINO_CARRIER_LENS_COVER.stl": [cover, [0, 0, 0], [[(FACE.panel[0] + FACE.panel[2]) / 2 + FACE.railOff - P.sliderGroove[0] / 2 - 0.5, -1e3, FACE.floorZ - 1, (FACE.panel[0] + FACE.panel[2]) / 2 + FACE.railOff + P.sliderGroove[0] / 2 + 0.5, 1e3, FACE.floorZ + P.sliderGroove[1] + 0.3]], 2, "the groove's ceiling in the back (a 1.8 mm bridge at the bed)"],
   "B02-KINO_CARRIER_SHUTTER_BUTTON.stl": [button, [0, 0, 0], [], 1, "nothing: the flange lies on the bed"],
+  "B03-KINO_CARRIER_CARD_DOOR.stl": [door, [90, 0, 0], [], 2, "nothing: it lies flat on its underside; the bed chamfer's 45 degrees along its edges, the bumps' lower flanks steeper"],
 };
 const placed = (part, rot, zones) => {
   const b = part.rotate(rot).boundingBox(), t = [-b.min[0], -b.min[1], -b.min[2]];
@@ -771,6 +809,9 @@ const coupons = (() => {
   const t05Box = box(SHUTTER.podX0 - 1, SHUTTER.podInnerY - 2, t05Z0, ox1 + 1, oy1 + 1, Z.plateFront + 1);   // the whole pod with the deck over it, the wall corner it joins and the plate with the mouth
   const t07Box = box(FACE.panel[0] - 8, oy0 - 1, FACE.back - 1, FACE.panel[2] + 8, FACE.panel[3] + 3, FACE.front + 1);   // the slide: the face's whole window band, both walls with their lips, channels and four teeth, both rims; the real B01 runs in it
   const t10Box = box(SHUTTER.podX0 - 1, SHUTTER.podInnerY - 4, FACE.back - 1, ox1 + 1, oy1 + 1, FACE.front + 1);   // the face's top-right corner over T05: the cover over the mouth and the face's top in front of the cap
+  const t11Box = box(DOOR.x0 - 4, DOOR.cy1 - 1, Z.glass - 1, DOOR.x1 + 4, oy1 + 1, DOOR.z1 + 4);   // the top wall round the card door: the recess, the opening, the groove, the notch
+  let t11 = cut(shell, t11Box);
+  t11 = engrave("T11-KINO_COUPON_CARD_DOOR.stl", t11, "T11", DOOR.cx - 3.0, DOOR.cy1 + 1.4, Z.glass, -1, 3.0);   // in the wall's rear end, up in print
   let t03 = cut(shell, t03Box), t04 = cut(shell, t04Box), t05 = cut(shell, t05Box), t06 = cut(face, t06Box), t07 = cut(face, t07Box), t10 = cut(face, t10Box);
   t07 = engrave("T07-KINO_COUPON_TRACK.stl", t07, "T07", FACE.panel[0] + 14, FACE.outline[1] + P.faceEdgeR + 0.6, FACE.front, 1, 3.0);
   t03 = engrave("T03-KINO_COUPON_LEDGE_CORNER.stl", t03, "T03", 8.0, oy0 + 0.75, Z.carrierBack - 2, -1, 3.0);
@@ -786,6 +827,7 @@ const coupons = (() => {
     "T04-KINO_COUPON_STRAP_SHELL.stl": toBed(t04.rotate([180, 0, 0])),
     "T06-KINO_COUPON_FACE_CORNER.stl": toBed(t06),
     "T10-KINO_COUPON_FACE_SHUTTER.stl": toBed(t10),
+    "T11-KINO_COUPON_CARD_DOOR.stl": toBed(t11.rotate([180, 0, 0])),
     "T07-KINO_COUPON_TRACK.stl": toBed(t07),
     "T01-KINO_COUPON_SHRINK_BAR.stl": bar,
   };
@@ -806,7 +848,7 @@ const coupons = (() => {
     coupons[name] = toBed(engrave(name, v, id, idX, idY, sTop, 1, 3.0));
   }
 }
-check("every coupon is labelled", ["T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10"].every((id) => couponText.some(([, t]) => t === id)), couponText.map(([n, t]) => `${t} in ${n}`).join("; "));
+check("every coupon is labelled", ["T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10", "T11"].every((id) => couponText.some(([, t]) => t === id)), couponText.map(([n, t]) => `${t} in ${n}`).join("; "));
 {
   // T07 is the whole track: all four teeth, both lips, the window's two
   // rims, so the real cover runs in it as it runs in the face.
@@ -845,6 +887,14 @@ check("every coupon is labelled", ["T01", "T02", "T03", "T04", "T05", "T06", "T0
   const pl = plungerAtRest(), stroke = P.shutterSwitchFree + P.shutterSwitchTravel + 0.3;
   check("the face's shutter coupon covers the mouth, and the plunger runs clear of it", vol(t10, box(SHUTTER.X - SHUTTER.rF + 0.3, SHUTTER.floorTop + 0.3, FACE.back + 0.1, SHUTTER.X + SHUTTER.rF - 0.3, SHUTTER.guideBottom - 0.3, FACE.back + 0.8)) > 0.97 * (2 * SHUTTER.rF - 0.6) * (SHUTTER.guideBottom - SHUTTER.floorTop - 0.6) * 0.7 && [0, stroke].every((dy) => vol(t10, pl.translate([0, -dy, 0])) < 1e-6),
     `the face's top-right corner from X ${r2(SHUTTER.podX0 - 1)}; held over T05 with the real B02 in it, it is the button as in the body`);
+}
+{
+  // T11 is the top wall round the card door, so the real B03 snaps into it as
+  // into the shell, and the card's way out can be tried with a card.
+  const t11Body = shell.intersect(box(DOOR.x0 - 4, DOOR.cy1 - 1, Z.glass - 1, DOOR.x1 + 4, oy1 + 1, DOOR.z1 + 4));
+  const seated = vol(t11Body, door) < 1e-3 && vol(t11Body, door.translate([0, -0.05, 0])) > 1.0 && vol(t11Body, door.translate([0, 0.6, 0])) > vol(t11Body, door) + 0.05;
+  check("the card door coupon takes B03 as the shell does", seated && Math.abs(vol(t11Body, door.translate([0, -0.05, 0])) - vol(shell, door.translate([0, -0.05, 0]))) < 1e-3,
+    `the top wall from X ${r2(DOOR.x0 - 4)} to ${r2(DOOR.x1 + 4)}, the wall's rear end to Z ${r2(DOOR.z1 + 4)}: the door seats on the same ledge and snaps into the same groove`);
 }
 // Bed plates: the coupons that print together, 10 mm apart, as one file each.
 const plates = (() => {

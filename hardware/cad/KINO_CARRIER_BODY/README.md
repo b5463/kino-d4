@@ -256,6 +256,7 @@ not the bed.
 | A02, `print/A02-KINO_CARRIER_FACE.stl` | the face: a 5.2 mm plate inset 0.3 mm from the shell's outline (a black reveal line round it), its front edge a 1.2 mm 45 degree chamfer, its back edge chamfered 0.4; the horizon, a 1.0 mm groove edge to edge at the bar's height with its lips chamfered 0.8 above and 0.4 below, its right end ramping at 45 degrees to 2.2 mm deep as the grip; the cover's window, 87 x 36.5 with R3.1 corners, cut down to the face's own 1.0 mm floor, its front edges chamfered 0.8 (bottom rim) and 0.4 (sides), a 1.6 x 1.0 rail down the tray at the middle of the four cells (the cover's guide), dovetail lips 1.0 on its two side walls the window's whole height but for a 14 mm loading gap a side between the stops; in each side wall a detent channel 0.75 deep with two teeth (a 1.0 land, 35 degree ramps); the window's rims are the cover's stops; four 7.5 mm cells through the floor with a 0.8 mm rim; six 3.0 mm insert holes in the back; the signature engraved 0.4 mm inside, mirrored; A02 engraved 2.2 mm in the bottom edge wall, inside the reveal | dark blue PLA | back down (`previews/A02-KINO_CARRIER_FACE_PRINT.png`, the back in `_FACE_BACK.png`, the edge in `_FACE_EDGE.png`), 0.20 mm, no support |
 | B01, `print/B01-KINO_CARRIER_LENS_COVER.stl` | the sliding cover, 86.4 x 16.5 x 3 with R3 corners, its back edge chamfered 0.4, its two long edges bevelled 45 degrees 1.0, a 1.8 x 1.2 groove in its back at its centre for the rail, its edges chamfered 0.3 at the bed, a spring arm 1.55 wide at each end cut free by a 1.0 slit 14 up from the bottom edge, one bump 0.8 proud on each arm's flank 4.0 up, R0.7 below and R1.3 above; "odd jobs" engraved 0.4 in its top; a 20 x 2.5 lip with a 0.8 mm root on its top edge, centred on the bar, 1.5 proud of the face; no mark | black PETG | back down (`previews/B01-KINO_CARRIER_LENS_COVER_PRINT.png`), 0.08 mm layers |
 | B02, `print/B02-KINO_CARRIER_SHUTTER_BUTTON.stl` | the plunger: 14 mm cap with a 0.5 mm 45 degree edge and an 11 mm spherical dish 0.4 deep in its top inside a 1.0 flat rim (the finger finds the centre), 2.1 mm proud of the deck at the rim, running on six 0.2 mm ribs in the closed bore; the 17.6 mm flange chamfered at the bed, 0.5 a side in the chamber, 1.5 under the step all round, its front 0.3 short of the face; 6.0 tall; no mark. The shutter's one printed part: it goes in first and hangs in the bore; the switch slides under it into the crush ribs; the face only covers the mouth | dark blue PLA | flange down (`previews/B02-KINO_CARRIER_SHUTTER_BUTTON_PRINT.png`), 0.08 mm layers |
+| B03, `print/B03-KINO_CARRIER_CARD_DOOR.stl` | the card door: 23.5 x 10.5 x 2.0, flush in its recess over the P4's microSD slot, the deck's V-grooves across its top; two 1.0 in-plane spring arms with 0.65 bumps that snap into the recess's groove; a nail under its front edge lifts it | black PETG | underside down (`previews/B03-KINO_CARRIER_CARD_DOOR_PRINT.png`), 0.12 mm |
 | C01, twelve inserts | M2 brass heat-set inserts, OD 3.2, 3 mm long (the owner's kit). Six in the face's back, six in the walls' rear ends, in 3.0 mm holes 3.4 deep countersunk 0.3 at the mouth, set with an iron until flush | brass | not printed |
 | C03, twelve screws | M2 pan head: six M2 x 6 for the face (from inside the cavity, heads flush in the plate's counterbores), six M2 x 4 for the frame (from the back, heads 0.7 proud in 4.0 counterbores) | steel | not printed |
 | C02, foam | 2 mm PORON or silicone foam with adhesive, 2 mm wide: two strips of 101 mm and two of 60 mm in A03's groove; the clamp that holds the stack | foam | cut |
@@ -631,6 +632,48 @@ the axis: the closed bore, the flange short of the face, the cap at rest
 and at the click. T10, the face's top-right corner, held over T05 with the
 real switch and B02 in it, is the button as it will be in the body.
 
+### The card door
+
+The photographs live on the P4's own microSD card (the firmware's
+`storage.c`, SD slot 0), and until this cut the body had no way to it:
+the card came out with the rear frame, the foam and the stack.
+
+Where the slot is. Guition's structure drawing of the board
+(`JC4880P443C_I_W_Y`, its vector rear view, drawn as seen through the
+board) shows an 11.9 mm slot mouth on the module's top edge. Scaled by
+the four inserts' measured 61.9 x 54.8 pitch (the drawing agrees to 0.15 %)
+and mirrored as the dev carrier found, it is at body X 64.4 to 76.4, its
+mouth 0.9 inside the module's top edge (Y 67.9). The same mapping puts the
+three ports within 0.1 of `placement.py` and SW3 15.5 right of the
+top-right insert, as ECN-0004's bench note has it; the vendor's photograph
+of the board's back shows the silver push-push socket on that edge, with
+BOOT and RST further left. That is `OFFICIAL_CAD`, not `MEASURED`. The
+drawing does not give the socket's height: the card's plane is taken at
+0.4 to 1.4 in front of the P4's back face (a 1.8 socket on the component
+side), its seated end 1.0 past the mouth and its spring 3.5
+(`tfCardZ`, `tfCardProud`, `tfCardEject`, PROVISIONAL).
+
+The card's seated end is 8.4 below the deck: no finger reaches it through
+a card-sized slot. So the top wall over it has a 24 x 11 recess, 2.0 deep,
+from Z -3 (2.0 of wall left to the frame's seat) to Z 8, and in its floor
+a 21 x 8 opening through to the cavity, a fingertip wide: push the card
+home until it clicks, and pinch it out with two nails once it springs up
+(or tip it out). The opening is outside the cavity's outline, so the stack
+still slides in from the rear; 7.6 clear of the nearest frame screw, 11.6
+of the shutter's pod (gates). Its rear edges are 24 and 21 mm bridges in
+print.
+
+The door, B03, black PETG: 23.5 x 10.5 x 2.0, flush with the deck, the
+deck's V-grooves carried across its top on the body's rhythm. Two in-plane
+spring arms, 1.0 wide and 5.8 from their root to the bump, the lens
+cover's arms again, end in bumps 0.65 past the door's edge that snap into
+a 0.5 groove with 45 degree flanks along the recess's side walls; the
+walls' top edges are chamfered so the bumps ride in. 1.8 % strain as they
+pass; about 7.7 N on a nail to lift it out, at the 0.6 mm pit under its
+front edge in the nail notch. Closed, its underside is 2.9 over the card
+even sprung out. `previews/KINO_CARRIER_CARD_DOOR_SECTION.png` is the
+section through the card's path; T11 is the top wall round the door.
+
 ### Assembly
 
 0. Before anything goes in: flash the P4 and the four nodes (the P4's USB
@@ -716,7 +759,7 @@ the pocket, the channels, the mouth). `KINO_CARRIER_EXPLODED.png` (labelled by I
 pull every part apart along the depth axis: A03, the electronics stack
 (green) with its glass, A01 with B02, A02, B01; the inserts, the screws,
 the foam strips and the switch are too small to show.
-`KINO_CARRIER_SHUTTER_SECTION.png` is the section through the shutter's axis; `T10-KINO_COUPON_FACE_SHUTTER.png` and `_BACK.png` the face's shutter corner;
+`KINO_CARRIER_CARD_DOOR_SECTION.png` is the section through the card's path, `B03-KINO_CARRIER_CARD_DOOR_PRINT.png` the door and `T11-KINO_COUPON_CARD_DOOR.png` its coupon; `KINO_CARRIER_SHUTTER_SECTION.png` is the section through the shutter's axis; `T10-KINO_COUPON_FACE_SHUTTER.png` and `_BACK.png` the face's shutter corner;
 `P3-COUPON_PLATE_B01_T08_T09.png` is the three covers on their bed;
 `A02-KINO_CARRIER_FACE_DETENT.png` is the left wall's teeth and channel
 with the cover's arm and bump, in plan closed and stowed and in section; `T06-KINO_COUPON_FACE_CORNER.png` and `_BACK.png` are
@@ -726,7 +769,7 @@ making-of page (`docs/MAKING_OF.md`).
 
 ## Gates
 
-`node generate-carrier-body.mjs` writes `.candidate/` and runs 271 gates,
+`node generate-carrier-body.mjs` writes `.candidate/` and runs 283 gates,
 throwing on the first failure (`KINO_SOFT_GATES=1` collects them): the depth
 chain re-added over the lens band, the lens front on the pocket floor, the
 module PCB with the plate to land on, the battery bay tall enough for the cell
@@ -827,6 +870,7 @@ reported. Pass criteria, in numbers:
 | T07 (blue PLA) with B01, T08 and T09 (black PETG, 0.08, on P3), fifth piece | the slide: the whole window band with the rail down it, both walls with their channels and teeth, the lips with their loading gaps, the two rims, the cells; the 3.0 cover with its groove, its two spring arms and bumps, and the 2.5 lip | the printed cover; any flat plate held behind the coupon for the shell's plate | at the loading position (its top edge level with the top of the lip gap) the cover presses in from the front, groove on the rail, without force and without a crack; then each of B01, T08 and T09 in turn: it clicks closed and clicks open under a thumb, about 4 N, and runs free and straight between the clicks; closed, the top edge is hard on the top rim with no light between and no rattle when shaken; stowed, the bottom edge is hard on the bottom rim, and shaken hard it stays in; 200 cycles and both stops still have no play, no PLA dust on the bumps; in a jeans pocket, in and out ten times, the closed cover does not open. The fourth piece (the rail, PLA leaves in the face, 2026-11-23 and 24): ran straight, but the PLA wore, it got "looser and looser", rattled, never fully closed even new, and shaken hard stowed the cover flew off. Say which of the three clicks right; if a stop rattles, which stop and which side | `sliderArmT` (1.3 softer, 1.5 stiffer), `sliderRestPress` (0.3 holds harder into the rims), `sliderToothDeg` (30 softer click, 40 harder), `sliderGroove` (1.9 looser, 1.7 tighter on the rail) |
 | the real B02 (blue PLA) then T05, third piece (done, 2026-11-21: "the button mechanism now works perfectly") | the slot and its ribs, the step, the chamber, the pocket, the leg channels, the mouth | the printed plunger, the switch with its two leads; a thumb over the mouth and the slot's front for the face | the slicer preview shows the four 0.2 ribs; deck up, the switch goes in through the mouth, legs in the channels, slides back and drops into its pocket; deck down, the plunger goes in with its cap in the slot and slides back over the switch to the round end, and cannot leave through the deck; deck up, the cap stands 2.0 proud, clicks within 0.6 of travel, returns on the switch, and runs 200 times without tick; shaken with a thumb over the mouth, nothing moves. If the plunger will not pass over the switch, or the cap does not click, report the switch's measured height, base to actuator top | `shutterSwitchBody[2]` (the switch's whole height), `shutterSwitchFree`, `shutterSwitchPocket` if the switch does not drop in or climbs out, `shutterGuideRib` [0.4, 0.8] if the ribs vanish, `shutterFlangeBoreClear` 0.7 in reserve |
 | the new T05 (black PETG) with the switch and the new B02, then T10 (blue PLA) over it | the closed bore and its six ribs, the step all round, the plunger-first order, the switch's crush ribs, the button with the face on | the switch with its legs, B02, tape or a clamp to hold T10 on T05's front | deck down, B02 rides in through the mouth and lifts into the bore; then the switch slides in under it and its rear legs press into the crush ribs with a felt stop; shaken, the switch does not move; T10 sits flat on T05's front (the flange 0.3 short of it); the cap clicks under a fingertip pressing straight down and landing toward the face; 200 presses, no rub, no wobble you would call loose. If the legs go in without force or will not go in, report the leg's measured thickness | `shutterLegCrush` (0.05 looser, 0.15 tighter), `shutterLegT`, `shutterProud` |
+| T11 (black PETG) with B03 (black PETG, 0.12) | the card door: the recess, the opening, the groove, the notch | a microSD card; B03 | B03 snaps in with a thumb and sits flush, the grooves lined up; a nail in the notch lifts it; it does not fall out shaken upside down; a card passes through the opening flat. On the body: the card clicks home under a fingertip and comes out between two nails | `tfDoorBumpOut` (0.55 looser, 0.75 tighter), `tfDoorClr` |
 | the real A02 (blue PLA) and B01 (black PETG), fourth | the window, its lips, the teeth and the cover's arms, the slide's feel | six inserts, the iron; the shell's plate or any flat plate to close the track | the cover clicks closed and clicks open with a thumb, about 4 N; closed, it does not drop at 90 degrees of tilt or when shaken, and does not lift past the lips by hand; open, it stays open inverted; 200 cycles without the arms taking a set (both stops still have no play). If they pass they are the parts | `sliderClr`, `sliderArmT`, `sliderRestPress` |
 | A03 at 0.10, then A01, last | | | | |
 
@@ -886,10 +930,11 @@ printed materials, one fastener type, nothing glued.
 | A03 | rear frame | the ring round the display with the gasket groove, thumb pad, strap slots, six counterbored screw holes | black PETG | 1 | rear face up | none | six M2 x 4 from the back into A01's inserts | insert holes 3.0 in the wall ends (T04); 2.4 through the frame | 5 |
 | B01 | lens cover | the sliding bar: closed over the cells, dropped into the tray; guided and keyed by the rail in its groove; a PETG spring arm with a bump at each end for the detents | black PETG | 1 | back down | none | captive in A02's lips, on A02's rail | groove 0.1 a side on the rail, 0.3 a side to the walls, 0.2 play under the lips | 3 |
 | B02 | shutter plunger | the blue cap at the deck's front, 0.1 off six ribs in the closed bore | dark blue PLA | 1 | flange down | none | in first, up into the bore, captive under A01's step all round by its flange; A02 only covers the mouth | bore 14.6, step 1.5 over the flange, the flange 0.3 short of the face (T05, T10) | 1 |
+| B03 | card door | the black lid in the top wall over the P4's microSD slot, flush, the grooves across it | black PETG | 1 | underside down | none | snapped into A01's recess by its two arms | recess 24 x 11 x 2.0, 0.25 a side, the bumps 0.4 into the groove (T11) | 1 |
 | C01 | inserts | M2 brass heat-set, OD 3.2 x 3: six in A02's back, six in A01's rear wall ends | brass | 12 | | | heat-set | 3.0 holes 3.4 deep, countersunk 0.3 | 4 |
 | C03 | screws | M2 pan head: six x 6 (face, from inside), six x 4 (frame, from the back) | steel | 12 | | | into C01 | 2.4 clearance holes, counterbores 4.4 x 1.4 (plate) and 4.0 x 0.6 (frame) | 4, 5 |
 | C02 | foam strips | the clamp on the stack: 2 mm PORON, 2 wide, 101 + 101 + 60 + 60 | foam | 4 | | | adhesive to A03 | 40 % squeeze | 5 |
-| T01 to T10 | coupons | shrink bar, pocket gauge, ledge corner, strap wall end, deck, the soft and the firm cover (PETG); face corner, track, face's shutter corner (PLA) | as the parent | 1 each | as the parent | none | | each row of the coupon table | 0 |
+| T01 to T11 | coupons | shrink bar, pocket gauge, ledge corner, strap wall end, deck, the soft and the firm cover, the card door's wall (PETG); face corner, track, face's shutter corner (PLA) | as the parent | 1 each | as the parent | none | | each row of the coupon table | 0 |
 
 Not in the body: the carrier's own four standoffs and four M2 x 4 (the
 carrier's BOM), the switch and its 80 mm XH lead, the cell and its lead,
@@ -968,7 +1013,7 @@ the next entry.
 ## Not in this cut
 
 - "made for bad ideas." and any other line under 4 mm of cap height.
-- The P4's TF slot opening (position unmeasured) and the C6 service header.
+- The C6 service header.
 - An interference gate against the carrier's own part model
   (`outputs/D1-print.stl`): the dummy here carries the sockets, modules, the
   carrier's USB-C, the window and the battery bay, not the LINK headers, the
@@ -999,3 +1044,5 @@ Each one is a number in `params.mjs` and nothing else moves when it changes.
 - The customer review's two items the carrier fixes, not the body: the USB-C and the three status lights are on the bottom edge because the carrier puts them there, so the camera charges lying on its back; a later carrier can move them.
 - `activeCentred`: the active area centred on the PCB is still an assumption; the window has 1.0 mm a side.
 - `camFovDeg` 78: the OV3660's real field is `MEASURE_REQUIRED`.
+- `tfSlotX` [64.43, 76.37] and `tfSlotMouthY` 67.89: from Guition's structure drawing (`OFFICIAL_CAD`); a caliper on the board's top edge makes them `MEASURED`.
+- `tfCardZ` [0.4, 1.4], `tfCardProud` 1.0, `tfCardEject` 3.5: the socket's height, the seated card past its mouth and its spring, none in the drawing; measure with a card in.

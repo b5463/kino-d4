@@ -718,6 +718,26 @@ owner's printer. Two parts:
   `shutterSwitchPocket` and its clearance are gone; the pod's bottom to Z
   19.3. T05 and B02 are new and need printing; T10 covers the mouth.
   271 gates.
+- **The card door** (twenty-ninth cut, the same day; the owner: "what the
+  next mechanism on the case", then "measure the position yourself"). The
+  photographs live on the P4's microSD card and the body had no way to it
+  (open since ECN-0004). The slot from Guition's structure drawing, its
+  vector rear view scaled by the inserts' measured pitch (0.15 %) and
+  mirrored as the dev carrier found: body X 64.4 to 76.4, the mouth 0.9
+  inside the module's top edge; the three ports land within 0.1 of
+  placement.py and SW3 15.5 right of the top-right insert, as the bench
+  note has it; the vendor's photograph shows the push-push socket there.
+  OFFICIAL_CAD; the socket's height and the card's travel PROVISIONAL. A
+  24 x 11 x 2.0 recess in the top wall over it, a 21 x 8 opening through
+  its floor to the cavity, and B03, a flush PETG door with the deck's
+  grooves across it, held by two in-plane spring arms snapping into a
+  groove in the recess's walls (1.8 % strain, about 7.7 N on a nail to
+  lift), a nail notch at its front edge. T11, the top wall round it.
+  Gates: the opening over the slot and a fingertip wide, the card's way
+  out clear, the door clear of a sprung card, the wall's rear end, the
+  frame's screws, the straps and the shutter whole, the door flush and
+  seated, its arms, the 0.4 nozzle, T11 taking B03 as the shell does.
+  283 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator

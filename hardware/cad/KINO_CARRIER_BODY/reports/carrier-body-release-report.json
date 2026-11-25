@@ -1,6 +1,6 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-24T23:15:18.230Z",
+  "generated": "2026-11-25T14:18:30.515Z",
   "body": {
     "width": 131.4,
     "height": 83.8,
@@ -122,8 +122,8 @@
   },
   "files": {
     "A01-KINO_CARRIER_SHELL.stl": {
-      "triangles": 14128,
-      "volumeCm3": 152.66,
+      "triangles": 14576,
+      "volumeCm3": 151.48,
       "size": [
         131.4,
         83.8,
@@ -164,6 +164,15 @@
         17.6,
         17.6,
         6
+      ]
+    },
+    "B03-KINO_CARRIER_CARD_DOOR.stl": {
+      "triangles": 574,
+      "volumeCm3": 0.42,
+      "size": [
+        24.81,
+        10.5,
+        2
       ]
     },
     "T03-KINO_COUPON_LEDGE_CORNER.stl": {
@@ -218,6 +227,15 @@
         31.6,
         14.2,
         5.2
+      ]
+    },
+    "T11-KINO_COUPON_CARD_DOOR.stl": {
+      "triangles": 680,
+      "volumeCm3": 2.01,
+      "size": [
+        32,
+        6,
+        17
       ]
     },
     "T07-KINO_COUPON_TRACK.stl": {
@@ -293,8 +311,8 @@
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 35882,
-      "volumeCm3": 295.82,
+      "triangles": 36330,
+      "volumeCm3": 294.64,
       "size": [
         131.4,
         83.8,
@@ -302,8 +320,8 @@
       ]
     },
     "KINO_CARRIER_OPEN_PREVIEW.stl": {
-      "triangles": 35830,
-      "volumeCm3": 295.82,
+      "triangles": 36278,
+      "volumeCm3": 294.64,
       "size": [
         131.4,
         83.8,
@@ -312,7 +330,7 @@
     }
   },
   "gates": {
-    "total": 271,
+    "total": 283,
     "failed": 0
   },
   "checks": [
@@ -1327,9 +1345,44 @@
       "details": "4.4 mm nose above the flange; cap 2.1 mm proud of the deck at rest"
     },
     {
-      "name": "the deck carries the button and nothing else, grooved whole",
+      "name": "the deck carries the button and the card door, grooved whole",
       "pass": true,
       "details": "grooves over the whole deck; a 1.5 mm ring round the 20 collar; the name is inside, on the face"
+    },
+    {
+      "name": "the card door's opening stands over the slot, a fingertip wide",
+      "pass": true,
+      "details": "the opening 21 x 8 at X 59.9 to 80.9, Z -1.5 to 6.5; the slot's mouth X 64.43 to 76.37 (from Guition's structure drawing, OFFICIAL_CAD), the card's plane Z 0.4 to 1.4 (PROVISIONAL)"
+    },
+    {
+      "name": "the card comes out through the top wall, nothing in its way",
+      "pass": true,
+      "details": "a 12.34 x 1.4 sweep from the slot's mouth at Y 67.89 up through the deck: 0.0000 mm^3 of shell in it"
+    },
+    {
+      "name": "the door closes over the card, clear of it even sprung out",
+      "pass": true,
+      "details": "the card's end 68.89 seated and 72.39 sprung out (PROVISIONAL: 1 past the mouth, 3.5 of eject), the door's underside at 75.3, 2.91 over it"
+    },
+    {
+      "name": "the card door's recess leaves the wall's rear end, the frame's screws, the straps and the shutter whole",
+      "pass": true,
+      "details": "2 of wall behind the recess to the frame's seat; the nearest frame screw 7.6 from it (X 30, 90, -3.3, 121.7), the nearest strap tunnel 31.5, the shutter's pod 11.6"
+    },
+    {
+      "name": "B03 sits in its recess, flush, on the ledge, clear of the walls",
+      "pass": true,
+      "details": "-0.0000 mm^3 of shell in the closed door; 0.05 lower it is on the ledge (2.23 mm^3); its top at Y 77.3, the deck at 77.3, the deck's grooves carried across it"
+    },
+    {
+      "name": "B03's arms snap it in and hold it, inside PETG's limit",
+      "pass": true,
+      "details": "two 1 arms 5.6 from root to bump: 1.91 % strain as the bumps pass the walls (0.4), about 5.69 N/mm each; about 8.57 N on a nail to lift it out; the 0.9 slits leave room; lifted 0.6 the bumps are in the groove's upper flank"
+    },
+    {
+      "name": "B03 and its recess print with a 0.4 mm nozzle",
+      "pass": true,
+      "details": "arms 1 (2.22 lines), slits 0.9 (2), ledge 1.5 (3.33)"
     },
     {
       "name": "strap slot 0 open through the frame",
@@ -1454,7 +1507,7 @@
     {
       "name": "A01-KINO_CARRIER_SHELL.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "1.86 mm^2 facing down past 45 degrees outside the named places (allowed 5), 271.53 inside them: the cavity, the USB opening (a 13.4 mm bridge inside the wall), the strap tunnels, the bore's flat ceiling, the leg channels' crush ribs and the chamber's closed rear end (an 18.6 mm bridge inside the pod, under the face); the ledge, the counterbores and the rear insert holes face up; the largest stray at (70.13, 52.8, 1)"
+      "details": "1.86 mm^2 facing down past 45 degrees outside the named places (allowed 5), 401.57 inside them: the cavity, the USB opening (a 13.4 mm bridge inside the wall), the strap tunnels, the bore's flat ceiling, the leg channels' crush ribs and the chamber's closed rear end (an 18.6 mm bridge inside the pod, under the face); the ledge, the counterbores and the rear insert holes face up; the largest stray at (70.13, 52.8, 1)"
     },
     {
       "name": "A01-KINO_CARRIER_SHELL.stl fits the bed",
@@ -1502,6 +1555,16 @@
       "details": "17.6 x 17.6 x 6"
     },
     {
+      "name": "B03-KINO_CARRIER_CARD_DOOR.stl overhangs only where a support's scar would hide",
+      "pass": true,
+      "details": "1.96 mm^2 facing down past 45 degrees outside the named places (allowed 2), 0 inside them: nothing: it lies flat on its underside; the bed chamfer's 45 degrees along its edges, the bumps' lower flanks steeper; the largest stray at (23.89, 4.15, 0.13)"
+    },
+    {
+      "name": "B03-KINO_CARRIER_CARD_DOOR.stl fits the bed",
+      "pass": true,
+      "details": "24.81 x 10.5 x 2"
+    },
+    {
       "name": "T02-KINO_COUPON_POCKET_GAUGE.stl carries \"7.8\" in material",
       "pass": true,
       "details": "2.5 mm letters at (6.1838999999999995, 15.4) in the face at Z 35.5, 0.4 deep; 100 % of the engraving in material"
@@ -1520,6 +1583,11 @@
       "name": "T02-KINO_COUPON_POCKET_GAUGE.stl carries \"T02\" in material",
       "pass": true,
       "details": "3 mm letters at (51, 8.5) in the face at Z 35.5, 0.4 deep; 100 % of the engraving in material"
+    },
+    {
+      "name": "T11-KINO_COUPON_CARD_DOOR.stl carries \"T11\" in material",
+      "pass": true,
+      "details": "3 mm letters at (67.4, 72.7) in the face at Z -5, 0.4 deep; 100 % of the engraving in material"
     },
     {
       "name": "T07-KINO_COUPON_TRACK.stl carries \"T07\" in material",
@@ -1579,7 +1647,7 @@
     {
       "name": "every coupon is labelled",
       "pass": true,
-      "details": "7.8 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.1 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.4 in T02-KINO_COUPON_POCKET_GAUGE.stl; T02 in T02-KINO_COUPON_POCKET_GAUGE.stl; T07 in T07-KINO_COUPON_TRACK.stl; T03 in T03-KINO_COUPON_LEDGE_CORNER.stl; T04 in T04-KINO_COUPON_STRAP_SHELL.stl; T05 in T05-KINO_COUPON_DECK.stl; T10 in T10-KINO_COUPON_FACE_SHUTTER.stl; T06 in T06-KINO_COUPON_FACE_CORNER.stl; T01 in T01-KINO_COUPON_SHRINK_BAR.stl; T08 in T08-KINO_COUPON_COVER_SOFT.stl; T09 in T09-KINO_COUPON_COVER_FIRM.stl"
+      "details": "7.8 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.1 in T02-KINO_COUPON_POCKET_GAUGE.stl; 8.4 in T02-KINO_COUPON_POCKET_GAUGE.stl; T02 in T02-KINO_COUPON_POCKET_GAUGE.stl; T11 in T11-KINO_COUPON_CARD_DOOR.stl; T07 in T07-KINO_COUPON_TRACK.stl; T03 in T03-KINO_COUPON_LEDGE_CORNER.stl; T04 in T04-KINO_COUPON_STRAP_SHELL.stl; T05 in T05-KINO_COUPON_DECK.stl; T10 in T10-KINO_COUPON_FACE_SHUTTER.stl; T06 in T06-KINO_COUPON_FACE_CORNER.stl; T01 in T01-KINO_COUPON_SHRINK_BAR.stl; T08 in T08-KINO_COUPON_COVER_SOFT.stl; T09 in T09-KINO_COUPON_COVER_FIRM.stl"
     },
     {
       "name": "the track coupon carries all four teeth, both rims and the cover's whole run",
@@ -1605,6 +1673,11 @@
       "name": "the face's shutter coupon covers the mouth, and the plunger runs clear of it",
       "pass": true,
       "details": "the face's top-right corner from X 93; held over T05 with the real B02 in it, it is the button as in the body"
+    },
+    {
+      "name": "the card door coupon takes B03 as the shell does",
+      "pass": true,
+      "details": "the top wall from X 54.4 to 86.4, the wall's rear end to Z 12: the door seats on the same ledge and snaps into the same groove"
     },
     {
       "name": "P1-COUPON_PLATE_T01_T02.stl is two pieces on the bed",
@@ -1650,6 +1723,11 @@
       "name": "T10-KINO_COUPON_FACE_SHUTTER.stl is one piece on the bed",
       "pass": true,
       "details": "31.6 x 14.2 x 5.2 mm, 1 piece(s)"
+    },
+    {
+      "name": "T11-KINO_COUPON_CARD_DOOR.stl is one piece on the bed",
+      "pass": true,
+      "details": "32 x 6 x 17 mm, 1 piece(s)"
     },
     {
       "name": "T07-KINO_COUPON_TRACK.stl is one piece on the bed",

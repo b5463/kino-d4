@@ -17,6 +17,7 @@ import fs from "node:fs";
 import { Manifold, CrossSection, cube, box, cylZ, coneZ, cylY, fuse, rbox, status, textSolid } from "./lib.mjs";
 import { P, Z, XY, IDS } from "./params.mjs";
 import { shutterPod, SHUTTER } from "./shutter.mjs";
+import { doorCuts } from "./door.mjs";
 
 const SYMBOL = JSON.parse(fs.readFileSync(new URL("../../pcb/kino-d4-carrier-a0/brand/odd-jobs-symbol.json", import.meta.url), "utf8"));
 const MODEL = JSON.parse(fs.readFileSync(new URL("../KINO_FIELD_BODY/brand/kino-d4-mark.json", import.meta.url), "utf8"));
@@ -209,6 +210,9 @@ export function buildShell() {
   // A01, engraved in the plate's inner face, which is up in print (read
   // from the cavity, so mirrored).
   cuts.push(textSolid(IDS.shell, P.idShellAt[0], P.idShellAt[1], Z.plateInner - 1, P.idCap, P.idDepth + 1, true));
+  // The card door's recess, opening, groove and notch over the P4's microSD
+  // slot (door.mjs).
+  cuts.push(...doorCuts());
   const bare = shell.subtract(fuse(cuts));
   // The four ribs along the shutter's slot come back after the cuts
   // (shutter.mjs); simplified like the face and the frame, so a rib meeting

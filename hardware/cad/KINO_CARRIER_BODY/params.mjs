@@ -381,6 +381,37 @@ export const P = Object.freeze({
   shutterCollarD: 20.0,
   shutterCollarDepth: 0.4,   // a two-layer shadow line round the cap, clipped by the deck's front edge; the cap's guided length is the guide less this
   shutterFloor: 2.0,         // of pod under the switch's pocket: the press lands here; the leg channels cut through it
+  // ---- The microSD card: the P4's TF slot, where the firmware keeps the
+  // photographs (storage.c, SD slot 0), and the door in the top wall over it.
+  // The slot from Guition's structure drawing (JC4880P443C_I_W_Y, the vector
+  // rear view, drawn as seen through the board), scaled by the four inserts'
+  // measured 61.9 x 54.8 pitch (the drawing agrees to 0.15 %) and mirrored as
+  // the dev carrier found; the mapping puts the three ports within 0.1 of
+  // placement.py and SW3 15.5 right of the top-right insert, as ECN-0004's
+  // bench note has it. The vendor's photograph of the back shows the push-push
+  // socket on that edge. OFFICIAL_CAD: measure the board to make it MEASURED.
+  tfSlotX: [64.43, 76.37],   // body X, the slot's mouth along the P4's top edge
+  tfSlotMouthY: 67.89,       // body Y, the mouth 0.91 inside the module's top edge
+  tfCardZ: [0.4, 1.4],       // PROVISIONAL: the card's plane in front of the P4's back face (a 1.8 socket on the component side); not in the drawing
+  tfCardProud: 1.0,          // PROVISIONAL: the seated card past the mouth
+  tfCardEject: 3.5,          // PROVISIONAL: a push-push socket's eject travel
+  // The door: a 24 x 11 opening through the top wall over the slot, so a
+  // fingertip can push the card home and two fingernails can pinch it out,
+  // and a flush PETG door (B03) in a 2.0 recess round it, held by two
+  // in-plane spring arms whose bumps snap into a groove in the recess's side
+  // walls, the cover's arms again. A nail notch at its front edge lifts it.
+  tfDoorW: 24.0,             // the recess in X, centred on the slot
+  tfDoorZ: [-3.0, 8.0],      // the recess in Z: 2.0 of wall behind it to the frame's seat at Z -5
+  tfDoorT: 2.0,              // the recess's depth and the door's thickness: the door's top flush with the deck
+  tfDoorLedge: 1.5,          // the recess's floor each side of the opening: the door rests on it
+  tfDoorClr: 0.25,           // the door in its recess, a side
+  tfDoorR: 2.2,              // the recess's corners in plan, the door's 1.95 (at 2.0 a slit met the door's corner on its bed chamfer in a degenerate sliver)
+  tfDoorArmT: 1.0,           // the arm's width in X: 1.75 % strain to snap at 1.0 (1.2 was 3.1 %)
+  tfDoorArmSlit: 0.9,        // two lines of a 0.4 nozzle: a clean gap
+  tfDoorArmRoot: 1.5,        // of door ahead of the slits, toward the front: the arms root there and run back to the bumps
+  tfDoorBumpOut: 0.65,       // the bump past the door's edge: 0.4 into the groove past the clearance
+  tfDoorGroove: [0.5, 1.4],  // the groove in the recess's side walls, depth x height, 45 degree flanks so the bump cams in and out
+  tfDoorNotch: [6.0, 1.2],   // the nail notch in the recess's front wall, width x depth
   // ---- Strap: cord channels at both lower corners, inside the outline. Two
   // slots through the rear frame's border over a channel in the bottom
   // wall's end: the cord goes in one slot, along the channel, out the other,
@@ -401,7 +432,7 @@ export const P = Object.freeze({
 // only part of its shape and colour, and neither has a hidden face that is
 // not the bed.
 export const IDS = Object.freeze({
-  shell: "A01", face: "A02", frame: "A03", cover: "B01", plunger: "B02",
+  shell: "A01", face: "A02", frame: "A03", cover: "B01", plunger: "B02", door: "B03",
   inserts: "C01", foam: "C02", screws: "C03", shrinkBar: "T01",
 });
 
