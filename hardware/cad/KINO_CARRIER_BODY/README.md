@@ -665,12 +665,15 @@ print.
 
 The door, B03, black PETG: 23.5 x 10.5 x 2.0, flush with the deck, the
 deck's V-grooves carried across its top on the body's rhythm. Two in-plane
-spring arms, 1.0 wide and 5.8 from their root to the bump, the lens
+spring arms, 1.0 wide and 5.6 from their root to the bump, the lens
 cover's arms again, end in bumps 0.65 past the door's edge that snap into
 a 0.5 groove with 45 degree flanks along the recess's side walls; the
-walls' top edges are chamfered so the bumps ride in. 1.8 % strain as they
-pass; about 7.7 N on a nail to lift it out, at the 0.6 mm pit under its
-front edge in the nail notch. Closed, its underside is 2.9 over the card
+walls' top edges are chamfered so the bumps ride in. The gate measures
+the arms' bend on a slice through the bumps, lifting the door in 0.02
+steps: at most 0.30 (1.45 % strain), not the 0.40 the bump's reach would
+suggest, because the groove's upper flank runs into the wall's top
+chamfer and the bump never meets a flat face; about 6.5 N on a nail to
+lift it out, at the 0.6 mm pit under its front edge in the nail notch. Closed, its underside is 2.9 over the card
 even sprung out. `previews/KINO_CARRIER_CARD_DOOR_SECTION.png` is the
 section through the card's path; T11 is the top wall round the door.
 

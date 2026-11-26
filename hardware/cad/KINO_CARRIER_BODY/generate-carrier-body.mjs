@@ -675,11 +675,32 @@ check("the frame's insert holes keep wall under the first groove", P.frameScrewI
   check("B03 sits in its recess, flush, on the ledge, clear of the walls", vol(shell, door) < 1e-3 && vol(shell, seatProbe) > 1.0 && Math.abs(top - D.oy1) < 0.02,
     `${vol(shell, door).toFixed(4)} mm^3 of shell in the closed door; 0.05 lower it is on the ledge (${r2(vol(shell, seatProbe))} mm^3); its top at Y ${r2(top)}, the deck at ${r2(D.oy1)}, the deck's grooves carried across it`);
   {
-    const defl = P.tfDoorBumpOut - P.tfDoorClr, strainD = (3 * P.tfDoorArmT * defl) / (2 * D.armL ** 2);
-    const kD = (3 * 2000 * (P.tfDoorT * P.tfDoorArmT ** 3 / 12)) / D.armL ** 3, lift = 2 * kD * (P.tfDoorBumpOut - P.tfDoorClr) * Math.tan((45 + 17) * Math.PI / 180);
+    // The arms' bend, measured: slice the shell and the door through the
+    // bumps, take each side wall's face at every height from the slice, and
+    // lift the door in 0.02 steps; at each, how far each arm must fold for
+    // its bump to clear the wall. (Assuming the bump meets a flat wall face
+    // past the groove said 0.40: the groove's upper flank runs into the
+    // wall's top chamfer, so there is no flat face to meet.)
+    const cut = (m) => m.intersect(box(D.x0 - 8, D.cy1 - 2, D.bumpZ - 1, D.x1 + 8, D.oy1 + 8, D.bumpZ + 1)).slice(D.bumpZ).toPolygons();
+    const edges = [];
+    for (const poly of cut(shell)) for (let i = 0; i < poly.length; i++) { const a2 = poly[i], b2 = poly[(i + 1) % poly.length]; if (a2[1] !== b2[1]) edges.push([a2[0], a2[1], b2[0], b2[1]]); }
+    const wallAt = (y) => { const xs = []; for (const [x1, y1, x2, y2] of edges) if ((y1 <= y && y < y2) || (y2 <= y && y < y1)) xs.push(x1 + (y - y1) * (x2 - x1) / (y2 - y1)); xs.sort((m, n) => m - n);
+      let Lw = -1e9, Rw = 1e9; for (let k = 0; k + 1 < xs.length; k += 2) { if (xs[k + 1] <= D.x0 + 0.6) Lw = Math.max(Lw, xs[k + 1]); if (xs[k] >= D.x1 - 0.6) Rw = Math.min(Rw, xs[k]); } return [Lw, Rw]; };
+    const pieces = cut(door), isArm = (poly) => { const xs = poly.map((q) => q[0]); return Math.max(...xs) - Math.min(...xs) < 3; };
+    const sample = (polys) => { const o = []; for (const poly of polys) for (let i = 0; i < poly.length; i++) { const a2 = poly[i], b2 = poly[(i + 1) % poly.length], n = Math.max(1, Math.ceil(Math.hypot(b2[0] - a2[0], b2[1] - a2[1]) / 0.02)); for (let k = 0; k < n; k++) o.push([a2[0] + (b2[0] - a2[0]) * k / n, a2[1] + (b2[1] - a2[1]) * k / n]); } return o; };
+    const sL = sample(pieces.filter((q) => isArm(q) && q[0][0] < D.cx)), sR = sample(pieces.filter((q) => isArm(q) && q[0][0] > D.cx));
+    let peak = 0, peakH = 0, seated = 0;
+    for (let h = 0; h <= 4.0001; h += 0.02) {
+      let dL = 0, dR = 0;
+      for (const [x, y] of sL) dL = Math.max(dL, wallAt(y + h)[0] - x);
+      for (const [x, y] of sR) dR = Math.max(dR, x - wallAt(y + h)[1]);
+      const d = Math.max(dL, dR); if (h === 0) seated = d; if (d > peak) [peak, peakH] = [d, h];
+    }
+    const strainD = (3 * P.tfDoorArmT * peak) / (2 * D.armL ** 2);
+    const kD = (3 * 2000 * (P.tfDoorT * P.tfDoorArmT ** 3 / 12)) / D.armL ** 3, lift = 2 * kD * peak * Math.tan((45 + 17) * Math.PI / 180);
     const grooveIn = vol(shell, door.translate([0, 0.6, 0])) > vol(shell, door) + 0.05;
-    check("B03's arms snap it in and hold it, inside PETG's limit", strainD <= 0.025 && lift >= 3 && lift <= 15 && P.tfDoorArmSlit >= defl + 0.3 && grooveIn,
-      `two ${P.tfDoorArmT} arms ${r2(D.armL)} from root to bump: ${(100 * strainD).toFixed(2)} % strain as the bumps pass the walls (${r2(defl)}), about ${r2(kD)} N/mm each; about ${r2(lift)} N on a nail to lift it out; the ${P.tfDoorArmSlit} slits leave room; lifted 0.6 the bumps are in the groove's upper flank`);
+    check("B03's arms snap it in and hold it, inside PETG's limit", sL.length > 0 && sR.length > 0 && seated < 0.02 && strainD <= 0.025 && lift >= 3 && lift <= 15 && P.tfDoorArmSlit >= peak + 0.3 && grooveIn,
+      `two ${P.tfDoorArmT} arms ${r2(D.armL)} from root to bump, about ${r2(kD)} N/mm each. Measured on a slice through the bumps, lifting the door in 0.02 steps: the arms fold ${r2(seated)} seated and at most ${r2(peak)} (${r2(peakH)} up), ${(100 * strainD).toFixed(2)} % strain; about ${r2(lift)} N on a nail to lift it out. The groove's upper flank runs into the wall's top chamfer, so the bump never meets a flat face: not the ${r2(P.tfDoorBumpOut - P.tfDoorClr)} its ${P.tfDoorBumpOut} reach would suggest. The ${P.tfDoorArmSlit} slits leave room`);
   }
   {
     const ln = P.nozzleLine, bad = [["the door's arms", P.tfDoorArmT, 2 * ln], ["their slits, a gap", P.tfDoorArmSlit, 2 * ln], ["the ledge", P.tfDoorLedge, 3 * ln]].filter(([, v, n]) => v < n - 1e-9);

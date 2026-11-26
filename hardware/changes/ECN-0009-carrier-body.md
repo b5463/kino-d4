@@ -731,8 +731,11 @@ owner's printer. Two parts:
   24 x 11 x 2.0 recess in the top wall over it, a 21 x 8 opening through
   its floor to the cavity, and B03, a flush PETG door with the deck's
   grooves across it, held by two in-plane spring arms snapping into a
-  groove in the recess's walls (1.8 % strain, about 7.7 N on a nail to
-  lift), a nail notch at its front edge. T11, the top wall round it.
+  groove in the recess's walls (a gate measures their bend on a slice
+  through the bumps: at most 0.30, 1.45 % strain, about 6.5 N on a nail to
+  lift; the groove's upper flank runs into the wall's top chamfer, so the
+  bump never meets the flat face a 0.40 bend assumed), a nail notch at its
+  front edge. T11, the top wall round it.
   Gates: the opening over the slot and a fingertip wide, the card's way
   out clear, the door clear of a sprung card, the wall's rear end, the
   frame's screws, the straps and the shutter whole, the door flush and

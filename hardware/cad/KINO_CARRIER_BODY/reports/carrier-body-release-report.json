@@ -1,6 +1,6 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-25T14:18:30.515Z",
+  "generated": "2026-11-25T14:59:31.934Z",
   "body": {
     "width": 131.4,
     "height": 83.8,
@@ -1377,7 +1377,7 @@
     {
       "name": "B03's arms snap it in and hold it, inside PETG's limit",
       "pass": true,
-      "details": "two 1 arms 5.6 from root to bump: 1.91 % strain as the bumps pass the walls (0.4), about 5.69 N/mm each; about 8.57 N on a nail to lift it out; the 0.9 slits leave room; lifted 0.6 the bumps are in the groove's upper flank"
+      "details": "two 1 arms 5.6 from root to bump, about 5.69 N/mm each. Measured on a slice through the bumps, lifting the door in 0.02 steps: the arms fold 0 seated and at most 0.3 (0.62 up), 1.45 % strain; about 6.5 N on a nail to lift it out. The groove's upper flank runs into the wall's top chamfer, so the bump never meets a flat face: not the 0.4 its 0.65 reach would suggest. The 0.9 slits leave room"
     },
     {
       "name": "B03 and its recess print with a 0.4 mm nozzle",
