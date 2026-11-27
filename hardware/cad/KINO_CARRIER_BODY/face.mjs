@@ -26,6 +26,11 @@ const SYMBOL = JSON.parse(fs.readFileSync(new URL("../../pcb/kino-d4-carrier-a0/
 const MODEL = JSON.parse(fs.readFileSync(new URL("../KINO_FIELD_BODY/brand/kino-d4-mark.json", import.meta.url), "utf8"));
 
 // ---- Derived figures, read by the builder and the gates ----------------------
+// The bump's foot chamfer: the part's bed chamfer, or more only while the
+// channel's floor stands above the tray's and the foot must stay 0.05 inside
+// the wall's face up to it. The force model reads it too.
+export const bumpFootChamfer = (p) => Math.max(p.bedChamfer, p.sliderBumpOut - p.sliderClr + 0.05 + p.sliderChannelFloor);
+
 export const FACE = (() => {
   const back = Z.plateFront, front = back + P.faceBase;
   const floorZ = back + P.faceFloor;                  // the track floor: the face's own
@@ -194,7 +199,7 @@ export function buildFace({ armT = P.sliderArmT } = {}) {
   for (const [wx, s] of [[p0x, -1], [p1x, 1]]) {                       // the wall's face; s points into the wall
     const X = (u) => wx + s * u;                                        // u: depth past the wall's face
     const [c0, c1] = F.channel;
-    const cz = F.floorZ + P.sliderChannelFloor;
+    const cz = F.floorZ + P.sliderChannelFloor;                        // below the tray's floor: the bump runs full out from its bed chamfer up
     // No vertex on the wall's own plane: the window's cut owns it, and two
     // near-equal copies of it left slivers. The ceiling's line runs on 0.1
     // into the window instead.
@@ -289,10 +294,13 @@ export function buildFace({ armT = P.sliderArmT } = {}) {
   // its lower half is a round of sliderBumpRLo and its upper half a round of
   // sliderBumpR, both reaching the same tip: the tight side climbs out of
   // the closed stop, the gentle side climbs into it. Its foot and its top
-  // are chamfered 45 degrees by moving the round inward with height, so the
-  // foot stands inside the wall's face up to the channel's floor. Cut to its
-  // arm, so it never bridges the slit.
-  const rUp = P.sliderBumpR, rLo = P.sliderBumpRLo, bt = P.sliderBumpTop, bc0 = P.sliderBumpOut - P.sliderClr + 0.05 + P.sliderChannelFloor;
+  // are chamfered 45 degrees by moving the round inward with height. The
+  // foot's chamfer is the part's bed chamfer, or more only if the channel's
+  // floor stands above the tray's and the foot must stay inside the wall's
+  // face up to it (a 0.95 foot chamfer left a 0.05 sliver on the first
+  // layer, the start of the curl on P3, 2026-11-27). Cut to its arm, so it
+  // never bridges the slit.
+  const rUp = P.sliderBumpR, rLo = P.sliderBumpRLo, bt = P.sliderBumpTop, bc0 = bumpFootChamfer(P);
   const bumps = [[sx0, 1], [sx1, -1]].map(([edge, dir]) => {
     const by = sy0 + P.sliderBumpY;
     const half = (r, up) => {

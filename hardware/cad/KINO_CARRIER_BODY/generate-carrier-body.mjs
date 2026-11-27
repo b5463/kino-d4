@@ -32,7 +32,7 @@ import { fileURLToPath } from "node:url";
 import { cube, box, cylZ, coneZ, cylY, fuse, vol, rbox, toBed, r2, overhangOutside, writeStl, textSolid, textWidth } from "./lib.mjs";
 import { P, Z, XY, IDS } from "./params.mjs";
 import { SHELL, buildShell, buildFrame, cameraPocket } from "./shell.mjs";
-import { FACE, buildFace } from "./face.mjs";
+import { FACE, buildFace, bumpFootChamfer } from "./face.mjs";
 import { SHUTTER, buildShutterButton, capPreview, plungerAtRest } from "./shutter.mjs";
 import { DOOR, buildDoor } from "./door.mjs";
 
@@ -449,7 +449,7 @@ check("the frame's insert holes keep wall under the first groove", P.frameScrewI
   // cover, the lips still hold it, and it still clicks.
   {
     const W = SLIDE.clicks(at, 0.3, 0.1), wornOpen = W.open, wornClose = W.close;
-    const F = k * P.sliderClosedRestPress / Math.cos(rad(P.sliderClosedLeaveDeg)), Lc = P.sliderBumpTop - 0.5 - (P.sliderBumpOut - P.sliderClr + 0.05 + P.sliderChannelFloor) + 0.5;
+    const F = k * P.sliderClosedRestPress / Math.cos(rad(P.sliderClosedLeaveDeg)), Lc = P.sliderBumpTop - 0.5 - bumpFootChamfer(P) + 0.5;
     const Es = 1 / ((1 - 0.36 ** 2) / 2000 + (1 - 0.36 ** 2) / 3500);
     const pHertz = Math.sqrt((F * Es) / (Math.PI * P.sliderBumpRLo * Math.max(Lc, 0.5)));
     check("heat and wear on the PLA teeth fail safe", wornOpen >= 2 && wornClose >= 1.2 && pHertz <= 35,

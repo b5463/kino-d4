@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; thirtieth cut generated and gated (2026-11-27: the slide on its rail runs right on the fifth T07 and the click is right, but the stops held loose; the rest press now clears the print's error). Next on the bed: the sixth T07 with P3 (B01, T08, T09, brimmed), the new T05 with B02 and T10, T11 with B03, T03, T04 and T06 for the inserts |
+| Status | Design in progress; thirty-first cut generated and gated (2026-11-27: the slide on its rail runs right on the fifth T07 and the click is right, but the stops held loose; the rest press now clears the print's error, and the bump's foot is the bed chamfer for the printer). Next on the bed: the sixth T07 with P3 (B01, T08, T09, brimmed), the new T05 with B02 and T10, T11 with B03, T03, T04 and T06 for the inserts |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -760,6 +760,19 @@ owner's printer. Two parts:
   error on each part leaves the pair pressing 0.3 at a stop. T08 and T09
   curled off the bed on P3 (their arm islands are 1 mm wide on the first
   layer): the plate prints with a 4 mm outer brim. 283 gates.
+- **The bump's foot, for the printer** (thirty-first cut, 2026-11-27; the
+  owner: "the printing issue might come from the stub on the arms of the
+  cover", and both parts print at 0.20). The bump's foot was a 45 degree
+  chamfer 0.95 high, there to keep it inside the wall's face below a
+  channel floor 0.2 above the tray's: on the first layer that is a 0.05
+  sliver on a 1.45 strip, where the curl started. Now the channel's floor
+  is 0.2 below the tray's (`sliderChannelFloor` -0.2; 0.8 of the 1.0 floor
+  stays), the foot is the cover's own 0.4 bed chamfer
+  (`bumpFootChamfer` in face.mjs, read by the force model too), and the
+  heights are whole 0.20 layers: the bump 1.4 (`sliderBumpTop`), the
+  channel's ceiling 2.0 (`sliderChannelTop`). The click is unchanged; the
+  standing contact on the PLA falls to 28 MPa on the longer line. B01,
+  T08, T09 and P3 are recorded at 0.20. 283 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator

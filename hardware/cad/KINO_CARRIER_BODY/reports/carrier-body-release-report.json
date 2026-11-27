@@ -1,6 +1,6 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-27T19:54:38.118Z",
+  "generated": "2026-11-27T20:14:16.445Z",
   "body": {
     "width": 131.4,
     "height": 83.8,
@@ -140,8 +140,8 @@
       ]
     },
     "A02-KINO_CARRIER_FACE.stl": {
-      "triangles": 9690,
-      "volumeCm3": 40.73,
+      "triangles": 9686,
+      "volumeCm3": 40.71,
       "size": [
         130.8,
         83.2,
@@ -149,7 +149,7 @@
       ]
     },
     "B01-KINO_CARRIER_LENS_COVER.stl": {
-      "triangles": 3474,
+      "triangles": 3478,
       "volumeCm3": 4.22,
       "size": [
         88.4,
@@ -212,8 +212,8 @@
       ]
     },
     "T06-KINO_COUPON_FACE_CORNER.stl": {
-      "triangles": 1436,
-      "volumeCm3": 3.44,
+      "triangles": 1434,
+      "volumeCm3": 3.43,
       "size": [
         20.7,
         47.2,
@@ -239,8 +239,8 @@
       ]
     },
     "T07-KINO_COUPON_TRACK.stl": {
-      "triangles": 3290,
-      "volumeCm3": 10.62,
+      "triangles": 3286,
+      "volumeCm3": 10.6,
       "size": [
         103,
         45.9,
@@ -257,7 +257,7 @@
       ]
     },
     "T08-KINO_COUPON_COVER_SOFT.stl": {
-      "triangles": 4286,
+      "triangles": 4290,
       "volumeCm3": 4.22,
       "size": [
         88.4,
@@ -266,7 +266,7 @@
       ]
     },
     "T09-KINO_COUPON_COVER_FIRM.stl": {
-      "triangles": 4190,
+      "triangles": 4194,
       "volumeCm3": 4.22,
       "size": [
         88.4,
@@ -293,7 +293,7 @@
       ]
     },
     "P3-COUPON_PLATE_B01_T08_T09.stl": {
-      "triangles": 11950,
+      "triangles": 11962,
       "volumeCm3": 12.66,
       "size": [
         88.4,
@@ -311,8 +311,8 @@
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 36302,
-      "volumeCm3": 294.61,
+      "triangles": 36314,
+      "volumeCm3": 294.59,
       "size": [
         131.4,
         83.8,
@@ -320,8 +320,8 @@
       ]
     },
     "KINO_CARRIER_OPEN_PREVIEW.stl": {
-      "triangles": 36250,
-      "volumeCm3": 294.61,
+      "triangles": 36248,
+      "volumeCm3": 294.59,
       "size": [
         131.4,
         83.8,
@@ -1057,7 +1057,7 @@
     {
       "name": "at each stop the bumps rest pressed on the teeth's far ramps",
       "pass": true,
-      "details": "0.072 mm^3 closed and 0.191 stowed shared with the teeth (the arms' press, drawn unsprung); upper: the bump's R0.9 side pressed 0.25 on the 40 degree ramp, 0.29 along its 1.31; lower: the bump's R1.5 side pressed 0.35 on the 35 degree ramp, 0.11 along its 1.57"
+      "details": "0.158 mm^3 closed and 0.366 stowed shared with the teeth (the arms' press, drawn unsprung); upper: the bump's R0.9 side pressed 0.25 on the 40 degree ramp, 0.29 along its 1.31; lower: the bump's R1.5 side pressed 0.35 on the 35 degree ramp, 0.11 along its 1.57"
     },
     {
       "name": "between the clicks the cover touches nothing",
@@ -1067,7 +1067,7 @@
     {
       "name": "mid-travel, the cover's play on the rail touches nothing",
       "pass": true,
-      "details": "0.09 either way in X: 0.0001 and 0.0001 mm^3; the bumps 0.4 off the channels' backs"
+      "details": "0.09 either way in X: 0.0000 and -0.0000 mm^3; the bumps 0.4 off the channels' backs"
     },
     {
       "name": "the rail stands on the floor the window's full height",
@@ -1097,7 +1097,7 @@
     {
       "name": "the bumps run under the bevels and the channels' ceilings",
       "pass": true,
-      "details": "the bump 1.5 tall, full out to 1; the flank to 2.1; the ceiling 1.3 over the bump's tip with 0.1 of play; the channel's mouth ends at the lip's underside"
+      "details": "the bump 1.4 tall, full out to 0.9; the flank to 2.1; the ceiling 1.2 over the bump's tip with 0.1 of play; the channel's mouth ends at the lip's underside"
     },
     {
       "name": "the left wall's upper tooth stands",
@@ -1132,7 +1132,7 @@
     {
       "name": "the arms click and hold inside PETG's limit, the closed stop the firmer",
       "pass": true,
-      "details": "1.45 wide, 9.5 from the keyhole to the bump: about 3.82 N/mm (E 2.0 GPa); 1.69 % strain over a crest (0.7), 1.45 % pressed in under a lip (0.6). From the tooth-shape model, both arms, friction 0.3: 5.58 N to open from closed, 4.11 N to close (the bump's R1.5 side), 4.13 N to leave stowed, 5.08 N to stow; 1.6 N into the top rim at rest (30.49 g on a 5.36 g cover), 1.87 N into the bottom rim (35.62 g)"
+      "details": "1.45 wide, 9.5 from the keyhole to the bump: about 3.82 N/mm (E 2.0 GPa); 1.69 % strain over a crest (0.7), 1.45 % pressed in under a lip (0.6). From the tooth-shape model, both arms, friction 0.3: 5.58 N to open from closed, 4.11 N to close (the bump's R1.5 side), 4.13 N to leave stowed, 5.08 N to stow; 1.6 N into the top rim at rest (30.48 g on a 5.36 g cover), 1.87 N into the bottom rim (35.61 g)"
     },
     {
       "name": "the left arm's slit is open",
@@ -1177,7 +1177,7 @@
     {
       "name": "heat and wear on the PLA teeth fail safe",
       "pass": true,
-      "details": "with the rest press lost and 0.1 off each crest it still clicks, 4.44 N to open and 3.21 to close, and the rims and lips stop and hold it as before; the standing contact at the closed stop about 34.25 MPa on PLA (the bump's R0.9 side, a line 0.55 long under 1.25 N), about half PLA's compressive yield at room temperature"
+      "details": "with the rest press lost and 0.1 off each crest it still clicks, 4.44 N to open and 3.21 to close, and the rims and lips stop and hold it as before; the standing contact at the closed stop about 27.55 MPa on PLA (the bump's R0.9 side, a line 0.85 long under 1.25 N), about half PLA's compressive yield at room temperature"
     },
     {
       "name": "with the face in PETG the slide still clicks and nothing self-locks",
@@ -1527,7 +1527,7 @@
     {
       "name": "A02-KINO_CARRIER_FACE.stl overhangs only where a support's scar would hide",
       "pass": true,
-      "details": "0.57 mm^2 facing down past 45 degrees outside the named places (allowed 5), 206.61 inside them: the six insert holes' countersinks and the signature's 0.4 mm ceilings at the bed, the A02 letters' top edges in the bottom edge wall (0.3 mm bridges); the lips' undersides are steeper than 45; the largest stray at (99.84, 8.78, 3.18)"
+      "details": "4.75 mm^2 facing down past 45 degrees outside the named places (allowed 5), 206.61 inside them: the six insert holes' countersinks and the signature's 0.4 mm ceilings at the bed, the A02 letters' top edges in the bottom edge wall (0.3 mm bridges); the lips' undersides are steeper than 45; the largest stray at (100.61, 8.23, 2.31)"
     },
     {
       "name": "A02-KINO_CARRIER_FACE.stl fits the bed",
@@ -1637,7 +1637,7 @@
     {
       "name": "T09, B01 with 1.6 arms, runs as B01 and clicks inside PETG's limit",
       "pass": true,
-      "details": "about 7.49 N to open and 5.52 to close (B01 5.58 and 4.11), 1.60 % strain under a lip; its contact with the face closed, mid-travel and stowed the same as B01's to 3.6e-14 mm^3"
+      "details": "about 7.49 N to open and 5.52 to close (B01 5.58 and 4.11), 1.60 % strain under a lip; its contact with the face closed, mid-travel and stowed the same as B01's to 2.6e-13 mm^3"
     },
     {
       "name": "T09-KINO_COUPON_COVER_FIRM.stl carries \"T09\" in material",
