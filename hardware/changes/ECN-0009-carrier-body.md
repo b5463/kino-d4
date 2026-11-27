@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; twenty-fifth cut generated and gated (2026-11-21: the third pod coupon with the real plunger and switch "works perfectly"; the filament pins retired for M2 heat-set inserts and screws, the walls 6.0 for them, the cover's detents made leaf springs); the joint coupons T03, T04 and T06 are next on the bed, then the real face and cover |
+| Status | Design in progress; thirtieth cut generated and gated (2026-11-27: the slide on its rail runs right on the fifth T07 and the click is right, but the stops held loose; the rest press now clears the print's error). Next on the bed: the sixth T07 with P3 (B01, T08, T09, brimmed), the new T05 with B02 and T10, T11 with B03, T03, T04 and T06 for the inserts |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -741,6 +741,25 @@ owner's printer. Two parts:
   frame's screws, the straps and the shutter whole, the door flush and
   seated, its arms, the 0.4 nozzle, T11 taking B03 as the shell does.
   283 gates.
+- **The hold at the stops, after the fifth T07** (thirtieth cut,
+  2026-11-27; the owner: "the rail is printed and i had to stretch the
+  arms a bit on the cover a bit for it latch nicer but its a good route to
+  go but currently its loose enough for me to notice"). The rail runs and
+  the click is right; the rest press of 0.2 at the stops did not survive
+  printing (0.1 of error on the bump and 0.1 on the tooth), so the cover
+  hung in its play until the arms were bent out by hand, which PETG
+  relaxes out of. Now: the bump reaches 1.0 (`sliderBumpOut`, 0.7 over a
+  land), the channels 1.1 deep, the rest press 0.35 stowed
+  (`sliderRestPress`) and 0.25 closed (`sliderClosedRestPress`, the
+  standing contact on the PLA 34 MPa), the arms 1.45 (`sliderArmT`; T08
+  1.3, T09 1.6) in a 1.2 slit so the click stays near 5 N, the bump's
+  sides R0.9 and R1.5 (the tight side must reach within 0.2 of the tip;
+  the gentle side keeps opening 1.3 times closing), its top 1.5, the lips
+  0.9 wide (two nozzle lines) so the channels' ceilings rise to 2.1 over
+  the taller bumps, the wordmark 3.6 from the bar's end. A tenth of print
+  error on each part leaves the pair pressing 0.3 at a stop. T08 and T09
+  curled off the bed on P3 (their arm islands are 1 mm wide on the first
+  layer): the plate prints with a 4 mm outer brim. 283 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator
