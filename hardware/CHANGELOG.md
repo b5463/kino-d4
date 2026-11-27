@@ -2,6 +2,18 @@
 
 This log tracks released design-package versions inside the physical revision named in [`REVISION`](REVISION). Numbered engineering change notices carry the reason, evidence, and compatibility decision for each change.
 
+## 0.1.9 - 2026-11-05
+
+Status: dev carrier D1 design released for ordering after manual checks; carrier A0.2 unchanged.
+
+- New board `pcb/kino-d4-dev-carrier/`: A0.2's M2 insert holes and camera pitch on an outline 2 mm outside the bare P4 module (114.40 x 66.80; the 117.01 x 69.41 figure is the shell variant), a 3 mm corner radius, a 2x13 socket on the P4 face that mates JP1 directly (no ribbon; 11 mm stack; the header and the USB-C ports are pixel-scaled from the structure drawing, whose back view is drawn as seen through the board, and confirmed by prints on the P4; which end of JP1 holds pin 1 was confirmed by meter on 2026-11-20) and a window for the P4's USB-C plugs, carrying only what the firmware drives (four UARTs, SYNC_OUT, CAM_PWR_EN, shutter, I2C, C6 service). USB-C 5 V in, one TPS2553 per node behind the shared enable, three status LEDs (5 V in, bank enabled, any fault), link headers for node USB, a 0 ohm current-measure link per node, 2.2k series resistors on the signal lines, a Qwiic port with DNP pull-up pads, a hand-fit 3 A polyfuse and a USBLC6 clamp on the input, a keyed power-module connector (USB out to the SW6106 through an LM74700 ideal diode, rail back) with a USB-to-rail bridge, LM66100 ideal diodes from each switch to its link header and from the rail to the P4 5 V pins, top-face test pads, fiducials and scope-ground loops.
+- 2 layers, SMT on the bottom face only: 14 BOM lines, 11 from the JLC basic library, 12 hand-fit through-hole parts. The A0.2 quote (about 500 EUR for two assembled boards) was mostly fixed cost from double-sided assembly and unstocked parts.
+- 2026-11-19, at the JLC order: the rail clamp D1003 was filed forward-biased (cathode on GND); nets swapped, footprint turned 180 degrees, routing unchanged, `verify.py` checks it. The placement file moved to the Gerber frame after the assembler's preview laid every part one camera pitch off.
+- Generated and routed by script (Freerouting, 0 unrouted); DRC 0, ERC 0; fab package in `outputs/fab-d1/`. Legend on both faces under the ODD JOBS standard. The socket's 1.5 mm pads, the 0.15 mm signal gap and the clear lanes beside it are what let the P4 signals out of the socket's middle rows.
+- 2026-11-27, the first boards in hand: they fit the P4's inserts. The status LEDs are too bright (about 3 mA each); staged for the next revision, R1002 and R1003 to 10k and R1004 to 4.7k, a glow not a lamp.
+
+Engineering change notice: [ECN-0008](changes/ECN-0008-dev-carrier-d1.md). Tracking: [issue #250](https://github.com/b5463/kino-d4/issues/250).
+
 ## 0.1.8 - 2026-09-30
 
 Status: carrier A0.2 power rework under the ODD JOBS standard; no fabrication release.
