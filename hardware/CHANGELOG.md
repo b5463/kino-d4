@@ -10,6 +10,7 @@ Status: dev carrier D1 design released for ordering after manual checks; carrier
 - 2 layers, SMT on the bottom face only: 14 BOM lines, 11 from the JLC basic library, 12 hand-fit through-hole parts. The A0.2 quote (about 500 EUR for two assembled boards) was mostly fixed cost from double-sided assembly and unstocked parts.
 - 2026-11-19, at the JLC order: the rail clamp D1003 was filed forward-biased (cathode on GND); nets swapped, footprint turned 180 degrees, routing unchanged, `verify.py` checks it. The placement file moved to the Gerber frame after the assembler's preview laid every part one camera pitch off.
 - Generated and routed by script (Freerouting, 0 unrouted); DRC 0, ERC 0; fab package in `outputs/fab-d1/`. Legend on both faces under the ODD JOBS standard. The socket's 1.5 mm pads, the 0.15 mm signal gap and the clear lanes beside it are what let the P4 signals out of the socket's middle rows.
+- 2026-11-27, the first boards in hand: they fit the P4's inserts. The status LEDs are too bright (about 3 mA each); staged for the next revision, R1002 and R1003 to 10k and R1004 to 4.7k, a glow not a lamp.
 
 Engineering change notice: [ECN-0008](changes/ECN-0008-dev-carrier-d1.md). Tracking: [issue #250](https://github.com/b5463/kino-d4/issues/250).
 

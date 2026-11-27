@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design released for ordering after the manual checks; nothing fabricated |
+| Status | Boards fabricated and assembled by JLC (2026-11-27 in hand: fits the P4's inserts; the 2x13 socket and the other hand-fit parts to follow). One bench finding so far: the status LEDs are too bright, next revision R1002 10k, R1003 10k, R1004 4.7k |
 | Date | 2026-11-05 |
 | Hardware revision | D4-V1 reference; the dev carrier is a bench board, not a product revision |
 | Design version before | 0.1.8 |
@@ -63,3 +63,5 @@ Mounts on the P4 inserts and plugs straight onto JP1; A0.2's 26-pin ribbon is no
 ## Decision
 
 Design released for ordering once the three manual checks in the board README are done. Issue #250.
+
+Staged for the next revision, from the first board on the bench (2026-11-27): the three LED resistors (PWR R1002 1k to 10k, CAM R1003 470 ohm to 10k, FLT R1004 1k to 4.7k), so the indicators glow instead of shine; the owner is not happy with the lamp they make now. Nothing else found yet; the hand-fit parts and the bring-up follow.
