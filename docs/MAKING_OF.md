@@ -89,6 +89,7 @@ and shell print views; the index with the exact file names is
 - **38** (2026-11-25) `assets/making-of/carrier-body/38-cfc5bac-the-shutter-self-contained-in-the-shell/`: "A more technical solution": the shutter lives whole in the shell, a closed ribbed bore, the switch held by crush ribs; the face is only a cover.
 - **39** (2026-11-25) `assets/making-of/carrier-body/39-cf4258f-the-card-door-over-the-p4-s-microsd-slot/`: The photographs live on the P4's microSD card and the body had no way to it. The slot placed from Guition's drawing, a recess in the top wall, B03 a flush snap-in door with a nail notch, T11 the wall round it.
 - **40** (2026-11-27) `assets/making-of/carrier-body/40-5a1c62d-the-hold-at-the-stops-after-the-fifth-t0/`: The rail printed: "a good route", the click right, but loose at the stops until the arms were bent out by hand. The 0.2 rest press had not survived the print's error. Taller teeth, 0.35 and 0.25 of press, softer arms so the click stays near 5 N; a brim for the arms that curled off the bed.
+- **41** (2026-11-27) `assets/making-of/carrier-body/41-6c5de2b-the-bump-s-foot-for-the-printer/`: "The printing issue might come from the stub on the arms": the bump's foot was a 0.95 chamfer that left a 0.05 sliver on the first layer, where the arms curled. The channel floor drops below the tray, the foot is the bed chamfer, every height a whole 0.20 layer. The click unchanged.
 
 Later cuts append here as they are committed; the archive script
 (`../hardware/cad/KINO_CARRIER_BODY/archive-previews.py`) adds the folder,
