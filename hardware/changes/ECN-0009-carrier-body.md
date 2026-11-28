@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Design in progress; thirty-first cut generated and gated (2026-11-27: the slide on its rail runs right on the fifth T07 and the click is right, but the stops held loose; the rest press now clears the print's error, and the bump's foot is the bed chamfer for the printer). Next on the bed: the sixth T07 with P3 (B01, T08, T09, brimmed), the new T05 with B02 and T10, T11 with B03, T03, T04 and T06 for the inserts |
+| Status | Design in progress; thirty-second cut generated and gated (2026-11-28: the arm set at 1.3 from the sixth T07, "T08 is the one we go with"; the rest press clears the print's error, the bump's foot is the bed chamfer). Next on the bed: the sixth T07 with P3 (B01, T08, T09, brimmed), the new T05 with B02 and T10, T11 with B03, T03, T04 and T06 for the inserts |
 | Date | 2026-11-20 |
 | Hardware revision | D4-V1 |
 | Design version before | 0.1.9 |
@@ -773,6 +773,14 @@ owner's printer. Two parts:
   channel's ceiling 2.0 (`sliderChannelTop`). The click is unchanged; the
   standing contact on the PLA falls to 28 MPa on the longer line. B01,
   T08, T09 and P3 are recorded at 0.20. 283 gates.
+- **The arm, set on the bench** (thirty-second cut, 2026-11-28; the
+  owner, with B01, T08 and T09 from P3 in the sixth T07: "T08 is the one
+  we go with"). `sliderArmT` 1.3 (was 1.45): about 4.0 N to open from
+  closed, 3.0 N to close, 1.2 and 1.35 N into the rims at rest, 23 MPa
+  standing on the PLA. 1.3 is also the thinnest arm a 0.4 nozzle lays as
+  three lines, so T08 now equals B01 and T09 keeps 1.45 as the firmer
+  reference. Open: play at a stop at 1.3; the rest presses are the knobs.
+  283 gates.
 
 Depth, re-added by a gate every build: 2.0 frame + 0.4 off the glass + 4.6 module (DERIVED from the bench's 17.5 glass to carrier front) + 3.3 inserts
 + 8.0 spacers + 1.6 carrier + 8.5 socket + 2.5 XIAO header insulator

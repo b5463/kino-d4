@@ -1,6 +1,6 @@
 {
   "package": "KINO_CARRIER_BODY",
-  "generated": "2026-11-27T20:14:16.445Z",
+  "generated": "2026-11-28T02:08:38.921Z",
   "body": {
     "width": 131.4,
     "height": 83.8,
@@ -109,7 +109,7 @@
       }
     ],
     "arm": [
-      1.45,
+      1.3,
       1.2,
       14.3
     ],
@@ -149,7 +149,7 @@
       ]
     },
     "B01-KINO_CARRIER_LENS_COVER.stl": {
-      "triangles": 3478,
+      "triangles": 3482,
       "volumeCm3": 4.22,
       "size": [
         88.4,
@@ -266,7 +266,7 @@
       ]
     },
     "T09-KINO_COUPON_COVER_FIRM.stl": {
-      "triangles": 4194,
+      "triangles": 4190,
       "volumeCm3": 4.22,
       "size": [
         88.4,
@@ -311,7 +311,7 @@
       ]
     },
     "KINO_CARRIER_ASSEMBLED_PREVIEW.stl": {
-      "triangles": 36314,
+      "triangles": 36318,
       "volumeCm3": 294.59,
       "size": [
         131.4,
@@ -320,7 +320,7 @@
       ]
     },
     "KINO_CARRIER_OPEN_PREVIEW.stl": {
-      "triangles": 36248,
+      "triangles": 36250,
       "volumeCm3": 294.59,
       "size": [
         131.4,
@@ -1067,7 +1067,7 @@
     {
       "name": "mid-travel, the cover's play on the rail touches nothing",
       "pass": true,
-      "details": "0.09 either way in X: 0.0000 and -0.0000 mm^3; the bumps 0.4 off the channels' backs"
+      "details": "0.09 either way in X: 0.0000 and 0.0000 mm^3; the bumps 0.4 off the channels' backs"
     },
     {
       "name": "the rail stands on the floor the window's full height",
@@ -1132,7 +1132,7 @@
     {
       "name": "the arms click and hold inside PETG's limit, the closed stop the firmer",
       "pass": true,
-      "details": "1.45 wide, 9.5 from the keyhole to the bump: about 3.82 N/mm (E 2.0 GPa); 1.69 % strain over a crest (0.7), 1.45 % pressed in under a lip (0.6). From the tooth-shape model, both arms, friction 0.3: 5.58 N to open from closed, 4.11 N to close (the bump's R1.5 side), 4.13 N to leave stowed, 5.08 N to stow; 1.6 N into the top rim at rest (30.48 g on a 5.36 g cover), 1.87 N into the bottom rim (35.61 g)"
+      "details": "1.3 wide, 9.5 from the keyhole to the bump: about 2.75 N/mm (E 2.0 GPa); 1.51 % strain over a crest (0.7), 1.30 % pressed in under a lip (0.6). From the tooth-shape model, both arms, friction 0.3: 4.02 N to open from closed, 2.96 N to close (the bump's R1.5 side), 2.97 N to leave stowed, 3.66 N to stow; 1.16 N into the top rim at rest (21.97 g on a 5.36 g cover), 1.35 N into the bottom rim (25.66 g)"
     },
     {
       "name": "the left arm's slit is open",
@@ -1142,7 +1142,7 @@
     {
       "name": "the left arm stands",
       "pass": true,
-      "details": "1.45 x 14.3 along the flank"
+      "details": "1.3 x 14.3 along the flank"
     },
     {
       "name": "the right arm's slit is open",
@@ -1152,37 +1152,37 @@
     {
       "name": "the right arm stands",
       "pass": true,
-      "details": "1.45 x 14.3 along the flank"
+      "details": "1.3 x 14.3 along the flank"
     },
     {
       "name": "the slits and keyholes clear the wordmark and the bumps stay on their arms",
       "pass": true,
-      "details": "the wordmark starts 0.95 past the left slit and ends 2.27 below the keyhole; each bump cut to its 1.45 arm, its sides R0.9 and R1.5 reaching 1 past the edge"
+      "details": "the wordmark starts 1.1 past the left slit and ends 2.27 below the keyhole; each bump cut to its 1.3 arm, its sides R0.9 and R1.5 reaching 1 past the edge"
     },
     {
       "name": "the thumb lip rides a pocket's lining and keeps a face for the thumb",
       "pass": true,
-      "details": "its top edge chamfered 0.8 at 45 degrees; 0.7 of square face above the face's front and the chamfer over it; 1.7 of lip left across the top; with the closed stop the firmer (5.58 N against 4.11)"
+      "details": "its top edge chamfered 0.8 at 45 degrees; 0.7 of square face above the face's front and the chamfer over it; 1.7 of lip left across the top; with the closed stop the firmer (4.02 N against 2.96)"
     },
     {
       "name": "the slide prints with a 0.4 mm nozzle",
       "pass": true,
-      "details": "the thinnest arm (T08) 1.3 (2.89 lines, needs 1.3); the rail 1.6 (3.56 lines, needs 1.35); a tooth's land 1 (2.22 lines, needs 0.9); a lip, across 0.9 (2 lines, needs 0.9); the bump's tight side, radius 0.9 (2 lines, needs 0.45); the thumb lip, across 1.7 (3.78 lines, needs 1.35); the slit, a gap 1.2 (2.67 lines, needs 0.9); the channel, a gap 1.1 (2.44 lines, needs 0.9); the wall from the firmest slit to the wordmark 0.8 (1.78 lines, needs 0.45); the rail's groove, a gap 1.8 (4 lines, needs 1.35). The fit that a 0.4 nozzle's accuracy can close is the rail in its groove, 0.1 a side: T07 says; 1.9 is the next groove"
+      "details": "the thinnest arm (T08) 1.3 (2.89 lines, needs 1.3); the rail 1.6 (3.56 lines, needs 1.35); a tooth's land 1 (2.22 lines, needs 0.9); a lip, across 0.9 (2 lines, needs 0.9); the bump's tight side, radius 0.9 (2 lines, needs 0.45); the thumb lip, across 1.7 (3.78 lines, needs 1.35); the slit, a gap 1.2 (2.67 lines, needs 0.9); the channel, a gap 1.1 (2.44 lines, needs 0.9); the wall from the firmest slit to the wordmark 0.95 (2.11 lines, needs 0.45); the rail's groove, a gap 1.8 (4 lines, needs 1.35). The fit that a 0.4 nozzle's accuracy can close is the rail in its groove, 0.1 a side: T07 says; 1.9 is the next groove"
     },
     {
       "name": "a tenth of print error and the rail's play still click and hold",
       "pass": true,
-      "details": "the pair's press at a stop never below 0.3 (one side may reach 0); the press over a crest up to 0.9 in a 1.2 slit at 2.17 % strain; the flank at least 0.1 off the wall"
+      "details": "the pair's press at a stop never below 0.3 (one side may reach 0); the press over a crest up to 0.9 in a 1.2 slit at 1.94 % strain; the flank at least 0.1 off the wall"
     },
     {
       "name": "heat and wear on the PLA teeth fail safe",
       "pass": true,
-      "details": "with the rest press lost and 0.1 off each crest it still clicks, 4.44 N to open and 3.21 to close, and the rims and lips stop and hold it as before; the standing contact at the closed stop about 27.55 MPa on PLA (the bump's R0.9 side, a line 0.85 long under 1.25 N), about half PLA's compressive yield at room temperature"
+      "details": "with the rest press lost and 0.1 off each crest it still clicks, 3.2 N to open and 2.31 to close, and the rims and lips stop and hold it as before; the standing contact at the closed stop about 23.39 MPa on PLA (the bump's R0.9 side, a line 0.85 long under 0.9 N), about half PLA's compressive yield at room temperature"
     },
     {
       "name": "with the face in PETG the slide still clicks and nothing self-locks",
       "pass": true,
-      "details": "PETG on PETG at friction 0.5: about 8.41 N to open and 5.96 to close with B01's arms (T08's about 6.06); the steepest ramp plus friction 66.57 degrees, far from 90; reprint P3 with the PETG face and choose again"
+      "details": "PETG on PETG at friction 0.5: about 6.06 N to open and 4.3 to close with B01's arms (T08's about 6.06); the steepest ramp plus friction 66.57 degrees, far from 90; reprint P3 with the PETG face and choose again"
     },
     {
       "name": "the lips hold the cover at both stops",
@@ -1192,7 +1192,7 @@
     {
       "name": "the cover presses in from the front at the loading position",
       "pass": true,
-      "details": "its bottom edge at Y 11.4 (stowed 0.7, closed 20.2): its top 10.5 and its bumps over the gap; the arms fold 0.6 under the rest of the lips, 0.70 % strain at worst (2 up); no lip over the rigid top; the bumps drop into the channel at Y 15.4, clear of the teeth"
+      "details": "its bottom edge at Y 11.4 (stowed 0.7, closed 20.2): its top 10.5 and its bumps over the gap; the arms fold 0.6 under the rest of the lips, 0.63 % strain at worst (2 up); no lip over the rigid top; the bumps drop into the channel at Y 15.4, clear of the teeth"
     },
     {
       "name": "the thumb lip is on the cover's axis",
@@ -1627,7 +1627,7 @@
     {
       "name": "T08, B01 with 1.3 arms, runs as B01 and clicks inside PETG's limit",
       "pass": true,
-      "details": "about 4.02 N to open and 2.96 to close (B01 5.58 and 4.11), 1.30 % strain under a lip; its contact with the face closed, mid-travel and stowed the same as B01's to 1.4e-13 mm^3"
+      "details": "about 4.02 N to open and 2.96 to close (B01 4.02 and 2.96), 1.30 % strain under a lip; its contact with the face closed, mid-travel and stowed the same as B01's to 0.0e+0 mm^3"
     },
     {
       "name": "T08-KINO_COUPON_COVER_SOFT.stl carries \"T08\" in material",
@@ -1635,9 +1635,9 @@
       "details": "3 mm letters at (68.4, 24.2) in the face at Z 43.9, 0.4 deep; 100 % of the engraving in material"
     },
     {
-      "name": "T09, B01 with 1.6 arms, runs as B01 and clicks inside PETG's limit",
+      "name": "T09, B01 with 1.45 arms, runs as B01 and clicks inside PETG's limit",
       "pass": true,
-      "details": "about 7.49 N to open and 5.52 to close (B01 5.58 and 4.11), 1.60 % strain under a lip; its contact with the face closed, mid-travel and stowed the same as B01's to 2.6e-13 mm^3"
+      "details": "about 5.58 N to open and 4.11 to close (B01 4.02 and 2.96), 1.45 % strain under a lip; its contact with the face closed, mid-travel and stowed the same as B01's to 1.4e-13 mm^3"
     },
     {
       "name": "T09-KINO_COUPON_COVER_FIRM.stl carries \"T09\" in material",

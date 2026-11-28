@@ -283,7 +283,7 @@ export const P = Object.freeze({
   //   side. One short gap a side, where the stowed cover's bump sits, lets
   //   the bump past the lip when the cover is pressed in from the front;
   //   the bevels snap under the rest of the lip as they did before.
-  sliderArmT: 1.45,         // the arm's width in X, from the cover's edge in: about 3.7 N/mm at the bump in PETG (E 2.0 GPa). 1.55 with a 0.5 crest press clicked right on the fifth T07 (2026-11-27) but held loose: the owner bent the arms out by hand to make it latch. The crest press is 0.7 now, so the arm is softer to keep the click where it was
+  sliderArmT: 1.3,          // the arm's width in X, from the cover's edge in: about 2.8 N/mm at the bump in PETG (E 2.0 GPa). SET ON THE BENCH: of B01 (1.45), T08 (1.3) and T09 (1.6) on the sixth T07, "T08 is the one we go with" (2026-11-28). 1.3 is also the thinnest a 0.4 nozzle lays as three lines, so no softer coupon exists
   sliderArmSlit: 1.2,        // the slit inside the arm: room for the 0.7 press with margin, and the 0.7 fold under a lip when the cover is pressed in; 0.6 prints as a gap, the fold needs more
   sliderArmRoot: 14.3,       // the keyhole's top above the cover's bottom edge: the arm runs from the bottom edge to the keyhole's tangent, 13.5 up; the top 2.2 is rigid
   sliderBumpY: 4.0,          // the bump's centre above the cover's bottom edge, on the straight flank above the R3 corner
@@ -320,8 +320,8 @@ export const P = Object.freeze({
   // Two more covers to print beside B01, one softer and one stiffer in the
   // arms, so one print settles the click (the stiffness of printed PETG is
   // the number least known): T08 and T09, the ID engraved on the top.
-  sliderArmSoft: 1.3,        // T08: a quarter softer than B01
-  sliderArmFirm: 1.6,        // T09: a quarter firmer
+  sliderArmSoft: 1.3,        // T08: the same as B01 since the owner chose it (2026-11-28); the nozzle allows nothing thinner, so the plate's lower bracket is closed
+  sliderArmFirm: 1.45,       // T09: the arm B01 had before the choice, kept on the plate as the firmer reference
   coverLip: [20.0, 2.5],     // width x thickness: a thumb needs 16; at 30 the open slot under the eyes read as a mouth. 1.5 thick snapped under the shove a stuck cover needed (2026-11-22): at 0.08 layers the lip's layers are its weak axis
   coverLipLeft: 33.4,        // the lip centred on the bar (86.8 - 20) / 2: the thumb pushes on the cover's axis, so it cannot yaw it (at 45 the push was 11.6 off-axis and the 2.0 cover went sideways and stuck); the wordmark ends at 33
   coverLipRoot: 0.8,         // 45 degree root on the lip's three free sides: the lip takes a face-down drop and the thumb's shove (0.4 was part of the snap)
